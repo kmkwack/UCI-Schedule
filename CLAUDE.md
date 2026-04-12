@@ -56,70 +56,62 @@ This is the official UCI student-built API maintained by ICSSC (ICS Student Coun
 
 ### Endpoints Used
 
-#### 1. Course Catalog
+#### 1. WebSoc — courses + sections for a department/quarter (primary endpoint)
 ```
-GET https://anteaterapi.com/v2/rest/courses?department=ECON
+GET https://anteaterapi.com/v2/rest/websoc?department=ECON&year=2026&quarter=Spring
 ```
-Returns all courses offered by a department (general catalog, not quarter-specific).
+Returns all courses and their sections in one call. This is the same endpoint AntAlmanac uses.
 
 Response shape:
 ```json
 {
   "ok": true,
-  "data": [
-    {
-      "id": "ECON100A",
-      "department": "ECON",
-      "courseNumber": "100A",
-      "title": "Intermediate Microeconomics",
-      "units": { "minUnits": 4, "maxUnits": 4 }
-    }
-  ]
+  "data": {
+    "schools": [{
+      "departments": [{
+        "deptCode": "ECON",
+        "courses": [{
+          "courseNumber": "100A",
+          "courseTitle": "INTERMED MICROECON",
+          "sections": [{
+            "sectionCode": "36120",
+            "sectionType": "Lec",
+            "sectionNum": "A",
+            "units": "4",
+            "instructors": ["SMITH, JOHN"],
+            "isCancelled": false,
+            "meetings": [{
+              "timeIsTBA": false,
+              "days": "MWF",
+              "bldg": ["SSPA 2112"],
+              "startTime": { "hour": 10, "minute": 0 },
+              "endTime": { "hour": 10, "minute": 50 }
+            }]
+          }]
+        }]
+      }]
+    }]
+  }
 }
 ```
 
-#### 2. Enrollment History (sections per quarter)
+Note: `startTime`/`endTime` use 24-hour `{ hour, minute }` objects.
+
+#### 2. Departments (not currently used, kept for reference)
 ```
-GET https://anteaterapi.com/v2/rest/enrollmentHistory?department=ECON&courseNumber=100A&year=2026&quarter=Spring
-```
-
-**Required parameters** — must provide one of these combinations:
-- `department` + `courseNumber` (year/quarter optional but recommended)
-- `sectionCode` + `year` + `quarter`
-- `instructorName` + `courseNumber` + `year` + `quarter`
-
-Valid `quarter` values: `Fall`, `Winter`, `Spring`, `Summer1`, `Summer2`, `Summer10wk`
-
-Response shape:
-```json
-{
-  "ok": true,
-  "data": [
-    {
-      "sectionCode": "36120",
-      "department": "ECON",
-      "courseNumber": "100A",
-      "sectionType": "Lec",
-      "sectionNum": "A",
-      "units": "4",
-      "instructors": ["SMITH, JOHN"],
-      "meetings": [
-        { "days": "MWF", "time": "10:00-10:50am", "bldg": ["SSPA 2112"] }
-      ]
-    }
-  ]
-}
+GET https://anteaterapi.com/v2/rest/websoc/departments?since=2014
 ```
 
 ### API Docs
 - Developer docs: https://docs.icssc.club/docs/developer/anteaterapi
 - Interactive reference: https://anteaterapi.com/reference
-- Migration from PeterPortal: https://docs.icssc.club/docs/developer/anteaterapi/migrating
+- AntAlmanac source (shows real usage): https://github.com/icssc/AntAlmanac
 
 ### Important Notes
-- `enrollmentHistory` is named "history" but it's the only endpoint with live quarter-specific schedule data (instructor, time, location, section code)
-- There is **no dedicated WebSoc/live-schedule endpoint** in Anteater API
-- Courses with no sections for the selected quarter are filtered out at load time
+- The websoc endpoint returns everything in **one call** — no batching needed
+- Cancelled sections (`isCancelled: true`) are filtered out before display
+- Courses with no non-cancelled sections are not shown
+- `enrollmentHistory` endpoint is no longer used (was replaced by websoc)
 
 ---
 
@@ -274,3 +266,28 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 2
 - **`src/screens/CoursePickerScreen.tsx`** — Sections within an expanded course are now sorted by `sectionNum` (e.g. A1 before A2) using `localeCompare` with `numeric: true`, so discussion/lab sections display in the correct ascending order.
+
+### Session 3
+- **`src/screens/CoursePickerScreen.tsx`** — Fixed missing courses (especially numbered 1–99 and 200+). Root cause: firing 100+ parallel `enrollmentHistory` requests at once overwhelmed the API, causing many to fail silently and those courses to be incorrectly filtered out. Fix: replaced `Promise.all` over all courses with a batched loop (`BATCH_SIZE = 6`), processing 6 courses at a time so the API is not overwhelmed.
+- **`src/screens/CoursePickerScreen.tsx`** — Switched from `enrollmentHistory` (N batched calls) to `GET /v2/rest/websoc?department=X&year=Y&quarter=Z` (single call). This is the same endpoint AntAlmanac uses. Returns all courses and sections in one hierarchical response (schools → departments → courses → sections). Removed `enrollmentHistory` batching entirely. Updated types: `ApiCourse`/`ApiSection` → `CatalogCourse`/`WebsocSection`/`WebsocCourse`. Updated time formatting: `normalizeApiTime()` → `formatWebsocTime()` (uses `{ hour, minute }` objects from the websoc response, already 24hr). `sectionsMap` now stores pre-mapped `Course[]` instead of raw section objects. Cancelled sections (`isCancelled: true`) are filtered out automatically.
+- **`src/screens/CoursePickerScreen.tsx`** — Fixed duplicate key error (e.g. `EECS195`, `EECS298`). Root cause: the websoc response can list the same course under multiple schools in its hierarchy. Fix: replaced `newCatalog[]` array with a `catalogMap` keyed by `courseId`. On duplicate, sections are merged (deduped by `sectionCode`) instead of creating a second catalog entry.
+
+### Session 4
+- **`src/data/courses.ts`** — Removed past quarters (Fall 2024, Winter 2025, Spring 2025) from `QUARTERS`. Remaining quarters start from Fall 2025.
+- **`src/screens/TimetableScreen.tsx`** — Replaced horizontal quarter-chip scroll with a compact top-right dropdown button showing the current quarter. Tapping it opens a Modal overlay with all quarters listed; active quarter is highlighted with a checkmark. "Add Class" button moved inline next to the quarter picker. Timetable grid now shows immediately below without the chip row taking vertical space.
+
+### Session 5
+- **`src/screens/FriendsScreen.tsx`** — Created. New Friends tab with two views: (1) friends list showing name, course count, and a delete button; (2) friend timetable view with the same weekly grid as TimetableScreen plus a quarter dropdown and "Add" button that opens CoursePickerScreen for that friend. "Add Friend" opens a modal with a name input. All state is in-memory (no persistence yet).
+- **`App.tsx`** — Added `'friends'` to the tab type, imported `FriendsScreen`, rendered it at `currentTab === 'friends'`, and added a "Friends" tab item with `people-outline` icon.
+
+### Session 6
+- **`src/data/courses.ts`** — Added optional `sectionLabel?: string` field to the `Course` type to carry human-readable section info (e.g. "Lec A", "Dis A1").
+- **`src/screens/CoursePickerScreen.tsx`** — `mapWebsocSection` now populates `sectionLabel` as `"${sectionType} ${sectionNum}"` from the API response. Section rows in the picker now display `sectionLabel` (e.g. "Lec A", "Dis A1") instead of the raw section code number.
+
+### Session 7
+- **`src/screens/CoursePickerScreen.tsx`** — Added `sortSections()` to sort raw `WebsocSection[]` before mapping: first by type (Lec → Dis → Lab → other), then by letter prefix of `sectionNum` (A, B, C…), then by numeric suffix (1, 2, 3…). Applied before `mapWebsocSection` in the websoc response handler.
+- **`src/screens/CoursePickerScreen.tsx`** — Section row title now shows `"12345 · Lec A"` (code + label). Row order changed to: code/label → professor → units → building → days/time. Units formatted as `"1 unit"` / `"4 units"`.
+- **`src/screens/CoursePickerScreen.tsx`** — Added `formatLocation()`: maps `"VRTL REMOTE"` and `"ON LINE"` building strings to `"Online"` in the section display.
+
+### Session 8
+- **`src/screens/CoursePickerScreen.tsx`** — Extended `filteredCatalog` search to also match full course codes (e.g. `"ECON 100A"`) and professor names (checks all sections in `sectionsMap` for a professor match). Added `sectionsMap` to the `useMemo` dependency array. Updated search placeholder text.

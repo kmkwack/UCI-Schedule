@@ -10,6 +10,7 @@ export type Course = {
   rating: number;
   location?: string;
   units?: number;
+  sectionLabel?: string;  // e.g. "Lec A", "Dis A1"
 };
 
 export type Quarter = { year: string; quarter: string };
@@ -23,9 +24,6 @@ export function quarterLabel(q: Quarter): string {
 }
 
 export const QUARTERS: Quarter[] = [
-  { year: '2024', quarter: 'Fall' },
-  { year: '2025', quarter: 'Winter' },
-  { year: '2025', quarter: 'Spring' },
   { year: '2025', quarter: 'Fall' },
   { year: '2026', quarter: 'Winter' },
   { year: '2026', quarter: 'Spring' },

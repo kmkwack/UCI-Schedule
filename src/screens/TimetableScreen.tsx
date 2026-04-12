@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, QUARTERS, quarterKey, quarterLabel, colorForDepartment } from '../data/courses';
 
 type Props = {
@@ -59,6 +60,7 @@ export default function TimetableScreen({
   onOpenCoursePicker,
 }: Props) {
   const [gridWidth, setGridWidth] = useState(0);
+  const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
   const screenHeight = Dimensions.get('window').height;
 
   const visibleDays = useMemo(() => {
@@ -96,51 +98,94 @@ export default function TimetableScreen({
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f7f8fa' }}>
-      <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
-        <Text style={{ fontSize: 28, fontWeight: 'bold' }}>Timetable</Text>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 10 }}
-          contentContainerStyle={{ paddingRight: 8 }}
-        >
-          {QUARTERS.map((q) => {
-            const isActive = quarterKey(q) === quarterKey(selectedQuarter);
-            return (
-              <TouchableOpacity
-                key={quarterKey(q)}
-                onPress={() => onChangeQuarter(q)}
-                style={{
-                  backgroundColor: isActive ? '#2563eb' : '#f3f4f6',
-                  borderRadius: 20,
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  marginRight: 8,
-                  borderWidth: 1,
-                  borderColor: isActive ? '#2563eb' : '#e5e7eb',
-                }}
-              >
-                <Text style={{ color: isActive ? 'white' : '#374151', fontWeight: isActive ? '700' : '400', fontSize: 13 }}>
-                  {quarterLabel(q)}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
+      {/* Quarter dropdown modal */}
+      <Modal transparent animationType="fade" visible={showQuarterDropdown} onRequestClose={() => setShowQuarterDropdown(false)}>
         <TouchableOpacity
-          onPress={onOpenCoursePicker}
-          style={{
-            marginTop: 10,
-            backgroundColor: '#007AFF',
-            paddingVertical: 12,
-            borderRadius: 12,
-            alignItems: 'center',
-          }}
+          style={{ flex: 1 }}
+          activeOpacity={1}
+          onPress={() => setShowQuarterDropdown(false)}
         >
-          <Text style={{ color: 'white', fontWeight: '600' }}>+ Add Class</Text>
+          <View
+            style={{
+              position: 'absolute',
+              top: 90,
+              right: 16,
+              backgroundColor: 'white',
+              borderRadius: 12,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 8,
+              minWidth: 160,
+              overflow: 'hidden',
+            }}
+          >
+            {QUARTERS.map((q, index) => {
+              const isActive = quarterKey(q) === quarterKey(selectedQuarter);
+              return (
+                <TouchableOpacity
+                  key={quarterKey(q)}
+                  onPress={() => { onChangeQuarter(q); setShowQuarterDropdown(false); }}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    backgroundColor: isActive ? '#eff6ff' : 'white',
+                    borderTopWidth: index === 0 ? 0 : 1,
+                    borderTopColor: '#f3f4f6',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <Text style={{ color: isActive ? '#2563eb' : '#374151', fontWeight: isActive ? '700' : '400', fontSize: 14 }}>
+                    {quarterLabel(q)}
+                  </Text>
+                  {isActive && <Ionicons name="checkmark" size={16} color="#2563eb" />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </TouchableOpacity>
+      </Modal>
+
+      <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+        {/* Header row: title + quarter picker + add button */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ fontSize: 28, fontWeight: 'bold' }}>Timetable</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => setShowQuarterDropdown(true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: 'white',
+                borderRadius: 20,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderWidth: 1,
+                borderColor: '#e5e7eb',
+                gap: 4,
+              }}
+            >
+              <Text style={{ color: '#374151', fontWeight: '600', fontSize: 13 }}>
+                {quarterLabel(selectedQuarter)}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color="#6b7280" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onOpenCoursePicker}
+              style={{
+                backgroundColor: '#007AFF',
+                paddingHorizontal: 14,
+                paddingVertical: 7,
+                borderRadius: 20,
+              }}
+            >
+              <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>+ Add</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
 
       <View

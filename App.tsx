@@ -5,10 +5,11 @@ import HomeScreen from './src/screens/HomeScreen';
 import TimetableScreen from './src/screens/TimetableScreen';
 import GradesScreen from './src/screens/GradesScreen';
 import CoursePickerScreen from './src/screens/CoursePickerScreen';
+import FriendsScreen from './src/screens/FriendsScreen';
 import { Course, Quarter, quarterKey } from './src/data/courses';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades'>('home');
+  const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'friends'>('home');
   const [showCoursePicker, setShowCoursePicker] = useState(false);
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter>({ year: '2026', quarter: 'Spring' });
   const [timetables, setTimetables] = useState<Record<string, Course[]>>({});
@@ -61,6 +62,12 @@ export default function App() {
     );
   } else if (currentTab === 'grades') {
     content = <GradesScreen activeCourses={activeCourses} />;
+  } else if (currentTab === 'friends') {
+    content = (
+      <View style={{ flex: 1, paddingTop: 60, backgroundColor: '#f7f8fa' }}>
+        <FriendsScreen />
+      </View>
+    );
   }
 
   const TabItem = ({
@@ -124,6 +131,12 @@ export default function App() {
             icon="bar-chart-outline"
             active={currentTab === 'grades'}
             onPress={() => setCurrentTab('grades')}
+          />
+          <TabItem
+            label="Friends"
+            icon="people-outline"
+            active={currentTab === 'friends'}
+            onPress={() => setCurrentTab('friends')}
           />
         </View>
       )}

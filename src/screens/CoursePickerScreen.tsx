@@ -20,23 +20,36 @@ type Props = {
   selectedQuarter: Quarter;
 };
 
-type ApiCourse = {
+type CatalogCourse = {
   id: string;
   department: string;
   courseNumber: string;
   title: string;
-  units?: { minUnits?: number; maxUnits?: number } | number;
+  units?: string;
 };
 
-type ApiSection = {
+type WebsocTime = { hour: number; minute: number };
+
+type WebsocSection = {
   sectionCode: string;
-  department: string;
-  courseNumber: string;
   sectionType: string;
   sectionNum: string;
-  units?: string;
-  instructors?: string[];
-  meetings?: { bldg?: string[]; days?: string; time?: string }[];
+  units: string;
+  instructors: string[];
+  meetings: {
+    timeIsTBA: boolean;
+    bldg: string[];
+    days: string;
+    startTime: WebsocTime;
+    endTime: WebsocTime;
+  }[];
+  isCancelled: boolean;
+};
+
+type WebsocCourse = {
+  courseTitle: string;
+  courseNumber: string;
+  sections: WebsocSection[];
 };
 
 const BASE = 'https://anteaterapi.com/v2/rest';
@@ -45,65 +58,52 @@ function pad2(n: number): string {
   return n.toString().padStart(2, '0');
 }
 
-function to24hr(h: number, period: string): number {
-  const pm = period.toLowerCase() === 'pm';
-  if (pm && h !== 12) return h + 12;
-  if (!pm && h === 12) return 0;
-  return h;
+function formatWebsocTime(start: WebsocTime, end: WebsocTime): string {
+  return `${pad2(start.hour)}:${pad2(start.minute)} - ${pad2(end.hour)}:${pad2(end.minute)}`;
 }
 
-function normalizeApiTime(t: string): string {
-  if (!t || t.toUpperCase() === 'TBA') return 'TBA';
-
-  // Two-period: "8:00am-8:50am" or "11:00am-12:20pm"
-  const two = t.match(/^(\d+):(\d+)(am|pm)-(\d+):(\d+)(am|pm)$/i);
-  if (two) {
-    const [, sh, sm, sp, eh, em, ep] = two;
-    return `${pad2(to24hr(parseInt(sh), sp))}:${sm} - ${pad2(to24hr(parseInt(eh), ep))}:${em}`;
-  }
-
-  // Single-period suffix: "8:00-8:50am"
-  const one = t.match(/^(\d+):(\d+)-(\d+):(\d+)(am|pm)$/i);
-  if (one) {
-    const [, sh, sm, eh, em, p] = one;
-    let startH = parseInt(sh);
-    let endH = parseInt(eh);
-    const isPM = p.toLowerCase() === 'pm';
-    if (isPM && endH !== 12) endH += 12;
-    if (isPM && startH !== 12 && startH < endH) startH += 12;
-    return `${pad2(startH)}:${sm} - ${pad2(endH)}:${em}`;
-  }
-
-  // Already 24hr no spaces: "10:00-10:50"
-  const plain = t.match(/^(\d+):(\d+)-(\d+):(\d+)$/);
-  if (plain) {
-    const [, sh, sm, eh, em] = plain;
-    return `${pad2(parseInt(sh))}:${sm} - ${pad2(parseInt(eh))}:${em}`;
-  }
-
-  return t;
+function formatLocation(raw: string | undefined): string {
+  if (!raw) return 'TBA';
+  const up = raw.toUpperCase();
+  if (up.includes('VRTL') || up.includes('ON LINE') || up.includes('ONLINE')) return 'Online';
+  return raw;
 }
 
-function getUnits(units: ApiCourse['units']): number | undefined {
-  if (!units) return undefined;
-  if (typeof units === 'number') return units;
-  return units.maxUnits ?? units.minUnits;
+const SECTION_TYPE_ORDER: Record<string, number> = { Lec: 0, Dis: 1, Lab: 2 };
+
+function sortSections(sections: WebsocSection[]): WebsocSection[] {
+  return [...sections].sort((a, b) => {
+    const typeA = SECTION_TYPE_ORDER[a.sectionType] ?? 3;
+    const typeB = SECTION_TYPE_ORDER[b.sectionType] ?? 3;
+    if (typeA !== typeB) return typeA - typeB;
+    // Letter prefix of sectionNum (e.g. "A" from "A1")
+    const letA = a.sectionNum.replace(/\d+$/, '');
+    const letB = b.sectionNum.replace(/\d+$/, '');
+    const letCmp = letA.localeCompare(letB);
+    if (letCmp !== 0) return letCmp;
+    // Numeric suffix (e.g. 1 from "A1")
+    const numA = parseInt(a.sectionNum.replace(/^[A-Za-z]+/, '')) || 0;
+    const numB = parseInt(b.sectionNum.replace(/^[A-Za-z]+/, '')) || 0;
+    return numA - numB;
+  });
 }
 
-function mapSection(section: ApiSection, title: string): Course {
+function mapWebsocSection(section: WebsocSection, course: WebsocCourse, dept: string): Course {
   const meeting = section.meetings?.[0];
+  const time = meeting?.timeIsTBA ? 'TBA' : formatWebsocTime(meeting.startTime, meeting.endTime);
   return {
     id: section.sectionCode,
-    code: `${section.department} ${section.courseNumber}`,
-    title,
+    code: `${dept} ${course.courseNumber}`,
+    title: course.courseTitle,
     professor: section.instructors?.[0] ?? 'TBA',
     days: meeting?.days ?? 'TBA',
-    time: normalizeApiTime(meeting?.time ?? 'TBA'),
-    department: section.department,
+    time,
+    department: dept,
     addedCount: 0,
     rating: 0,
-    location: meeting?.bldg?.[0] ?? 'TBA',
-    units: parseFloat(section.units ?? '') || undefined,
+    location: formatLocation(meeting?.bldg?.[0]),
+    units: parseFloat(section.units) || undefined,
+    sectionLabel: `${section.sectionType} ${section.sectionNum}`,
   };
 }
 
@@ -143,13 +143,13 @@ export default function CoursePickerScreen({
   const [selectedDept, setSelectedDept] = useState('');
   const [deptDropdownOpen, setDeptDropdownOpen] = useState(false);
   const [deptSearch, setDeptSearch] = useState('');
-  const [catalogCourses, setCatalogCourses] = useState<ApiCourse[]>([]);
+  const [catalogCourses, setCatalogCourses] = useState<CatalogCourse[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
-  const [sectionsMap, setSectionsMap] = useState<Record<string, ApiSection[]>>({});
+  const [sectionsMap, setSectionsMap] = useState<Record<string, Course[]>>({});
   const [previewCourse, setPreviewCourse] = useState<Course | null>(null);
 
-  // Fetch catalog then pre-fetch all sections, filtering out courses with none
+  // Single websoc call fetches all courses + sections for the department/quarter
   useEffect(() => {
     if (!selectedDept) {
       setCatalogCourses([]);
@@ -165,53 +165,62 @@ export default function CoursePickerScreen({
     setExpandedCourseId(null);
     setPreviewCourse(null);
 
-    fetch(`${BASE}/courses?department=${encodeURIComponent(selectedDept)}`)
+    const params = new URLSearchParams({
+      department: selectedDept,
+      year: selectedQuarter.year,
+      quarter: selectedQuarter.quarter,
+    });
+
+    fetch(`${BASE}/websoc?${params}`)
       .then((r) => r.json())
-      .then(async (data) => {
-        if (!data.ok || !Array.isArray(data.data)) {
-          setCatalogCourses([]);
-          return;
-        }
+      .then((data) => {
+        if (!data.ok) return;
 
-        const allCourses: ApiCourse[] = data.data;
+        const schools: { departments: { deptCode: string; courses: WebsocCourse[] }[] }[] =
+          data.data?.schools ?? [];
 
-        // Fetch sections for every course in parallel
-        const results = await Promise.all(
-          allCourses.map(async (course) => {
-            try {
-              const params = new URLSearchParams({
-                department: course.department,
-                courseNumber: course.courseNumber,
-                year: selectedQuarter.year,
-                quarter: selectedQuarter.quarter,
-              });
-              const r = await fetch(`${BASE}/enrollmentHistory?${params}`);
-              const d = await r.json();
-              const sections = d.ok && Array.isArray(d.data) ? d.data as ApiSection[] : [];
-              return { courseId: course.id, sections };
-            } catch {
-              return { courseId: course.id, sections: [] as ApiSection[] };
-            }
-          })
-        );
+        // Use a map to deduplicate courses that appear under multiple schools
+        const catalogMap: Record<string, CatalogCourse> = {};
+        const newSectionsMap: Record<string, Course[]> = {};
 
-        const newSectionsMap: Record<string, ApiSection[]> = {};
-        results.forEach(({ courseId, sections }) => {
-          newSectionsMap[courseId] = sections;
+        schools.forEach((school) => {
+          school.departments.forEach((dept) => {
+            dept.courses.forEach((course) => {
+              const validSections = sortSections(course.sections.filter((s) => !s.isCancelled))
+                .map((s) => mapWebsocSection(s, course, dept.deptCode));
+
+              if (validSections.length === 0) return;
+
+              const courseId = `${dept.deptCode}${course.courseNumber}`;
+
+              if (catalogMap[courseId]) {
+                // Merge sections from duplicate entries, avoiding duplicate section codes
+                const existing = newSectionsMap[courseId] ?? [];
+                const existingIds = new Set(existing.map((s) => s.id));
+                const newSections = validSections.filter((s) => !existingIds.has(s.id));
+                newSectionsMap[courseId] = [...existing, ...newSections];
+              } else {
+                catalogMap[courseId] = {
+                  id: courseId,
+                  department: dept.deptCode,
+                  courseNumber: course.courseNumber,
+                  title: course.courseTitle,
+                  units: validSections[0]?.units?.toString(),
+                };
+                newSectionsMap[courseId] = validSections;
+              }
+            });
+          });
         });
-        setSectionsMap(newSectionsMap);
 
-        // Only show courses that have at least one section this quarter
-        const withSections = allCourses.filter(
-          (c) => (newSectionsMap[c.id]?.length ?? 0) > 0
-        );
-        setCatalogCourses(withSections);
+        setCatalogCourses(Object.values(catalogMap));
+        setSectionsMap(newSectionsMap);
       })
       .catch(() => setCatalogCourses([]))
       .finally(() => setCatalogLoading(false));
   }, [selectedDept, selectedQuarter]);
 
-  const handleExpandCourse = (course: ApiCourse) => {
+  const handleExpandCourse = (course: CatalogCourse) => {
     if (expandedCourseId === course.id) {
       setExpandedCourseId(null);
       setPreviewCourse(null);
@@ -275,10 +284,15 @@ export default function CoursePickerScreen({
       ? catalogCourses
       : catalogCourses.filter((c) => {
           const q = searchText.toLowerCase();
-          return (
+          if (
             c.courseNumber.toLowerCase().includes(q) ||
             c.title.toLowerCase().includes(q) ||
-            c.department.toLowerCase().includes(q)
+            c.department.toLowerCase().includes(q) ||
+            `${c.department} ${c.courseNumber}`.toLowerCase().includes(q)
+          ) return true;
+          // Also match against professor names in any section
+          return (sectionsMap[c.id] ?? []).some((s) =>
+            s.professor.toLowerCase().includes(q)
           );
         });
 
@@ -290,7 +304,7 @@ export default function CoursePickerScreen({
       const suffixB = b.courseNumber.replace(/^\d+/, '');
       return suffixA.localeCompare(suffixB);
     });
-  }, [catalogCourses, searchText]);
+  }, [catalogCourses, searchText, sectionsMap]);
 
   const filteredDepts = useMemo(() => {
     if (!deptSearch) return UCI_DEPARTMENTS;
@@ -339,7 +353,7 @@ export default function CoursePickerScreen({
           <TextInput
             value={searchText}
             onChangeText={setSearchText}
-            placeholder="Search course, title, or department"
+            placeholder="Search title, code (e.g. ECON 100A), or professor"
             placeholderTextColor="#9ca3af"
             style={{
               backgroundColor: '#f3f4f6',
@@ -479,7 +493,7 @@ export default function CoursePickerScreen({
                       <Text style={{ color: '#4b5563', marginTop: 2, fontSize: 14 }}>{item.title}</Text>
                       {item.units != null && (
                         <Text style={{ color: '#9ca3af', marginTop: 2, fontSize: 12 }}>
-                          {getUnits(item.units)} units
+                          {item.units} units
                         </Text>
                       )}
                     </View>
@@ -496,14 +510,13 @@ export default function CoursePickerScreen({
                           No sections found for {quarterLabel(selectedQuarter)}
                         </Text>
                       ) : (
-                        [...sections].sort((a, b) => a.sectionNum.localeCompare(b.sectionNum, undefined, { numeric: true })).map((section) => {
-                          const course = mapSection(section, item.title);
+                        sections.map((course) => {
                           const isAdded = activeCourses.some((c) => c.id === course.id);
                           const isPreviewing = previewCourse?.id === course.id;
 
                           return (
                             <TouchableOpacity
-                              key={section.sectionCode}
+                              key={course.id}
                               activeOpacity={0.85}
                               onPress={() => setPreviewCourse(isPreviewing ? null : course)}
                               style={{
@@ -518,15 +531,22 @@ export default function CoursePickerScreen({
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                                 <View style={{ flex: 1 }}>
                                   <Text style={{ fontWeight: '600', fontSize: 13, color: '#111827' }}>
-                                    {section.sectionType} {section.sectionNum} · §{section.sectionCode}
+                                    {course.id} · {course.sectionLabel ?? course.id}
                                   </Text>
                                   <Text style={{ color: '#4b5563', fontSize: 13, marginTop: 3 }}>
                                     {course.professor}
                                   </Text>
+                                  {course.units != null && (
+                                    <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>
+                                      {course.units} {course.units === 1 ? 'unit' : 'units'}
+                                    </Text>
+                                  )}
                                   <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>
+                                    {course.location}
+                                  </Text>
+                                  <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 1 }}>
                                     {course.days} · {course.time}
                                   </Text>
-                                  <Text style={{ color: '#6b7280', fontSize: 12 }}>{course.location}</Text>
                                 </View>
 
                                 <TouchableOpacity

@@ -1,16 +1,14 @@
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
-import { courses } from '../data/courses';
+import { Course } from '../data/courses';
 
 type Props = {
-  addedCourses: number[];
+  activeCourses: Course[];
   onGoToTimetable: () => void;
   onGoToGrades: () => void;
 };
 
 function getTodayDayCode() {
   const day = new Date().getDay();
-
-  // JS: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
   if (day === 1) return 'M';
   if (day === 2) return 'T';
   if (day === 3) return 'W';
@@ -31,19 +29,11 @@ function extractStartHour(timeRange: string) {
   return hour + minute / 60;
 }
 
-export default function HomeScreen({
-  addedCourses,
-  onGoToTimetable,
-  onGoToGrades,
-}: Props) {
+export default function HomeScreen({ activeCourses, onGoToTimetable, onGoToGrades }: Props) {
   const todayCode = getTodayDayCode();
 
-  const selectedCourses = courses.filter((course) =>
-    addedCourses.includes(course.id)
-  );
-
   const todayCourses = todayCode
-    ? selectedCourses
+    ? activeCourses
         .filter((course) => course.days.includes(todayCode))
         .sort((a, b) => extractStartHour(a.time) - extractStartHour(b.time))
     : [];
@@ -71,119 +61,43 @@ export default function HomeScreen({
           {getTodayLabel()} Briefing
         </Text>
 
-        <View
-          style={{
-            marginTop: 18,
-            backgroundColor: 'white',
-            borderRadius: 16,
-            padding: 16,
-          }}
-        >
-          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 8 }}>
-            Today’s Summary
-          </Text>
-          <Text style={{ fontSize: 15, lineHeight: 22, color: '#333' }}>
-            {briefing}
-          </Text>
+        <View style={{ marginTop: 18, backgroundColor: 'white', borderRadius: 16, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Today's Summary</Text>
+          <Text style={{ fontSize: 15, lineHeight: 22, color: '#333' }}>{briefing}</Text>
         </View>
 
-        <View
-          style={{
-            flexDirection: 'row',
-            marginTop: 16,
-            justifyContent: 'space-between',
-          }}
-        >
-          <View
-            style={{
-              width: '48%',
-              backgroundColor: 'white',
-              borderRadius: 16,
-              padding: 16,
-            }}
-          >
-            <Text style={{ color: '#666', fontSize: 13 }}>Today’s Classes</Text>
-            <Text style={{ fontSize: 28, fontWeight: 'bold', marginTop: 6 }}>
-              {todayCourses.length}
-            </Text>
+        <View style={{ flexDirection: 'row', marginTop: 16, justifyContent: 'space-between' }}>
+          <View style={{ width: '48%', backgroundColor: 'white', borderRadius: 16, padding: 16 }}>
+            <Text style={{ color: '#666', fontSize: 13 }}>Today's Classes</Text>
+            <Text style={{ fontSize: 28, fontWeight: 'bold', marginTop: 6 }}>{todayCourses.length}</Text>
           </View>
 
-          <View
-            style={{
-              width: '48%',
-              backgroundColor: 'white',
-              borderRadius: 16,
-              padding: 16,
-            }}
-          >
+          <View style={{ width: '48%', backgroundColor: 'white', borderRadius: 16, padding: 16 }}>
             <Text style={{ color: '#666', fontSize: 13 }}>Weather</Text>
-            <Text style={{ fontSize: 20, fontWeight: 'bold', marginTop: 6 }}>
-              {weatherSummary}
-            </Text>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', marginTop: 6 }}>{weatherSummary}</Text>
           </View>
         </View>
 
-        <View
-          style={{
-            flexDirection: 'row',
-            marginTop: 12,
-            justifyContent: 'space-between',
-          }}
-        >
-          <View
-            style={{
-              width: '48%',
-              backgroundColor: 'white',
-              borderRadius: 16,
-              padding: 16,
-            }}
-          >
+        <View style={{ flexDirection: 'row', marginTop: 12, justifyContent: 'space-between' }}>
+          <View style={{ width: '48%', backgroundColor: 'white', borderRadius: 16, padding: 16 }}>
             <Text style={{ color: '#666', fontSize: 13 }}>Current GPA</Text>
-            <Text style={{ fontSize: 28, fontWeight: 'bold', marginTop: 6 }}>
-              {currentGpa}
-            </Text>
+            <Text style={{ fontSize: 28, fontWeight: 'bold', marginTop: 6 }}>{currentGpa}</Text>
           </View>
 
-          <View
-            style={{
-              width: '48%',
-              backgroundColor: 'white',
-              borderRadius: 16,
-              padding: 16,
-            }}
-          >
+          <View style={{ width: '48%', backgroundColor: 'white', borderRadius: 16, padding: 16 }}>
             <Text style={{ color: '#666', fontSize: 13 }}>Credits Earned</Text>
-            <Text style={{ fontSize: 28, fontWeight: 'bold', marginTop: 6 }}>
-              {creditsEarned}
-            </Text>
+            <Text style={{ fontSize: 28, fontWeight: 'bold', marginTop: 6 }}>{creditsEarned}</Text>
           </View>
         </View>
 
-        <View
-          style={{
-            marginTop: 16,
-            backgroundColor: 'white',
-            borderRadius: 16,
-            padding: 16,
-          }}
-        >
-          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 12 }}>
-            Next Class
-          </Text>
+        <View style={{ marginTop: 16, backgroundColor: 'white', borderRadius: 16, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 12 }}>Next Class</Text>
 
           {nextClass ? (
-            <View
-              style={{
-                backgroundColor: '#eef4ff',
-                borderRadius: 12,
-                padding: 14,
-              }}
-            >
+            <View style={{ backgroundColor: '#eef4ff', borderRadius: 12, padding: 14 }}>
               <Text style={{ fontWeight: '700', fontSize: 15 }}>{nextClass.code}</Text>
               <Text style={{ marginTop: 4 }}>{nextClass.title}</Text>
-              <Text style={{ marginTop: 4, color: '#555' }}>
-                {nextClass.days} {nextClass.time}
-              </Text>
+              <Text style={{ marginTop: 4, color: '#555' }}>{nextClass.days} {nextClass.time}</Text>
               <Text style={{ marginTop: 4, color: '#555' }}>{nextClass.professor}</Text>
             </View>
           ) : (
@@ -191,43 +105,21 @@ export default function HomeScreen({
           )}
         </View>
 
-        <View
-          style={{
-            marginTop: 16,
-            backgroundColor: 'white',
-            borderRadius: 16,
-            padding: 16,
-          }}
-        >
-          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 12 }}>
-            Quick Actions
-          </Text>
+        <View style={{ marginTop: 16, backgroundColor: 'white', borderRadius: 16, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 12 }}>Quick Actions</Text>
 
           <TouchableOpacity
             onPress={onGoToTimetable}
-            style={{
-              backgroundColor: '#007AFF',
-              paddingVertical: 12,
-              borderRadius: 10,
-              marginBottom: 10,
-            }}
+            style={{ backgroundColor: '#007AFF', paddingVertical: 12, borderRadius: 10, marginBottom: 10 }}
           >
-            <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600' }}>
-              View Timetable
-            </Text>
+            <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600' }}>View Timetable</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={onGoToGrades}
-            style={{
-              backgroundColor: '#34C759',
-              paddingVertical: 12,
-              borderRadius: 10,
-            }}
+            style={{ backgroundColor: '#34C759', paddingVertical: 12, borderRadius: 10 }}
           >
-            <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600' }}>
-              View Grades
-            </Text>
+            <Text style={{ color: 'white', textAlign: 'center', fontWeight: '600' }}>View Grades</Text>
           </TouchableOpacity>
         </View>
       </View>

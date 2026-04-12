@@ -5,16 +5,28 @@ import HomeScreen from './src/screens/HomeScreen';
 import TimetableScreen from './src/screens/TimetableScreen';
 import GradesScreen from './src/screens/GradesScreen';
 import CoursePickerScreen from './src/screens/CoursePickerScreen';
+import { Course, Quarter, quarterKey } from './src/data/courses';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades'>('home');
   const [showCoursePicker, setShowCoursePicker] = useState(false);
-  const [addedCourses, setAddedCourses] = useState<number[]>([]);
+  const [selectedQuarter, setSelectedQuarter] = useState<Quarter>({ year: '2026', quarter: 'Spring' });
+  const [timetables, setTimetables] = useState<Record<string, Course[]>>({});
 
-  const handleToggleCourse = (id: number) => {
-    setAddedCourses((prev) =>
-      prev.includes(id) ? prev.filter((courseId) => courseId !== id) : [...prev, id]
-    );
+  const activeKey = quarterKey(selectedQuarter);
+  const activeCourses = timetables[activeKey] ?? [];
+
+  const handleToggleCourse = (course: Course) => {
+    setTimetables((prev) => {
+      const existing = prev[activeKey] ?? [];
+      const isAdded = existing.some((c) => c.id === course.id);
+      return {
+        ...prev,
+        [activeKey]: isAdded
+          ? existing.filter((c) => c.id !== course.id)
+          : [...existing, course],
+      };
+    });
   };
 
   let content = null;
@@ -22,15 +34,16 @@ export default function App() {
   if (showCoursePicker) {
     content = (
       <CoursePickerScreen
-        addedCourses={addedCourses}
+        activeCourses={activeCourses}
         onToggleCourse={handleToggleCourse}
         onClose={() => setShowCoursePicker(false)}
+        selectedQuarter={selectedQuarter}
       />
     );
   } else if (currentTab === 'home') {
     content = (
       <HomeScreen
-        addedCourses={addedCourses}
+        activeCourses={activeCourses}
         onGoToTimetable={() => setCurrentTab('timetable')}
         onGoToGrades={() => setCurrentTab('grades')}
       />
@@ -39,13 +52,15 @@ export default function App() {
     content = (
       <View style={{ flex: 1, paddingTop: 60, backgroundColor: '#f7f8fa' }}>
         <TimetableScreen
-          addedCourses={addedCourses}
+          activeCourses={activeCourses}
+          selectedQuarter={selectedQuarter}
+          onChangeQuarter={setSelectedQuarter}
           onOpenCoursePicker={() => setShowCoursePicker(true)}
         />
       </View>
     );
   } else if (currentTab === 'grades') {
-    content = <GradesScreen addedCourses={addedCourses} />;
+    content = <GradesScreen activeCourses={activeCourses} />;
   }
 
   const TabItem = ({
@@ -63,11 +78,7 @@ export default function App() {
       style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
       onPress={onPress}
     >
-      <Ionicons
-        name={icon}
-        size={22}
-        color={active ? '#2563eb' : '#9ca3af'}
-      />
+      <Ionicons name={icon} size={22} color={active ? '#2563eb' : '#9ca3af'} />
       <Text
         style={{
           marginTop: 4,

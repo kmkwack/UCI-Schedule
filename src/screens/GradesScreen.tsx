@@ -8,10 +8,10 @@ import {
   Dimensions,
 } from 'react-native';
 import Svg, { Circle, Line, Polyline } from 'react-native-svg';
-import { courses } from '../data/courses';
+import { Course } from '../data/courses';
 
 type Props = {
-  addedCourses: number[];
+  activeCourses: Course[];
 };
 
 const gradeOptions = ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'D', 'F'];
@@ -49,38 +49,23 @@ function GpaLineChart() {
   const pointRadius = 6;
   const horizontalPadding = pointRadius + 2;
   const usableWidth = chartWidth - horizontalPadding * 2;
-  const stepX =
-    gpaHistory.length > 1 ? usableWidth / (gpaHistory.length - 1) : usableWidth;
+  const stepX = gpaHistory.length > 1 ? usableWidth / (gpaHistory.length - 1) : usableWidth;
 
   const points = gpaHistory.map((item, index) => {
     const x = horizontalPadding + index * stepX;
     const normalized = (item.gpa - minGpa) / (maxGpa - minGpa);
     const y = chartHeight - normalized * chartHeight;
-
-    return {
-      ...item,
-      x,
-      y,
-    };
+    return { ...item, x, y };
   });
 
-  const polylinePoints = points.map((point) => `${point.x},${point.y}`).join(' ');
+  const polylinePoints = points.map((p) => `${p.x},${p.y}`).join(' ');
 
   return (
     <View style={{ width: '100%' }}>
       <View style={{ flexDirection: 'row' }}>
-        <View
-          style={{
-            width: yAxisWidth,
-            height: chartHeight,
-            justifyContent: 'space-between',
-          }}
-        >
+        <View style={{ width: yAxisWidth, height: chartHeight, justifyContent: 'space-between' }}>
           {yLabels.map((label) => (
-            <Text
-              key={label}
-              style={{ fontSize: 11, color: '#666', marginTop: -6 }}
-            >
+            <Text key={label} style={{ fontSize: 11, color: '#666', marginTop: -6 }}>
               {label.toFixed(2)}
             </Text>
           ))}
@@ -91,20 +76,10 @@ function GpaLineChart() {
             {yLabels.map((label) => {
               const normalized = (label - minGpa) / (maxGpa - minGpa);
               const y = chartHeight - normalized * chartHeight;
-
               return (
-                <Line
-                  key={label}
-                  x1="0"
-                  y1={y}
-                  x2={chartWidth}
-                  y2={y}
-                  stroke="#e9e9e9"
-                  strokeWidth="1"
-                />
+                <Line key={label} x1="0" y1={y} x2={chartWidth} y2={y} stroke="#e9e9e9" strokeWidth="1" />
               );
             })}
-
             <Polyline
               points={polylinePoints}
               fill="none"
@@ -113,17 +88,8 @@ function GpaLineChart() {
               strokeLinejoin="round"
               strokeLinecap="round"
             />
-
             {points.map((point) => (
-              <Circle
-                key={point.term}
-                cx={point.x}
-                cy={point.y}
-                r="6"
-                fill="#007AFF"
-                stroke="white"
-                strokeWidth="2"
-              />
+              <Circle key={point.term} cx={point.x} cy={point.y} r="6" fill="#007AFF" stroke="white" strokeWidth="2" />
             ))}
           </Svg>
         </View>
@@ -141,12 +107,8 @@ function GpaLineChart() {
       >
         {gpaHistory.map((point) => (
           <View key={point.term} style={{ width: 64, alignItems: 'center' }}>
-            <Text style={{ fontSize: 10, color: '#666', textAlign: 'center' }}>
-              {point.term}
-            </Text>
-            <Text style={{ fontSize: 11, fontWeight: '600', marginTop: 2 }}>
-              {point.gpa.toFixed(2)}
-            </Text>
+            <Text style={{ fontSize: 10, color: '#666', textAlign: 'center' }}>{point.term}</Text>
+            <Text style={{ fontSize: 11, fontWeight: '600', marginTop: 2 }}>{point.gpa.toFixed(2)}</Text>
           </View>
         ))}
       </View>
@@ -154,30 +116,20 @@ function GpaLineChart() {
   );
 }
 
-export default function GradesScreen({ addedCourses }: Props) {
-  const [grades, setGrades] = useState<{ [key: number]: string }>({});
+export default function GradesScreen({ activeCourses }: Props) {
+  const [grades, setGrades] = useState<{ [key: string]: string }>({});
 
-  const selectedCourses = courses.filter((course) =>
-    addedCourses.includes(course.id)
-  );
-
-  const handleSelectGrade = (courseId: number, grade: string) => {
-    setGrades((prev) => ({
-      ...prev,
-      [courseId]: grade,
-    }));
+  const handleSelectGrade = (courseId: string, grade: string) => {
+    setGrades((prev) => ({ ...prev, [courseId]: grade }));
   };
 
   const currentGpa = useMemo(() => {
-    const gradedCourses = selectedCourses.filter((course) => grades[course.id]);
+    const gradedCourses = activeCourses.filter((course) => grades[course.id]);
     if (gradedCourses.length === 0) return '3.72';
 
-    const totalPoints = gradedCourses.reduce((sum, course) => {
-      return sum + gradePoints[grades[course.id]];
-    }, 0);
-
+    const totalPoints = gradedCourses.reduce((sum, course) => sum + gradePoints[grades[course.id]], 0);
     return (totalPoints / gradedCourses.length).toFixed(2);
-  }, [grades, selectedCourses]);
+  }, [grades, activeCourses]);
 
   const creditsEarned = 64;
   const completedCourses = 18;
@@ -186,119 +138,47 @@ export default function GradesScreen({ addedCourses }: Props) {
     <ScrollView style={{ flex: 1, backgroundColor: '#f7f8fa' }}>
       <View style={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 30 }}>
         <Text style={{ fontSize: 28, fontWeight: 'bold' }}>Grades</Text>
-        <Text style={{ marginTop: 6, color: '#666', fontSize: 14 }}>
-          Academic snapshot
-        </Text>
+        <Text style={{ marginTop: 6, color: '#666', fontSize: 14 }}>Academic snapshot</Text>
 
-        <View
-          style={{
-            flexDirection: 'row',
-            marginTop: 18,
-            justifyContent: 'space-between',
-          }}
-        >
-          <View
-            style={{
-              width: '31%',
-              backgroundColor: 'white',
-              borderRadius: 16,
-              padding: 14,
-            }}
-          >
+        <View style={{ flexDirection: 'row', marginTop: 18, justifyContent: 'space-between' }}>
+          <View style={{ width: '31%', backgroundColor: 'white', borderRadius: 16, padding: 14 }}>
             <Text style={{ color: '#666', fontSize: 12 }}>GPA</Text>
-            <Text style={{ fontSize: 24, fontWeight: 'bold', marginTop: 6 }}>
-              {currentGpa}
-            </Text>
+            <Text style={{ fontSize: 24, fontWeight: 'bold', marginTop: 6 }}>{currentGpa}</Text>
           </View>
-
-          <View
-            style={{
-              width: '31%',
-              backgroundColor: 'white',
-              borderRadius: 16,
-              padding: 14,
-            }}
-          >
+          <View style={{ width: '31%', backgroundColor: 'white', borderRadius: 16, padding: 14 }}>
             <Text style={{ color: '#666', fontSize: 12 }}>Credits</Text>
-            <Text style={{ fontSize: 24, fontWeight: 'bold', marginTop: 6 }}>
-              {creditsEarned}
-            </Text>
+            <Text style={{ fontSize: 24, fontWeight: 'bold', marginTop: 6 }}>{creditsEarned}</Text>
           </View>
-
-          <View
-            style={{
-              width: '31%',
-              backgroundColor: 'white',
-              borderRadius: 16,
-              padding: 14,
-            }}
-          >
+          <View style={{ width: '31%', backgroundColor: 'white', borderRadius: 16, padding: 14 }}>
             <Text style={{ color: '#666', fontSize: 12 }}>Completed</Text>
-            <Text style={{ fontSize: 24, fontWeight: 'bold', marginTop: 6 }}>
-              {completedCourses}
-            </Text>
+            <Text style={{ fontSize: 24, fontWeight: 'bold', marginTop: 6 }}>{completedCourses}</Text>
           </View>
         </View>
 
-        <View
-          style={{
-            marginTop: 16,
-            backgroundColor: 'white',
-            borderRadius: 16,
-            padding: 16,
-          }}
-        >
-          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 14 }}>
-            GPA Trend
-          </Text>
-
+        <View style={{ marginTop: 16, backgroundColor: 'white', borderRadius: 16, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 14 }}>GPA Trend</Text>
           <GpaLineChart />
         </View>
 
-        <View
-          style={{
-            marginTop: 16,
-            backgroundColor: 'white',
-            borderRadius: 16,
-            padding: 16,
-          }}
-        >
-          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 12 }}>
-            Current Courses
-          </Text>
+        <View style={{ marginTop: 16, backgroundColor: 'white', borderRadius: 16, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 12 }}>Current Courses</Text>
 
-          {selectedCourses.length === 0 ? (
+          {activeCourses.length === 0 ? (
             <Text style={{ color: 'gray' }}>No courses added yet.</Text>
           ) : (
             <FlatList
               scrollEnabled={false}
-              data={selectedCourses}
-              keyExtractor={(item) => item.id.toString()}
+              data={activeCourses}
+              keyExtractor={(item) => item.id}
               renderItem={({ item }) => {
                 const selectedGrade = grades[item.id];
-
                 return (
-                  <View
-                    style={{
-                      backgroundColor: '#f2f2f2',
-                      borderRadius: 12,
-                      padding: 14,
-                      marginBottom: 12,
-                    }}
-                  >
+                  <View style={{ backgroundColor: '#f2f2f2', borderRadius: 12, padding: 14, marginBottom: 12 }}>
                     <Text style={{ fontWeight: 'bold', fontSize: 15 }}>{item.code}</Text>
                     <Text style={{ marginTop: 2 }}>{item.title}</Text>
-
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        flexWrap: 'wrap',
-                        marginTop: 10,
-                      }}
-                    >
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 }}>
                       {gradeOptions.map((grade) => {
                         const isSelected = selectedGrade === grade;
-
                         return (
                           <TouchableOpacity
                             key={grade}
@@ -314,12 +194,7 @@ export default function GradesScreen({ addedCourses }: Props) {
                               marginBottom: 8,
                             }}
                           >
-                            <Text
-                              style={{
-                                color: isSelected ? 'white' : '#333',
-                                fontSize: 12,
-                              }}
-                            >
+                            <Text style={{ color: isSelected ? 'white' : '#333', fontSize: 12 }}>
                               {grade}
                             </Text>
                           </TouchableOpacity>

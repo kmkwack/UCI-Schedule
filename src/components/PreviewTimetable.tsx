@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { View, Text, ScrollView, Dimensions } from 'react-native';
-import { Course } from '../data/courses';
+import { Course, colorForDepartment } from '../data/courses';
 
 type Props = {
   selectedCourses: Course[];
@@ -71,11 +71,7 @@ function formatHourLabel(hour: number) {
 }
 
 function colorForCourse(course: Course) {
-  if (course.department === 'ECON') return '#7eb6ff';
-  if (course.department === 'MGMT') return '#cfae5a';
-  if (course.department === 'ART') return '#a7cf6f';
-  if (course.department === 'BIO') return '#d07c70';
-  return '#60a5fa';
+  return colorForDepartment(course.department);
 }
 
 export default function PreviewTimetable({

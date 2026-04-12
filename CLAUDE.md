@@ -291,3 +291,64 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 8
 - **`src/screens/CoursePickerScreen.tsx`** — Extended `filteredCatalog` search to also match full course codes (e.g. `"ECON 100A"`) and professor names (checks all sections in `sectionsMap` for a professor match). Added `sectionsMap` to the `useMemo` dependency array. Updated search placeholder text.
+
+### Session 9
+- **`App.tsx`** — Added `focusedCourseId` state and threaded it between the course picker and timetable so the app can remember which class should be centered in the timetable after user interaction.
+- **`src/screens/CoursePickerScreen.tsx`** — When a section is added, the picker now marks that course as the next timetable focus target. Removing a section clears the pending focus target.
+- **`src/screens/TimetableScreen.tsx`** — Made timetable blocks tappable and added automatic scroll-to-center behavior for the selected/newly added course by wiring horizontal and vertical scroll positioning to the focused course id.
+
+### Session 10
+- **`src/screens/CoursePickerScreen.tsx`** — After a successful `Add` action, the course picker now closes immediately so the user returns to the timetable and can see the automatic scroll-to-focused-course behavior. The same applies after confirming a conflict replacement.
+
+### Session 11
+- **`src/screens/CoursePickerScreen.tsx`** — Changed the `Add` flow so the course picker stays open. After adding a section, the top preview timetable now keeps that section as the active preview target, so the visible timetable in the picker scrolls to the added class instead of closing the screen.
+
+### Session 12
+- **`src/components/PreviewTimetable.tsx`** — Aligned the preview timetable’s grid sizing with `TimetableScreen` so weekday columns use the same width calculation and Friday no longer gets clipped. Removed the preview-only minimum day width that was forcing unnecessary horizontal overflow.
+- **`src/components/PreviewTimetable.tsx`** — Excluded `TBA` courses from preview grid math and changed rendered course labels to use `course.code`, making the course-picker preview look closer to the main timetable instead of shifting to a different visual structure.
+
+### Session 13
+- **`App.tsx`** — Changed the course picker from a hard content swap to an animated overlay. It now slides up from the bottom on open and slides back down on close using `Animated` + `translateY`.
+- **`src/components/PreviewTimetable.tsx`** — Added optional background tap handling on the timetable grid so tapping empty space in the preview can dismiss the course picker without interfering with course blocks.
+- **`src/screens/CoursePickerScreen.tsx`** — Wired the preview timetable’s empty-space tap to `onClose`, so users can close the picker by tapping a blank area in the timetable preview.
+
+### Session 14
+- **`App.tsx`** — Reworked the main timetable’s course picker into a half-height bottom sheet instead of a full-screen overlay. The real timetable now stays visible behind it while the picker slides up from the bottom.
+- **`src/screens/CoursePickerScreen.tsx`** — Added `sheetMode` so the picker can render as a compact bottom sheet with just the search/department/course list area, while still keeping the full-screen version for other flows.
+- **`src/screens/TimetableScreen.tsx`** — Added optional empty-grid tap handling on the real timetable, allowing users to dismiss the half sheet by tapping a blank part of the visible timetable behind it.
+
+### Session 15
+- **`App.tsx`** — Fixed the bottom-sheet overlay container to span the full screen with explicit `top: 0` and overlay stacking, so the half-sheet picker actually appears above the timetable when `+ Add` is tapped.
+
+### Session 16
+- **`App.tsx`** — Added explicit close interactions for the main timetable bottom sheet: tapping the visible timetable area above the sheet now dismisses it, and dragging the sheet handle downward closes it once the gesture passes a threshold.
+- **`src/screens/CoursePickerScreen.tsx`** — Added support for sheet handle pan handlers so the compact picker can participate in drag-to-close gestures without changing its full-screen mode behavior.
+
+### Session 17
+- **`src/screens/TimetableScreen.tsx`** — Reduced the day-header row’s left spacer and slightly lowered the hour-label offset so the first time label (`08:00`) is no longer clipped at the top while keeping the weekday tabs aligned with the timetable grid.
+
+### Session 18
+- **`App.tsx`** — Reverted the main timetable picker from the experimental half-sheet back to the full-screen animated overlay, restoring the previous interaction model where the course picker has its own dedicated preview timetable.
+- **`src/screens/CoursePickerScreen.tsx`** — Removed the temporary sheet-only mode and restored the original full-screen picker layout with the built-in preview timetable at the top.
+- **`src/screens/TimetableScreen.tsx`** — Removed the temporary empty-grid dismissal hook that was only needed for the half-sheet experiment.
+
+### Session 19
+- **`App.tsx`** — Removed a stale `pickerSheetHeight` reference from the picker animation effect dependencies after reverting the half-sheet experiment. This fixes the runtime error complaining that `pickerSheetHeight` does not exist.
+
+### Session 20
+- **`src/screens/TimetableScreen.tsx`** — Removed the trailing rightmost vertical grid line by skipping the right border on the last day column, matching the left side of the timetable.
+- **`src/components/PreviewTimetable.tsx`** — Applied the same last-column border rule to the course-picker preview timetable so its grid matches the main timetable.
+
+### Session 21
+- **`src/screens/TimetableScreen.tsx`** — Removed the time text from course blocks so the timetable cards now show only the course code and professor.
+- **`src/screens/FriendsScreen.tsx`** — Applied the same course-block text simplification to the friend timetable view for consistency with the main timetable.
+
+### Session 22
+- **`src/screens/TimetableScreen.tsx`** — Increased the timetable grid height slightly so each hour row has a bit more vertical space.
+- **`src/screens/FriendsScreen.tsx`** — Matched the main timetable’s slightly taller hour spacing in the friend timetable view.
+- **`src/components/PreviewTimetable.tsx`** — Increased preview hour height slightly so the course-picker mini timetable stays visually aligned with the more spacious main timetable.
+
+### Session 23
+- **`src/screens/TimetableScreen.tsx`** — Changed course-code rendering so the department stays on the first line and the numeric course identifier moves to the second line inside timetable blocks.
+- **`src/screens/FriendsScreen.tsx`** — Applied the same two-line course-code formatting to friend timetable blocks.
+- **`src/components/PreviewTimetable.tsx`** — Matched the preview timetable’s course-code formatting so preview cards also render the numeric portion on the second line.

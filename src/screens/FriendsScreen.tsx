@@ -56,6 +56,12 @@ function parseDays(s: string) {
   return out;
 }
 
+function formatCourseLabel(code: string) {
+  const parts = code.trim().split(/\s+/);
+  if (parts.length < 2) return code;
+  return `${parts[0]}\n${parts.slice(1).join(' ')}`;
+}
+
 // ─── component ────────────────────────────────────────────────────────────────
 
 export default function FriendsScreen() {
@@ -132,7 +138,7 @@ export default function FriendsScreen() {
   }, [activeCourses]);
 
   const totalHours = displayEnd - displayStart;
-  const timetableHeight = Math.max(420, screenHeight - 370);
+  const timetableHeight = Math.max(448, screenHeight - 342);
   const hourPx = timetableHeight / totalHours;
   const hourLabels = Array.from({ length: totalHours + 1 }, (_, i) => displayStart + i);
   const usableW =
@@ -148,6 +154,7 @@ export default function FriendsScreen() {
       <CoursePickerScreen
         activeCourses={activeCourses}
         onToggleCourse={handleToggleCourse}
+        onFocusCourse={() => {}}
         onClose={() => setShowCoursePicker(false)}
         selectedQuarter={friendQuarter}
       />
@@ -312,9 +319,8 @@ export default function FriendsScreen() {
                       borderRadius: 8, padding: 5,
                     }}>
                       <Text style={{ color: 'white', fontWeight: '700', fontSize: 10 }} numberOfLines={2}>
-                        {course.code}
+                        {formatCourseLabel(course.code)}
                       </Text>
-                      <Text style={{ color: 'white', fontSize: 8 }} numberOfLines={1}>{course.time}</Text>
                       <Text style={{ color: 'white', fontSize: 8 }} numberOfLines={1}>{course.professor}</Text>
                     </View>
                   );

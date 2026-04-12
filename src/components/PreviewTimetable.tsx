@@ -1,20 +1,21 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { View, Text, ScrollView, Dimensions } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, ScrollView, Dimensions, Pressable } from 'react-native';
 import { Course, colorForDepartment } from '../data/courses';
 
 type Props = {
   selectedCourses: Course[];
   previewCourse: Course | null;
+  onBackgroundPress?: () => void;
 };
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
 const DEFAULT_START_HOUR = 8;
 const DEFAULT_END_HOUR = 17;
 
-const TIME_LABEL_WIDTH = 42;
+const TIME_LABEL_WIDTH = 52;
 const PREVIEW_HEIGHT = 250;
-const HOUR_HEIGHT = 70;
-const MIN_DAY_WIDTH = 62;
+const HOUR_HEIGHT = 76;
+const TIMETABLE_CARD_PADDING = 12;
 
 function parseHour(time: string) {
   const [hourStr, minuteStr] = time.split(':');
@@ -74,21 +75,33 @@ function colorForCourse(course: Course) {
   return colorForDepartment(course.department);
 }
 
+function formatCourseLabel(code: string) {
+  const parts = code.trim().split(/\s+/);
+  if (parts.length < 2) return code;
+  return `${parts[0]}\n${parts.slice(1).join(' ')}`;
+}
+
 export default function PreviewTimetable({
   selectedCourses,
   previewCourse,
+  onBackgroundPress,
 }: Props) {
   const verticalScrollRef = useRef<ScrollView>(null);
   const horizontalScrollRef = useRef<ScrollView>(null);
+  const [gridWidth, setGridWidth] = useState(0);
 
   const allVisibleCourses = previewCourse
     ? [...selectedCourses, previewCourse]
     : selectedCourses;
+  const scheduledCourses = useMemo(
+    () => allVisibleCourses.filter((course) => course.time !== 'TBA' && course.days !== 'TBA'),
+    [allVisibleCourses]
+  );
 
   const visibleDays = useMemo(() => {
     const usedDays = new Set<string>();
 
-    allVisibleCourses.forEach((course) => {
+    scheduledCourses.forEach((course) => {
       getDaysArray(course.days).forEach((day) => usedDays.add(day));
     });
 
@@ -96,10 +109,10 @@ export default function PreviewTimetable({
     if (usedDays.has('Sa')) days.push('Sa');
     if (usedDays.has('Su')) days.push('Su');
     return days;
-  }, [allVisibleCourses]);
+  }, [scheduledCourses]);
 
   const { displayStartHour, displayEndHour } = useMemo(() => {
-    if (allVisibleCourses.length === 0) {
+    if (scheduledCourses.length === 0) {
       return {
         displayStartHour: DEFAULT_START_HOUR,
         displayEndHour: DEFAULT_END_HOUR,
@@ -107,24 +120,26 @@ export default function PreviewTimetable({
     }
 
     const earliest = Math.min(
-      ...allVisibleCourses.map((course) => getCourseStartHour(course.time))
+      ...scheduledCourses.map((course) => getCourseStartHour(course.time))
     );
     const latest = Math.max(
-      ...allVisibleCourses.map((course) => getCourseEndHour(course.time))
+      ...scheduledCourses.map((course) => getCourseEndHour(course.time))
     );
 
     return {
       displayStartHour: Math.min(DEFAULT_START_HOUR, Math.floor(earliest)),
       displayEndHour: Math.max(DEFAULT_END_HOUR, Math.ceil(latest)),
     };
-  }, [allVisibleCourses]);
+  }, [scheduledCourses]);
 
   const totalHours = displayEndHour - displayStartHour;
   const totalHeight = totalHours * HOUR_HEIGHT;
 
-  const screenWidth = Dimensions.get('window').width;
-  const baseGridWidth = screenWidth - 32 - TIME_LABEL_WIDTH;
-  const dayColumnWidth = Math.max(MIN_DAY_WIDTH, baseGridWidth / 5);
+  const usableGridWidth =
+    gridWidth > 0
+      ? gridWidth - TIME_LABEL_WIDTH
+      : Dimensions.get('window').width - 32 - TIMETABLE_CARD_PADDING * 2 - TIME_LABEL_WIDTH;
+  const dayColumnWidth = usableGridWidth / visibleDays.length;
   const actualGridWidth = dayColumnWidth * visibleDays.length;
 
   const hourLabels = Array.from(
@@ -137,7 +152,7 @@ export default function PreviewTimetable({
     !selectedCourses.some((course) => course.id === previewCourse.id);
 
   useEffect(() => {
-    if (!previewCourse) return;
+    if (!previewCourse || previewCourse.time === 'TBA' || previewCourse.days === 'TBA') return;
 
     const start = getCourseStartHour(previewCourse.time);
     const targetY = Math.max((start - displayStartHour) * HOUR_HEIGHT - 50, 0);
@@ -171,14 +186,19 @@ export default function PreviewTimetable({
         horizontal
         showsHorizontalScrollIndicator={false}
         bounces={false}
+        scrollEnabled={visibleDays.length > DEFAULT_DAYS.length}
       >
-        <View>
+        <View
+          onLayout={(e) => {
+            setGridWidth(e.nativeEvent.layout.width - TIMETABLE_CARD_PADDING * 2);
+          }}
+        >
           <View
             style={{
               flexDirection: 'row',
               paddingTop: 12,
               paddingBottom: 8,
-              paddingHorizontal: 12,
+              paddingHorizontal: TIMETABLE_CARD_PADDING,
               borderBottomWidth: 1,
               borderBottomColor: '#e5e7eb',
               backgroundColor: 'white',
@@ -207,7 +227,7 @@ export default function PreviewTimetable({
             showsVerticalScrollIndicator={false}
             bounces={false}
           >
-            <View style={{ flexDirection: 'row', paddingHorizontal: 12 }}>
+            <View style={{ flexDirection: 'row', paddingHorizontal: TIMETABLE_CARD_PADDING }}>
               <View style={{ width: TIME_LABEL_WIDTH, height: totalHeight }}>
                 {hourLabels.map((hour, index) => (
                   <View
@@ -232,6 +252,19 @@ export default function PreviewTimetable({
                   position: 'relative',
                 }}
               >
+                {onBackgroundPress && (
+                  <Pressable
+                    onPress={onBackgroundPress}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                    }}
+                  />
+                )}
+
                 {hourLabels.map((hour, index) => (
                   <View
                     key={hour}
@@ -247,19 +280,21 @@ export default function PreviewTimetable({
                 ))}
 
                 <View style={{ flexDirection: 'row', height: totalHeight }}>
-                  {visibleDays.map((day) => (
+                  {visibleDays.map((day, index) => (
                     <View
                       key={day}
                       style={{
                         width: dayColumnWidth,
-                        borderRightWidth: 1,
+                        borderRightWidth: index === visibleDays.length - 1 ? 0 : 1,
                         borderRightColor: '#e5e7eb',
                       }}
                     />
                   ))}
                 </View>
 
-                {selectedCourses.flatMap((course) => {
+                {selectedCourses
+                  .filter((course) => course.time !== 'TBA' && course.days !== 'TBA')
+                  .flatMap((course) => {
                   const days = getDaysArray(course.days);
                   const start = getCourseStartHour(course.time);
                   const end = getCourseEndHour(course.time);
@@ -288,7 +323,7 @@ export default function PreviewTimetable({
                           style={{ color: 'white', fontSize: 10, fontWeight: '700' }}
                           numberOfLines={2}
                         >
-                          {course.title}
+                          {formatCourseLabel(course.code)}
                         </Text>
                       </View>
                     );
@@ -297,6 +332,8 @@ export default function PreviewTimetable({
 
                 {shouldRenderPreview &&
                   previewCourse &&
+                  previewCourse.time !== 'TBA' &&
+                  previewCourse.days !== 'TBA' &&
                   getDaysArray(previewCourse.days).map((day) => {
                     const dayIndex = visibleDays.indexOf(day);
                     if (dayIndex === -1) return null;
@@ -327,7 +364,7 @@ export default function PreviewTimetable({
                           style={{ color: 'white', fontSize: 10, fontWeight: '700' }}
                           numberOfLines={2}
                         >
-                          {previewCourse.title}
+                          {formatCourseLabel(previewCourse.code)}
                         </Text>
                       </View>
                     );

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Dimensions, Easing, View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from './src/screens/HomeScreen';
 import TimetableScreen from './src/screens/TimetableScreen';
@@ -11,8 +11,11 @@ import { Course, Quarter, quarterKey } from './src/data/courses';
 export default function App() {
   const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'friends'>('home');
   const [showCoursePicker, setShowCoursePicker] = useState(false);
+  const [renderCoursePicker, setRenderCoursePicker] = useState(false);
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter>({ year: '2026', quarter: 'Spring' });
   const [timetables, setTimetables] = useState<Record<string, Course[]>>({});
+  const [focusedCourseId, setFocusedCourseId] = useState<string | null>(null);
+  const pickerTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
 
   const activeKey = quarterKey(selectedQuarter);
   const activeCourses = timetables[activeKey] ?? [];
@@ -30,18 +33,41 @@ export default function App() {
     });
   };
 
+  const handleFocusCourse = (courseId: string | null) => {
+    setFocusedCourseId(null);
+    setTimeout(() => setFocusedCourseId(courseId), 0);
+  };
+
+  useEffect(() => {
+    const screenHeight = Dimensions.get('window').height;
+
+    if (showCoursePicker) {
+      setRenderCoursePicker(true);
+      pickerTranslateY.setValue(screenHeight);
+      Animated.timing(pickerTranslateY, {
+        toValue: 0,
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+
+    Animated.timing(pickerTranslateY, {
+      toValue: screenHeight,
+      duration: 220,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setRenderCoursePicker(false);
+      }
+    });
+  }, [pickerTranslateY, showCoursePicker]);
+
   let content = null;
 
-  if (showCoursePicker) {
-    content = (
-      <CoursePickerScreen
-        activeCourses={activeCourses}
-        onToggleCourse={handleToggleCourse}
-        onClose={() => setShowCoursePicker(false)}
-        selectedQuarter={selectedQuarter}
-      />
-    );
-  } else if (currentTab === 'home') {
+  if (currentTab === 'home') {
     content = (
       <HomeScreen
         activeCourses={activeCourses}
@@ -55,6 +81,8 @@ export default function App() {
         <TimetableScreen
           activeCourses={activeCourses}
           selectedQuarter={selectedQuarter}
+          focusedCourseId={focusedCourseId}
+          onFocusCourse={handleFocusCourse}
           onChangeQuarter={setSelectedQuarter}
           onOpenCoursePicker={() => setShowCoursePicker(true)}
         />
@@ -103,42 +131,63 @@ export default function App() {
     <View style={{ flex: 1, backgroundColor: '#f7f8fa' }}>
       {content}
 
-      {!showCoursePicker && (
-        <View
+      <View
+        style={{
+          flexDirection: 'row',
+          borderTopWidth: 1,
+          borderTopColor: '#e5e7eb',
+          paddingTop: 10,
+          paddingBottom: 14,
+          backgroundColor: 'white',
+        }}
+      >
+        <TabItem
+          label="Home"
+          icon="home-outline"
+          active={currentTab === 'home'}
+          onPress={() => setCurrentTab('home')}
+        />
+        <TabItem
+          label="Timetable"
+          icon="calendar-outline"
+          active={currentTab === 'timetable'}
+          onPress={() => setCurrentTab('timetable')}
+        />
+        <TabItem
+          label="Grades"
+          icon="bar-chart-outline"
+          active={currentTab === 'grades'}
+          onPress={() => setCurrentTab('grades')}
+        />
+        <TabItem
+          label="Friends"
+          icon="people-outline"
+          active={currentTab === 'friends'}
+          onPress={() => setCurrentTab('friends')}
+        />
+      </View>
+
+      {renderCoursePicker && (
+        <Animated.View
           style={{
-            flexDirection: 'row',
-            borderTopWidth: 1,
-            borderTopColor: '#e5e7eb',
-            paddingTop: 10,
-            paddingBottom: 14,
-            backgroundColor: 'white',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 20,
+            elevation: 20,
+            transform: [{ translateY: pickerTranslateY }],
           }}
         >
-          <TabItem
-            label="Home"
-            icon="home-outline"
-            active={currentTab === 'home'}
-            onPress={() => setCurrentTab('home')}
+          <CoursePickerScreen
+            activeCourses={activeCourses}
+            onToggleCourse={handleToggleCourse}
+            onFocusCourse={handleFocusCourse}
+            onClose={() => setShowCoursePicker(false)}
+            selectedQuarter={selectedQuarter}
           />
-          <TabItem
-            label="Timetable"
-            icon="calendar-outline"
-            active={currentTab === 'timetable'}
-            onPress={() => setCurrentTab('timetable')}
-          />
-          <TabItem
-            label="Grades"
-            icon="bar-chart-outline"
-            active={currentTab === 'grades'}
-            onPress={() => setCurrentTab('grades')}
-          />
-          <TabItem
-            label="Friends"
-            icon="people-outline"
-            active={currentTab === 'friends'}
-            onPress={() => setCurrentTab('friends')}
-          />
-        </View>
+        </Animated.View>
       )}
     </View>
   );

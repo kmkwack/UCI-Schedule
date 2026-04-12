@@ -16,6 +16,7 @@ import PreviewTimetable from '../components/PreviewTimetable';
 type Props = {
   activeCourses: Course[];
   onToggleCourse: (course: Course) => void;
+  onFocusCourse: (courseId: string | null) => void;
   onClose: () => void;
   selectedQuarter: Quarter;
 };
@@ -136,6 +137,7 @@ function getCourseEndHour(t: string) { return parseHour(t.split(' - ')[1]); }
 export default function CoursePickerScreen({
   activeCourses,
   onToggleCourse,
+  onFocusCourse,
   onClose,
   selectedQuarter,
 }: Props) {
@@ -251,6 +253,7 @@ export default function CoursePickerScreen({
     const isAdded = activeCourses.some((c) => c.id === course.id);
     if (isAdded) {
       onToggleCourse(course);
+      onFocusCourse(null);
       setPreviewCourse(null);
       return;
     }
@@ -267,7 +270,8 @@ export default function CoursePickerScreen({
             onPress: () => {
               onToggleCourse(conflictCourse);
               onToggleCourse(course);
-              setPreviewCourse(null);
+              onFocusCourse(course.id);
+              setPreviewCourse(course);
             },
           },
         ]
@@ -276,7 +280,8 @@ export default function CoursePickerScreen({
     }
 
     onToggleCourse(course);
-    setPreviewCourse(null);
+    onFocusCourse(course.id);
+    setPreviewCourse(course);
   };
 
   const filteredCatalog = useMemo(() => {
@@ -314,7 +319,6 @@ export default function CoursePickerScreen({
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f7f8fa', paddingTop: 54 }}>
-      {/* Header */}
       <View
         style={{
           paddingHorizontal: 16,
@@ -335,7 +339,11 @@ export default function CoursePickerScreen({
         <View style={{ width: 32 }} />
       </View>
 
-      <PreviewTimetable selectedCourses={activeCourses} previewCourse={previewCourse} />
+      <PreviewTimetable
+        selectedCourses={activeCourses}
+        previewCourse={previewCourse}
+        onBackgroundPress={onClose}
+      />
 
       <View
         style={{

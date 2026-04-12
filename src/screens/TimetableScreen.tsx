@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, QUARTERS, quarterKey, quarterLabel, colorForDepartment } from '../data/courses';
@@ -6,6 +6,8 @@ import { Course, Quarter, QUARTERS, quarterKey, quarterLabel, colorForDepartment
 type Props = {
   activeCourses: Course[];
   selectedQuarter: Quarter;
+  focusedCourseId: string | null;
+  onFocusCourse: (courseId: string) => void;
   onChangeQuarter: (q: Quarter) => void;
   onOpenCoursePicker: () => void;
 };
@@ -15,6 +17,7 @@ const DEFAULT_START_HOUR = 8;
 const DEFAULT_END_HOUR = 17;
 
 const TIME_LABEL_WIDTH = 52;
+const HEADER_TIME_LABEL_WIDTH = 44;
 const SIDE_PADDING = 12;
 const TIMETABLE_CARD_PADDING = 12;
 
@@ -53,39 +56,55 @@ function formatHourLabel(hour: number) {
   return `${hour.toString().padStart(2, '0')}:00`;
 }
 
+function formatCourseLabel(code: string) {
+  const parts = code.trim().split(/\s+/);
+  if (parts.length < 2) return code;
+  return `${parts[0]}\n${parts.slice(1).join(' ')}`;
+}
+
 export default function TimetableScreen({
   activeCourses,
   selectedQuarter,
+  focusedCourseId,
+  onFocusCourse,
   onChangeQuarter,
   onOpenCoursePicker,
 }: Props) {
   const [gridWidth, setGridWidth] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
+  const horizontalScrollRef = useRef<ScrollView>(null);
+  const verticalScrollRef = useRef<ScrollView>(null);
   const screenHeight = Dimensions.get('window').height;
+  const scheduledCourses = useMemo(
+    () => activeCourses.filter((course) => course.time !== 'TBA' && course.days !== 'TBA'),
+    [activeCourses]
+  );
 
   const visibleDays = useMemo(() => {
     const usedDays = new Set<string>();
-    activeCourses.forEach((course) => getDaysArray(course.days).forEach((d) => usedDays.add(d)));
+    scheduledCourses.forEach((course) => getDaysArray(course.days).forEach((d) => usedDays.add(d)));
     const days = [...DEFAULT_DAYS];
     if (usedDays.has('Sa')) days.push('Sa');
     if (usedDays.has('Su')) days.push('Su');
     return days;
-  }, [activeCourses]);
+  }, [scheduledCourses]);
 
   const { displayStartHour, displayEndHour } = useMemo(() => {
-    if (activeCourses.length === 0) {
+    if (scheduledCourses.length === 0) {
       return { displayStartHour: DEFAULT_START_HOUR, displayEndHour: DEFAULT_END_HOUR };
     }
-    const earliest = Math.min(...activeCourses.map((c) => getCourseStartHour(c.time)));
-    const latest = Math.max(...activeCourses.map((c) => getCourseEndHour(c.time)));
+    const earliest = Math.min(...scheduledCourses.map((c) => getCourseStartHour(c.time)));
+    const latest = Math.max(...scheduledCourses.map((c) => getCourseEndHour(c.time)));
     return {
       displayStartHour: Math.min(DEFAULT_START_HOUR, Math.floor(earliest)),
       displayEndHour: Math.max(DEFAULT_END_HOUR, Math.ceil(latest)),
     };
-  }, [activeCourses]);
+  }, [scheduledCourses]);
 
   const totalHours = displayEndHour - displayStartHour;
-  const timetableHeight = Math.max(420, screenHeight - 370);
+  const timetableHeight = Math.max(448, screenHeight - 342);
   const hourHeight = timetableHeight / totalHours;
   const hourLabels = Array.from({ length: totalHours + 1 }, (_, i) => displayStartHour + i);
 
@@ -95,6 +114,40 @@ export default function TimetableScreen({
       : Dimensions.get('window').width - SIDE_PADDING * 2 - TIMETABLE_CARD_PADDING * 2 - TIME_LABEL_WIDTH;
 
   const dayColumnWidth = usableGridWidth / visibleDays.length;
+
+  useEffect(() => {
+    if (!focusedCourseId || viewportWidth === 0 || viewportHeight === 0) return;
+
+    const focusedCourse = scheduledCourses.find((course) => course.id === focusedCourseId);
+    if (!focusedCourse) return;
+
+    const courseDays = getDaysArray(focusedCourse.days);
+    const dayIndex = visibleDays.indexOf(courseDays[0]);
+    if (dayIndex === -1) return;
+
+    const startHour = getCourseStartHour(focusedCourse.time);
+    const endHour = getCourseEndHour(focusedCourse.time);
+    const top = (startHour - displayStartHour) * hourHeight;
+    const height = Math.max((endHour - startHour) * hourHeight, 48);
+    const left = dayIndex * dayColumnWidth;
+
+    const horizontalTarget = Math.max(left + dayColumnWidth / 2 - viewportWidth / 2, 0);
+    const verticalTarget = Math.max(top + height / 2 - viewportHeight / 2, 0);
+
+    requestAnimationFrame(() => {
+      horizontalScrollRef.current?.scrollTo({ x: horizontalTarget, animated: true });
+      verticalScrollRef.current?.scrollTo({ y: verticalTarget, animated: true });
+    });
+  }, [
+    dayColumnWidth,
+    displayStartHour,
+    focusedCourseId,
+    hourHeight,
+    scheduledCourses,
+    viewportHeight,
+    viewportWidth,
+    visibleDays,
+  ]);
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f7f8fa' }}>
@@ -211,7 +264,7 @@ export default function TimetableScreen({
             backgroundColor: 'white',
           }}
         >
-          <View style={{ width: TIME_LABEL_WIDTH }} />
+          <View style={{ width: HEADER_TIME_LABEL_WIDTH }} />
           {visibleDays.map((day) => (
             <View key={day} style={{ width: dayColumnWidth, alignItems: 'center' }}>
               <Text style={{ fontWeight: '700', fontSize: 12 }}>{day}</Text>
@@ -219,88 +272,109 @@ export default function TimetableScreen({
           ))}
         </View>
 
-        <View
-          style={{
-            flexDirection: 'row',
-            paddingHorizontal: TIMETABLE_CARD_PADDING,
-            paddingTop: 4,
-            height: timetableHeight + 12,
-          }}
+        <ScrollView
+          ref={horizontalScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          bounces={false}
+          onLayout={(e) => setViewportWidth(e.nativeEvent.layout.width - TIME_LABEL_WIDTH - TIMETABLE_CARD_PADDING * 2)}
         >
-          <View style={{ width: TIME_LABEL_WIDTH, height: timetableHeight }}>
-            {hourLabels.map((hour, index) => (
-              <View key={hour} style={{ position: 'absolute', top: index * hourHeight - 8, left: 0 }}>
-                <Text style={{ fontSize: 11, color: 'gray' }}>{formatHourLabel(hour)}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View
-            style={{
-              width: dayColumnWidth * visibleDays.length,
-              height: timetableHeight,
-              position: 'relative',
-              backgroundColor: 'white',
-            }}
+          <ScrollView
+            ref={verticalScrollRef}
+            style={{ height: timetableHeight + 12 }}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            onLayout={(e) => setViewportHeight(e.nativeEvent.layout.height)}
           >
-            {hourLabels.map((hour, index) => (
+            <View
+              style={{
+                flexDirection: 'row',
+                paddingHorizontal: TIMETABLE_CARD_PADDING,
+                paddingTop: 4,
+                height: timetableHeight + 12,
+              }}
+            >
+              <View style={{ width: TIME_LABEL_WIDTH, height: timetableHeight }}>
+                {hourLabels.map((hour, index) => (
+                  <View key={hour} style={{ position: 'absolute', top: index * hourHeight - 5, left: 0 }}>
+                    <Text style={{ fontSize: 11, color: 'gray' }}>{formatHourLabel(hour)}</Text>
+                  </View>
+                ))}
+              </View>
+
               <View
-                key={hour}
                 style={{
-                  position: 'absolute',
-                  top: index * hourHeight,
-                  left: 0,
-                  right: 0,
-                  height: 1,
-                  backgroundColor: '#e5e5e5',
+                  width: dayColumnWidth * visibleDays.length,
+                  height: timetableHeight,
+                  position: 'relative',
+                  backgroundColor: 'white',
                 }}
-              />
-            ))}
-
-            <View style={{ flexDirection: 'row', height: timetableHeight }}>
-              {visibleDays.map((day) => (
-                <View
-                  key={day}
-                  style={{ width: dayColumnWidth, borderRightWidth: 1, borderRightColor: '#e5e5e5' }}
-                />
-              ))}
-            </View>
-
-            {activeCourses.flatMap((course) => {
-              const courseDays = getDaysArray(course.days);
-              const startHour = getCourseStartHour(course.time);
-              const endHour = getCourseEndHour(course.time);
-              const top = (startHour - displayStartHour) * hourHeight;
-              const height = (endHour - startHour) * hourHeight;
-
-              return courseDays.map((day) => {
-                const dayIndex = visibleDays.indexOf(day);
-                if (dayIndex === -1) return null;
-                return (
+              >
+                {hourLabels.map((hour, index) => (
                   <View
-                    key={`${course.id}-${day}`}
+                    key={hour}
                     style={{
                       position: 'absolute',
-                      top,
-                      left: dayIndex * dayColumnWidth + 2,
-                      width: dayColumnWidth - 4,
-                      height,
-                      backgroundColor: colorForDepartment(course.department),
-                      borderRadius: 8,
-                      padding: 5,
+                      top: index * hourHeight,
+                      left: 0,
+                      right: 0,
+                      height: 1,
+                      backgroundColor: '#e5e5e5',
                     }}
-                  >
-                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 10 }} numberOfLines={2}>
-                      {course.code}
-                    </Text>
-                    <Text style={{ color: 'white', fontSize: 8 }} numberOfLines={1}>{course.time}</Text>
-                    <Text style={{ color: 'white', fontSize: 8 }} numberOfLines={1}>{course.professor}</Text>
-                  </View>
-                );
-              });
-            })}
-          </View>
-        </View>
+                  />
+                ))}
+
+                <View style={{ flexDirection: 'row', height: timetableHeight }}>
+                  {visibleDays.map((day, index) => (
+                    <View
+                      key={day}
+                      style={{
+                        width: dayColumnWidth,
+                        borderRightWidth: index === visibleDays.length - 1 ? 0 : 1,
+                        borderRightColor: '#e5e5e5',
+                      }}
+                    />
+                  ))}
+                </View>
+
+                {scheduledCourses.flatMap((course) => {
+                  const courseDays = getDaysArray(course.days);
+                  const startHour = getCourseStartHour(course.time);
+                  const endHour = getCourseEndHour(course.time);
+                  const top = (startHour - displayStartHour) * hourHeight;
+                  const height = (endHour - startHour) * hourHeight;
+
+                  return courseDays.map((day) => {
+                    const dayIndex = visibleDays.indexOf(day);
+                    if (dayIndex === -1) return null;
+                    return (
+                      <TouchableOpacity
+                        key={`${course.id}-${day}`}
+                        activeOpacity={0.9}
+                        onPress={() => onFocusCourse(course.id)}
+                        style={{
+                          position: 'absolute',
+                          top,
+                          left: dayIndex * dayColumnWidth + 2,
+                          width: dayColumnWidth - 4,
+                          height,
+                          backgroundColor: colorForDepartment(course.department),
+                          borderRadius: 8,
+                          padding: 5,
+                        }}
+                      >
+                        <Text style={{ color: 'white', fontWeight: '700', fontSize: 10 }} numberOfLines={2}>
+                          {formatCourseLabel(course.code)}
+                        </Text>
+                        <Text style={{ color: 'white', fontSize: 8 }} numberOfLines={1}>{course.professor}</Text>
+                      </TouchableOpacity>
+                    );
+                  });
+                })}
+              </View>
+            </View>
+          </ScrollView>
+        </ScrollView>
       </View>
     </View>
   );

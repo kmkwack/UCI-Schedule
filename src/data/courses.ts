@@ -1,3 +1,10 @@
+export type Timetable = {
+  id: string;         // UUID from Supabase
+  name: string;       // e.g. "Plan A", "My Schedule"
+  quarterKey: string; // e.g. "2026-Spring"
+  courses: Course[];
+};
+
 export type Course = {
   id: string;
   code: string;

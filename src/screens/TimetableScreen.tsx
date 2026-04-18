@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, QUARTERS, quarterKey, quarterLabel, colorForDepartment } from '../data/courses';
+import { Course, Quarter, Timetable, QUARTERS, quarterKey, quarterLabel, colorForDepartment } from '../data/courses';
 
 type Props = {
   activeCourses: Course[];
@@ -10,6 +10,10 @@ type Props = {
   onFocusCourse: (courseId: string) => void;
   onChangeQuarter: (q: Quarter) => void;
   onOpenCoursePicker: () => void;
+  quarterTimetables: Timetable[];
+  activeTimetableId: string | null;
+  onSelectTimetable: (id: string) => void;
+  onCreateTimetable: () => void;
 };
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
@@ -69,6 +73,10 @@ export default function TimetableScreen({
   onFocusCourse,
   onChangeQuarter,
   onOpenCoursePicker,
+  quarterTimetables,
+  activeTimetableId,
+  onSelectTimetable,
+  onCreateTimetable,
 }: Props) {
   const [gridWidth, setGridWidth] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -239,6 +247,51 @@ export default function TimetableScreen({
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Timetable switcher row */}
+        {quarterTimetables.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginTop: 8 }}
+            contentContainerStyle={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}
+          >
+            {quarterTimetables.map((t) => {
+              const isActive = t.id === activeTimetableId;
+              return (
+                <TouchableOpacity
+                  key={t.id}
+                  onPress={() => onSelectTimetable(t.id)}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 5,
+                    borderRadius: 16,
+                    backgroundColor: isActive ? '#2563eb' : 'white',
+                    borderWidth: 1,
+                    borderColor: isActive ? '#2563eb' : '#e5e7eb',
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: isActive ? 'white' : '#374151' }}>
+                    {t.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity
+              onPress={onCreateTimetable}
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 16,
+                backgroundColor: 'white',
+                borderWidth: 1,
+                borderColor: '#e5e7eb',
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#6b7280' }}>+ New</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        )}
       </View>
 
       <View

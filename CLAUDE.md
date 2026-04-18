@@ -352,3 +352,9 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/screens/TimetableScreen.tsx`** — Changed course-code rendering so the department stays on the first line and the numeric course identifier moves to the second line inside timetable blocks.
 - **`src/screens/FriendsScreen.tsx`** — Applied the same two-line course-code formatting to friend timetable blocks.
 - **`src/components/PreviewTimetable.tsx`** — Matched the preview timetable’s course-code formatting so preview cards also render the numeric portion on the second line.
+
+### Session 24
+- **`src/lib/supabase.ts`** — Created. Supabase client configured with project URL and publishable key. Uses AsyncStorage for session persistence.
+- **`src/data/courses.ts`** — Added `Timetable` type (`id`, `name`, `quarterKey`, `courses[]`) to support multiple named timetables per quarter.
+- **`App.tsx`** — Replaced `timetables: Record<string, Course[]>` with `timetables: Timetable[]` + `selectedTimetableId`. Added Supabase load on mount (`guest` user), `saveTimetable()` upsert, `createTimetable()` insert. `handleToggleCourse` now auto-creates a timetable if none exists for the quarter. Quarter change auto-selects the first timetable for the new quarter. New props passed to TimetableScreen: `quarterTimetables`, `activeTimetableId`, `onSelectTimetable`, `onCreateTimetable`.
+- **`src/screens/TimetableScreen.tsx`** — Added timetable switcher row below the header: named pill tabs for each timetable in the current quarter, plus a `+ New` button to create additional ones.

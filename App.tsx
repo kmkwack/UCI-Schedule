@@ -6,31 +6,122 @@ import TimetableScreen from './src/screens/TimetableScreen';
 import GradesScreen from './src/screens/GradesScreen';
 import CoursePickerScreen from './src/screens/CoursePickerScreen';
 import FriendsScreen from './src/screens/FriendsScreen';
-import { Course, Quarter, quarterKey } from './src/data/courses';
+import { Course, Quarter, Timetable, quarterKey } from './src/data/courses';
+import { supabase } from './src/lib/supabase';
+
+const USER_ID = 'guest'; // placeholder until auth is added
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'friends'>('home');
   const [showCoursePicker, setShowCoursePicker] = useState(false);
   const [renderCoursePicker, setRenderCoursePicker] = useState(false);
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter>({ year: '2026', quarter: 'Spring' });
-  const [timetables, setTimetables] = useState<Record<string, Course[]>>({});
+  const [timetables, setTimetables] = useState<Timetable[]>([]);
+  const [selectedTimetableId, setSelectedTimetableId] = useState<string | null>(null);
   const [focusedCourseId, setFocusedCourseId] = useState<string | null>(null);
   const pickerTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
 
   const activeKey = quarterKey(selectedQuarter);
-  const activeCourses = timetables[activeKey] ?? [];
+  const quarterTimetables = timetables.filter((t) => t.quarterKey === activeKey);
+  const activeTimetable = quarterTimetables.find((t) => t.id === selectedTimetableId) ?? quarterTimetables[0] ?? null;
+  const activeCourses = activeTimetable?.courses ?? [];
 
-  const handleToggleCourse = (course: Course) => {
-    setTimetables((prev) => {
-      const existing = prev[activeKey] ?? [];
-      const isAdded = existing.some((c) => c.id === course.id);
-      return {
-        ...prev,
-        [activeKey]: isAdded
-          ? existing.filter((c) => c.id !== course.id)
-          : [...existing, course],
-      };
+  // Load all timetables from Supabase on mount
+  useEffect(() => {
+    async function load() {
+      const { data, error } = await supabase
+        .from('timetables')
+        .select('*')
+        .eq('user_id', USER_ID);
+
+      if (error) { console.error('Failed to load timetables:', error); return; }
+
+      const loaded: Timetable[] = (data ?? []).map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        quarterKey: row.quarter_key,
+        courses: row.courses as Course[],
+      }));
+
+      setTimetables(loaded);
+
+      // Auto-select first timetable for the default quarter
+      const forCurrentQuarter = loaded.filter((t) => t.quarterKey === activeKey);
+      if (forCurrentQuarter.length > 0) {
+        setSelectedTimetableId(forCurrentQuarter[0].id);
+      }
+    }
+    load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function saveTimetable(t: Timetable) {
+    const { error } = await supabase.from('timetables').upsert({
+      id: t.id,
+      user_id: USER_ID,
+      quarter_key: t.quarterKey,
+      name: t.name,
+      courses: t.courses,
+      updated_at: new Date().toISOString(),
     });
+    if (error) console.error('Failed to save timetable:', error);
+  }
+
+  async function createTimetable(qKey: string, name: string): Promise<Timetable | null> {
+    const { data, error } = await supabase
+      .from('timetables')
+      .insert({ user_id: USER_ID, quarter_key: qKey, name, courses: [] })
+      .select()
+      .single();
+
+    if (error || !data) { console.error('Failed to create timetable:', error); return null; }
+
+    const created: Timetable = {
+      id: data.id,
+      name: data.name,
+      quarterKey: data.quarter_key,
+      courses: [],
+    };
+
+    setTimetables((prev) => [...prev, created]);
+    setSelectedTimetableId(created.id);
+    return created;
+  }
+
+  const handleToggleCourse = async (course: Course) => {
+    let target = activeTimetable;
+
+    // Auto-create a timetable if none exists for this quarter
+    if (!target) {
+      target = await createTimetable(activeKey, 'My Schedule');
+      if (!target) return;
+    }
+
+    const isAdded = target.courses.some((c) => c.id === course.id);
+    const newCourses = isAdded
+      ? target.courses.filter((c) => c.id !== course.id)
+      : [...target.courses, course];
+
+    const updated = { ...target, courses: newCourses };
+    setTimetables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    await saveTimetable(updated);
+  };
+
+  const handleChangeQuarter = (q: Quarter) => {
+    setSelectedQuarter(q);
+    const key = quarterKey(q);
+    const forQuarter = timetables.filter((t) => t.quarterKey === key);
+    setSelectedTimetableId(forQuarter.length > 0 ? forQuarter[0].id : null);
+  };
+
+  const handleSelectTimetable = (id: string) => {
+    setSelectedTimetableId(id);
+  };
+
+  const handleCreateTimetable = async () => {
+    const existing = quarterTimetables.length;
+    const name = existing === 0 ? 'My Schedule' : `Plan ${String.fromCharCode(65 + existing)}`; // Plan A, Plan B, ...
+    await createTimetable(activeKey, name);
   };
 
   const handleFocusCourse = (courseId: string | null) => {
@@ -59,9 +150,7 @@ export default function App() {
       easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
     }).start(({ finished }) => {
-      if (finished) {
-        setRenderCoursePicker(false);
-      }
+      if (finished) setRenderCoursePicker(false);
     });
   }, [pickerTranslateY, showCoursePicker]);
 
@@ -83,8 +172,12 @@ export default function App() {
           selectedQuarter={selectedQuarter}
           focusedCourseId={focusedCourseId}
           onFocusCourse={handleFocusCourse}
-          onChangeQuarter={setSelectedQuarter}
+          onChangeQuarter={handleChangeQuarter}
           onOpenCoursePicker={() => setShowCoursePicker(true)}
+          quarterTimetables={quarterTimetables}
+          activeTimetableId={activeTimetable?.id ?? null}
+          onSelectTimetable={handleSelectTimetable}
+          onCreateTimetable={handleCreateTimetable}
         />
       </View>
     );
@@ -141,30 +234,10 @@ export default function App() {
           backgroundColor: 'white',
         }}
       >
-        <TabItem
-          label="Home"
-          icon="home-outline"
-          active={currentTab === 'home'}
-          onPress={() => setCurrentTab('home')}
-        />
-        <TabItem
-          label="Timetable"
-          icon="calendar-outline"
-          active={currentTab === 'timetable'}
-          onPress={() => setCurrentTab('timetable')}
-        />
-        <TabItem
-          label="Grades"
-          icon="bar-chart-outline"
-          active={currentTab === 'grades'}
-          onPress={() => setCurrentTab('grades')}
-        />
-        <TabItem
-          label="Friends"
-          icon="people-outline"
-          active={currentTab === 'friends'}
-          onPress={() => setCurrentTab('friends')}
-        />
+        <TabItem label="Home" icon="home-outline" active={currentTab === 'home'} onPress={() => setCurrentTab('home')} />
+        <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => setCurrentTab('timetable')} />
+        <TabItem label="Grades" icon="bar-chart-outline" active={currentTab === 'grades'} onPress={() => setCurrentTab('grades')} />
+        <TabItem label="Friends" icon="people-outline" active={currentTab === 'friends'} onPress={() => setCurrentTab('friends')} />
       </View>
 
       {renderCoursePicker && (

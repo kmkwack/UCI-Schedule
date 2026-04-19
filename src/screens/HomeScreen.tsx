@@ -1,6 +1,8 @@
-import { View, Text, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course } from '../data/courses';
+import SettingsScreen from './SettingsScreen';
 
 type Props = {
   activeCourses: Course[];
@@ -70,6 +72,7 @@ function formatTime(timeRange: string): string {
 }
 
 export default function HomeScreen({ activeCourses }: Props) {
+  const [showSettings, setShowSettings] = useState(false);
   const todayCode = getTodayDayCode();
   const todayCourses = todayCode
     ? activeCourses
@@ -92,10 +95,25 @@ export default function HomeScreen({ activeCourses }: Props) {
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
-      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#111827' }}>Home</Text>
-      <Text style={{ fontSize: 14, color: '#9ca3af', marginTop: 4, marginBottom: 20 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#111827' }}>Home</Text>
+        <TouchableOpacity
+          onPress={() => setShowSettings(true)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <View style={{
+            width: 36, height: 36, borderRadius: 18,
+            backgroundColor: '#e8edf9', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Ionicons name="person-outline" size={18} color="#4169E1" />
+          </View>
+        </TouchableOpacity>
+      </View>
+      <Text style={{ fontSize: 14, color: '#9ca3af', marginTop: 0, marginBottom: 20 }}>
         {getDateLabel()}
       </Text>
+
+      <SettingsScreen visible={showSettings} onClose={() => setShowSettings(false)} />
 
       {/* Your Day card */}
       <View style={{

@@ -17,7 +17,7 @@ import {
   QUARTERS,
   quarterKey,
   quarterLabel,
-  colorForDepartment,
+  pastelForCourse,
 } from '../data/courses';
 import CoursePickerScreen from './CoursePickerScreen';
 
@@ -72,8 +72,25 @@ function getInitials(name: string): string {
 
 // ─── component ────────────────────────────────────────────────────────────────
 
-export default function FriendsScreen() {
-  const [friends, setFriends] = useState<Friend[]>([]);
+type Props = {
+  onOpenMessages?: (name: string) => void;
+};
+
+const MOCK_FRIENDS: Friend[] = [
+  { id: '1', name: 'Sarah Chen',   major: 'Engineering',     year: 'Sophomore', timetables: {} },
+  { id: '2', name: 'Alex Kim',     major: 'Computer Science', year: 'Junior',    timetables: {} },
+  { id: '3', name: 'Emma Wilson',  major: 'Business',         year: 'Freshman',  timetables: {} },
+];
+
+type PendingFriend = { id: string; name: string; major: string; year: string };
+
+const MOCK_PENDING: PendingFriend[] = [
+  { id: '4', name: 'Mike Johnson', major: 'Data Science', year: 'Senior' },
+];
+
+export default function FriendsScreen({ onOpenMessages }: Props) {
+  const [friends, setFriends] = useState<Friend[]>(MOCK_FRIENDS);
+  const [pendingRequests, setPendingRequests] = useState<PendingFriend[]>(MOCK_PENDING);
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newFriendName, setNewFriendName] = useState('');
@@ -207,15 +224,15 @@ export default function FriendsScreen() {
                     onPress={() => { setFriendQuarter(q); setShowQuarterDropdown(false); }}
                     style={{
                       paddingHorizontal: 16, paddingVertical: 12,
-                      backgroundColor: active ? '#eff6ff' : 'white',
+                      backgroundColor: active ? '#eef1fb' : 'white',
                       borderTopWidth: i === 0 ? 0 : 1, borderTopColor: '#f3f4f6',
                       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                     }}
                   >
-                    <Text style={{ color: active ? '#2563eb' : '#374151', fontWeight: active ? '700' : '400', fontSize: 14 }}>
+                    <Text style={{ color: active ? '#4169E1' : '#374151', fontWeight: active ? '700' : '400', fontSize: 14 }}>
                       {quarterLabel(q)}
                     </Text>
-                    {active && <Ionicons name="checkmark" size={16} color="#2563eb" />}
+                    {active && <Ionicons name="checkmark" size={16} color="#4169E1" />}
                   </TouchableOpacity>
                 );
               })}
@@ -227,11 +244,11 @@ export default function FriendsScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <TouchableOpacity onPress={() => setSelectedFriendId(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="chevron-back" size={24} color="#2563eb" />
+                <Ionicons name="chevron-back" size={24} color="#4169E1" />
               </TouchableOpacity>
               <View style={{
                 width: 34, height: 34, borderRadius: 17,
-                backgroundColor: '#2563eb', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: '#4169E1', alignItems: 'center', justifyContent: 'center',
                 marginRight: 4,
               }}>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>
@@ -322,16 +339,29 @@ export default function FriendsScreen() {
                   const col = visibleDays.indexOf(day);
                   if (col === -1) return null;
                   return (
-                    <View key={`${course.id}-${day}`} style={{
-                      position: 'absolute', top,
-                      left: col * dayColW + 2, width: dayColW - 4, height,
-                      backgroundColor: colorForDepartment(course.department),
-                      borderRadius: 8, padding: 5,
-                    }}>
-                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 10 }} numberOfLines={2}>
-                        {formatCourseLabel(course.code)}
-                      </Text>
-                      <Text style={{ color: 'white', fontSize: 8 }} numberOfLines={1}>{course.professor}</Text>
+                    <View key={`${course.id}-${day}`} style={(() => {
+                      const sType = course.sectionLabel?.split(' ')[0];
+                      const cKey = sType ? `${course.code}-${sType}` : course.code;
+                      const c = pastelForCourse(cKey);
+                      return {
+                        position: 'absolute', top,
+                        left: col * dayColW + 2, width: dayColW - 4, height,
+                        backgroundColor: c.bg, borderRadius: 8,
+                        borderWidth: 1, borderColor: c.border,
+                        padding: 5, overflow: 'hidden' as const,
+                      };
+                    })()}>
+                      {(() => {
+                        const sType = course.sectionLabel?.split(' ')[0];
+                        const cKey = sType ? `${course.code}-${sType}` : course.code;
+                        const c = pastelForCourse(cKey);
+                        return (<>
+                          <Text style={{ color: c.text, fontWeight: '700', fontSize: 10 }} numberOfLines={2}>
+                            {formatCourseLabel(course.code)}
+                          </Text>
+                          <Text style={{ color: c.text, fontSize: 8, opacity: 0.7 }} numberOfLines={1}>{course.professor}</Text>
+                        </>);
+                      })()}
                     </View>
                   );
                 });
@@ -421,7 +451,7 @@ export default function FriendsScreen() {
                     onPress={addFriend}
                     style={{
                       flex: 1, paddingVertical: 11, borderRadius: 10,
-                      backgroundColor: '#2563eb', alignItems: 'center',
+                      backgroundColor: '#4169E1', alignItems: 'center',
                     }}
                   >
                     <Text style={{ color: 'white', fontWeight: '600' }}>Add</Text>
@@ -435,10 +465,17 @@ export default function FriendsScreen() {
 
       {/* Header */}
       <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#111827' }}>Friends</Text>
-        <TouchableOpacity onPress={() => setShowAddModal(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="chatbubble-outline" size={24} color="#111827" />
-        </TouchableOpacity>
+        <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#111827' }}>ClassMates</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          {onOpenMessages && (
+            <TouchableOpacity onPress={() => onOpenMessages('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="chatbubble-outline" size={24} color="#111827" />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={() => setShowAddModal(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="person-add-outline" size={24} color="#111827" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search bar */}
@@ -450,7 +487,7 @@ export default function FriendsScreen() {
         }}>
           <Ionicons name="search-outline" size={18} color="#9ca3af" />
           <TextInput
-            placeholder="Search friends..."
+            placeholder="Search classmates..."
             placeholderTextColor="#9ca3af"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -467,14 +504,14 @@ export default function FriendsScreen() {
           onPress={() => setActiveTab('friends')}
           style={{
             paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-            backgroundColor: activeTab === 'friends' ? '#2563eb' : '#f3f4f6',
+            backgroundColor: activeTab === 'friends' ? '#4169E1' : '#f3f4f6',
           }}
         >
           <Text style={{
             fontSize: 14, fontWeight: '600',
             color: activeTab === 'friends' ? 'white' : '#374151',
           }}>
-            Friends ({friends.length})
+            ClassMates ({friends.length})
           </Text>
         </TouchableOpacity>
 
@@ -482,7 +519,7 @@ export default function FriendsScreen() {
           onPress={() => setActiveTab('requests')}
           style={{
             paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-            backgroundColor: activeTab === 'requests' ? '#2563eb' : '#f3f4f6',
+            backgroundColor: activeTab === 'requests' ? '#4169E1' : '#f3f4f6',
             flexDirection: 'row', alignItems: 'center', gap: 4,
           }}
         >
@@ -492,6 +529,15 @@ export default function FriendsScreen() {
           }}>
             Requests
           </Text>
+          {pendingRequests.length > 0 && (
+            <View style={{
+              width: 18, height: 18, borderRadius: 9,
+              backgroundColor: activeTab === 'requests' ? 'rgba(255,255,255,0.3)' : '#ef4444',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: 'white' }}>{pendingRequests.length}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -517,7 +563,7 @@ export default function FriendsScreen() {
                   {/* Avatar */}
                   <View style={{
                     width: 50, height: 50, borderRadius: 25,
-                    backgroundColor: '#2563eb', alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: '#4169E1', alignItems: 'center', justifyContent: 'center',
                     marginRight: 12,
                   }}>
                     <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>
@@ -538,7 +584,7 @@ export default function FriendsScreen() {
                     onPress={() => setSelectedFriendId(f.id)}
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 6,
-                      backgroundColor: '#2563eb', borderRadius: 20,
+                      backgroundColor: '#4169E1', borderRadius: 20,
                       paddingHorizontal: 12, paddingVertical: 7, marginRight: 8,
                     }}
                   >
@@ -548,9 +594,10 @@ export default function FriendsScreen() {
 
                   {/* Send button */}
                   <TouchableOpacity
+                    onPress={() => onOpenMessages?.(f.name)}
                     style={{
                       width: 36, height: 36, borderRadius: 18,
-                      backgroundColor: '#2563eb', alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: '#4169E1', alignItems: 'center', justifyContent: 'center',
                     }}
                   >
                     <Ionicons name="paper-plane-outline" size={16} color="white" />
@@ -566,10 +613,51 @@ export default function FriendsScreen() {
           </ScrollView>
         )
       ) : (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-          <Ionicons name="person-add-outline" size={60} color="#d1d5db" />
-          <Text style={{ fontSize: 16, color: '#9ca3af', fontWeight: '500' }}>No pending requests</Text>
-        </View>
+        pendingRequests.length === 0 ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <Ionicons name="person-add-outline" size={60} color="#d1d5db" />
+            <Text style={{ fontSize: 16, color: '#9ca3af', fontWeight: '500' }}>No pending requests</Text>
+          </View>
+        ) : (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
+            {pendingRequests.map((req, index) => (
+              <View key={req.id}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
+                  <View style={{
+                    width: 50, height: 50, borderRadius: 25,
+                    backgroundColor: '#9ca3af', alignItems: 'center', justifyContent: 'center', marginRight: 12,
+                  }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>
+                      {getInitials(req.name)}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>{req.name}</Text>
+                    <Text style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>{req.major} • {req.year}</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setFriends(prev => [...prev, { id: req.id, name: req.name, major: req.major, year: req.year, timetables: {} }]);
+                      setPendingRequests(prev => prev.filter(r => r.id !== req.id));
+                    }}
+                    style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#4169E1', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}
+                  >
+                    <Ionicons name="checkmark" size={18} color="white" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setPendingRequests(prev => prev.filter(r => r.id !== req.id))}
+                    style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#e5e7eb', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Ionicons name="close" size={18} color="#6b7280" />
+                  </TouchableOpacity>
+                </View>
+                {index < pendingRequests.length - 1 && (
+                  <View style={{ height: 1, backgroundColor: '#f3f4f6', marginHorizontal: 16 }} />
+                )}
+              </View>
+            ))}
+          </ScrollView>
+        )
       )}
     </View>
   );

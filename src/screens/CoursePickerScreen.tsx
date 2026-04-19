@@ -9,9 +9,13 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { Course, Quarter, UCI_DEPARTMENTS, quarterLabel } from '../data/courses';
+import { Ionicons } from '@expo/vector-icons';
+import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, UCI_DEPARTMENTS, quarterLabel, quarterKey } from '../data/courses';
 import PreviewTimetable from '../components/PreviewTimetable';
+import { supabase } from '../lib/supabase';
 
 type Props = {
   activeCourses: Course[];
@@ -19,6 +23,7 @@ type Props = {
   onFocusCourse: (courseId: string | null) => void;
   onClose: () => void;
   selectedQuarter: Quarter;
+  timetableSettings?: TimetableSettings;
 };
 
 type CatalogCourse = {
@@ -29,84 +34,36 @@ type CatalogCourse = {
   units?: string;
 };
 
-type WebsocTime = { hour: number; minute: number };
 
-type WebsocSection = {
-  sectionCode: string;
-  sectionType: string;
-  sectionNum: string;
-  units: string;
-  instructors: string[];
-  meetings: {
-    timeIsTBA: boolean;
-    bldg: string[];
-    days: string;
-    startTime: WebsocTime;
-    endTime: WebsocTime;
-  }[];
-  isCancelled: boolean;
+type CourseReview = {
+  id: string;
+  author: string;
+  rating: number;
+  date: string;
+  content: string;
+  semester: string;
+  difficulty: number;
+  workload: number;
 };
 
-type WebsocCourse = {
-  courseTitle: string;
-  courseNumber: string;
-  sections: WebsocSection[];
-};
+const MOCK_REVIEWS: CourseReview[] = [
+  {
+    id: 'r1', author: 'Anonymous', rating: 5, date: '2025-12-15',
+    content: 'Excellent course! The professor explains complex concepts very intuitively. Assignments are challenging but fair. Highly recommend.',
+    semester: 'Fall 2025', difficulty: 4, workload: 4,
+  },
+  {
+    id: 'r2', author: 'Student123', rating: 4, date: '2025-12-10',
+    content: 'Great course overall. Very useful and applicable material. Exams were tough but the curve helps. Make sure to attend all lectures.',
+    semester: 'Fall 2025', difficulty: 5, workload: 5,
+  },
+  {
+    id: 'r3', author: 'UCIAnteater', rating: 4, date: '2025-11-20',
+    content: 'Interesting content with well-organized lectures. Homework reinforced the material well. The midterm was harder than expected.',
+    semester: 'Fall 2025', difficulty: 3, workload: 4,
+  },
+];
 
-const BASE = 'https://anteaterapi.com/v2/rest';
-
-function pad2(n: number): string {
-  return n.toString().padStart(2, '0');
-}
-
-function formatWebsocTime(start: WebsocTime, end: WebsocTime): string {
-  return `${pad2(start.hour)}:${pad2(start.minute)} - ${pad2(end.hour)}:${pad2(end.minute)}`;
-}
-
-function formatLocation(raw: string | undefined): string {
-  if (!raw) return 'TBA';
-  const up = raw.toUpperCase();
-  if (up.includes('VRTL') || up.includes('ON LINE') || up.includes('ONLINE')) return 'Online';
-  return raw;
-}
-
-const SECTION_TYPE_ORDER: Record<string, number> = { Lec: 0, Dis: 1, Lab: 2 };
-
-function sortSections(sections: WebsocSection[]): WebsocSection[] {
-  return [...sections].sort((a, b) => {
-    const typeA = SECTION_TYPE_ORDER[a.sectionType] ?? 3;
-    const typeB = SECTION_TYPE_ORDER[b.sectionType] ?? 3;
-    if (typeA !== typeB) return typeA - typeB;
-    // Letter prefix of sectionNum (e.g. "A" from "A1")
-    const letA = a.sectionNum.replace(/\d+$/, '');
-    const letB = b.sectionNum.replace(/\d+$/, '');
-    const letCmp = letA.localeCompare(letB);
-    if (letCmp !== 0) return letCmp;
-    // Numeric suffix (e.g. 1 from "A1")
-    const numA = parseInt(a.sectionNum.replace(/^[A-Za-z]+/, '')) || 0;
-    const numB = parseInt(b.sectionNum.replace(/^[A-Za-z]+/, '')) || 0;
-    return numA - numB;
-  });
-}
-
-function mapWebsocSection(section: WebsocSection, course: WebsocCourse, dept: string): Course {
-  const meeting = section.meetings?.[0];
-  const time = meeting?.timeIsTBA ? 'TBA' : formatWebsocTime(meeting.startTime, meeting.endTime);
-  return {
-    id: section.sectionCode,
-    code: `${dept} ${course.courseNumber}`,
-    title: course.courseTitle,
-    professor: section.instructors?.[0] ?? 'TBA',
-    days: meeting?.days ?? 'TBA',
-    time,
-    department: dept,
-    addedCount: 0,
-    rating: 0,
-    location: formatLocation(meeting?.bldg?.[0]),
-    units: parseFloat(section.units) || undefined,
-    sectionLabel: `${section.sectionType} ${section.sectionNum}`,
-  };
-}
 
 function getDaysArray(daysString: string) {
   const result: string[] = [];
@@ -140,6 +97,7 @@ export default function CoursePickerScreen({
   onFocusCourse,
   onClose,
   selectedQuarter,
+  timetableSettings = DEFAULT_TIMETABLE_SETTINGS,
 }: Props) {
   const [searchText, setSearchText] = useState('');
   const [selectedDept, setSelectedDept] = useState('');
@@ -150,8 +108,15 @@ export default function CoursePickerScreen({
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
   const [sectionsMap, setSectionsMap] = useState<Record<string, Course[]>>({});
   const [previewCourse, setPreviewCourse] = useState<Course | null>(null);
+  const [reviewsCourse, setReviewsCourse] = useState<CatalogCourse | null>(null);
+  const [showWriteReview, setShowWriteReview] = useState(false);
+  const [newReviewRating, setNewReviewRating] = useState(5);
+  const [newReviewDifficulty, setNewReviewDifficulty] = useState(3);
+  const [newReviewWorkload, setNewReviewWorkload] = useState(3);
+  const [newReviewContent, setNewReviewContent] = useState('');
+  const [extraReviews, setExtraReviews] = useState<CourseReview[]>([]);
 
-  // Single websoc call fetches all courses + sections for the department/quarter
+  // Fetch courses + sections from Supabase (pre-seeded from Anteater API)
   useEffect(() => {
     if (!selectedDept) {
       setCatalogCourses([]);
@@ -167,58 +132,69 @@ export default function CoursePickerScreen({
     setExpandedCourseId(null);
     setPreviewCourse(null);
 
-    const params = new URLSearchParams({
-      department: selectedDept,
-      year: selectedQuarter.year,
-      quarter: selectedQuarter.quarter,
-    });
+    const qk = quarterKey(selectedQuarter);
 
-    fetch(`${BASE}/websoc?${params}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!data.ok) return;
+    supabase
+      .from('sections')
+      .select('*')
+      .eq('department', selectedDept)
+      .eq('quarter_key', qk)
+      .then(({ data, error }) => {
+        if (error) { console.error('Supabase fetch failed:', error); setCatalogLoading(false); return; }
 
-        const schools: { departments: { deptCode: string; courses: WebsocCourse[] }[] }[] =
-          data.data?.schools ?? [];
+        const rows = data ?? [];
 
-        // Use a map to deduplicate courses that appear under multiple schools
+        // Group rows by course (e.g. "EECS125")
         const catalogMap: Record<string, CatalogCourse> = {};
+        const rawSections: Record<string, any[]> = {};
+
+        rows.forEach((row: any) => {
+          const courseNumber = row.code.slice(row.department.length).trim();
+          const courseId = `${row.department}${courseNumber}`;
+
+          if (!catalogMap[courseId]) {
+            catalogMap[courseId] = {
+              id: courseId,
+              department: row.department,
+              courseNumber,
+              title: row.title,
+              units: row.units?.toString(),
+            };
+            rawSections[courseId] = [];
+          }
+          rawSections[courseId].push(row);
+        });
+
+        // Build sectionsMap: sort sections then map to Course objects
         const newSectionsMap: Record<string, Course[]> = {};
-
-        schools.forEach((school) => {
-          school.departments.forEach((dept) => {
-            dept.courses.forEach((course) => {
-              const validSections = sortSections(course.sections.filter((s) => !s.isCancelled))
-                .map((s) => mapWebsocSection(s, course, dept.deptCode));
-
-              if (validSections.length === 0) return;
-
-              const courseId = `${dept.deptCode}${course.courseNumber}`;
-
-              if (catalogMap[courseId]) {
-                // Merge sections from duplicate entries, avoiding duplicate section codes
-                const existing = newSectionsMap[courseId] ?? [];
-                const existingIds = new Set(existing.map((s) => s.id));
-                const newSections = validSections.filter((s) => !existingIds.has(s.id));
-                newSectionsMap[courseId] = [...existing, ...newSections];
-              } else {
-                catalogMap[courseId] = {
-                  id: courseId,
-                  department: dept.deptCode,
-                  courseNumber: course.courseNumber,
-                  title: course.courseTitle,
-                  units: validSections[0]?.units?.toString(),
-                };
-                newSectionsMap[courseId] = validSections;
-              }
-            });
+        Object.entries(rawSections).forEach(([courseId, sectionRows]) => {
+          const sorted = sectionRows.slice().sort((a, b) => {
+            const typeOrder = (t: string) => ({ Lec: 0, Dis: 1, Lab: 2 }[t] ?? 3);
+            const aType = a.section_label?.split(' ')[0] ?? '';
+            const bType = b.section_label?.split(' ')[0] ?? '';
+            if (typeOrder(aType) !== typeOrder(bType)) return typeOrder(aType) - typeOrder(bType);
+            return (a.section_label ?? '').localeCompare(b.section_label ?? '', undefined, { numeric: true });
           });
+
+          newSectionsMap[courseId] = sorted.map((row: any): Course => ({
+            id: row.id,
+            code: row.code,
+            title: row.title,
+            professor: row.professor ?? '',
+            days: row.days ?? 'TBA',
+            time: row.time ?? 'TBA',
+            department: row.department,
+            addedCount: 0,
+            rating: 0,
+            location: row.location ?? undefined,
+            units: row.units ?? undefined,
+            sectionLabel: row.section_label ?? undefined,
+          }));
         });
 
         setCatalogCourses(Object.values(catalogMap));
         setSectionsMap(newSectionsMap);
       })
-      .catch(() => setCatalogCourses([]))
       .finally(() => setCatalogLoading(false));
   }, [selectedDept, selectedQuarter]);
 
@@ -301,12 +277,13 @@ export default function CoursePickerScreen({
           );
         });
 
+    const stripH = (s: string) => s.replace(/^H/i, '');
     return [...list].sort((a, b) => {
-      const numA = parseInt(a.courseNumber) || 0;
-      const numB = parseInt(b.courseNumber) || 0;
+      const numA = parseInt(stripH(a.courseNumber)) || 0;
+      const numB = parseInt(stripH(b.courseNumber)) || 0;
       if (numA !== numB) return numA - numB;
-      const suffixA = a.courseNumber.replace(/^\d+/, '');
-      const suffixB = b.courseNumber.replace(/^\d+/, '');
+      const suffixA = stripH(a.courseNumber).replace(/^\d+/, '');
+      const suffixB = stripH(b.courseNumber).replace(/^\d+/, '');
       return suffixA.localeCompare(suffixB);
     });
   }, [catalogCourses, searchText, sectionsMap]);
@@ -343,6 +320,7 @@ export default function CoursePickerScreen({
         selectedCourses={activeCourses}
         previewCourse={previewCourse}
         onBackgroundPress={onClose}
+        settings={timetableSettings}
       />
 
       <View
@@ -380,7 +358,7 @@ export default function CoursePickerScreen({
               flexDirection: 'row',
               justifyContent: 'space-between',
               alignItems: 'center',
-              backgroundColor: selectedDept ? '#eff6ff' : '#f3f4f6',
+              backgroundColor: selectedDept ? '#eef1fb' : '#f3f4f6',
               borderRadius: 14,
               paddingHorizontal: 14,
               paddingVertical: 13,
@@ -389,7 +367,7 @@ export default function CoursePickerScreen({
               borderColor: selectedDept ? '#3b82f6' : '#e5e7eb',
             }}
           >
-            <Text style={{ color: selectedDept ? '#2563eb' : '#9ca3af', fontSize: 15, fontWeight: selectedDept ? '600' : '400' }}>
+            <Text style={{ color: selectedDept ? '#4169E1' : '#9ca3af', fontSize: 15, fontWeight: selectedDept ? '600' : '400' }}>
               {selectedDept || 'Select a department…'}
             </Text>
             <Text style={{ color: '#9ca3af', fontSize: 12 }}>▼</Text>
@@ -445,10 +423,10 @@ export default function CoursePickerScreen({
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontSize: 15, color: isSelected ? '#2563eb' : '#111827', fontWeight: isSelected ? '700' : '400' }}>
+                        <Text style={{ fontSize: 15, color: isSelected ? '#4169E1' : '#111827', fontWeight: isSelected ? '700' : '400' }}>
                           {item}
                         </Text>
-                        {isSelected && <Text style={{ color: '#2563eb' }}>✓</Text>}
+                        {isSelected && <Text style={{ color: '#4169E1' }}>✓</Text>}
                       </TouchableOpacity>
                     );
                   }}
@@ -465,7 +443,7 @@ export default function CoursePickerScreen({
           </View>
         ) : catalogLoading ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
-            <ActivityIndicator size="large" color="#2563eb" />
+            <ActivityIndicator size="large" color="#4169E1" />
             <Text style={{ color: '#9ca3af', marginTop: 12 }}>Loading {selectedDept} courses for {quarterLabel(selectedQuarter)}…</Text>
             <Text style={{ color: '#c4c9d4', marginTop: 6, fontSize: 12 }}>Filtering out courses with no sections</Text>
           </View>
@@ -505,9 +483,6 @@ export default function CoursePickerScreen({
                         </Text>
                       )}
                     </View>
-                    <Text style={{ color: '#9ca3af', fontSize: 18, marginTop: 2 }}>
-                      {isExpanded ? '▲' : '▼'}
-                    </Text>
                   </View>
 
                   {/* Expanded sections */}
@@ -528,7 +503,7 @@ export default function CoursePickerScreen({
                               activeOpacity={0.85}
                               onPress={() => setPreviewCourse(isPreviewing ? null : course)}
                               style={{
-                                backgroundColor: isPreviewing ? '#eff6ff' : '#f9fafb',
+                                backgroundColor: isPreviewing ? '#eef1fb' : '#f9fafb',
                                 borderRadius: 12,
                                 padding: 12,
                                 marginBottom: 8,
@@ -557,24 +532,41 @@ export default function CoursePickerScreen({
                                   </Text>
                                 </View>
 
-                                <TouchableOpacity
-                                  onPress={(e) => {
-                                    e.stopPropagation();
-                                    handleAddToTable(course);
-                                  }}
-                                  style={{
-                                    backgroundColor: isAdded ? '#e5e7eb' : '#ef4444',
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 6,
-                                    borderRadius: 999,
-                                    alignSelf: 'flex-start',
-                                    marginTop: 2,
-                                  }}
-                                >
-                                  <Text style={{ color: isAdded ? '#374151' : 'white', fontWeight: '700', fontSize: 13 }}>
-                                    {isAdded ? 'Remove' : 'Add'}
-                                  </Text>
-                                </TouchableOpacity>
+                                <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                                  <TouchableOpacity
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      handleAddToTable(course);
+                                    }}
+                                    style={{
+                                      backgroundColor: isAdded ? '#e5e7eb' : '#ef4444',
+                                      paddingHorizontal: 12,
+                                      paddingVertical: 6,
+                                      borderRadius: 999,
+                                      alignSelf: 'flex-end',
+                                    }}
+                                  >
+                                    <Text style={{ color: isAdded ? '#374151' : 'white', fontWeight: '700', fontSize: 13 }}>
+                                      {isAdded ? 'Remove' : 'Add'}
+                                    </Text>
+                                  </TouchableOpacity>
+                                  {course.sectionLabel?.startsWith('Lec') && (
+                                    <TouchableOpacity
+                                      onPress={(e) => {
+                                        e.stopPropagation();
+                                        setReviewsCourse(item);
+                                      }}
+                                      style={{
+                                        paddingHorizontal: 10, paddingVertical: 5,
+                                        borderRadius: 999, borderWidth: 1, borderColor: '#e5e7eb',
+                                        alignSelf: 'flex-end',
+                                      }}
+                                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                    >
+                                      <Text style={{ fontSize: 11, color: '#6b7280', fontWeight: '600' }}>Reviews</Text>
+                                    </TouchableOpacity>
+                                  )}
+                                </View>
                               </View>
                             </TouchableOpacity>
                           );
@@ -588,6 +580,221 @@ export default function CoursePickerScreen({
           />
         )}
       </View>
+
+      {/* ── Reviews / Write Review — single Modal to avoid iOS stacking limit ── */}
+      <Modal
+        visible={!!reviewsCourse}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (showWriteReview) { setShowWriteReview(false); }
+          else { setReviewsCourse(null); }
+        }}
+      >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+            <View style={{
+              backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+              maxHeight: '90%',
+            }}>
+
+              {/* ── Reviews list view ── */}
+              {!showWriteReview && (
+                <>
+                  {/* Header */}
+                  <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <View style={{ flex: 1, paddingRight: 12 }}>
+                        <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 4 }}>
+                          {reviewsCourse?.department} {reviewsCourse?.courseNumber}
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#6b7280' }}>{reviewsCourse?.title}</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => { setReviewsCourse(null); setShowWriteReview(false); }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="close" size={22} color="#6b7280" />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                      <View style={{ flexDirection: 'row', gap: 2 }}>
+                        {[1,2,3,4,5].map(i => (
+                          <Ionicons key={i} name={i <= 4 ? 'star' : 'star-half'} size={16} color="#f59e0b" />
+                        ))}
+                      </View>
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>4.3</Text>
+                      <Text style={{ fontSize: 13, color: '#9ca3af' }}>
+                        {MOCK_REVIEWS.length + extraReviews.length} reviews
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Reviews list */}
+                  <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 16 }}>
+                    {[...MOCK_REVIEWS, ...extraReviews].map((review) => (
+                      <View key={review.id} style={{ backgroundColor: '#f9fafb', borderRadius: 14, padding: 14, marginBottom: 10 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <Text style={{ fontWeight: '700', fontSize: 14, color: '#111827' }}>{review.author}</Text>
+                              <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.semester}</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', gap: 2 }}>
+                              {[1,2,3,4,5].map(i => (
+                                <Ionicons key={i} name={i <= review.rating ? 'star' : 'star-outline'} size={13} color={i <= review.rating ? '#f59e0b' : '#d1d5db'} />
+                              ))}
+                            </View>
+                          </View>
+                          <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.date}</Text>
+                        </View>
+                        <Text style={{ fontSize: 13, color: '#374151', lineHeight: 19, marginBottom: 8 }}>{review.content}</Text>
+                        <View style={{ flexDirection: 'row', gap: 16 }}>
+                          <Text style={{ fontSize: 12, color: '#9ca3af' }}>
+                            Difficulty: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.difficulty}/5</Text>
+                          </Text>
+                          <Text style={{ fontSize: 12, color: '#9ca3af' }}>
+                            Workload: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.workload}/5</Text>
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </ScrollView>
+
+                  {/* Footer */}
+                  <View style={{ paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
+                    <TouchableOpacity
+                      onPress={() => setShowWriteReview(true)}
+                      style={{ backgroundColor: '#4169E1', borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}
+                    >
+                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Write a Review</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+
+              {/* ── Write review view ── */}
+              {showWriteReview && (
+                <>
+                  {/* Header */}
+                  <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <TouchableOpacity onPress={() => setShowWriteReview(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="chevron-back" size={22} color="#6b7280" />
+                      </TouchableOpacity>
+                      <View>
+                        <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Write a Review</Text>
+                        <Text style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>
+                          {reviewsCourse?.department} {reviewsCourse?.courseNumber}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => { setReviewsCourse(null); setShowWriteReview(false); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="close" size={22} color="#6b7280" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 20 }} keyboardShouldPersistTaps="handled">
+                    {/* Overall Rating */}
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 10 }}>Overall Rating</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                      {[1,2,3,4,5].map(r => (
+                        <TouchableOpacity key={r} onPress={() => setNewReviewRating(r)}>
+                          <Ionicons name={r <= newReviewRating ? 'star' : 'star-outline'} size={36} color={r <= newReviewRating ? '#f59e0b' : '#d1d5db'} />
+                        </TouchableOpacity>
+                      ))}
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#374151', marginLeft: 4 }}>{newReviewRating}/5</Text>
+                    </View>
+
+                    {/* Difficulty */}
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 10 }}>
+                      Difficulty (1 = Easy, 5 = Hard)
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+                      {[1,2,3,4,5].map(l => (
+                        <TouchableOpacity
+                          key={l}
+                          onPress={() => setNewReviewDifficulty(l)}
+                          style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: newReviewDifficulty === l ? '#4169E1' : '#f3f4f6' }}
+                        >
+                          <Text style={{ fontWeight: '700', color: newReviewDifficulty === l ? 'white' : '#374151' }}>{l}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {/* Workload */}
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 10 }}>
+                      Workload (1 = Light, 5 = Heavy)
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+                      {[1,2,3,4,5].map(l => (
+                        <TouchableOpacity
+                          key={l}
+                          onPress={() => setNewReviewWorkload(l)}
+                          style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: newReviewWorkload === l ? '#4169E1' : '#f3f4f6' }}
+                        >
+                          <Text style={{ fontWeight: '700', color: newReviewWorkload === l ? 'white' : '#374151' }}>{l}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {/* Review text */}
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 10 }}>Your Review</Text>
+                    <TextInput
+                      value={newReviewContent}
+                      onChangeText={setNewReviewContent}
+                      placeholder="Share your experience with this course..."
+                      placeholderTextColor="#9ca3af"
+                      multiline
+                      textAlignVertical="top"
+                      style={{
+                        backgroundColor: '#f9fafb', borderRadius: 14,
+                        borderWidth: 1, borderColor: '#e5e7eb',
+                        paddingHorizontal: 14, paddingVertical: 12,
+                        fontSize: 14, color: '#111827', minHeight: 120,
+                        marginBottom: 20,
+                      }}
+                    />
+
+                    {/* Submit */}
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (!newReviewContent.trim()) return;
+                        setExtraReviews(prev => [...prev, {
+                          id: `user-${Date.now()}`,
+                          author: 'You',
+                          rating: newReviewRating,
+                          date: new Date().toISOString().slice(0, 10),
+                          content: newReviewContent.trim(),
+                          semester: 'Spring 2026',
+                          difficulty: newReviewDifficulty,
+                          workload: newReviewWorkload,
+                        }]);
+                        setNewReviewRating(5);
+                        setNewReviewDifficulty(3);
+                        setNewReviewWorkload(3);
+                        setNewReviewContent('');
+                        setShowWriteReview(false);
+                      }}
+                      disabled={!newReviewContent.trim()}
+                      style={{
+                        backgroundColor: newReviewContent.trim() ? '#4169E1' : '#d1d5db',
+                        borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 8,
+                      }}
+                    >
+                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Submit Review</Text>
+                    </TouchableOpacity>
+                  </ScrollView>
+                </>
+              )}
+
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }

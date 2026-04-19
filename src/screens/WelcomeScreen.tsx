@@ -1,5 +1,7 @@
-import { View, Text, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+
 
 type Props = {
   onSignIn: () => void;
@@ -17,26 +19,17 @@ export default function WelcomeScreen({ onSignIn, onCreateAccount, onGuest }: Pr
           {/* App icon */}
           <View style={{ marginBottom: 32, alignItems: 'center', justifyContent: 'center' }}>
             <View style={{
-              width: 96, height: 96, borderRadius: 24,
-              backgroundColor: '#4f6ef7', alignItems: 'center', justifyContent: 'center',
-              shadowColor: '#4f6ef7', shadowOffset: { width: 0, height: 8 },
+              width: 96, height: 96, borderRadius: 28,
+              backgroundColor: '#4169E1', alignItems: 'center', justifyContent: 'center',
+              shadowColor: '#4169E1', shadowOffset: { width: 0, height: 8 },
               shadowOpacity: 0.35, shadowRadius: 16, elevation: 10,
             }}>
-              <Ionicons name="calendar-outline" size={48} color="white" />
-            </View>
-            {/* Book badge */}
-            <View style={{
-              position: 'absolute', bottom: -4, right: -4,
-              width: 36, height: 36, borderRadius: 18,
-              backgroundColor: '#a855f7', alignItems: 'center', justifyContent: 'center',
-              borderWidth: 2, borderColor: 'white',
-            }}>
-              <Ionicons name="book-outline" size={18} color="white" />
+              <Text style={{ fontSize: 38, fontWeight: 'bold', color: 'white' }}>CM</Text>
             </View>
           </View>
 
           <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginBottom: 12 }}>
-            Welcome to UniTrack
+            Welcome to ClassMate
           </Text>
           <Text style={{ fontSize: 16, color: '#9ca3af', textAlign: 'center' }}>
             Your campus life, beautifully organized
@@ -49,7 +42,7 @@ export default function WelcomeScreen({ onSignIn, onCreateAccount, onGuest }: Pr
           <TouchableOpacity
             onPress={onSignIn}
             style={{
-              backgroundColor: '#4f6ef7', borderRadius: 16,
+              backgroundColor: '#4169E1', borderRadius: 16,
               paddingVertical: 18, alignItems: 'center',
               flexDirection: 'row', justifyContent: 'center', gap: 8,
             }}
@@ -94,9 +87,9 @@ export default function WelcomeScreen({ onSignIn, onCreateAccount, onGuest }: Pr
           {/* Terms */}
           <Text style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 8, lineHeight: 18 }}>
             By continuing, you agree to our{' '}
-            <Text style={{ color: '#4f6ef7' }}>Terms of Service</Text>
+            <Text style={{ color: '#4169E1' }}>Terms of Service</Text>
             {' '}and{' '}
-            <Text style={{ color: '#4f6ef7' }}>Privacy Policy</Text>
+            <Text style={{ color: '#4169E1' }}>Privacy Policy</Text>
           </Text>
         </View>
       </View>

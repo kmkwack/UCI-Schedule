@@ -150,15 +150,15 @@ export default function HomeScreen({ activeCourses }: Props) {
 
       {/* Weather card */}
       <View style={{
-        backgroundColor: '#eef2ff', borderRadius: 20, padding: 20, marginBottom: 16,
+        backgroundColor: '#e8edf9', borderRadius: 20, padding: 20, marginBottom: 16,
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <View>
-          <Text style={{ fontSize: 13, color: '#6366f1', fontWeight: '600', marginBottom: 8 }}>Weather</Text>
+          <Text style={{ fontSize: 13, color: '#4169E1', fontWeight: '600', marginBottom: 8, opacity: 0.7 }}>Weather</Text>
           <Text style={{ fontSize: 42, fontWeight: 'bold', color: '#111827', lineHeight: 46 }}>22°</Text>
-          <Text style={{ fontSize: 15, color: '#6366f1', marginTop: 4 }}>Partly Cloudy</Text>
+          <Text style={{ fontSize: 15, color: '#4169E1', marginTop: 4, opacity: 0.8 }}>Partly Cloudy</Text>
         </View>
-        <Ionicons name="cloud-outline" size={56} color="#a5b4fc" />
+        <Ionicons name="cloud-outline" size={56} color="#4169E1" style={{ opacity: 0.4 }} />
       </View>
 
       {/* Campus Events card */}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, View, Text, TouchableOpacity } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from './src/screens/HomeScreen';
 import TimetableScreen from './src/screens/TimetableScreen';
@@ -9,10 +10,12 @@ import FriendsScreen from './src/screens/FriendsScreen';
 import BoardScreen from './src/screens/BoardScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import SignInScreen from './src/screens/SignInScreen';
-import { Course, Quarter, Timetable, quarterKey } from './src/data/courses';
+import SignUpScreen from './src/screens/SignUpScreen';
+import MessagesScreen from './src/screens/MessagesScreen';
+import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey } from './src/data/courses';
 import { supabase } from './src/lib/supabase';
 
-type AuthScreen = 'welcome' | 'signin';
+type AuthScreen = 'welcome' | 'signin' | 'signup';
 
 export default function App() {
   const [userId, setUserId] = useState<string | null>(null);
@@ -24,6 +27,9 @@ export default function App() {
   const [timetables, setTimetables] = useState<Timetable[]>([]);
   const [selectedTimetableId, setSelectedTimetableId] = useState<string | null>(null);
   const [focusedCourseId, setFocusedCourseId] = useState<string | null>(null);
+  const [timetableSettings, setTimetableSettings] = useState<TimetableSettings>(DEFAULT_TIMETABLE_SETTINGS);
+  const [showMessages, setShowMessages] = useState(false);
+  const [messagesOpenWith, setMessagesOpenWith] = useState<string | null>(null);
   const pickerTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
 
   const activeKey = quarterKey(selectedQuarter);
@@ -132,6 +138,43 @@ export default function App() {
     await createTimetable(activeKey, name);
   };
 
+  const handleAddQuarter = async (q: Quarter) => {
+    const qk = quarterKey(q);
+    setSelectedQuarter(q);
+    const existing = timetables.filter((t) => t.quarterKey === qk);
+    if (existing.length > 0) {
+      setSelectedTimetableId(existing[0].id);
+    } else {
+      await createTimetable(qk, 'My Schedule');
+    }
+  };
+
+  const CURRENT_QUARTER: Quarter = { year: '2026', quarter: 'Spring' };
+
+  const handleDeleteTimetable = async () => {
+    if (!activeTimetable) return;
+    const { error } = await supabase.from('timetables').delete().eq('id', activeTimetable.id);
+    if (error) { console.error('Failed to delete timetable:', error); return; }
+    setTimetables((prev) => prev.filter((t) => t.id !== activeTimetable.id));
+    const remaining = quarterTimetables.filter((t) => t.id !== activeTimetable.id);
+    if (remaining.length > 0) {
+      setSelectedTimetableId(remaining[0].id);
+    } else {
+      // Quarter is now empty — switch to current quarter
+      const currentQk = quarterKey(CURRENT_QUARTER);
+      setSelectedQuarter(CURRENT_QUARTER);
+      const currentQTimetables = timetables.filter(
+        (t) => t.quarterKey === currentQk && t.id !== activeTimetable.id
+      );
+      setSelectedTimetableId(currentQTimetables.length > 0 ? currentQTimetables[0].id : null);
+    }
+  };
+
+  const handleOpenMessages = (name: string) => {
+    setMessagesOpenWith(name || null);
+    setShowMessages(true);
+  };
+
   const handleFocusCourse = (courseId: string | null) => {
     setFocusedCourseId(null);
     setTimeout(() => setFocusedCourseId(courseId), 0);
@@ -169,8 +212,17 @@ export default function App() {
       return (
         <WelcomeScreen
           onSignIn={() => setAuthScreen('signin')}
-          onCreateAccount={() => setAuthScreen('signin')}
+          onCreateAccount={() => setAuthScreen('signup')}
           onGuest={(id) => setUserId(id)}
+        />
+      );
+    }
+    if (authScreen === 'signup') {
+      return (
+        <SignUpScreen
+          onBack={() => setAuthScreen('welcome')}
+          onSignedUp={(id) => setUserId(id)}
+          onGoToSignIn={() => setAuthScreen('signin')}
         />
       );
     }
@@ -178,7 +230,7 @@ export default function App() {
       <SignInScreen
         onBack={() => setAuthScreen('welcome')}
         onSignedIn={(id) => setUserId(id)}
-        onGoToSignUp={() => {}}
+        onGoToSignUp={() => setAuthScreen('signup')}
       />
     );
   }
@@ -197,7 +249,7 @@ export default function App() {
     );
   } else if (currentTab === 'timetable') {
     content = (
-      <View style={{ flex: 1, paddingTop: 60, backgroundColor: '#f7f8fa' }}>
+      <View style={{ flex: 1, paddingTop: 60 }}>
         <TimetableScreen
           activeCourses={activeCourses}
           selectedQuarter={selectedQuarter}
@@ -205,21 +257,26 @@ export default function App() {
           onFocusCourse={handleFocusCourse}
           onChangeQuarter={handleChangeQuarter}
           onOpenCoursePicker={() => setShowCoursePicker(true)}
+          timetables={timetables}
           quarterTimetables={quarterTimetables}
           activeTimetableId={activeTimetable?.id ?? null}
           onSelectTimetable={handleSelectTimetable}
           onCreateTimetable={handleCreateTimetable}
+          onDeleteTimetable={handleDeleteTimetable}
+          onAddQuarter={handleAddQuarter}
+          settings={timetableSettings}
+          onSettingsApply={setTimetableSettings}
         />
       </View>
     );
   } else if (currentTab === 'grades') {
-    content = <GradesScreen activeCourses={activeCourses} />;
+    content = <GradesScreen timetables={timetables} userId={USER_ID} />;
   } else if (currentTab === 'board') {
-    content = <BoardScreen />;
+    content = <BoardScreen onOpenMessages={handleOpenMessages} />;
   } else if (currentTab === 'friends') {
     content = (
       <View style={{ flex: 1, paddingTop: 60, backgroundColor: '#f7f8fa' }}>
-        <FriendsScreen />
+        <FriendsScreen onOpenMessages={handleOpenMessages} />
       </View>
     );
   }
@@ -239,12 +296,12 @@ export default function App() {
       style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
       onPress={onPress}
     >
-      <Ionicons name={icon} size={22} color={active ? '#2563eb' : '#9ca3af'} />
+      <Ionicons name={icon} size={22} color={active ? '#4169E1' : '#9ca3af'} />
       <Text
         style={{
           marginTop: 4,
           fontSize: 12,
-          color: active ? '#2563eb' : '#9ca3af',
+          color: active ? '#4169E1' : '#9ca3af',
           fontWeight: active ? '600' : '400',
         }}
       >
@@ -254,6 +311,7 @@ export default function App() {
   );
 
   return (
+    <SafeAreaProvider>
     <View style={{ flex: 1, backgroundColor: '#f7f8fa' }}>
       {content}
 
@@ -271,8 +329,17 @@ export default function App() {
         <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => setCurrentTab('timetable')} />
         <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => setCurrentTab('grades')} />
         <TabItem label="Board" icon="clipboard-outline" active={currentTab === 'board'} onPress={() => setCurrentTab('board')} />
-        <TabItem label="Friends" icon="person-add-outline" active={currentTab === 'friends'} onPress={() => setCurrentTab('friends')} />
+        <TabItem label="ClassMates" icon="person-add-outline" active={currentTab === 'friends'} onPress={() => setCurrentTab('friends')} />
       </View>
+
+      {showMessages && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 30, elevation: 30 }}>
+          <MessagesScreen
+            onClose={() => { setShowMessages(false); setMessagesOpenWith(null); }}
+            openChatWith={messagesOpenWith}
+          />
+        </View>
+      )}
 
       {renderCoursePicker && (
         <Animated.View
@@ -293,9 +360,11 @@ export default function App() {
             onFocusCourse={handleFocusCourse}
             onClose={() => setShowCoursePicker(false)}
             selectedQuarter={selectedQuarter}
+            timetableSettings={timetableSettings}
           />
         </Animated.View>
       )}
     </View>
+    </SafeAreaProvider>
   );
 }

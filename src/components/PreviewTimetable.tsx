@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Dimensions, Pressable } from 'react-native';
-import { Course, colorForDepartment } from '../data/courses';
+import { Course, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, getBlockColors } from '../data/courses';
 
 type Props = {
   selectedCourses: Course[];
   previewCourse: Course | null;
   onBackgroundPress?: () => void;
+  settings?: TimetableSettings;
 };
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
@@ -71,21 +72,14 @@ function formatHourLabel(hour: number) {
   return `${hour}:00`;
 }
 
-function colorForCourse(course: Course) {
-  return colorForDepartment(course.department);
-}
-
-function formatCourseLabel(code: string) {
-  const parts = code.trim().split(/\s+/);
-  if (parts.length < 2) return code;
-  return `${parts[0]}\n${parts.slice(1).join(' ')}`;
-}
 
 export default function PreviewTimetable({
   selectedCourses,
   previewCourse,
   onBackgroundPress,
+  settings = DEFAULT_TIMETABLE_SETTINGS,
 }: Props) {
+  const { theme, showCode, showClassName, showRoomNumber, showInstructor, showTime } = settings;
   const verticalScrollRef = useRef<ScrollView>(null);
   const horizontalScrollRef = useRef<ScrollView>(null);
   const [gridWidth, setGridWidth] = useState(0);
@@ -314,17 +308,40 @@ export default function PreviewTimetable({
                           left: dayIndex * dayColumnWidth + 2,
                           width: dayColumnWidth - 4,
                           height,
-                          backgroundColor: colorForCourse(course),
+                          backgroundColor: getBlockColors(course, theme).bg,
                           borderRadius: 8,
-                          padding: 5,
+                          borderWidth: 1,
+                          borderColor: getBlockColors(course, theme).border,
+                          paddingHorizontal: 5,
+                          paddingTop: 4,
+                          overflow: 'hidden',
                         }}
                       >
-                        <Text
-                          style={{ color: 'white', fontSize: 10, fontWeight: '700' }}
-                          numberOfLines={2}
-                        >
-                          {formatCourseLabel(course.code)}
-                        </Text>
+                        {showCode && (
+                          <Text style={{ color: getBlockColors(course, theme).text, fontSize: 9, fontWeight: '800', lineHeight: 12 }} numberOfLines={1}>
+                            {course.code}
+                          </Text>
+                        )}
+                        {showClassName && (
+                          <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, fontWeight: '500', opacity: 0.85 }} numberOfLines={1}>
+                            {course.title}
+                          </Text>
+                        )}
+                        {showRoomNumber && course.location ? (
+                          <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, opacity: 0.7 }} numberOfLines={1}>
+                            {course.location}
+                          </Text>
+                        ) : null}
+                        {showInstructor && course.professor ? (
+                          <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, opacity: 0.7 }} numberOfLines={1}>
+                            {course.professor.split(',')[0]}
+                          </Text>
+                        ) : null}
+                        {showTime && (
+                          <Text style={{ color: getBlockColors(course, theme).text, fontSize: 7, opacity: 0.6 }} numberOfLines={1}>
+                            {course.time}
+                          </Text>
+                        )}
                       </View>
                     );
                   });

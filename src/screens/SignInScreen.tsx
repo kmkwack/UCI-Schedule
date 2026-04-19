@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  SafeAreaView, KeyboardAvoidingView, Platform, ScrollView,
+  KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 type Props = {
@@ -95,8 +96,8 @@ export default function SignInScreen({ onBack, onSignedIn, onGoToSignUp }: Props
             >
               <View style={{
                 width: 20, height: 20, borderRadius: 5,
-                borderWidth: 1.5, borderColor: rememberMe ? '#4f6ef7' : '#d1d5db',
-                backgroundColor: rememberMe ? '#4f6ef7' : 'white',
+                borderWidth: 1.5, borderColor: rememberMe ? '#4169E1' : '#d1d5db',
+                backgroundColor: rememberMe ? '#4169E1' : 'white',
                 alignItems: 'center', justifyContent: 'center',
               }}>
                 {rememberMe && <Ionicons name="checkmark" size={13} color="white" />}
@@ -104,7 +105,7 @@ export default function SignInScreen({ onBack, onSignedIn, onGoToSignUp }: Props
               <Text style={{ fontSize: 14, color: '#374151' }}>Remember me</Text>
             </TouchableOpacity>
             <TouchableOpacity>
-              <Text style={{ fontSize: 14, color: '#4f6ef7', fontWeight: '600' }}>Forgot password?</Text>
+              <Text style={{ fontSize: 14, color: '#4169E1', fontWeight: '600' }}>Forgot password?</Text>
             </TouchableOpacity>
           </View>
 
@@ -118,7 +119,7 @@ export default function SignInScreen({ onBack, onSignedIn, onGoToSignUp }: Props
             onPress={handleSignIn}
             disabled={loading}
             style={{
-              backgroundColor: loading ? '#93a5fb' : '#4f6ef7',
+              backgroundColor: loading ? '#879fd8' : '#4169E1',
               borderRadius: 16, paddingVertical: 18,
               alignItems: 'center', marginBottom: 20,
             }}
@@ -153,7 +154,7 @@ export default function SignInScreen({ onBack, onSignedIn, onGoToSignUp }: Props
           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 4 }}>
             <Text style={{ fontSize: 14, color: '#6b7280' }}>Don't have an account?</Text>
             <TouchableOpacity onPress={onGoToSignUp}>
-              <Text style={{ fontSize: 14, color: '#4f6ef7', fontWeight: '600' }}>Sign up</Text>
+              <Text style={{ fontSize: 14, color: '#4169E1', fontWeight: '600' }}>Sign up</Text>
             </TouchableOpacity>
           </View>
 

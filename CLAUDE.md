@@ -358,3 +358,19 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/data/courses.ts`** — Added `Timetable` type (`id`, `name`, `quarterKey`, `courses[]`) to support multiple named timetables per quarter.
 - **`App.tsx`** — Replaced `timetables: Record<string, Course[]>` with `timetables: Timetable[]` + `selectedTimetableId`. Added Supabase load on mount (`guest` user), `saveTimetable()` upsert, `createTimetable()` insert. `handleToggleCourse` now auto-creates a timetable if none exists for the quarter. Quarter change auto-selects the first timetable for the new quarter. New props passed to TimetableScreen: `quarterTimetables`, `activeTimetableId`, `onSelectTimetable`, `onCreateTimetable`.
 - **`src/screens/TimetableScreen.tsx`** — Added timetable switcher row below the header: named pill tabs for each timetable in the current quarter, plus a `+ New` button to create additional ones.
+
+### Session 25
+- **`src/screens/FriendsScreen.tsx`** — Redesigned friends list to match Figma: white background, search bar, Friends/Requests tab switcher, new friend row layout (blue circle avatar with 2-letter initials, name + major•year subtitle, Timetable pill button, send circle button, separator lines). Added `major` and `year` fields to `Friend` type. Add friend modal now includes major and year inputs. `getInitials()` helper extracts first+last initials from name.
+- **`App.tsx`** — Added `'board'` tab between Grades and Friends. Updated tab icons: Grades uses `school-outline`, Board uses `clipboard-outline`, Friends uses `person-add-outline`.
+- **`src/screens/BoardScreen.tsx`** — Created. Community board with search bar, category filter chips (All/Sports/Study Groups/Marketplace/Club Promotions), Recent/Popular sort toggle, and mock post cards. Each post shows avatar with initials, name/role/time, category tag, title, body, and tappable like/comment counts.
+
+### Session 26
+### Session 27
+- **`src/screens/WelcomeScreen.tsx`** — Created. Landing screen with blue calendar app icon + purple book badge, "Welcome to UniTrack" title, Sign In and Create Account buttons, guest shortcut buttons (guest/guest2/guest3/guest4), and Terms footer.
+- **`src/screens/SignInScreen.tsx`** — Created. Sign in form with email + password inputs (with icons), password visibility toggle, remember me checkbox, Forgot password link, Sign In button, OR divider, Continue with Google button, and Sign up link. Sign-in is a placeholder (no real Supabase auth yet).
+- **`App.tsx`** — Added `userId` and `authScreen` state. App shows WelcomeScreen or SignInScreen when not logged in. Guest buttons set `userId` directly and skip auth. `USER_ID` is now derived from state instead of hardcoded. Timetable load now only triggers when `userId` is set.
+
+- **`src/screens/HomeScreen.tsx`** — Full redesign to match Figma.
+
+### Session 28
+- **`src/screens/GradesScreen.tsx`** — Full redesign. Stats row (GPA/Credits/Courses). Animated GPA trend chart: line draws left-to-right on mount using a ClipPath whose width is driven by an `Animated.Value` listener updating React state. Smooth bezier curve via cubic control points. Current quarter courses show grade badge (tap to pick) or "Select Grade" button; grade picker is a bottom-sheet modal. Past Semesters section with collapsible semester cards (LayoutAnimation expand/collapse). GPA is computed from all graded courses weighted by credits. New sections: (1) Header with date + week number (computed from Spring 2026 quarter start Mar 30); (2) "Your Day" card with class count, rotating quote, and "Coming Up" next class with left accent bar; (3) Weather card with indigo tinted background, large temp, cloud icon; (4) Campus Events card with icon badges, event title/time/location, separator lines. Removed old briefing text, stat grid, and quick action buttons.

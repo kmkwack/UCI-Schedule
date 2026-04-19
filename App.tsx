@@ -6,13 +6,18 @@ import TimetableScreen from './src/screens/TimetableScreen';
 import GradesScreen from './src/screens/GradesScreen';
 import CoursePickerScreen from './src/screens/CoursePickerScreen';
 import FriendsScreen from './src/screens/FriendsScreen';
+import BoardScreen from './src/screens/BoardScreen';
+import WelcomeScreen from './src/screens/WelcomeScreen';
+import SignInScreen from './src/screens/SignInScreen';
 import { Course, Quarter, Timetable, quarterKey } from './src/data/courses';
 import { supabase } from './src/lib/supabase';
 
-const USER_ID = 'guest'; // placeholder until auth is added
+type AuthScreen = 'welcome' | 'signin';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'friends'>('home');
+  const [userId, setUserId] = useState<string | null>(null);
+  const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
+  const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'board' | 'friends'>('home');
   const [showCoursePicker, setShowCoursePicker] = useState(false);
   const [renderCoursePicker, setRenderCoursePicker] = useState(false);
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter>({ year: '2026', quarter: 'Spring' });
@@ -26,8 +31,11 @@ export default function App() {
   const activeTimetable = quarterTimetables.find((t) => t.id === selectedTimetableId) ?? quarterTimetables[0] ?? null;
   const activeCourses = activeTimetable?.courses ?? [];
 
-  // Load all timetables from Supabase on mount
+  const USER_ID = userId ?? 'guest';
+
+  // Load all timetables from Supabase on mount (or when user logs in)
   useEffect(() => {
+    if (!userId) return;
     async function load() {
       const { data, error } = await supabase
         .from('timetables')
@@ -53,7 +61,7 @@ export default function App() {
     }
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userId]);
 
   async function saveTimetable(t: Timetable) {
     const { error } = await supabase.from('timetables').upsert({
@@ -154,6 +162,29 @@ export default function App() {
     });
   }, [pickerTranslateY, showCoursePicker]);
 
+  // ── auth screens ─────────────────────────────────────────────────────────────
+
+  if (!userId) {
+    if (authScreen === 'welcome') {
+      return (
+        <WelcomeScreen
+          onSignIn={() => setAuthScreen('signin')}
+          onCreateAccount={() => setAuthScreen('signin')}
+          onGuest={(id) => setUserId(id)}
+        />
+      );
+    }
+    return (
+      <SignInScreen
+        onBack={() => setAuthScreen('welcome')}
+        onSignedIn={(id) => setUserId(id)}
+        onGoToSignUp={() => {}}
+      />
+    );
+  }
+
+  // ── main app ──────────────────────────────────────────────────────────────────
+
   let content = null;
 
   if (currentTab === 'home') {
@@ -183,6 +214,8 @@ export default function App() {
     );
   } else if (currentTab === 'grades') {
     content = <GradesScreen activeCourses={activeCourses} />;
+  } else if (currentTab === 'board') {
+    content = <BoardScreen />;
   } else if (currentTab === 'friends') {
     content = (
       <View style={{ flex: 1, paddingTop: 60, backgroundColor: '#f7f8fa' }}>
@@ -236,8 +269,9 @@ export default function App() {
       >
         <TabItem label="Home" icon="home-outline" active={currentTab === 'home'} onPress={() => setCurrentTab('home')} />
         <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => setCurrentTab('timetable')} />
-        <TabItem label="Grades" icon="bar-chart-outline" active={currentTab === 'grades'} onPress={() => setCurrentTab('grades')} />
-        <TabItem label="Friends" icon="people-outline" active={currentTab === 'friends'} onPress={() => setCurrentTab('friends')} />
+        <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => setCurrentTab('grades')} />
+        <TabItem label="Board" icon="clipboard-outline" active={currentTab === 'board'} onPress={() => setCurrentTab('board')} />
+        <TabItem label="Friends" icon="person-add-outline" active={currentTab === 'friends'} onPress={() => setCurrentTab('friends')} />
       </View>
 
       {renderCoursePicker && (

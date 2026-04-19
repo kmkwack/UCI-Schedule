@@ -249,7 +249,7 @@ export default function App() {
     );
   } else if (currentTab === 'timetable') {
     content = (
-      <View style={{ flex: 1, paddingTop: 60 }}>
+      <View style={{ flex: 1, paddingTop: 60, backgroundColor: timetableSettings.theme === 'dark' ? '#0f172a' : '#fff' }}>
         <TimetableScreen
           activeCourses={activeCourses}
           selectedQuarter={selectedQuarter}

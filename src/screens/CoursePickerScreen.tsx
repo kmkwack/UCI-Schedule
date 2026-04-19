@@ -161,6 +161,13 @@ export default function CoursePickerScreen({
               units: row.units?.toString(),
             };
             rawSections[courseId] = [];
+          } else {
+            // Use the highest unit count seen across all sections (Dis sections are often 0)
+            const existing = parseInt(catalogMap[courseId].units ?? '0') || 0;
+            const incoming = row.units ?? 0;
+            if (incoming > existing) {
+              catalogMap[courseId].units = incoming.toString();
+            }
           }
           rawSections[courseId].push(row);
         });

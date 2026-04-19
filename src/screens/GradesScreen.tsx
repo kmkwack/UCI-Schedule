@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import Svg, { Path, Circle, Line, Defs, ClipPath, G } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, Timetable, QUARTERS, quarterKey, quarterLabel } from '../data/courses';
+import { Course, Quarter, Timetable, quarterKey, quarterLabel } from '../data/courses';
 import { supabase } from '../lib/supabase';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -396,22 +396,43 @@ export default function GradesScreen({ timetables, userId }: Props) {
     if (error) console.error('Failed to save grade:', error);
   }
 
-  // Past quarters: quarters before the current quarter in QUARTERS order that have a timetable with courses
-  const pastQuarterItems = useMemo(() => {
-    const currentIdx = QUARTERS.findIndex(q => quarterKey(q) === CURRENT_QK);
-    if (currentIdx <= 0) return [];
+  // Past quarters: any timetable whose quarter key is before Spring 2026, derived from timetables directly
+  const QORDER_MAP: Record<string, number> = { Winter: 0, Spring: 1, Fall: 2 };
 
-    return QUARTERS.slice(0, currentIdx)
-      .map(q => {
-        const qk = quarterKey(q);
-        const tt = timetables.find(t => t.quarterKey === qk && t.courses.length > 0);
-        if (!tt) return null;
-        const courses = tt.courses.filter(c => (c.units ?? 0) > 0);
-        if (courses.length === 0) return null;
-        return { label: quarterLabel(q), qk, courses };
-      })
-      .filter((x): x is { label: string; qk: string; courses: Course[] } => x !== null)
-      .reverse(); // most recent first
+  function parseQk(qk: string): Quarter {
+    const dash = qk.indexOf('-');
+    return { year: qk.slice(0, dash), quarter: qk.slice(dash + 1) };
+  }
+
+  function isBeforeCurrent(qk: string): boolean {
+    const q = parseQk(qk);
+    const curYear = parseInt(CURRENT_QUARTER.year);
+    const qYear   = parseInt(q.year);
+    if (qYear !== curYear) return qYear < curYear;
+    return QORDER_MAP[q.quarter] < QORDER_MAP[CURRENT_QUARTER.quarter];
+  }
+
+  const pastQuarterItems = useMemo(() => {
+    const pastQks = Array.from(new Set(
+      timetables.filter(t => isBeforeCurrent(t.quarterKey)).map(t => t.quarterKey)
+    ));
+
+    // Sort most recent first
+    pastQks.sort((a, b) => {
+      const qa = parseQk(a), qb = parseQk(b);
+      const yearDiff = parseInt(qb.year) - parseInt(qa.year);
+      if (yearDiff !== 0) return yearDiff;
+      return QORDER_MAP[qb.quarter] - QORDER_MAP[qa.quarter];
+    });
+
+    return pastQks.map(qk => {
+      const q = parseQk(qk);
+      const tt = timetables.find(t => t.quarterKey === qk && t.courses.length > 0);
+      if (!tt) return null;
+      const courses = tt.courses.filter(c => (c.units ?? 0) > 0);
+      if (courses.length === 0) return null;
+      return { label: quarterLabel(q), qk, courses };
+    }).filter((x): x is { label: string; qk: string; courses: Course[] } => x !== null);
   }, [timetables]);
 
   // Effective units: use local override if set, otherwise fall back to Supabase value

@@ -857,7 +857,7 @@ export default function TimetableScreen({
                             style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 1 }}
                             numberOfLines={1}
                           >
-                            Prof. {getProfLastName(course.professor)}
+                            {getProfLastName(course.professor)}
                           </Text>
                         )}
                         {showTime && (
@@ -909,7 +909,7 @@ export default function TimetableScreen({
                         )}
                         {showInstructor && (
                           <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
-                            Prof. {getProfLastName(course.professor)}
+                            {getProfLastName(course.professor)}
                           </Text>
                         )}
                         <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>

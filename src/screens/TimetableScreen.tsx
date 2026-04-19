@@ -690,6 +690,54 @@ export default function TimetableScreen({
         </View>
       </View>
 
+      {/* TBA / Online courses — above the grid */}
+      {tbaCourses.length > 0 && (
+        <View style={{
+          paddingHorizontal: 16, paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: theme === 'dark' ? '#1e293b' : '#ececec',
+          backgroundColor: theme === 'dark' ? '#0f172a' : '#fff',
+        }}>
+<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {tbaCourses.map((course) => {
+              const { bg, text, border } = getBlockColors(course, theme);
+              return (
+                <TouchableOpacity
+                  key={course.id}
+                  activeOpacity={0.85}
+                  onPress={() => onFocusCourse(course.id)}
+                  style={{
+                    backgroundColor: bg, borderRadius: 8,
+                    borderWidth: 1, borderColor: border,
+                    paddingHorizontal: 10, paddingVertical: 8,
+                    minWidth: 100, maxWidth: 160,
+                  }}
+                >
+                  {showCode && (
+                    <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1}>
+                      {course.code}
+                    </Text>
+                  )}
+                  {showClassName && (
+                    <Text style={{ color: text, fontWeight: '600', fontSize: 9, lineHeight: 12, opacity: 0.85 }} numberOfLines={2}>
+                      {course.title}
+                    </Text>
+                  )}
+                  {showInstructor && (
+                    <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
+                      {getProfLastName(course.professor)}
+                    </Text>
+                  )}
+                  <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
+                    {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       {/* Grid container */}
       <View
         style={{ flex: 1 }}
@@ -875,53 +923,7 @@ export default function TimetableScreen({
               </View>
             </View>
 
-            {/* TBA courses — below the grid, no divider */}
-            {tbaCourses.length > 0 && (
-              <View style={{ paddingLeft: GRID_LEFT_PAD + TIME_LABEL_WIDTH, paddingRight: 16, paddingTop: 12, paddingBottom: 24 }}>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {tbaCourses.map((course) => {
-                    const { bg, text, border } = getBlockColors(course, theme);
-                    return (
-                      <TouchableOpacity
-                        key={course.id}
-                        activeOpacity={0.85}
-                        onPress={() => onFocusCourse(course.id)}
-                        style={{
-                          backgroundColor: bg,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: border,
-                          paddingHorizontal: 10,
-                          paddingVertical: 8,
-                          minWidth: 100,
-                          maxWidth: 160,
-                        }}
-                      >
-                        {showCode && (
-                          <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1}>
-                            {course.code}
-                          </Text>
-                        )}
-                        {showClassName && (
-                          <Text style={{ color: text, fontWeight: '600', fontSize: 9, lineHeight: 12, opacity: 0.85 }} numberOfLines={2}>
-                            {course.title}
-                          </Text>
-                        )}
-                        {showInstructor && (
-                          <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
-                            {getProfLastName(course.professor)}
-                          </Text>
-                        )}
-                        <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
-                          TBA
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-            </View>
+</View>
           </ScrollView>
         </ScrollView>
         </View>

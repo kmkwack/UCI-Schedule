@@ -152,7 +152,7 @@ export default function TimetableScreen({
 
   const totalHours = displayEndHour - displayStartHour;
   const HOUR_HEIGHT = 72; // fixed px per hour — always taller than viewport → enables scrolling
-  const timetableHeight = totalHours * HOUR_HEIGHT;
+  const timetableHeight = totalHours * HOUR_HEIGHT + HOUR_HEIGHT; // extra row so last label isn't clipped
   const hourHeight = HOUR_HEIGHT;
   const hourLabels = Array.from({ length: totalHours + 1 }, (_, i) => displayStartHour + i);
 

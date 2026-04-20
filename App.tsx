@@ -65,10 +65,15 @@ export default function App() {
 
       setTimetables(loaded);
 
-      // Auto-select first timetable for the default quarter
-      const forCurrentQuarter = loaded.filter((t) => t.quarterKey === activeKey);
-      if (forCurrentQuarter.length > 0) {
-        setSelectedTimetableId(forCurrentQuarter[0].id);
+      if (loaded.length === 0) {
+        // New user — bootstrap with an empty 'My Schedule' for the current quarter
+        await createTimetable(activeKey, 'My Schedule');
+      } else {
+        // Auto-select first timetable for the default quarter
+        const forCurrentQuarter = loaded.filter((t) => t.quarterKey === activeKey);
+        if (forCurrentQuarter.length > 0) {
+          setSelectedTimetableId(forCurrentQuarter[0].id);
+        }
       }
     }
     load();
@@ -151,8 +156,9 @@ export default function App() {
     const qk = quarterKey(q);
     setSelectedQuarter(q);
     const existing = timetables.filter((t) => t.quarterKey === qk);
-    if (existing.length > 0) {
-      setSelectedTimetableId(existing[0].id);
+    const mySchedule = existing.find((t) => t.name === 'My Schedule');
+    if (mySchedule) {
+      setSelectedTimetableId(mySchedule.id);
     } else {
       await createTimetable(qk, 'My Schedule');
     }

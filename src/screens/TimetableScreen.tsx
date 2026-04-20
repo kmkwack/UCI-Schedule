@@ -477,7 +477,7 @@ export default function TimetableScreen({
               overflow: 'hidden',
             }}
           >
-            {Array.from(new Set(timetables.map((t) => t.quarterKey)))
+            {Array.from(new Set([quarterKey(selectedQuarter), ...timetables.map((t) => t.quarterKey)]))
               .sort((a, b) => {
                 const QORDER: Record<string, number> = { Winter: 0, Spring: 1, Fall: 2 };
                 const [aYear, aQ] = a.split('-');
@@ -538,8 +538,9 @@ export default function TimetableScreen({
             }}
           >
             <TouchableOpacity
-              onPress={() => { setShowAddMenu(false); onOpenCoursePicker(); }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 15 }}
+              onPress={() => { if (timetables.length > 0) { setShowAddMenu(false); onOpenCoursePicker(); } }}
+              disabled={timetables.length === 0}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 15, opacity: timetables.length === 0 ? 0.35 : 1 }}
             >
               <Ionicons name="add" size={19} color="#374151" />
               <Text style={{ fontSize: 15, color: '#111827', fontWeight: '500' }}>Add Course</Text>
@@ -830,7 +831,7 @@ export default function TimetableScreen({
               }}
             >
               <Text style={{ fontSize: 13, fontWeight: '600', color: theme === 'dark' ? '#e2e8f0' : '#374151' }}>
-                {quarterLabel(selectedQuarter)}
+                {timetables.length === 0 ? '--' : quarterLabel(selectedQuarter)}
               </Text>
               <Ionicons name="chevron-down" size={14} color={theme === 'dark' ? '#94a3b8' : '#6b7280'} />
             </TouchableOpacity>
@@ -848,9 +849,13 @@ export default function TimetableScreen({
         </View>
 
         {/* Row 2: Plan tabs + + Add */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 8 }}>
-          <View
-            style={{ flex: 1, flexDirection: 'row', flexWrap: 'nowrap', gap: 8, alignItems: 'center' }}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={!draggingId}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingRight: 4 }}
             {...pillPanResponder.panHandlers}
           >
             {orderedTimetables.map((t) => {
@@ -894,8 +899,8 @@ export default function TimetableScreen({
                 </Animated.View>
               );
             })}
-          </View>
-          <TouchableOpacity onPress={() => setShowAddMenu(true)} style={{ paddingVertical: 7 }}>
+          </ScrollView>
+          <TouchableOpacity onPress={() => setShowAddMenu(true)} style={{ paddingVertical: 7, paddingLeft: 8 }}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: '#4169E1' }}>+ Add</Text>
           </TouchableOpacity>
         </View>

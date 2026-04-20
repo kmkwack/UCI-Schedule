@@ -35,6 +35,25 @@ type CatalogCourse = {
 };
 
 
+type SectionEnrollment = {
+  status: string;          // "OPEN" | "Waitl" | "FULL" | "NewOnly"
+  enrolled: number;
+  capacity: number;
+  waitlist: number;
+  waitlistCap: number;
+};
+
+type GradeDistribution = {
+  averageGPA: number | null;
+  gradeACount: number;
+  gradeBCount: number;
+  gradeCCount: number;
+  gradeDCount: number;
+  gradeFCount: number;
+  gradePCount: number;
+  gradeNPCount: number;
+};
+
 type CourseReview = {
   id: string;
   author: string;
@@ -108,7 +127,12 @@ export default function CoursePickerScreen({
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
   const [sectionsMap, setSectionsMap] = useState<Record<string, Course[]>>({});
   const [previewCourse, setPreviewCourse] = useState<Course | null>(null);
+  const [enrollmentCache, setEnrollmentCache] = useState<Record<string, SectionEnrollment>>({});
+  const [enrollmentLoadingIds, setEnrollmentLoadingIds] = useState<Set<string>>(new Set());
   const [reviewsCourse, setReviewsCourse] = useState<CatalogCourse | null>(null);
+  const [reviewsInstructor, setReviewsInstructor] = useState<string>('');
+  const [gradesCache, setGradesCache] = useState<Record<string, GradeDistribution | null>>({});
+  const [gradeLoading, setGradeLoading] = useState(false);
   const [showWriteReview, setShowWriteReview] = useState(false);
   const [newReviewRating, setNewReviewRating] = useState(5);
   const [newReviewDifficulty, setNewReviewDifficulty] = useState(3);
@@ -205,6 +229,71 @@ export default function CoursePickerScreen({
       .finally(() => setCatalogLoading(false));
   }, [selectedDept, selectedQuarter]);
 
+  // Reset instructor selection when a different course's reviews are opened
+  useEffect(() => {
+    setReviewsInstructor('');
+  }, [reviewsCourse]);
+
+  // Fetch grade distribution from Anteater API (with client-side cache)
+  useEffect(() => {
+    if (!reviewsCourse) return;
+    const { department, courseNumber } = reviewsCourse;
+    const instructor = reviewsInstructor || undefined;
+    const cacheKey = `${department}${courseNumber}${instructor ?? ''}`;
+    if (cacheKey in gradesCache) return;
+
+    setGradeLoading(true);
+    const params = new URLSearchParams({ department, courseNumber });
+    if (instructor) params.append('instructor', instructor);
+
+    fetch(`https://anteaterapi.com/v2/rest/grades/aggregate?${params}`)
+      .then((r) => r.json())
+      .then((json) => {
+        const dist: GradeDistribution | null = json?.data?.gradeDistribution ?? null;
+        setGradesCache((prev) => ({ ...prev, [cacheKey]: dist }));
+      })
+      .catch(() => setGradesCache((prev) => ({ ...prev, [cacheKey]: null })))
+      .finally(() => setGradeLoading(false));
+  }, [reviewsCourse, reviewsInstructor]);
+
+  const fetchEnrollment = async (course: CatalogCourse) => {
+    if (enrollmentLoadingIds.has(course.id)) return;
+    // Check if all sections for this course are already cached
+    const sections = sectionsMap[course.id] ?? [];
+    if (sections.length > 0 && sections.every((s) => s.id in enrollmentCache)) return;
+
+    setEnrollmentLoadingIds((prev) => new Set(prev).add(course.id));
+    try {
+      const { year, quarter } = selectedQuarter;
+      const url = `https://anteaterapi.com/v2/rest/websoc?department=${encodeURIComponent(course.department)}&courseNumber=${encodeURIComponent(course.courseNumber)}&year=${year}&quarter=${quarter}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (!json.ok) return;
+
+      const updates: Record<string, SectionEnrollment> = {};
+      for (const school of json.data?.schools ?? []) {
+        for (const dept of school.departments ?? []) {
+          for (const c of dept.courses ?? []) {
+            for (const s of c.sections ?? []) {
+              updates[s.sectionCode] = {
+                status: s.status ?? 'OPEN',
+                enrolled: parseInt(s.numCurrentlyEnrolled?.totalEnrolled ?? '0') || 0,
+                capacity: parseInt(s.maxCapacity ?? '0') || 0,
+                waitlist: parseInt(s.numOnWaitlist ?? '0') || 0,
+                waitlistCap: parseInt(s.numWaitlistCap ?? '0') || 0,
+              };
+            }
+          }
+        }
+      }
+      setEnrollmentCache((prev) => ({ ...prev, ...updates }));
+    } catch (_) {
+      // silently fail — section rows just won't show status
+    } finally {
+      setEnrollmentLoadingIds((prev) => { const s = new Set(prev); s.delete(course.id); return s; });
+    }
+  };
+
   const handleExpandCourse = (course: CatalogCourse) => {
     if (expandedCourseId === course.id) {
       setExpandedCourseId(null);
@@ -212,6 +301,7 @@ export default function CoursePickerScreen({
     } else {
       setExpandedCourseId(course.id);
       setPreviewCourse(null);
+      fetchEnrollment(course);
     }
   };
 
@@ -503,6 +593,16 @@ export default function CoursePickerScreen({
                         sections.map((course) => {
                           const isAdded = activeCourses.some((c) => c.id === course.id);
                           const isPreviewing = previewCourse?.id === course.id;
+                          const enroll = enrollmentCache[course.id];
+                          const statusColor = !enroll ? '#9ca3af'
+                            : enroll.status === 'OPEN' ? '#16a34a'
+                            : enroll.status === 'Waitl' ? '#d97706'
+                            : '#dc2626';
+                          const statusLabel = !enroll ? null
+                            : enroll.status === 'OPEN' ? 'Open'
+                            : enroll.status === 'Waitl' ? 'Waitlist'
+                            : enroll.status === 'NewOnly' ? 'New Only'
+                            : 'Full';
 
                           return (
                             <TouchableOpacity
@@ -520,12 +620,25 @@ export default function CoursePickerScreen({
                             >
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                                 <View style={{ flex: 1 }}>
-                                  <Text style={{ fontWeight: '600', fontSize: 13, color: '#111827' }}>
-                                    {course.id} · {course.sectionLabel ?? course.id}
-                                  </Text>
-                                  <Text style={{ color: '#4b5563', fontSize: 13, marginTop: 3 }}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                                    <Text style={{ fontWeight: '600', fontSize: 13, color: '#111827' }}>
+                                      {course.id} · {course.sectionLabel ?? course.id}
+                                    </Text>
+                                    {statusLabel && (
+                                      <View style={{ backgroundColor: `${statusColor}18`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                                        <Text style={{ fontSize: 11, fontWeight: '700', color: statusColor }}>{statusLabel}</Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                  <Text style={{ color: '#4b5563', fontSize: 13, marginTop: 1 }}>
                                     {course.professor}
                                   </Text>
+                                  {enroll && (
+                                    <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>
+                                      {enroll.enrolled}/{enroll.capacity} enrolled
+                                      {enroll.status === 'Waitl' ? ` · ${enroll.waitlist}/${enroll.waitlistCap} waitlist` : ''}
+                                    </Text>
+                                  )}
                                   {course.units != null && (
                                     <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>
                                       {course.units} {course.units === 1 ? 'unit' : 'units'}
@@ -565,12 +678,12 @@ export default function CoursePickerScreen({
                                       }}
                                       style={{
                                         paddingHorizontal: 10, paddingVertical: 5,
-                                        borderRadius: 999, borderWidth: 1, borderColor: '#e5e7eb',
+                                        borderRadius: 999, backgroundColor: '#4169E1',
                                         alignSelf: 'flex-end',
                                       }}
                                       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                     >
-                                      <Text style={{ fontSize: 11, color: '#6b7280', fontWeight: '600' }}>Reviews</Text>
+                                      <Text style={{ fontSize: 11, color: 'white', fontWeight: '600' }}>Reviews</Text>
                                     </TouchableOpacity>
                                   )}
                                 </View>
@@ -602,7 +715,7 @@ export default function CoursePickerScreen({
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
             <View style={{
               backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-              maxHeight: '90%',
+              maxHeight: '90%', flex: 1,
             }}>
 
               {/* ── Reviews list view ── */}
@@ -624,21 +737,111 @@ export default function CoursePickerScreen({
                         <Ionicons name="close" size={22} color="#6b7280" />
                       </TouchableOpacity>
                     </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
-                      <View style={{ flexDirection: 'row', gap: 2 }}>
-                        {[1,2,3,4,5].map(i => (
-                          <Ionicons key={i} name={i <= 4 ? 'star' : 'star-half'} size={16} color="#f59e0b" />
-                        ))}
-                      </View>
-                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>4.3</Text>
-                      <Text style={{ fontSize: 13, color: '#9ca3af' }}>
-                        {MOCK_REVIEWS.length + extraReviews.length} reviews
-                      </Text>
-                    </View>
                   </View>
 
-                  {/* Reviews list */}
-                  <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 16 }}>
+                  <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
+                    {/* ── Grade Distribution ── */}
+                    {reviewsCourse && (() => {
+                      const professors = [...new Set(
+                        (sectionsMap[reviewsCourse.id] ?? [])
+                          .map((s) => s.professor)
+                          .filter((p) => p && !p.includes('STAFF'))
+                      )];
+                      const cacheKey = `${reviewsCourse.department}${reviewsCourse.courseNumber}${reviewsInstructor}`;
+                      const grades = gradesCache[cacheKey];
+                      const allEntries = grades ? [
+                        { label: 'A', count: grades.gradeACount, color: '#22c55e' },
+                        { label: 'B', count: grades.gradeBCount, color: '#4169E1' },
+                        { label: 'C', count: grades.gradeCCount, color: '#f59e0b' },
+                        { label: 'D', count: grades.gradeDCount, color: '#f97316' },
+                        { label: 'F', count: grades.gradeFCount, color: '#ef4444' },
+                        { label: 'P', count: grades.gradePCount, color: '#14b8a6' },
+                        { label: 'NP', count: grades.gradeNPCount, color: '#9ca3af' },
+                      ].filter((e) => e.count > 0) : [];
+                      const total = allEntries.reduce((s, e) => s + e.count, 0);
+                      return (
+                        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 10 }}>Grade Distribution</Text>
+                          {/* Professor selector */}
+                          {professors.length > 0 && (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {['', ...professors].map((p) => {
+                              const isSelected = reviewsInstructor === p;
+                              return (
+                                <TouchableOpacity
+                                  key={p || '__all__'}
+                                  onPress={() => setReviewsInstructor(p)}
+                                  style={{
+                                    paddingHorizontal: 12, paddingVertical: 7,
+                                    borderRadius: 999,
+                                    backgroundColor: isSelected ? '#4169E1' : '#f3f4f6',
+                                    borderWidth: 1,
+                                    borderColor: isSelected ? '#4169E1' : '#e5e7eb',
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 12, fontWeight: '600', color: isSelected ? 'white' : '#374151' }}>
+                                    {p === '' ? 'All Professors' : p.split(',')[0]}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </ScrollView>
+                          )}
+                          {/* Chart */}
+                          {gradeLoading ? (
+                            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                              <ActivityIndicator size="small" color="#4169E1" />
+                            </View>
+                          ) : !grades || allEntries.length === 0 ? (
+                            <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', paddingVertical: 12 }}>
+                              No grade data available
+                            </Text>
+                          ) : (
+                            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+                              <View style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f4ff', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, minWidth: 72 }}>
+                                <Text style={{ fontSize: 26, fontWeight: '800', color: '#4169E1' }}>
+                                  {grades.averageGPA != null ? grades.averageGPA.toFixed(2) : '—'}
+                                </Text>
+                                <Text style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>avg GPA</Text>
+                              </View>
+                              <View style={{ flex: 1, gap: 5 }}>
+                                {allEntries.map((entry) => {
+                                  const pct = total > 0 ? entry.count / total : 0;
+                                  return (
+                                    <View key={entry.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#374151', width: 18, textAlign: 'right' }}>{entry.label}</Text>
+                                      <View style={{ flex: 1, height: 10, backgroundColor: '#f3f4f6', borderRadius: 5, overflow: 'hidden' }}>
+                                        <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: entry.color, borderRadius: 5 }} />
+                                      </View>
+                                      <Text style={{ fontSize: 11, color: '#6b7280', width: 34, textAlign: 'right' }}>{(pct * 100).toFixed(0)}%</Text>
+                                    </View>
+                                  );
+                                })}
+                                <Text style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>
+                                  Based on {total.toLocaleString()} students · all available terms
+                                </Text>
+                              </View>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })()}
+
+                    {/* ── Student reviews ── */}
+                    <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                        <View style={{ flexDirection: 'row', gap: 2 }}>
+                          {[1,2,3,4,5].map(i => (
+                            <Ionicons key={i} name={i <= 4 ? 'star' : 'star-half'} size={16} color="#f59e0b" />
+                          ))}
+                        </View>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>4.3</Text>
+                        <Text style={{ fontSize: 13, color: '#9ca3af' }}>
+                          {MOCK_REVIEWS.length + extraReviews.length} reviews
+                        </Text>
+                      </View>
                     {[...MOCK_REVIEWS, ...extraReviews].map((review) => (
                       <View key={review.id} style={{ backgroundColor: '#f9fafb', borderRadius: 14, padding: 14, marginBottom: 10 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -666,6 +869,7 @@ export default function CoursePickerScreen({
                         </View>
                       </View>
                     ))}
+                    </View>
                   </ScrollView>
 
                   {/* Footer */}

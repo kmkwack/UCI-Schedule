@@ -1,8 +1,14 @@
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+import { supabase } from '../lib/supabase';
 import type { University } from './UniversitySelectionScreen';
+
+WebBrowser.maybeCompleteAuthSession();
 
 type Props = {
   university: University;
@@ -24,6 +30,49 @@ function GoogleIcon() {
 }
 
 export default function SignInScreen({ university, onBack, onSignedIn, onGoToSignUp, onGuest }: Props) {
+  const [loading, setLoading] = useState(false);
+  const hd = university.domain.replace('@', ''); // e.g. "uci.edu"
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    // Always sign out first so there's no auto-login from a persisted session
+    await supabase.auth.signOut();
+
+    const redirectTo = Linking.createURL('auth/callback');
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo, queryParams: { hd, prompt: 'select_account' }, skipBrowserRedirect: true },
+    });
+    if (error || !data.url) {
+      setLoading(false);
+      Alert.alert('Sign-in failed', error?.message ?? 'Could not start sign-in');
+      return;
+    }
+    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+    setLoading(false);
+    if (result.type !== 'success') return;
+
+    const url = result.url;
+    const params = new URLSearchParams(url.split('#')[1] ?? url.split('?')[1] ?? '');
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    if (!accessToken) { Alert.alert('Sign-in failed', 'No token returned.'); return; }
+
+    const { data: sd, error: se } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken ?? '',
+    });
+    if (se || !sd.user) { Alert.alert('Sign-in failed', se?.message ?? 'Unknown error'); return; }
+
+    const email = sd.user.email ?? '';
+    if (!email.endsWith(hd)) {
+      await supabase.auth.signOut();
+      Alert.alert('Wrong account', `Please sign in with your ${university.domain} email.`);
+      return;
+    }
+    onSignedIn(sd.user.id);
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
       {/* Header */}
@@ -87,7 +136,8 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
 
         {/* Continue with Google */}
         <TouchableOpacity
-          onPress={() => onSignedIn('google-user')}
+          onPress={handleGoogleSignIn}
+          disabled={loading}
           style={{
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
             backgroundColor: 'white', borderRadius: 16,
@@ -95,9 +145,10 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
             borderWidth: 1.5, borderColor: '#e5e7eb',
             shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
             shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+            opacity: loading ? 0.6 : 1,
           }}
         >
-          <GoogleIcon />
+          {loading ? <ActivityIndicator size="small" color="#4169E1" /> : <GoogleIcon />}
           <Text style={{ fontSize: 16, fontWeight: '500', color: '#111827' }}>Continue with Google</Text>
         </TouchableOpacity>
 

@@ -3,6 +3,7 @@ export type Timetable = {
   name: string;       // e.g. "Plan A", "My Schedule"
   quarterKey: string; // e.g. "2026-Spring"
   courses: Course[];
+  order: number;      // display order within the quarter (0-based)
 };
 
 export type TimetableTheme = 'default' | 'minimal' | 'colorful' | 'dark';

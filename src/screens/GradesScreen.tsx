@@ -359,7 +359,7 @@ function PastQuarterSection({
 // ── main screen ───────────────────────────────────────────────────────────────
 
 export default function GradesScreen({ timetables, userId }: Props) {
-  const currentTimetable = timetables.find(t => t.quarterKey === CURRENT_QK) ?? null;
+  const currentTimetable = timetables.find(t => t.quarterKey === CURRENT_QK && t.name === 'My Schedule') ?? null;
   const activeCourses = currentTimetable?.courses ?? [];
   const [grades, setGrades] = useState<Record<string, string>>({});
   const [unitOverrides, setUnitOverrides] = useState<Record<string, number>>({});
@@ -427,7 +427,7 @@ export default function GradesScreen({ timetables, userId }: Props) {
 
     return pastQks.map(qk => {
       const q = parseQk(qk);
-      const tt = timetables.find(t => t.quarterKey === qk && t.courses.length > 0);
+      const tt = timetables.find(t => t.quarterKey === qk && t.name === 'My Schedule' && t.courses.length > 0);
       if (!tt) return null;
       const courses = tt.courses.filter(c => (c.units ?? 0) > 0);
       if (courses.length === 0) return null;
@@ -569,7 +569,7 @@ export default function GradesScreen({ timetables, userId }: Props) {
               grades={grades}
               unitOverrides={unitOverrides}
               onEditGrade={setPickerCourseId}
-              defaultExpanded={idx === 0}
+              defaultExpanded={false}
             />
           ))}
         </>

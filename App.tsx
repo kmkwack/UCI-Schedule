@@ -53,12 +53,15 @@ export default function App() {
 
       if (error) { console.error('Failed to load timetables:', error); return; }
 
-      const loaded: Timetable[] = (data ?? []).map((row: any) => ({
-        id: row.id,
-        name: row.name,
-        quarterKey: row.quarter_key,
-        courses: row.courses as Course[],
-      }));
+      const loaded: Timetable[] = (data ?? [])
+        .map((row: any, i: number) => ({
+          id: row.id,
+          name: row.name,
+          quarterKey: row.quarter_key,
+          courses: row.courses as Course[],
+          order: row.order ?? i,
+        }))
+        .sort((a: Timetable, b: Timetable) => a.order - b.order);
 
       setTimetables(loaded);
 
@@ -79,15 +82,17 @@ export default function App() {
       quarter_key: t.quarterKey,
       name: t.name,
       courses: t.courses,
+      order: t.order,
       updated_at: new Date().toISOString(),
     });
     if (error) console.error('Failed to save timetable:', error);
   }
 
   async function createTimetable(qKey: string, name: string): Promise<Timetable | null> {
+    const nextOrder = timetables.filter((t) => t.quarterKey === qKey).length;
     const { data, error } = await supabase
       .from('timetables')
-      .insert({ user_id: USER_ID, quarter_key: qKey, name, courses: [] })
+      .insert({ user_id: USER_ID, quarter_key: qKey, name, courses: [], order: nextOrder })
       .select()
       .single();
 
@@ -98,6 +103,7 @@ export default function App() {
       name: data.name,
       quarterKey: data.quarter_key,
       courses: [],
+      order: data.order ?? nextOrder,
     };
 
     setTimetables((prev) => [...prev, created]);
@@ -171,6 +177,23 @@ export default function App() {
       );
       setSelectedTimetableId(currentQTimetables.length > 0 ? currentQTimetables[0].id : null);
     }
+  };
+
+  const handleReorderTimetables = async (orderedIds: string[]) => {
+    const updated = timetables
+      .map((t) => {
+        const newOrder = orderedIds.indexOf(t.id);
+        return newOrder === -1 ? t : { ...t, order: newOrder };
+      })
+      .sort((a, b) => a.order - b.order);
+    setTimetables(updated);
+    await Promise.all(
+      orderedIds.map((id, newOrder) => {
+        const t = timetables.find((x) => x.id === id);
+        if (!t) return Promise.resolve();
+        return supabase.from('timetables').update({ order: newOrder }).eq('id', id);
+      })
+    );
   };
 
   const handleOpenMessages = (name: string) => {
@@ -275,6 +298,7 @@ export default function App() {
           onSelectTimetable={handleSelectTimetable}
           onCreateTimetable={handleCreateTimetable}
           onDeleteTimetable={handleDeleteTimetable}
+          onReorderTimetables={handleReorderTimetables}
           onAddQuarter={handleAddQuarter}
           settings={timetableSettings}
           onSettingsApply={setTimetableSettings}

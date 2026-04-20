@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
+import { Alert, Animated, LayoutAnimation, PanResponder, Platform, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, QUARTERS, quarterKey, quarterLabel, getBlockColors } from '../data/courses';
 import { supabase } from '../lib/supabase';
+import { captureRef } from 'react-native-view-shot';
+import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
 
 type Props = {
   activeCourses: Course[];
@@ -17,6 +20,7 @@ type Props = {
   timetables: Timetable[];
   onCreateTimetable: () => void;
   onDeleteTimetable: () => void;
+  onReorderTimetables: (orderedIds: string[]) => void;
   onAddQuarter: (q: Quarter) => void;
   settings: TimetableSettings;
   onSettingsApply: (s: TimetableSettings) => void;
@@ -24,7 +28,7 @@ type Props = {
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
 const DEFAULT_START_HOUR = 8;
-const DEFAULT_END_HOUR = 17;
+const DEFAULT_END_HOUR = 16;
 
 const TIME_LABEL_WIDTH = 44;
 const GRID_LEFT_PAD = 16;
@@ -88,6 +92,7 @@ export default function TimetableScreen({
   timetables,
   onCreateTimetable,
   onDeleteTimetable,
+  onReorderTimetables,
   onAddQuarter,
   settings,
   onSettingsApply,
@@ -116,7 +121,24 @@ export default function TimetableScreen({
 
   const horizontalScrollRef = useRef<ScrollView>(null);
   const verticalScrollRef = useRef<ScrollView>(null);
+  const timetableRef = useRef<View>(null);
   const screenWidth = Dimensions.get('window').width;
+
+  // Drag-to-reorder state for timetable pills
+  const [localOrder, setLocalOrder] = useState<string[]>([]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const localOrderRef = useRef<string[]>([]);
+  const dragIdRef = useRef<string | null>(null);
+  const dragTranslate = useRef(new Animated.Value(0)).current;
+  const dragScaleAnim = useRef(new Animated.Value(1)).current;
+  const pillXPos = useRef<Record<string, number>>({});
+  const pillWidthRef = useRef<Record<string, number>>({});
+  const dragOriginalFlexX = useRef(0);
+  const onReorderTimetablesRef = useRef(onReorderTimetables);
+  useEffect(() => { onReorderTimetablesRef.current = onReorderTimetables; }, [onReorderTimetables]);
+
+  // Enable LayoutAnimation on Android
+  if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
   const screenHeight = Dimensions.get('window').height;
 
   const scheduledCourses = useMemo(
@@ -152,7 +174,7 @@ export default function TimetableScreen({
 
   const totalHours = displayEndHour - displayStartHour;
   const HOUR_HEIGHT = 72; // fixed px per hour — always taller than viewport → enables scrolling
-  const timetableHeight = totalHours * HOUR_HEIGHT + HOUR_HEIGHT; // extra row so last label isn't clipped
+  const timetableHeight = totalHours * HOUR_HEIGHT + HOUR_HEIGHT; // full extra row so bottom label is fully scrollable
   const hourHeight = HOUR_HEIGHT;
   const hourLabels = Array.from({ length: totalHours + 1 }, (_, i) => displayStartHour + i);
 
@@ -162,6 +184,105 @@ export default function TimetableScreen({
       : screenWidth - GRID_LEFT_PAD - TIME_LABEL_WIDTH;
 
   const dayColumnWidth = usableGridWidth / visibleDays.length;
+
+  // Sync localOrder from props (skip while dragging), always sorted by order field
+  useEffect(() => {
+    if (!dragIdRef.current) {
+      const o = [...quarterTimetables].sort((a, b) => a.order - b.order).map(t => t.id);
+      setLocalOrder(o);
+      localOrderRef.current = o;
+    }
+  }, [quarterTimetables]);
+
+  const orderedTimetables = useMemo(() => {
+    if (localOrder.length === 0) return quarterTimetables;
+    return localOrder
+      .map(id => quarterTimetables.find(t => t.id === id))
+      .filter((t): t is Timetable => !!t);
+  }, [localOrder, quarterTimetables]);
+
+  // Compute the flex x-offset of a pill based on widths of preceding pills + gaps
+  function computePillFlexX(id: string, order: string[]): number {
+    const GAP = 8;
+    let x = 0;
+    for (const pid of order) {
+      if (pid === id) break;
+      x += (pillWidthRef.current[pid] ?? 0) + GAP;
+    }
+    return x;
+  }
+
+  function getNewIndexFromDx(dx: number): number {
+    const id = dragIdRef.current;
+    if (!id) return -1;
+    const order = localOrderRef.current;
+    // Absolute x-center of the dragged pill based on original flex position + finger displacement
+    const myMidX = dragOriginalFlexX.current + dx + (pillWidthRef.current[id] ?? 0) / 2;
+    let newIdx = 0;
+    for (const pid of order) {
+      if (pid === id) continue;
+      const otherMidX = computePillFlexX(pid, order) + (pillWidthRef.current[pid] ?? 0) / 2;
+      if (myMidX > otherMidX) newIdx++;
+    }
+    return Math.max(0, Math.min(order.length - 1, newIdx));
+  }
+
+  const pillPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: () => dragIdRef.current !== null,
+      onPanResponderMove: (_, gs) => {
+        const id = dragIdRef.current;
+        if (!id) return;
+
+        // Check if the pill has crossed a neighbour's midpoint → update order live
+        const newIdx = getNewIndexFromDx(gs.dx);
+        const order = localOrderRef.current;
+        const currentIdx = order.indexOf(id);
+        if (newIdx >= 0 && newIdx !== currentIdx) {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          const newOrder = [...order];
+          newOrder.splice(currentIdx, 1);
+          newOrder.splice(newIdx, 0, id);
+          setLocalOrder(newOrder);
+          localOrderRef.current = newOrder;
+        }
+
+        // Compensate translateX so the pill stays under the finger despite its flex position changing
+        const flexShift = computePillFlexX(id, localOrderRef.current) - dragOriginalFlexX.current;
+        dragTranslate.setValue(gs.dx - flexShift);
+      },
+      onPanResponderRelease: () => {
+        const id = dragIdRef.current;
+        if (!id) return;
+        Animated.parallel([
+          Animated.spring(dragScaleAnim, { toValue: 1, useNativeDriver: true }),
+          Animated.spring(dragTranslate, { toValue: 0, useNativeDriver: true }),
+        ]).start(() => {
+          dragIdRef.current = null;
+          setDraggingId(null);
+          onReorderTimetablesRef.current(localOrderRef.current);
+        });
+      },
+      onPanResponderTerminate: () => {
+        Animated.parallel([
+          Animated.spring(dragScaleAnim, { toValue: 1, useNativeDriver: true }),
+          Animated.spring(dragTranslate, { toValue: 0, useNativeDriver: true }),
+        ]).start(() => {
+          dragIdRef.current = null;
+          setDraggingId(null);
+        });
+      },
+    })
+  ).current;
+
+  function handleLongPressPill(id: string) {
+    dragOriginalFlexX.current = computePillFlexX(id, localOrderRef.current);
+    dragIdRef.current = id;
+    setDraggingId(id);
+    dragTranslate.setValue(0);
+    Animated.spring(dragScaleAnim, { toValue: 1.1, friction: 6, tension: 200, useNativeDriver: true }).start();
+  }
 
   useEffect(() => {
     if (!focusedCourseId || viewportWidth === 0 || viewportHeight === 0) return;
@@ -294,6 +415,37 @@ export default function TimetableScreen({
     instructor: pendingShowInstructor,
     time:       pendingShowTime,
   };
+
+  async function saveSchedule() {
+    setShowSettings(false);
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Please allow access to your photo library to save the schedule.');
+        return;
+      }
+      const uri = await captureRef(timetableRef, { format: 'png', quality: 1 });
+      await MediaLibrary.saveToLibraryAsync(uri);
+      Alert.alert('Saved!', 'Your schedule has been saved to your photo library.');
+    } catch {
+      Alert.alert('Error', 'Could not save the schedule. Please try again.');
+    }
+  }
+
+  async function shareSchedule() {
+    setShowSettings(false);
+    try {
+      const uri = await captureRef(timetableRef, { format: 'png', quality: 1 });
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Sharing not available', 'Sharing is not supported on this device.');
+        return;
+      }
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share My Schedule' });
+    } catch {
+      Alert.alert('Error', 'Could not share the schedule. Please try again.');
+    }
+  }
 
   function toggleDisplay(key: string) {
     if (key === 'code')       setPendingShowCode((v) => !v);
@@ -462,7 +614,7 @@ export default function TimetableScreen({
               backgroundColor: 'white',
               borderTopLeftRadius: 24,
               borderTopRightRadius: 24,
-              paddingBottom: 40,
+              maxHeight: screenHeight * 0.92,
             }}
           >
             {/* Header */}
@@ -471,140 +623,181 @@ export default function TimetableScreen({
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                paddingHorizontal: 24,
-                paddingTop: 24,
-                paddingBottom: 16,
+                paddingHorizontal: 20,
+                paddingTop: 18,
+                paddingBottom: 12,
                 borderBottomWidth: 1,
                 borderBottomColor: '#f0f0f0',
               }}
             >
-              <Text style={{ fontSize: 20, fontWeight: '700', color: '#111827' }}>Timetable Settings</Text>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827' }}>Timetable Settings</Text>
               <TouchableOpacity onPress={() => setShowSettings(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={24} color="#374151" />
+                <Ionicons name="close" size={22} color="#374151" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
               {/* Timetable Theme */}
-              <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 8 }}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#6b7280', marginBottom: 12 }}>
+              <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#6b7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Timetable Theme
                 </Text>
-                {THEMES.map((t, index) => {
-                  const isSelected = pendingTheme === t.key;
-                  return (
-                    <TouchableOpacity
-                      key={t.key}
-                      onPress={() => setPendingTheme(t.key)}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 14,
-                        paddingVertical: 14,
-                        borderTopWidth: index === 0 ? 0 : 1,
-                        borderTopColor: '#f3f4f6',
-                      }}
-                    >
-                      <View
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                  {THEMES.map((t) => {
+                    const isSelected = pendingTheme === t.key;
+                    return (
+                      <TouchableOpacity
+                        key={t.key}
+                        onPress={() => setPendingTheme(t.key)}
                         style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 11,
-                          borderWidth: 2,
-                          borderColor: isSelected ? '#4169E1' : '#374151',
+                          flexDirection: 'row',
                           alignItems: 'center',
-                          justifyContent: 'center',
+                          gap: 6,
+                          paddingVertical: 7,
+                          paddingHorizontal: 12,
+                          borderRadius: 20,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? '#4169E1' : '#e5e7eb',
+                          backgroundColor: isSelected ? '#eef1fb' : 'white',
                         }}
                       >
-                        {isSelected && (
-                          <View
-                            style={{
-                              width: 12,
-                              height: 12,
-                              borderRadius: 6,
-                              backgroundColor: '#4169E1',
-                            }}
-                          />
-                        )}
-                      </View>
-                      <Text style={{ fontSize: 15, color: '#111827', fontWeight: '500' }}>{t.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                        <View
+                          style={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: 7,
+                            borderWidth: 2,
+                            borderColor: isSelected ? '#4169E1' : '#9ca3af',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {isSelected && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#4169E1' }} />}
+                        </View>
+                        <Text style={{ fontSize: 13, color: isSelected ? '#4169E1' : '#374151', fontWeight: isSelected ? '600' : '400' }}>{t.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
 
               {/* Display Information */}
-              <View style={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: 8 }}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#6b7280', marginBottom: 12 }}>
+              <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#6b7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Display Information
                 </Text>
-                {DISPLAY_OPTIONS.map((opt, index) => {
-                  const isChecked = pendingDisplayMap[opt.key];
-                  return (
-                    <TouchableOpacity
-                      key={opt.key}
-                      onPress={() => toggleDisplay(opt.key)}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 14,
-                        paddingVertical: 14,
-                        borderTopWidth: index === 0 ? 0 : 1,
-                        borderTopColor: '#f3f4f6',
-                      }}
-                    >
-                      <View
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                  {DISPLAY_OPTIONS.map((opt) => {
+                    const isChecked = pendingDisplayMap[opt.key];
+                    return (
+                      <TouchableOpacity
+                        key={opt.key}
+                        onPress={() => toggleDisplay(opt.key)}
                         style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 6,
-                          backgroundColor: isChecked ? '#4169E1' : 'white',
-                          borderWidth: 2,
-                          borderColor: isChecked ? '#4169E1' : '#9ca3af',
+                          flexDirection: 'row',
                           alignItems: 'center',
-                          justifyContent: 'center',
+                          gap: 6,
+                          paddingVertical: 7,
+                          paddingHorizontal: 12,
+                          borderRadius: 20,
+                          borderWidth: 1.5,
+                          borderColor: isChecked ? '#4169E1' : '#e5e7eb',
+                          backgroundColor: isChecked ? '#eef1fb' : 'white',
                         }}
                       >
-                        {isChecked && <Ionicons name="checkmark" size={14} color="white" />}
-                      </View>
-                      <Text style={{ fontSize: 15, color: '#111827', fontWeight: '500' }}>{opt.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                        <View
+                          style={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: 3,
+                            backgroundColor: isChecked ? '#4169E1' : 'white',
+                            borderWidth: 1.5,
+                            borderColor: isChecked ? '#4169E1' : '#9ca3af',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {isChecked && <Ionicons name="checkmark" size={10} color="white" />}
+                        </View>
+                        <Text style={{ fontSize: 13, color: isChecked ? '#4169E1' : '#374151', fontWeight: isChecked ? '600' : '400' }}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
 
               {/* Divider */}
-              <View style={{ height: 1, backgroundColor: '#f0f0f0', marginTop: 8 }} />
+              <View style={{ height: 1, backgroundColor: '#f0f0f0', marginTop: 14, marginHorizontal: 20 }} />
 
               {/* Apply Settings */}
-              <View style={{ paddingHorizontal: 24, paddingTop: 20 }}>
+              <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>
                 <TouchableOpacity
                   onPress={applySettings}
                   style={{
                     backgroundColor: '#4169E1',
-                    borderRadius: 14,
-                    paddingVertical: 16,
+                    borderRadius: 12,
+                    paddingVertical: 13,
                     alignItems: 'center',
                   }}
                 >
-                  <Text style={{ color: 'white', fontSize: 16, fontWeight: '700' }}>Apply Settings</Text>
+                  <Text style={{ color: 'white', fontSize: 15, fontWeight: '700' }}>Apply Settings</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Save / Share Schedule */}
+              <View style={{ paddingHorizontal: 20, paddingTop: 8, flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  onPress={saveSchedule}
+                  style={{
+                    flex: 1,
+                    borderRadius: 12,
+                    paddingVertical: 13,
+                    alignItems: 'center',
+                    flexDirection: 'row',
+                    justifyContent: 'center',
+                    gap: 6,
+                    borderWidth: 1.5,
+                    borderColor: '#d1d5db',
+                    backgroundColor: '#f9fafb',
+                  }}
+                >
+                  <Ionicons name="download-outline" size={16} color="#374151" />
+                  <Text style={{ color: '#374151', fontSize: 14, fontWeight: '600' }}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={shareSchedule}
+                  style={{
+                    flex: 1,
+                    borderRadius: 12,
+                    paddingVertical: 13,
+                    alignItems: 'center',
+                    flexDirection: 'row',
+                    justifyContent: 'center',
+                    gap: 6,
+                    borderWidth: 1.5,
+                    borderColor: '#d1d5db',
+                    backgroundColor: '#f9fafb',
+                  }}
+                >
+                  <Ionicons name="share-outline" size={16} color="#374151" />
+                  <Text style={{ color: '#374151', fontSize: 14, fontWeight: '600' }}>Share</Text>
                 </TouchableOpacity>
               </View>
 
               {/* Delete Current Timetable */}
-              <View style={{ paddingHorizontal: 24, paddingTop: 12 }}>
+              <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
                 <TouchableOpacity
                   onPress={confirmDelete}
                   style={{
-                    borderRadius: 14,
-                    paddingVertical: 16,
+                    borderRadius: 12,
+                    paddingVertical: 13,
                     alignItems: 'center',
                     borderWidth: 1.5,
                     borderColor: '#fca5a5',
                     backgroundColor: '#fff5f5',
                   }}
                 >
-                  <Text style={{ color: '#ef4444', fontSize: 16, fontWeight: '600' }}>
+                  <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '600' }}>
                     Delete Current Timetable
                   </Text>
                 </TouchableOpacity>
@@ -656,34 +849,52 @@ export default function TimetableScreen({
 
         {/* Row 2: Plan tabs + + Add */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 8 }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}
+          <View
+            style={{ flex: 1, flexDirection: 'row', flexWrap: 'nowrap', gap: 8, alignItems: 'center' }}
+            {...pillPanResponder.panHandlers}
           >
-            {quarterTimetables.map((t) => {
+            {orderedTimetables.map((t) => {
               const isActive = t.id === activeTimetableId;
+              const isDragging = t.id === draggingId;
               return (
-                <TouchableOpacity
+                <Animated.View
                   key={t.id}
-                  onPress={() => onSelectTimetable(t.id)}
-                  style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 7,
-                    borderRadius: 20,
-                    backgroundColor: isActive ? '#4169E1' : (theme === 'dark' ? '#1e293b' : 'white'),
-                    borderWidth: 1.5,
-                    borderColor: isActive ? '#4169E1' : (theme === 'dark' ? '#334155' : '#d1d5db'),
+                  onLayout={(e) => {
+                    pillXPos.current[t.id] = e.nativeEvent.layout.x;
+                    pillWidthRef.current[t.id] = e.nativeEvent.layout.width;
                   }}
+                  style={isDragging ? {
+                    transform: [{ translateX: dragTranslate }, { scale: dragScaleAnim }],
+                    zIndex: 10,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.18,
+                    shadowRadius: 8,
+                    elevation: 8,
+                  } : {}}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: isActive ? 'white' : (theme === 'dark' ? '#94a3b8' : '#374151') }}>
-                    {t.name}
-                  </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => { if (!draggingId) onSelectTimetable(t.id); }}
+                    onLongPress={() => handleLongPressPill(t.id)}
+                    delayLongPress={400}
+                    activeOpacity={0.8}
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingVertical: 7,
+                      borderRadius: 20,
+                      backgroundColor: isActive ? '#4169E1' : (theme === 'dark' ? '#1e293b' : 'white'),
+                      borderWidth: 1.5,
+                      borderColor: isActive ? '#4169E1' : (theme === 'dark' ? '#334155' : '#d1d5db'),
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: isActive ? 'white' : (theme === 'dark' ? '#94a3b8' : '#374151') }}>
+                      {t.name}
+                    </Text>
+                  </TouchableOpacity>
+                </Animated.View>
               );
             })}
-          </ScrollView>
+          </View>
           <TouchableOpacity onPress={() => setShowAddMenu(true)} style={{ paddingVertical: 7 }}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: '#4169E1' }}>+ Add</Text>
           </TouchableOpacity>
@@ -740,6 +951,8 @@ export default function TimetableScreen({
 
       {/* Grid container */}
       <View
+        ref={timetableRef}
+        collapsable={false}
         style={{ flex: 1 }}
         onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD)}
       >
@@ -747,18 +960,26 @@ export default function TimetableScreen({
         <View
           style={{
             flexDirection: 'row',
-            borderTopWidth: 1,
-            borderTopColor: theme === 'dark' ? '#1e293b' : '#ececec',
             borderBottomWidth: 1,
-            borderBottomColor: theme === 'dark' ? '#1e293b' : '#ececec',
+            borderBottomColor: theme === 'dark' ? '#1e293b' : '#e0e0e5',
             paddingLeft: GRID_LEFT_PAD,
-            backgroundColor: theme === 'dark' ? '#0f172a' : '#fff',
+            backgroundColor: theme === 'dark' ? '#0a1628' : '#f5f5f7',
           }}
         >
           <View style={{ width: TIME_LABEL_WIDTH }} />
-          {visibleDays.map((day) => (
-            <View key={day} style={{ width: dayColumnWidth, alignItems: 'center', paddingVertical: 8 }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: theme === 'dark' ? '#64748b' : '#4b5563' }}>
+          {visibleDays.map((day, index) => (
+            <View
+              key={day}
+              style={{
+                width: dayColumnWidth,
+                alignItems: 'center',
+                paddingVertical: 10,
+                borderLeftWidth: 1,
+                borderLeftColor: theme === 'dark' ? '#1e293b' : '#e0e0e5',
+                backgroundColor: theme === 'dark' ? '#0a1628' : '#f5f5f7',
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: theme === 'dark' ? '#64748b' : '#6b7280' }}>
                 {DAY_LABEL[day]}
               </Text>
             </View>
@@ -786,8 +1007,7 @@ export default function TimetableScreen({
             bounces={false}
             onLayout={(e) => setViewportHeight(e.nativeEvent.layout.height)}
           >
-            {/* paddingTop gives room so the 8:00 label isn't clipped at the scroll boundary */}
-            <View style={{ paddingTop: 8 }}>
+            <View style={{ backgroundColor: theme === 'dark' ? '#0a1628' : '#f5f5f7' }}>
             <View
               style={{
                 flexDirection: 'row',
@@ -797,8 +1017,15 @@ export default function TimetableScreen({
               {/* Time labels */}
               <View style={{ width: TIME_LABEL_WIDTH, height: timetableHeight }}>
                 {hourLabels.map((hour, index) => (
-                  <View key={hour} style={{ position: 'absolute', top: index * hourHeight - 6, left: 0 }}>
-                    <Text style={{ fontSize: 11, color: theme === 'dark' ? '#475569' : '#9ca3af' }}>
+                  <View key={`line-${hour}`} style={{ position: 'absolute', top: index * hourHeight, left: 0, right: 0, height: 1, backgroundColor: theme === 'dark' ? '#1e293b' : '#e0e0e5' }} />
+                ))}
+                {hourLabels.map((hour, index) => (
+                  <View key={hour} style={{
+                    position: 'absolute',
+                    top: index * hourHeight + hourHeight / 2 - 7,   // centered in slot (last label uses phantom half-slot)
+                    left: 0, right: 4, alignItems: 'flex-end',
+                  }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: theme === 'dark' ? '#475569' : '#6b7280' }}>
                       {formatHourLabel(hour)}
                     </Text>
                   </View>
@@ -813,7 +1040,23 @@ export default function TimetableScreen({
                   position: 'relative',
                 }}
               >
-                {/* Hour lines */}
+                {/* Day column separators with white cell backgrounds */}
+                <View style={{ flexDirection: 'row', height: timetableHeight }}>
+                  {visibleDays.map((day, index) => (
+                    <View
+                      key={day}
+                      style={{
+                        width: dayColumnWidth,
+                        height: timetableHeight,
+                        backgroundColor: theme === 'dark' ? '#111827' : '#ffffff',
+                        borderLeftWidth: 1,
+                        borderLeftColor: theme === 'dark' ? '#1e293b' : '#e0e0e5',
+                      }}
+                    />
+                  ))}
+                </View>
+
+                {/* Hour lines — rendered after day columns so they appear on top */}
                 {hourLabels.map((hour, index) => (
                   <View
                     key={hour}
@@ -823,24 +1066,10 @@ export default function TimetableScreen({
                       left: 0,
                       right: 0,
                       height: 1,
-                      backgroundColor: theme === 'dark' ? '#1e293b' : '#ececec',
+                      backgroundColor: theme === 'dark' ? '#1e293b' : '#e0e0e5',
                     }}
                   />
                 ))}
-
-                {/* Day column separators */}
-                <View style={{ flexDirection: 'row', height: timetableHeight }}>
-                  {visibleDays.map((day, index) => (
-                    <View
-                      key={day}
-                      style={{
-                        width: dayColumnWidth,
-                        borderRightWidth: index === visibleDays.length - 1 ? 0 : 1,
-                        borderRightColor: theme === 'dark' ? '#1e293b' : '#ececec',
-                      }}
-                    />
-                  ))}
-                </View>
 
                 {/* Course blocks */}
                 {scheduledCourses.flatMap((course) => {

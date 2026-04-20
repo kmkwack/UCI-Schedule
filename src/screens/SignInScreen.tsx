@@ -1,165 +1,149 @@
-import { useState } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ScrollView,
-} from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Path } from 'react-native-svg';
+import type { University } from './UniversitySelectionScreen';
 
 type Props = {
+  university: University;
   onBack: () => void;
   onSignedIn: (userId: string) => void;
   onGoToSignUp: () => void;
+  onGuest: (id: string) => void;
 };
 
-export default function SignInScreen({ onBack, onSignedIn, onGoToSignUp }: Props) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+function GoogleIcon() {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24">
+      <Path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+      <Path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+      <Path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+      <Path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+    </Svg>
+  );
+}
 
-  const handleSignIn = async () => {
-    if (!email || !password) { setError('Please enter your email and password.'); return; }
-    setError('');
-    setLoading(true);
-    // TODO: replace with real Supabase auth
-    setTimeout(() => {
-      setLoading(false);
-      onSignedIn(email);
-    }, 800);
-  };
-
+export default function SignInScreen({ university, onBack, onSignedIn, onGoToSignUp, onGuest }: Props) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+      {/* Header */}
+      <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+        <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 4 }}>
+          <Ionicons name="arrow-back" size={22} color="#111827" />
+        </TouchableOpacity>
+      </View>
 
-          {/* Back button */}
-          <TouchableOpacity onPress={onBack} style={{ marginBottom: 24 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="chevron-back" size={28} color="#111827" />
-          </TouchableOpacity>
-
-          {/* Title */}
-          <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#111827', marginBottom: 8 }}>Sign In</Text>
-          <Text style={{ fontSize: 15, color: '#9ca3af', marginBottom: 36 }}>Welcome back! Please enter your details.</Text>
-
-          {/* Email */}
-          <Text style={{ fontSize: 15, fontWeight: '600', color: '#111827', marginBottom: 8 }}>Email</Text>
-          <View style={{
-            flexDirection: 'row', alignItems: 'center',
-            backgroundColor: '#f9fafb', borderRadius: 14,
-            borderWidth: 1.5, borderColor: '#e5e7eb',
-            paddingHorizontal: 14, paddingVertical: 14, marginBottom: 20, gap: 10,
-          }}>
-            <Ionicons name="mail-outline" size={20} color="#9ca3af" />
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="student@university.edu"
-              placeholderTextColor="#9ca3af"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={{ flex: 1, fontSize: 15, color: '#111827' }}
-            />
-          </View>
-
-          {/* Password */}
-          <Text style={{ fontSize: 15, fontWeight: '600', color: '#111827', marginBottom: 8 }}>Password</Text>
-          <View style={{
-            flexDirection: 'row', alignItems: 'center',
-            backgroundColor: '#f9fafb', borderRadius: 14,
-            borderWidth: 1.5, borderColor: '#e5e7eb',
-            paddingHorizontal: 14, paddingVertical: 14, marginBottom: 16, gap: 10,
-          }}>
-            <Ionicons name="lock-closed-outline" size={20} color="#9ca3af" />
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Enter your password"
-              placeholderTextColor="#9ca3af"
-              secureTextEntry={!showPassword}
-              style={{ flex: 1, fontSize: 15, color: '#111827' }}
-            />
-            <TouchableOpacity onPress={() => setShowPassword(p => !p)}>
-              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#9ca3af" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Remember me + Forgot password */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-            <TouchableOpacity
-              onPress={() => setRememberMe(p => !p)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-            >
-              <View style={{
-                width: 20, height: 20, borderRadius: 5,
-                borderWidth: 1.5, borderColor: rememberMe ? '#4169E1' : '#d1d5db',
-                backgroundColor: rememberMe ? '#4169E1' : 'white',
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                {rememberMe && <Ionicons name="checkmark" size={13} color="white" />}
-              </View>
-              <Text style={{ fontSize: 14, color: '#374151' }}>Remember me</Text>
-            </TouchableOpacity>
-            <TouchableOpacity>
-              <Text style={{ fontSize: 14, color: '#4169E1', fontWeight: '600' }}>Forgot password?</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Error */}
-          {error !== '' && (
-            <Text style={{ color: '#ef4444', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>{error}</Text>
-          )}
-
-          {/* Sign In button */}
-          <TouchableOpacity
-            onPress={handleSignIn}
-            disabled={loading}
-            style={{
-              backgroundColor: loading ? '#879fd8' : '#4169E1',
-              borderRadius: 16, paddingVertical: 18,
-              alignItems: 'center', marginBottom: 20,
-            }}
-          >
-            <Text style={{ color: 'white', fontSize: 17, fontWeight: '600' }}>
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* OR divider */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 }}>
-            <View style={{ flex: 1, height: 1, backgroundColor: '#e5e7eb' }} />
-            <Text style={{ fontSize: 13, color: '#9ca3af' }}>OR</Text>
-            <View style={{ flex: 1, height: 1, backgroundColor: '#e5e7eb' }} />
-          </View>
-
-          {/* Continue with Google */}
-          <TouchableOpacity style={{
-            backgroundColor: 'white', borderRadius: 16,
-            paddingVertical: 16, alignItems: 'center',
-            borderWidth: 1.5, borderColor: '#e5e7eb',
-            flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 28,
-          }}>
-            {/* Google G */}
-            <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 16, fontWeight: '700', color: '#4285F4' }}>G</Text>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 28, paddingBottom: 40 }}>
+        {/* University card */}
+        <View style={{
+          padding: 20, borderRadius: 20, marginBottom: 28,
+          backgroundColor: 'rgba(65,105,225,0.06)',
+          borderWidth: 1, borderColor: 'rgba(65,105,225,0.18)',
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+            <View style={{
+              width: 60, height: 60, borderRadius: 16,
+              backgroundColor: '#4169E1', alignItems: 'center', justifyContent: 'center',
+              marginRight: 14,
+            }}>
+              <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>{university.logo}</Text>
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>Continue with Google</Text>
-          </TouchableOpacity>
-
-          {/* Sign up link */}
-          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 4 }}>
-            <Text style={{ fontSize: 14, color: '#6b7280' }}>Don't have an account?</Text>
-            <TouchableOpacity onPress={onGoToSignUp}>
-              <Text style={{ fontSize: 14, color: '#4169E1', fontWeight: '600' }}>Sign up</Text>
-            </TouchableOpacity>
+            <View>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827' }}>{university.name}</Text>
+              <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{university.location}</Text>
+            </View>
           </View>
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+            backgroundColor: 'white', borderRadius: 10,
+            paddingHorizontal: 12, paddingVertical: 10,
+          }}>
+            <Ionicons name="mail-outline" size={16} color="#6b7280" />
+            <Text style={{ fontSize: 14, color: '#6b7280' }}>{university.domain}</Text>
+          </View>
+        </View>
 
-        </ScrollView>
-      </KeyboardAvoidingView>
+        {/* Title */}
+        <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginBottom: 8 }}>
+          Sign In to ClassMate
+        </Text>
+        <Text style={{ fontSize: 15, color: '#6b7280', textAlign: 'center', marginBottom: 20 }}>
+          Welcome back! Continue your campus journey
+        </Text>
+
+        {/* Info pill */}
+        <View style={{ alignItems: 'center', marginBottom: 24 }}>
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            backgroundColor: '#eff3ff', borderRadius: 10,
+            paddingHorizontal: 14, paddingVertical: 9,
+          }}>
+            <Ionicons name="information-circle-outline" size={16} color="#4169E1" />
+            <Text style={{ fontSize: 13, color: '#4169E1', fontWeight: '500' }}>
+              Use your university Google account
+            </Text>
+          </View>
+        </View>
+
+        {/* Continue with Google */}
+        <TouchableOpacity
+          onPress={() => onSignedIn('google-user')}
+          style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+            backgroundColor: 'white', borderRadius: 16,
+            paddingVertical: 16, marginBottom: 24,
+            borderWidth: 1.5, borderColor: '#e5e7eb',
+            shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+          }}
+        >
+          <GoogleIcon />
+          <Text style={{ fontSize: 16, fontWeight: '500', color: '#111827' }}>Continue with Google</Text>
+        </TouchableOpacity>
+
+        {/* OR divider */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: '#e5e7eb' }} />
+          <Text style={{ fontSize: 13, color: '#9ca3af' }}>or</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: '#e5e7eb' }} />
+        </View>
+
+        {/* Create account link */}
+        <View style={{ alignItems: 'center', marginBottom: 28 }}>
+          <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 6 }}>Don't have an account yet?</Text>
+          <TouchableOpacity onPress={onGoToSignUp}>
+            <Text style={{ fontSize: 15, color: '#4169E1', fontWeight: '600' }}>Create a new account →</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Terms */}
+        <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 20, marginBottom: 8 }}>
+          <Text style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', lineHeight: 16 }}>
+            By continuing, you agree to ClassMate's Terms of Service and Privacy Policy
+          </Text>
+        </View>
+
+        {/* Guest access (dev shortcut) */}
+        <View style={{ marginTop: 20 }}>
+          <Text style={{ textAlign: 'center', fontSize: 11, color: '#d1d5db', marginBottom: 8 }}>
+            — dev: continue as guest —
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {['guest', 'guest2', 'guest3', 'guest4'].map((g) => (
+              <TouchableOpacity
+                key={g}
+                onPress={() => onGuest(g)}
+                style={{
+                  flex: 1, paddingVertical: 8, borderRadius: 10,
+                  backgroundColor: '#f3f4f6', alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 11, color: '#9ca3af', fontWeight: '600' }}>{g}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }

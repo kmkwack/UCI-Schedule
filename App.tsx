@@ -9,17 +9,20 @@ import CoursePickerScreen from './src/screens/CoursePickerScreen';
 import FriendsScreen from './src/screens/FriendsScreen';
 import BoardScreen from './src/screens/BoardScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
+import UniversitySelectionScreen from './src/screens/UniversitySelectionScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 import MessagesScreen from './src/screens/MessagesScreen';
 import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey } from './src/data/courses';
 import { supabase } from './src/lib/supabase';
+import type { University } from './src/screens/UniversitySelectionScreen';
 
-type AuthScreen = 'welcome' | 'signin' | 'signup';
+type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
 
 export default function App() {
   const [userId, setUserId] = useState<string | null>(null);
   const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
+  const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
   const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'board' | 'friends'>('home');
   const [showCoursePicker, setShowCoursePicker] = useState(false);
   const [renderCoursePicker, setRenderCoursePicker] = useState(false);
@@ -211,16 +214,23 @@ export default function App() {
     if (authScreen === 'welcome') {
       return (
         <WelcomeScreen
-          onSignIn={() => setAuthScreen('signin')}
-          onCreateAccount={() => setAuthScreen('signup')}
-          onGuest={(id) => setUserId(id)}
+          onGetStarted={() => setAuthScreen('university')}
+        />
+      );
+    }
+    if (authScreen === 'university') {
+      return (
+        <UniversitySelectionScreen
+          onBack={() => setAuthScreen('welcome')}
+          onContinue={(uni) => { setSelectedUniversity(uni); setAuthScreen('signin'); }}
         />
       );
     }
     if (authScreen === 'signup') {
       return (
         <SignUpScreen
-          onBack={() => setAuthScreen('welcome')}
+          university={selectedUniversity ?? undefined}
+          onBack={() => setAuthScreen('university')}
           onSignedUp={(id) => setUserId(id)}
           onGoToSignIn={() => setAuthScreen('signin')}
         />
@@ -228,9 +238,11 @@ export default function App() {
     }
     return (
       <SignInScreen
-        onBack={() => setAuthScreen('welcome')}
+        university={selectedUniversity ?? { id: '1', name: 'UC Irvine', domain: '@uci.edu', location: 'Irvine, CA', logo: 'UCI' }}
+        onBack={() => setAuthScreen('university')}
         onSignedIn={(id) => setUserId(id)}
         onGoToSignUp={() => setAuthScreen('signup')}
+        onGuest={(id) => setUserId(id)}
       />
     );
   }

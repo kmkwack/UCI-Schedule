@@ -1,0 +1,129 @@
+.rbc-header {
+    border-bottom: none;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.rbc-header + .rbc-header {
+    border: none;
+}
+
+.rbc-header + .rbc-header {
+    border: none;
+}
+
+.rbc-time-view {
+    border-color: transparent;
+}
+
+.rbc-time-content {
+    border-top-width: 1px;
+}
+
+.rbc-time-view .rbc-allday-cell {
+    height: 0;
+    z-index: -1000;
+}
+
+.rbc-day-slot .rbc-time-slot {
+    border: 0;
+}
+
+.rbc-time-slot,
+.rbc-time-header-gutter {
+    min-width: 42px;
+}
+
+.rbc-timeslot-group {
+    min-height: 25px;
+    border-bottom-color: #80808080;
+}
+
+.rbc-timeslot-group:nth-child(odd) {
+    border-bottom-color: #80808020;
+}
+
+.rbc-event-label {
+    font-size: 0.75rem;
+}
+
+.rbc-label {
+    font-size: 0.9rem;
+}
+
+@media (max-width: 799px) {
+    .rbc-timeslot-group {
+        min-height: 22px;
+    }
+}
+
+@media (min-width: 800px) {
+    .rbc-timeslot-group {
+        min-height: 28px;
+    }
+}
+
+*:focus {
+    outline: none;
+}
+
+/* width */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+    background: #f1f1f1c0;
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+    background: #808080;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+@keyframes calendar-loading-shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+.rbc-event.calendar-loading-event {
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.1) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: calendar-loading-shimmer 2s ease-in-out infinite;
+}
+
+.rbc-event.calendar-loading-event::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: inherit;
+    background-size: 200% 100%;
+    animation: calendar-loading-shimmer 3s ease-in-out infinite;
+    pointer-events: none;
+    mix-blend-mode: overlay;
+}
+
+.rbc-event.calendar-loading-event .rbc-event-label {
+    display: none;
+}
+
+/*.menu-button:hover,*/
+/*.menu-button:focus {*/
+/*    background-color: unset !important;*/
+/*}*/

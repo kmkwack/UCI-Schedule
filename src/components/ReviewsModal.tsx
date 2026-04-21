@@ -154,6 +154,7 @@ export default function ReviewsModal({
     { label: 'NP', count: grades.gradeNPCount, color: '#9ca3af' },
   ].filter((e) => e.count > 0) : [];
   const total = allEntries.reduce((s, e) => s + e.count, 0);
+  const visibleEntries = allEntries.filter((e) => !['P', 'NP'].includes(e.label) || (total > 0 && Math.round(e.count / total * 100) >= 1));
 
   return (
     <Modal
@@ -212,7 +213,7 @@ export default function ReviewsModal({
                       <View style={{ alignItems: 'center', paddingVertical: 20 }}>
                         <ActivityIndicator size="small" color={colors.brand} />
                       </View>
-                    ) : !grades || allEntries.length === 0 ? (
+                    ) : !grades || visibleEntries.length === 0 ? (
                       <Text style={{ fontSize: 13, color: colors.textTertiary, textAlign: 'center', paddingVertical: 12 }}>No grade data available</Text>
                     ) : (
                       <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
@@ -223,12 +224,12 @@ export default function ReviewsModal({
                           <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>avg GPA</Text>
                         </View>
                         <View style={{ flex: 1, gap: 5 }}>
-                          {allEntries.map((entry) => {
+                          {visibleEntries.map((entry) => {
                             const pct = total > 0 ? entry.count / total : 0;
                             return (
                               <View key={entry.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                 <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, width: 18, textAlign: 'right' }}>{entry.label}</Text>
-                                <View style={{ flex: 1, height: 10, backgroundColor: colors.bgTertiary, borderRadius: 5, overflow: 'hidden' }}>
+                                <View style={{ flex: 1, height: 10 }}>
                                   <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: entry.color, borderRadius: 5 }} />
                                 </View>
                                 <Text style={{ fontSize: 11, color: colors.textSecondary, width: 34, textAlign: 'right' }}>{(pct * 100).toFixed(0)}%</Text>

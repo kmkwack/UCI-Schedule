@@ -17,7 +17,6 @@ type Props = {
   onBack: () => void;
   onSignedIn: (userId: string, email: string) => void;
   onGoToSignUp: () => void;
-  onGuest: (id: string) => void;
 };
 
 function GoogleIcon() {
@@ -31,7 +30,7 @@ function GoogleIcon() {
   );
 }
 
-export default function SignInScreen({ university, onBack, onSignedIn, onGoToSignUp, onGuest }: Props) {
+export default function SignInScreen({ university, onBack, onSignedIn, onGoToSignUp }: Props) {
   const [loading, setLoading] = useState(false);
   const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
   const hd = university.domain.replace('@', ''); // e.g. "uci.edu"
@@ -173,27 +172,6 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
         {/* Terms */}
         <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 20, marginBottom: 8 }}>
           <LegalConsentText onOpenDocument={setActiveDocument} color="#9ca3af" linkColor="#4169E1" />
-        </View>
-
-        {/* Guest access (dev shortcut) */}
-        <View style={{ marginTop: 20 }}>
-          <Text style={{ textAlign: 'center', fontSize: 11, color: '#d1d5db', marginBottom: 8 }}>
-            — dev: continue as guest —
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {['guest', 'guest2', 'guest3', 'guest4'].map((g) => (
-              <TouchableOpacity
-                key={g}
-                onPress={() => onGuest(g)}
-                style={{
-                  flex: 1, paddingVertical: 8, borderRadius: 10,
-                  backgroundColor: '#f3f4f6', alignItems: 'center',
-                }}
-              >
-                <Text style={{ fontSize: 11, color: '#9ca3af', fontWeight: '600' }}>{g}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
         </View>
       </ScrollView>
       <LegalDocumentModal

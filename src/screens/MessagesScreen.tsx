@@ -50,7 +50,6 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
   userId: string;
 }) {
   const { colors } = useTheme();
-  const isGuestUser = userId.startsWith('guest');
   const [conversations, setConversations] = useState<ConversationPreview[]>([]);
   const [selectedChat, setSelectedChat] = useState<ChatTarget | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -60,6 +59,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [openingConversation, setOpeningConversation] = useState(false);
   const [sending, setSending] = useState(false);
+  const hasValidUserId = !!userId && isUuid(userId);
 
   const resolvePartnerNames = useCallback(async (partnerIds: string[]) => {
     const uniqueIds = Array.from(new Set(partnerIds.filter(Boolean)));
@@ -102,7 +102,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
   }, []);
 
   const fetchConversations = useCallback(async () => {
-    if (!userId || isGuestUser) return;
+    if (!userId || !hasValidUserId) return;
     setLoadingChats(true);
 
     const { data, error } = await supabase
@@ -154,10 +154,10 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
 
     setConversations(Array.from(previewsByPartner.values()).sort((a, b) => b.sortStamp - a.sortStamp));
     setLoadingChats(false);
-  }, [isGuestUser, resolvePartnerNames, userId]);
+  }, [hasValidUserId, resolvePartnerNames, userId]);
 
   const markThreadRead = useCallback(async (partnerId: string) => {
-    if (!userId || !partnerId) return;
+    if (!userId || !partnerId || !hasValidUserId || !isUuid(partnerId)) return;
     const now = new Date().toISOString();
     await supabase
       .from('direct_messages')
@@ -165,10 +165,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
       .eq('sender_id', partnerId)
       .eq('receiver_id', userId)
       .is('read_at', null);
-  }, [userId]);
+  }, [hasValidUserId, userId]);
 
   const fetchMessages = useCallback(async (partner: ChatTarget) => {
-    if (!userId || isGuestUser) return;
+    if (!userId || !hasValidUserId || !isUuid(partner.id)) {
+      setMessages([]);
+      return;
+    }
     setLoadingMessages(true);
 
     const { data, error } = await supabase
@@ -194,10 +197,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
 
     setLoadingMessages(false);
     await markThreadRead(partner.id);
-  }, [isGuestUser, markThreadRead, userId]);
+  }, [hasValidUserId, markThreadRead, userId]);
 
   const openConversation = useCallback(async (partner: ChatTarget) => {
-    if (!userId || isGuestUser) return;
+    if (!userId || !hasValidUserId || !isUuid(partner.id)) {
+      Alert.alert('Sign in required', 'Direct messages are available only for signed-in university accounts.');
+      return;
+    }
     setOpeningConversation(true);
 
     try {
@@ -214,19 +220,19 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
     } finally {
       setOpeningConversation(false);
     }
-  }, [fetchConversations, fetchMessages, isGuestUser, userId]);
+  }, [fetchConversations, fetchMessages, hasValidUserId, userId]);
 
   useEffect(() => {
     void fetchConversations();
   }, [fetchConversations]);
 
   useEffect(() => {
-    if (!openChatWith?.id || isGuestUser) return;
+    if (!openChatWith?.id || !hasValidUserId || !isUuid(openChatWith.id)) return;
     void openConversation(openChatWith);
-  }, [isGuestUser, openChatWith, openConversation]);
+  }, [hasValidUserId, openChatWith, openConversation]);
 
   useEffect(() => {
-    if (isGuestUser) return;
+    if (!hasValidUserId) return;
     const interval = setInterval(() => {
       void fetchConversations();
       if (selectedChat) {
@@ -235,10 +241,10 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [fetchConversations, fetchMessages, isGuestUser, selectedChat]);
+  }, [fetchConversations, fetchMessages, hasValidUserId, selectedChat]);
 
   const handleSend = async () => {
-    if (!messageInput.trim() || !selectedChat || sending) return;
+    if (!messageInput.trim() || !selectedChat || sending || !hasValidUserId || !isUuid(selectedChat.id)) return;
     setSending(true);
     const content = messageInput.trim();
 
@@ -272,7 +278,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
     [conversations, searchQuery]
   );
 
-  if (isGuestUser) {
+  if (!hasValidUserId) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>

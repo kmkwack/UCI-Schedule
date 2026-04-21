@@ -139,13 +139,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     .filter((t) => t.quarterKey === CURRENT_QUARTER_KEY)
     .flatMap((t) => t.courses);
 
-  const USER_ID = userId ?? 'guest';
-  const isGuestUser = !!userId?.startsWith('guest');
+  const USER_ID = userId ?? '';
   const displayUserName = buildDisplayName({ ...userProfile, email: userEmail || userProfile.email });
   const currentSchool = selectedUniversity?.name ?? 'UC Irvine';
 
   useEffect(() => {
-    if (!userId || !userEmail || isGuestUser) return;
+    if (!userId || !userEmail) return;
     async function ensureProfile() {
       const fallbackName = userEmail.split('@')[0]
         .split(/[._-]+/)
@@ -164,7 +163,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       if (error) console.error('Failed to ensure profile:', error);
     }
     ensureProfile();
-  }, [currentSchool, isGuestUser, userEmail, userId]);
+  }, [currentSchool, userEmail, userId]);
 
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -177,18 +176,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   useEffect(() => {
     if (!userId) return;
-
-    if (isGuestUser) {
-      const fallback = fallbackProfileFromEmail(userEmail || `${userId}@uci.edu`);
-      setUserProfile(fallback);
-      setUserSettings({
-        ...DEFAULT_USER_SETTINGS,
-        notifications: {
-          ...DEFAULT_NOTIFICATION_PREFERENCES,
-        },
-      });
-      return;
-    }
 
     let active = true;
 
@@ -241,10 +228,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     return () => {
       active = false;
     };
-  }, [isGuestUser, userEmail, userId]);
+  }, [userEmail, userId]);
 
   useEffect(() => {
-    if (!userId || isGuestUser) return;
+    if (!userId) return;
 
     let cancelled = false;
 
@@ -310,7 +297,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     return () => {
       cancelled = true;
     };
-  }, [activeCourses, currentSchool, isGuestUser, selectedQuarter.quarter, selectedQuarter.year, userId, userSettings]);
+  }, [activeCourses, currentSchool, selectedQuarter.quarter, selectedQuarter.year, userId, userSettings]);
 
   // Load all timetables from Supabase on mount (or when user logs in)
   useEffect(() => {
@@ -487,10 +474,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   };
 
   const handleOpenMessages = (target?: ChatTarget | null) => {
-    if (isGuestUser) {
-      Alert.alert('Sign in required', 'Messages are available only for signed-in university accounts.');
-      return;
-    }
     setMessagesOpenWith(target ?? null);
     setShowMessages(true);
   };
@@ -540,10 +523,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     nextSettings: UserSettingsState,
     nextProfile: EditableProfile = userProfile
   ) => {
-    if (!userId || isGuestUser) {
-      Alert.alert('Sign in required', 'Please sign in with your university account to save settings.');
-      throw new Error('guest-user-settings');
-    }
+    if (!userId) throw new Error('missing-user-id');
 
     const payload = {
       user_id: userId,
@@ -568,10 +548,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   };
 
   const handleSaveProfile = async (nextProfile: EditableProfile): Promise<boolean> => {
-    if (!userId || isGuestUser) {
-      Alert.alert('Sign in required', 'Please sign in with your university account to save your profile.');
-      return false;
-    }
+    if (!userId) return false;
 
     setSavingProfile(true);
     const safeEmail = userEmail || nextProfile.email;
@@ -673,13 +650,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   };
 
   const handleOpenFriendsTab = () => {
-    if (isGuestUser) {
-      Alert.alert(
-        'Sign in required',
-        'ClassMates is available only for signed-in university accounts. Sign in with Google to search classmates, send requests, and view shared schedules.'
-      );
-      return;
-    }
     setCurrentTab('friends');
   };
 
@@ -717,7 +687,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         onBack={() => setAuthScreen('university')}
         onSignedIn={(id, email) => { setUserId(id); setUserEmail(email); }}
         onGoToSignUp={() => setAuthScreen('signup')}
-        onGuest={(id) => setUserId(id)}
       />
     );
   }

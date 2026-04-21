@@ -565,3 +565,12 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 62 (Switch messaging back to direct_messages)
 - **`src/screens/MessagesScreen.tsx`** — Replaced the conversation/participant-based inbox and thread logic with a simpler `direct_messages` flow. The messages screen now groups rows by partner id, reads a thread by sender/receiver pair, marks unread incoming rows as read, and writes outgoing messages directly into `direct_messages`.
 - **`src/data/messages.ts`** — Removed the old conversation-specific row types and replaced them with a single `DirectMessageRow` shape so the data layer matches the lighter DM architecture.
+
+### Session 62b (Guard DM queries against guest ids)
+- **`src/screens/MessagesScreen.tsx`** — Added UUID guards around inbox loading, thread loading, read-state updates, and send/open actions so guest ids like `guest` never get passed into `direct_messages` UUID filters. This prevents the “invalid input syntax for type uuid: guest” redbox in the DM screen.
+
+### Session 63 (Remove guest account flow entirely)
+- **`src/screens/SignInScreen.tsx`** — Removed the dev guest-login shortcut from the sign-in screen so the app now enters only through real university sign-in.
+- **`App.tsx`** — Removed guest fallback user handling, guest-only alerts, and the guest sign-in callback. The main app now assumes authenticated users only once past the auth flow.
+- **`src/screens/MessagesScreen.tsx`** — Simplified message gating so it no longer checks for guest ids and instead only guards against missing/invalid user ids.
+- **`src/screens/FriendsScreen.tsx`** — Removed guest-specific friend-search/request branches now that anonymous guest accounts are no longer part of the product.

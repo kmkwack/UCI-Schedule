@@ -156,7 +156,6 @@ type Props = {
 
 export default function FriendsScreen({ userId, userEmail, school }: Props) {
   const { colors } = useTheme();
-  const isGuestUser = userId.startsWith('guest');
   const [friends, setFriends] = useState<Friend[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingFriend[]>([]);
   const [sentRequests, setSentRequests] = useState<PendingFriend[]>([]);
@@ -201,7 +200,7 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
   const classmateCacheKey = `classmates_${userId}`;
 
   useEffect(() => {
-    if (!userId || isGuestUser) return;
+    if (!userId) return;
 
     async function loadClassmates() {
       const cached = await AsyncStorage.getItem(classmateCacheKey);
@@ -354,10 +353,10 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
     }
 
     loadClassmates();
-  }, [isGuestUser, userId]);
+  }, [userId]);
 
   useEffect(() => {
-    if (!showAddModal || !debouncedEmailQuery || !userId || isGuestUser) {
+    if (!showAddModal || !debouncedEmailQuery || !userId) {
       setSearchResults([]);
       setSearchLoading(false);
       return;
@@ -396,7 +395,7 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
     }
 
     searchUsers();
-  }, [debouncedEmailQuery, friends, isGuestUser, pendingRequests, school, sentRequestIds, showAddModal, userEmail, userId]);
+  }, [debouncedEmailQuery, friends, pendingRequests, school, sentRequestIds, showAddModal, userEmail, userId]);
 
   const closeAddModal = () => {
     setEmailQuery('');
@@ -406,10 +405,7 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
   };
 
   const sendFriendRequest = async (target: Friend) => {
-    if (!userId || isGuestUser) {
-      Alert.alert('Sign in required', 'Please sign in to send a friend request.');
-      return;
-    }
+    if (!userId) return;
 
     setSubmittingRequestId(target.id);
     const { data: existingRows, error: existingError } = await supabase

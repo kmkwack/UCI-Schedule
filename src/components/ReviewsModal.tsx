@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  Modal, ActivityIndicator, KeyboardAvoidingView, Platform,
+  Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
+import { QUARTERS, quarterLabel } from '../data/courses';
 
 type GradeDistribution = {
   averageGPA: number | null;
@@ -14,8 +15,8 @@ type GradeDistribution = {
 };
 
 type CourseReview = {
-  id: string; author: string; rating: number; date: string;
-  content: string; semester: string; difficulty: number; workload: number;
+  id: string; userId: string; author: string; rating: number; date: string;
+  content: string; semester: string; quarter: string; difficulty: number; workload: number;
 };
 
 type Props = {
@@ -46,14 +47,18 @@ export default function ReviewsModal({
   const [difficulty, setDifficulty] = useState(3);
   const [workload, setWorkload] = useState(3);
   const [content, setContent] = useState('');
+  const [quarterTaken, setQuarterTaken] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
 
   // Reset state when modal opens
   useEffect(() => {
     if (visible) {
       setInstructor('');
       setShowWriteReview(false);
+      setEditingReviewId(null);
       setRating(5); setDifficulty(3); setWorkload(3); setContent('');
+      setQuarterTaken(semesterLabel);
       fetchReviews();
     }
   }, [visible, courseCode]);
@@ -83,9 +88,10 @@ export default function ReviewsModal({
       .order('created_at', { ascending: false });
     if (!error && data) {
       setReviews(data.map((r: any) => ({
-        id: r.id, author: r.author, rating: r.rating,
+        id: r.id, userId: r.user_id, author: r.author, rating: r.rating,
         date: r.created_at.slice(0, 10), content: r.content,
-        semester: r.semester, difficulty: r.difficulty, workload: r.workload,
+        semester: r.semester, quarter: r.quarter ?? r.semester ?? '',
+        difficulty: r.difficulty, workload: r.workload,
       })));
     }
     setReviewsLoading(false);
@@ -94,17 +100,46 @@ export default function ReviewsModal({
   async function handleSubmit() {
     if (!content.trim()) return;
     setSubmitting(true);
-    const { error } = await supabase.from('reviews').insert({
-      school, course_code: courseCode, department, course_number: courseNumber,
-      user_id: userId, author: 'Anonymous',
-      rating, difficulty, workload, content: content.trim(), semester: semesterLabel,
-    });
-    setSubmitting(false);
-    if (!error) {
-      setRating(5); setDifficulty(3); setWorkload(3); setContent('');
-      setShowWriteReview(false);
-      await fetchReviews();
+    let error;
+    if (editingReviewId) {
+      ({ error } = await supabase.from('reviews').update({
+        rating, difficulty, workload, content: content.trim(),
+        quarter: quarterTaken || semesterLabel,
+      }).eq('id', editingReviewId));
+    } else {
+      ({ error } = await supabase.from('reviews').insert({
+        school, course_code: courseCode, department, course_number: courseNumber,
+        user_id: userId, author: 'Anonymous',
+        rating, difficulty, workload, content: content.trim(),
+        semester: semesterLabel, quarter: quarterTaken || semesterLabel,
+      }));
     }
+    setSubmitting(false);
+    if (error) {
+      Alert.alert('Could not submit review', error.message);
+      console.error('Review insert error:', error);
+      return;
+    }
+    setRating(5); setDifficulty(3); setWorkload(3); setContent(''); setQuarterTaken(semesterLabel);
+    setEditingReviewId(null);
+    setShowWriteReview(false);
+    await fetchReviews();
+  }
+
+  function handleEdit(review: CourseReview) {
+    setRating(review.rating);
+    setDifficulty(review.difficulty);
+    setWorkload(review.workload);
+    setContent(review.content);
+    setQuarterTaken(review.quarter || semesterLabel);
+    setEditingReviewId(review.id);
+    setShowWriteReview(true);
+  }
+
+  async function handleDelete(reviewId: string) {
+    const { error } = await supabase.from('reviews').delete().eq('id', reviewId);
+    if (error) { Alert.alert('Could not delete review', error.message); return; }
+    setReviews(prev => prev.filter(r => r.id !== reviewId));
   }
 
   const cacheKey = `${department}${courseNumber}${instructor}`;
@@ -237,8 +272,11 @@ export default function ReviewsModal({
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
                               <View>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                                  <Text style={{ fontWeight: '700', fontSize: 14, color: colors.text }}>{review.author}</Text>
-                                  <Text style={{ fontSize: 12, color: colors.textTertiary }}>{review.semester}</Text>
+                                    {review.quarter ? (
+                                    <View style={{ backgroundColor: colors.brandBg, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}>
+                                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>{review.quarter}</Text>
+                                    </View>
+                                  ) : null}
                                 </View>
                                 <View style={{ flexDirection: 'row', gap: 2 }}>
                                   {[1,2,3,4,5].map(i => <Ionicons key={i} name={i <= review.rating ? 'star' : 'star-outline'} size={13} color={i <= review.rating ? '#f59e0b' : colors.border} />)}
@@ -247,9 +285,27 @@ export default function ReviewsModal({
                               <Text style={{ fontSize: 12, color: colors.textTertiary }}>{review.date}</Text>
                             </View>
                             <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19, marginBottom: 8 }}>{review.content}</Text>
-                            <View style={{ flexDirection: 'row', gap: 16 }}>
-                              <Text style={{ fontSize: 12, color: colors.textTertiary }}>Difficulty: <Text style={{ fontWeight: '700', color: colors.textSecondary }}>{review.difficulty}/5</Text></Text>
-                              <Text style={{ fontSize: 12, color: colors.textTertiary }}>Workload: <Text style={{ fontWeight: '700', color: colors.textSecondary }}>{review.workload}/5</Text></Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <View style={{ flexDirection: 'row', gap: 16 }}>
+                                <Text style={{ fontSize: 12, color: colors.textTertiary }}>Difficulty: <Text style={{ fontWeight: '700', color: colors.textSecondary }}>{review.difficulty}/5</Text></Text>
+                                <Text style={{ fontSize: 12, color: colors.textTertiary }}>Workload: <Text style={{ fontWeight: '700', color: colors.textSecondary }}>{review.workload}/5</Text></Text>
+                              </View>
+                              {review.userId === userId && (
+                                <View style={{ flexDirection: 'row', gap: 8 }}>
+                                  <TouchableOpacity onPress={() => handleEdit(review)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                                    <Ionicons name="pencil-outline" size={15} color={colors.brand} />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() => Alert.alert('Delete Review', 'Are you sure you want to delete this review?', [
+                                      { text: 'Cancel', style: 'cancel' },
+                                      { text: 'Delete', style: 'destructive', onPress: () => handleDelete(review.id) },
+                                    ])}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                  >
+                                    <Ionicons name="trash-outline" size={15} color={colors.destructive} />
+                                  </TouchableOpacity>
+                                </View>
+                              )}
                             </View>
                           </View>
                         ))}
@@ -278,7 +334,7 @@ export default function ReviewsModal({
                       <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
                     </TouchableOpacity>
                     <View>
-                      <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Write a Review</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>{editingReviewId ? 'Edit Review' : 'Write a Review'}</Text>
                       <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{courseCode}</Text>
                     </View>
                   </View>
@@ -288,6 +344,25 @@ export default function ReviewsModal({
                 </View>
 
                 <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 20 }} keyboardShouldPersistTaps="handled">
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginBottom: 10 }}>Quarter Taken</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {[...QUARTERS].reverse().map((q) => {
+                        const label = quarterLabel(q);
+                        const selected = quarterTaken === label;
+                        return (
+                          <TouchableOpacity
+                            key={label}
+                            onPress={() => setQuarterTaken(label)}
+                            style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: selected ? colors.brand : colors.bgTertiary, borderWidth: 1, borderColor: selected ? colors.brand : colors.border }}
+                          >
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: selected ? 'white' : colors.textSecondary }}>{label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+
                   <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginBottom: 10 }}>Overall Rating</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 }}>
                     {[1,2,3,4,5].map(r => (
@@ -335,7 +410,7 @@ export default function ReviewsModal({
                   >
                     {submitting
                       ? <ActivityIndicator size="small" color="white" />
-                      : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Submit Review</Text>}
+                      : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>{editingReviewId ? 'Save Changes' : 'Submit Review'}</Text>}
                   </TouchableOpacity>
                 </ScrollView>
               </>

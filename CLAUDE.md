@@ -505,3 +505,15 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 54 (TimetableScreen — academic year group dividers in quarter dropdown)
 - **`src/screens/TimetableScreen.tsx`** — Quarter dropdown rows now have academic-year group dividers. Added `academicYear(qk)` function: `quarter === 'Fall' ? year : year - 1`. Built sorted array of quarter keys first, then mapped with index; `isNewGroup = index > 0 && academicYear(qk) !== academicYear(sorted[index - 1])`. Group boundary rows get `borderTopWidth: 2, borderTopColor: colors.border`; non-boundary rows get `borderTopWidth: 1, borderTopColor: colors.borderSubtle`. Groups: Fall 2024/Winter+Spring 2025 = AY 2024; Fall 2025/Winter+Spring 2026 = AY 2025; Fall 2026 = AY 2026.
+
+### Session 55 (CoursePickerScreen — GE sublist drill-down in department modal)
+- **`src/screens/CoursePickerScreen.tsx`** — Replaced the flat GE rows in the dept picker with a single "GE Categories ›" row. Tapping it sets `showGESublist(true)`, replacing the dept list with a GE-only FlatList and a back chevron in the header. Back button clears `deptSearch` and returns to dept list. Closing via X clears both `selectedDept` and `selectedGE`.
+
+### Session 55 (seed-sections.js — GE categories + extra columns)
+- **`scripts/seed-sections.js`** — Added 8 new fields to each row: `dept_name`, `instructors`, `meetings`, `ge_categories`, `final_exam`, `restrictions`, `prerequisite_link`, `section_comment`. Added `GE_CODES` constant and `seedGECategories(year, quarter)` function: makes 10 API calls per quarter (`?ge=GE-1A` etc.), builds sectionId→Set map, bulk-upserts `ge_categories[]` into Supabase. `seedGECategories` called after each `seedQuarter`.
+
+### Session 55 (SettingsScreen — Edit Profile improvements)
+- **`src/screens/SettingsScreen.tsx`** — Added `UCI_MAJORS` array (83 majors). `DropdownPicker` updated: `searchable` prop, search TextInput (autoFocus), `FlatList` instead of ScrollView, `maxHeight: '75%'`. "Department" label changed to "Major"; options set to `UCI_MAJORS`. `field` helper extended: accepts `inputProps` (spread onto TextInput) and `error` (border turns red, error text shown below). Nickname: `autoCapitalize: 'none'`. DOB: `keyboardType: 'number-pad'`, auto-format slashes (`MM/DD/YYYY`), `validateDOB` validates month/day/year ranges, save blocked with Alert if invalid. `EditProfileScreen` restructured: outer View + SubHeader, `KeyboardAvoidingView` wraps only the ScrollView (so Save button stays above keyboard). `scrollRef` + `keyboardDidShow` listener scrolls to DOB field when keyboard appears; `keyboardWillHide` listener clears `keyboardVisible` to avoid bounce.
+
+### Session 55 (CoursePickerScreen — dept modal keyboard fix)
+- **`src/screens/CoursePickerScreen.tsx`** — Added `KeyboardAvoidingView` (behavior `'padding'` on iOS, `'height'` on Android) wrapping the white bottom sheet inside the department picker modal. Ensures the FlatList shrinks upward when the on-screen keyboard appears, keeping filtered results visible. Fixed missing closing `</KeyboardAvoidingView>` tag.

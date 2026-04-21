@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 
 const UCI_MAJORS = [
   'Aerospace Engineering',
@@ -86,7 +86,7 @@ const UCI_MAJORS = [
   'Urban Studies',
 ];
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTheme, ThemePreference } from '../context/ThemeContext';
 import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
 import type {
@@ -260,19 +260,46 @@ function EditProfileScreen({
 }) {
   const { colors } = useTheme();
   const [form, setForm] = useState<EditableProfile>(initialProfile);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const dobFocused = useRef(false);
 
   useEffect(() => {
     setForm(initialProfile);
   }, [initialProfile]);
 
-  const field = (label: string, key: keyof typeof form, disabled = false, placeholder?: string, inputProps?: object) => (
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+      if (dobFocused.current) {
+        requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+      }
+    });
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardVisible(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
+  const validateDOB = (dob: string): string | null => {
+    if (!dob || dob.length < 10) return null;
+    const [mm, dd, yyyy] = dob.split('/').map(Number);
+    if (mm < 1 || mm > 12) return 'Invalid month (01–12)';
+    if (dd < 1 || dd > 31) return 'Invalid day';
+    if (yyyy < 1900 || yyyy > new Date().getFullYear()) return `Invalid year (1900–${new Date().getFullYear()})`;
+    const daysInMonth = new Date(yyyy, mm, 0).getDate();
+    if (dd > daysInMonth) return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mm-1]} ${yyyy} only has ${daysInMonth} days`;
+    return null;
+  };
+
+  const dobError = validateDOB(form.dateOfBirth ?? '');
+
+  const field = (label: string, key: keyof typeof form, disabled = false, placeholder?: string, inputProps?: object, error?: string | null) => (
     <View style={{ marginBottom: 18 }}>
       <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>
         {label.replace(' *', '')}{label.endsWith(' *') && <Text style={{ color: colors.destructive }}> *</Text>}
       </Text>
       <View style={{
         backgroundColor: disabled ? colors.bgTertiary : colors.inputBg,
-        borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+        borderWidth: 1, borderColor: error ? colors.destructive : colors.border, borderRadius: 12,
         paddingHorizontal: 14, paddingVertical: 12,
       }}>
         <TextInput
@@ -286,40 +313,54 @@ function EditProfileScreen({
         />
       </View>
       {disabled && <Text style={{ fontSize: 11, color: colors.textTertiary, marginTop: 4 }}>Email cannot be changed</Text>}
+      {error && <Text style={{ fontSize: 11, color: colors.destructive, marginTop: 4 }}>{error}</Text>}
     </View>
   );
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.card }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <View style={{ flex: 1, backgroundColor: colors.card }}>
       <SubHeader title="Edit Profile" onBack={onBack} />
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        {field('First Name *', 'firstName')}
-        {field('Middle Name', 'middleName', false, 'Optional')}
-        {field('Last Name *', 'lastName')}
-        {field('Nickname *', 'nickname', false, undefined, { autoCapitalize: 'none' })}
-        {field('University Email *', 'email', true)}
-        <DropdownPicker
-          label="Year" required value={form.year}
-          options={['Freshman', 'Sophomore', 'Junior', 'Senior', 'Graduate']}
-          onSelect={v => setForm(f => ({ ...f, year: v }))}
-        />
-        <DropdownPicker
-          label="Major" required value={form.major}
-          options={UCI_MAJORS}
-          onSelect={v => setForm(f => ({ ...f, major: v }))}
-          searchable
-        />
-
-        <View style={{ paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.borderSubtle, marginBottom: 4 }}>
-          <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textTertiary, marginBottom: 16 }}>Optional Information</Text>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 20, paddingBottom: keyboardVisible ? 60 : 8 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          {field('First Name *', 'firstName')}
+          {field('Middle Name', 'middleName', false, 'Optional')}
+          {field('Last Name *', 'lastName')}
+          {field('Nickname *', 'nickname', false, undefined, { autoCapitalize: 'none' })}
+          {field('University Email *', 'email', true)}
           <DropdownPicker
-            label="Gender" value={form.gender}
-            options={['Prefer not to say', 'Male', 'Female', 'Other']}
-            onSelect={v => setForm(f => ({ ...f, gender: v }))}
+            label="Year" required value={form.year}
+            options={['Freshman', 'Sophomore', 'Junior', 'Senior', 'Graduate']}
+            onSelect={v => setForm(f => ({ ...f, year: v }))}
           />
-          {field('Date of Birth', 'dateOfBirth', false, 'mm/dd/yyyy', { keyboardType: 'number-pad' })}
-        </View>
-      </ScrollView>
+          <DropdownPicker
+            label="Major" required value={form.major}
+            options={UCI_MAJORS}
+            onSelect={v => setForm(f => ({ ...f, major: v }))}
+            searchable
+          />
+
+          <View style={{ paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.borderSubtle, marginBottom: 4 }}>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textTertiary, marginBottom: 16 }}>Optional Information</Text>
+            <DropdownPicker
+              label="Gender" value={form.gender}
+              options={['Prefer not to say', 'Male', 'Female', 'Other']}
+              onSelect={v => setForm(f => ({ ...f, gender: v }))}
+            />
+            {field('Date of Birth', 'dateOfBirth', false, 'mm/dd/yyyy', {
+            keyboardType: 'number-pad',
+            onFocus: () => { dobFocused.current = true; },
+            onBlur: () => { dobFocused.current = false; },
+            onChangeText: (text: string) => {
+              const nums = text.replace(/\D/g, '').slice(0, 8);
+              let formatted = nums;
+              if (nums.length > 2) formatted = `${nums.slice(0, 2)}/${nums.slice(2)}`;
+              if (nums.length > 4) formatted = `${nums.slice(0, 2)}/${nums.slice(2, 4)}/${nums.slice(4)}`;
+              setForm(f => ({ ...f, dateOfBirth: formatted }));
+            },
+          }, dobError)}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
       <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
         <TouchableOpacity
           disabled={saving}
@@ -327,6 +368,10 @@ function EditProfileScreen({
             const requiredMissing = !form.firstName.trim() || !form.lastName.trim() || !form.nickname.trim();
             if (requiredMissing) {
               Alert.alert('Missing information', 'Please complete your first name, last name, and nickname before saving.');
+              return;
+            }
+            if (dobError) {
+              Alert.alert('Invalid date of birth', dobError);
               return;
             }
             const saved = await onSave({ ...form, email: userEmail ?? form.email });
@@ -349,7 +394,7 @@ function EditProfileScreen({
           </Text>
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

@@ -9,6 +9,8 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Keyboard,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, UCI_DEPARTMENTS, quarterLabel, quarterKey } from '../data/courses';
@@ -111,6 +113,7 @@ export default function CoursePickerScreen({
   const [deptDropdownOpen, setDeptDropdownOpen] = useState(false);
   const [deptSearch, setDeptSearch] = useState('');
   const [showGESublist, setShowGESublist] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [catalogCourses, setCatalogCourses] = useState<CatalogCourse[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
@@ -170,6 +173,12 @@ export default function CoursePickerScreen({
 
     return { catalog: Object.values(catalogMap), sections };
   }
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   // Global search: fires when search text >= 2 and no dept selected
   useEffect(() => {
@@ -513,7 +522,7 @@ export default function CoursePickerScreen({
           >
             <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' }}>
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => { setDeptDropdownOpen(false); setShowGESublist(false); }} />
-              <View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 16, maxHeight: '70%' }}>
+              <View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 16, maxHeight: keyboardHeight > 0 ? Dimensions.get('window').height - keyboardHeight - 60 : Dimensions.get('window').height * 0.7, marginBottom: Math.max(0, keyboardHeight - 34) }}>
 
                 {/* Header */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12 }}>

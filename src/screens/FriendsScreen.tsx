@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Alert,
   View,
@@ -150,6 +151,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
   const isGuestUser = userId.startsWith('guest');
   const [friends, setFriends] = useState<Friend[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingFriend[]>([]);
+  const [sentRequests, setSentRequests] = useState<PendingFriend[]>([]);
   const [sentRequestIds, setSentRequestIds] = useState<string[]>([]);
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -184,11 +186,23 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
     return () => clearTimeout(timeout);
   }, [emailQuery]);
 
+  const classmateCacheKey = `classmates_${userId}`;
+
   useEffect(() => {
     if (!userId || isGuestUser) return;
 
     async function loadClassmates() {
-      setFriendsLoading(true);
+      const cached = await AsyncStorage.getItem(classmateCacheKey);
+      if (cached) {
+        const { friends: cf, pendingRequests: cp, sentRequests: cs, sentRequestIds: csi } = JSON.parse(cached);
+        setFriends(cf ?? []);
+        setPendingRequests(cp ?? []);
+        setSentRequests(cs ?? []);
+        setSentRequestIds(csi ?? []);
+        setFriendsLoading(false);
+      } else {
+        setFriendsLoading(true);
+      }
 
       const { data: requestRows, error: requestsError } = await supabase
         .from('friend_requests')
@@ -282,34 +296,49 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
         }
       }
 
-      setFriends(
-        acceptedIds
-          .map((id) => profilesById[id])
-          .filter((profile): profile is ProfileRow => !!profile)
-          .map((profile) =>
-            mapProfileToFriend(
-              profile,
-              friendTimetablesByUser[profile.id] ?? {},
-              visibilityByUserId[profile.id] ?? 'friends'
-            )
+      const freshFriends = acceptedIds
+        .map((id) => profilesById[id])
+        .filter((profile): profile is ProfileRow => !!profile)
+        .map((profile) =>
+          mapProfileToFriend(
+            profile,
+            friendTimetablesByUser[profile.id] ?? {},
+            visibilityByUserId[profile.id] ?? 'friends'
           )
-      );
+        );
+      const freshPending = incomingPendingIds
+        .map((id) => profilesById[id])
+        .filter((profile): profile is ProfileRow => !!profile)
+        .map((profile) => ({
+          id: profile.id,
+          name: profile.name?.trim() || profile.email.split('@')[0],
+          email: profile.email,
+          major: profile.major?.trim() || 'Undeclared',
+          year: profile.year?.trim() || 'Student',
+        }));
+      const freshSent = outgoingPendingIds
+        .map((id) => profilesById[id])
+        .filter((profile): profile is ProfileRow => !!profile)
+        .map((profile) => ({
+          id: profile.id,
+          name: profile.name?.trim() || profile.email.split('@')[0],
+          email: profile.email,
+          major: profile.major?.trim() || 'Undeclared',
+          year: profile.year?.trim() || 'Student',
+        }));
 
-      setPendingRequests(
-        incomingPendingIds
-          .map((id) => profilesById[id])
-          .filter((profile): profile is ProfileRow => !!profile)
-          .map((profile) => ({
-            id: profile.id,
-            name: profile.name?.trim() || profile.email.split('@')[0],
-            email: profile.email,
-            major: profile.major?.trim() || 'Undeclared',
-            year: profile.year?.trim() || 'Student',
-          }))
-      );
+      setFriends(freshFriends);
+      setPendingRequests(freshPending);
+      setSentRequests(freshSent);
       setSentRequestIds(outgoingPendingIds);
-
       setFriendsLoading(false);
+
+      AsyncStorage.setItem(classmateCacheKey, JSON.stringify({
+        friends: freshFriends,
+        pendingRequests: freshPending,
+        sentRequests: freshSent,
+        sentRequestIds: outgoingPendingIds,
+      }));
     }
 
     loadClassmates();
@@ -374,9 +403,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
     const { data: existingRows, error: existingError } = await supabase
       .from('friend_requests')
       .select('id, status')
-      .or(`and(sender_id.eq.${userId},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${userId})`)
-      .in('status', ['pending', 'accepted'])
-      .limit(1);
+      .or(`and(sender_id.eq.${userId},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${userId})`);
 
     if (existingError) {
       setSubmittingRequestId(null);
@@ -384,16 +411,18 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
       return;
     }
 
-    if ((existingRows ?? []).length > 0) {
+    const activeRow = (existingRows ?? []).find(r => r.status === 'pending' || r.status === 'accepted');
+    if (activeRow) {
       setSubmittingRequestId(null);
       Alert.alert('Request already exists', 'You already have a pending or active friend request with this user.');
       return;
     }
 
-    const { error } = await supabase.from('friend_requests').upsert(
-      { sender_id: userId, receiver_id: target.id, status: 'pending' },
-      { onConflict: 'sender_id,receiver_id' }
-    );
+    const { error } = await supabase.from('friend_requests').insert({
+      sender_id: userId,
+      receiver_id: target.id,
+      status: 'pending',
+    });
 
     setSubmittingRequestId(null);
 
@@ -403,35 +432,69 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
     }
 
     setSentRequestIds((prev) => [...prev, target.id]);
+    setSentRequests((prev) => [...prev, {
+      id: target.id, name: target.name, email: target.email,
+      major: target.major, year: target.year,
+    }]);
     closeAddModal();
     Alert.alert('Request sent', `Your friend request was sent to ${target.name}.`);
   };
 
   const handleRespondToRequest = async (requesterId: string, status: 'accepted' | 'rejected') => {
+    if (status === 'accepted') {
+      const { error } = await supabase
+        .from('friend_requests')
+        .update({ status: 'accepted' })
+        .eq('sender_id', requesterId)
+        .eq('receiver_id', userId)
+        .eq('status', 'pending');
+
+      if (error) {
+        Alert.alert('Request update failed', error.message);
+        return;
+      }
+
+      const request = pendingRequests.find((row) => row.id === requesterId);
+      setPendingRequests((prev) => prev.filter((row) => row.id !== requesterId));
+      if (request) setFriends((prev) => [...prev, { ...request, timetableVisibility: 'friends', timetables: {} }]);
+    } else {
+      const { error } = await supabase
+        .from('friend_requests')
+        .delete()
+        .eq('sender_id', requesterId)
+        .eq('receiver_id', userId)
+        .eq('status', 'pending');
+
+      if (error) {
+        Alert.alert('Request update failed', error.message);
+        return;
+      }
+
+      setPendingRequests((prev) => prev.filter((row) => row.id !== requesterId));
+    }
+  };
+
+  const handleCancelRequest = async (receiverId: string) => {
     const { error } = await supabase
       .from('friend_requests')
-      .update({ status })
-      .eq('sender_id', requesterId)
-      .eq('receiver_id', userId)
+      .delete()
+      .eq('sender_id', userId)
+      .eq('receiver_id', receiverId)
       .eq('status', 'pending');
 
     if (error) {
-      Alert.alert('Request update failed', error.message);
+      Alert.alert('Could not cancel request', error.message);
       return;
     }
 
-    const request = pendingRequests.find((row) => row.id === requesterId);
-    setPendingRequests((prev) => prev.filter((row) => row.id !== requesterId));
-
-    if (status === 'accepted' && request) {
-      setFriends((prev) => [...prev, { ...request, timetableVisibility: 'friends', timetables: {} }]);
-    }
+    setSentRequests((prev) => prev.filter((r) => r.id !== receiverId));
+    setSentRequestIds((prev) => prev.filter((id) => id !== receiverId));
   };
 
   const handleDeleteFriend = async (friendId: string) => {
     const [{ error: e1 }, { error: e2 }] = await Promise.all([
-      supabase.from('friend_requests').update({ status: 'rejected' }).eq('sender_id', userId).eq('receiver_id', friendId),
-      supabase.from('friend_requests').update({ status: 'rejected' }).eq('sender_id', friendId).eq('receiver_id', userId),
+      supabase.from('friend_requests').delete().eq('sender_id', userId).eq('receiver_id', friendId),
+      supabase.from('friend_requests').delete().eq('sender_id', friendId).eq('receiver_id', userId),
     ]);
 
     if (e1 || e2) {
@@ -440,6 +503,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
     }
 
     setFriends((prev) => prev.filter((f) => f.id !== friendId));
+    setSentRequestIds((prev) => prev.filter((id) => id !== friendId));
   };
 
   const visibleDays = useMemo(() => {
@@ -888,13 +952,13 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
             }}>
               Requests
             </Text>
-            {pendingRequests.length > 0 && (
+            {(pendingRequests.length + sentRequests.length) > 0 && (
               <View style={{
                 width: 18, height: 18, borderRadius: 9,
                 backgroundColor: activeTab === 'requests' ? 'rgba(255,255,255,0.3)' : colors.destructive,
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: 'white' }}>{pendingRequests.length}</Text>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: 'white' }}>{pendingRequests.length + sentRequests.length}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -1019,47 +1083,86 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <Text style={{ fontSize: 15, color: colors.textTertiary }}>Loading requests...</Text>
         </View>
-      ) : pendingRequests.length === 0 ? (
+      ) : pendingRequests.length === 0 && sentRequests.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <Ionicons name="person-add-outline" size={60} color={colors.border} />
           <Text style={{ fontSize: 16, color: colors.textTertiary, fontWeight: '500' }}>No pending requests</Text>
         </View>
       ) : (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
-          {pendingRequests.map((req, index) => (
-            <View key={req.id}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
-                <View style={{
-                  width: 50, height: 50, borderRadius: 25,
-                  backgroundColor: colors.textTertiary, alignItems: 'center', justifyContent: 'center', marginRight: 12,
-                }}>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>
-                    {getInitials(req.name)}
-                  </Text>
+          {pendingRequests.length > 0 && (
+            <>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+                RECEIVED
+              </Text>
+              {pendingRequests.map((req, index) => (
+                <View key={req.id}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
+                    <View style={{
+                      width: 50, height: 50, borderRadius: 25,
+                      backgroundColor: colors.textTertiary, alignItems: 'center', justifyContent: 'center', marginRight: 12,
+                    }}>
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>{getInitials(req.name)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{req.name}</Text>
+                      <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{req.email}</Text>
+                      <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{req.major} • {req.year}</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleRespondToRequest(req.id, 'accepted')}
+                      style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}
+                    >
+                      <Ionicons name="checkmark" size={18} color="white" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleRespondToRequest(req.id, 'rejected')}
+                      style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Ionicons name="close" size={18} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  {index < pendingRequests.length - 1 && (
+                    <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 16 }} />
+                  )}
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{req.name}</Text>
-                  <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{req.email}</Text>
-                  <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{req.major} • {req.year}</Text>
+              ))}
+            </>
+          )}
+
+          {sentRequests.length > 0 && (
+            <>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+                SENT
+              </Text>
+              {sentRequests.map((req, index) => (
+                <View key={req.id}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
+                    <View style={{
+                      width: 50, height: 50, borderRadius: 25,
+                      backgroundColor: colors.textTertiary, alignItems: 'center', justifyContent: 'center', marginRight: 12,
+                    }}>
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>{getInitials(req.name)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{req.name}</Text>
+                      <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{req.email}</Text>
+                      <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{req.major} • {req.year}</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleCancelRequest(req.id)}
+                      style={{ height: 36, borderRadius: 18, paddingHorizontal: 14, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {index < sentRequests.length - 1 && (
+                    <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 16 }} />
+                  )}
                 </View>
-                <TouchableOpacity
-                  onPress={() => handleRespondToRequest(req.id, 'accepted')}
-                  style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}
-                >
-                  <Ionicons name="checkmark" size={18} color="white" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handleRespondToRequest(req.id, 'rejected')}
-                  style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Ionicons name="close" size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
-              {index < pendingRequests.length - 1 && (
-                <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 16 }} />
-              )}
-            </View>
-          ))}
+              ))}
+            </>
+          )}
         </ScrollView>
       )}
     </View>

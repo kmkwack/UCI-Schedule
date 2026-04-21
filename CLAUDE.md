@@ -433,5 +433,21 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/screens/FriendsScreen.tsx`** — Added `editMode` boolean state. Added "Edit"/"Done" pill button at the far right of the tab row. In edit mode, the timetable button and paper plane icon are hidden; a red trash icon appears instead. Tapping trash shows a confirmation alert then calls `handleDeleteFriend`. `handleDeleteFriend` updates both directions of the `friend_requests` row to `status = 'rejected'` (two parallel `.update()` calls) instead of deleting, to avoid RLS delete issues. `sendFriendRequest` now uses `.upsert()` with `onConflict: 'sender_id,receiver_id'` so re-adding a previously removed friend updates the existing `rejected` row back to `pending` instead of hitting the unique constraint. Re-add check now filters `.in('status', ['pending', 'accepted'])` so rejected rows don't block re-requesting.
 - **Supabase SQL required** — `CREATE POLICY "Users can update their own friend requests" ON friend_requests FOR UPDATE USING (sender_id = auth.uid() OR receiver_id = auth.uid());`
 
+### Session 53 (AsyncStorage caching — grades, weather, sports, board, classmates)
+- **`src/screens/GradesScreen.tsx`** — Added `AsyncStorage` cache (`grades_${userId}`). Loads cache first on mount for instant display, then fetches Supabase in background. `handleSetGrade` updates cache on every save.
+- **`src/screens/HomeScreen.tsx`** — Added `AsyncStorage` cache for weather (`weather_cache`) and sports events (`sports_cache`). Both load cache instantly then refresh in background. Sports cache revives `date` fields with `new Date(e.date)` to restore Date objects lost during JSON serialization.
+- **`src/screens/BoardScreen.tsx`** — Added `AsyncStorage` cache (`board_posts_${school}_${userId}`). Cache key includes school and userId so liked state is correct per user. Shows cached posts instantly; spinner only shown on first ever load.
+- **`src/screens/FriendsScreen.tsx`** — Added `AsyncStorage` cache (`classmates_${userId}`) storing friends, pendingRequests, sentRequests, and sentRequestIds together. Loads cache instantly, fetches Supabase in background.
+
+### Session 53 (Friend requests — sent requests visible + cancel)
+- **`src/screens/FriendsScreen.tsx`** — Added `sentRequests: PendingFriend[]` state (full profile data for outgoing pending requests, previously only IDs were stored). Populated in `loadClassmates` and updated when a request is sent. Requests tab now has two sections: RECEIVED (accept/reject) and SENT (cancel button). `handleCancelRequest` deletes the row from Supabase and removes from local state. Badge count on Requests pill reflects both received + sent. `handleDeleteFriend` now also clears from `sentRequestIds`.
+
+### Session 53 (Friend requests — proper deletion)
+- **`src/screens/FriendsScreen.tsx`** — `handleRespondToRequest` for rejected status now DELETEs the row instead of updating to rejected. `handleDeleteFriend` now DELETEs both directions instead of updating to rejected. `sendFriendRequest` reverted to plain INSERT. Re-add check now fetches all rows and filters in JS (avoids PostgREST `.or()` + `.in()` composition issues).
+- **Supabase SQL required** — `CREATE POLICY "Users can delete their own friend requests" ON friend_requests FOR DELETE USING (sender_id = auth.uid() OR receiver_id = auth.uid());`
+
+### Session 53 (Board — New Post pill size)
+- **`src/screens/BoardScreen.tsx`** — Main board screen "New Post" pill resized to match the one inside a specific board: `paddingHorizontal: 14`, `paddingVertical: 8`, `gap: 5`, `fontSize: 13`.
+
 ### Session 51 (New Post modal redesign)
 - **`src/screens/BoardScreen.tsx`** — Replaced bottom-sheet New Post panel with a full `Modal` (pageSheet). Added Board dropdown (shows all BOARDS with icon + checkmark), red asterisks on Board/Title/Content, tall Content field (minHeight 160), Attachments section (Add Images + Add Files buttons, UI only), Post Options section (Prevent Edit/Delete Switch), and Cancel/Post footer buttons side by side. Extracted `NewPostModal` as a separate function component. Replaced `newPostCategory` state with `newPostBoardId`; category is derived from board at submit time. Added `openNewPost(boardId?)` helper that pre-selects the current board when called from a board detail screen.

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Switch, Alert,
@@ -84,14 +85,23 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'recent' | 'popular'>('recent');
 
+  const postsCacheKey = `board_posts_${school}_${userId}`;
+
   useEffect(() => { fetchPosts(); }, []);
 
   async function fetchPosts() {
-    setLoading(true);
+    const cached = await AsyncStorage.getItem(postsCacheKey);
+    if (cached) {
+      setPosts(JSON.parse(cached));
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
     const { data: postsData, error } = await supabase
       .from('posts').select('*').eq('school', school).order('created_at', { ascending: false });
     if (error || !postsData) { setLoading(false); return; }
-    if (postsData.length === 0) { setPosts([]); setLoading(false); return; }
+    if (postsData.length === 0) { setPosts([]); setLoading(false); AsyncStorage.setItem(postsCacheKey, JSON.stringify([])); return; }
     const postIds = postsData.map((p: any) => p.id);
     const [{ data: votesData }, { data: commentsData }] = await Promise.all([
       supabase.from('post_votes').select('post_id, user_id').in('post_id', postIds),
@@ -107,7 +117,7 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
     (commentsData ?? []).forEach((c: any) => {
       commentCountMap[c.post_id] = (commentCountMap[c.post_id] ?? 0) + 1;
     });
-    setPosts(postsData.map((p: any) => ({
+    const freshPosts = postsData.map((p: any) => ({
       id: p.id, user_id: p.user_id,
       author_name: p.author_name ?? 'Anonymous',
       category: p.category ?? 'General',
@@ -116,8 +126,10 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
       likes: likeCountMap[p.id] ?? 0,
       commentCount: commentCountMap[p.id] ?? 0,
       liked: userLikedSet.has(p.id),
-    })));
+    }));
+    setPosts(freshPosts);
     setLoading(false);
+    AsyncStorage.setItem(postsCacheKey, JSON.stringify(freshPosts));
   }
 
   async function openPost(post: Post) {
@@ -392,10 +404,10 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
         </View>
         <TouchableOpacity
           onPress={() => openNewPost()}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.brand, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 9, marginTop: 4 }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.brand, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginTop: 4 }}
         >
           <Ionicons name="add" size={16} color="white" />
-          <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>New Post</Text>
+          <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
         </TouchableOpacity>
       </View>
 

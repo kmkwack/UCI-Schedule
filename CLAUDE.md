@@ -380,6 +380,51 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 48 (Save/Share: wait for settings modal to close)
 - **`src/screens/TimetableScreen.tsx`** — Added 350ms delay in `saveSchedule` and `shareSchedule` after `setShowSettings(false)` so the settings modal fully closes before `captureRef` fires. Ensures the screenshot captures the clean timetable grid without the settings sheet overlaid.
 
+### Session 49 (Collapsible current quarter in Grades)
+- **`src/screens/GradesScreen.tsx`** — Replaced the always-expanded current quarter course list with the existing `PastQuarterSection` component (`defaultExpanded={true}`). The current quarter now folds/unfolds like past quarters.
+
+### Session 49 (Shared ReviewsModal component)
+- **`src/components/ReviewsModal.tsx`** — Created. Self-contained Modal with all reviews logic: grade distribution fetch (Anteater API), Supabase reviews fetch/submit, instructor selector, write review form. Props: `visible`, `onClose`, `courseCode`, `department`, `courseNumber`, `title`, `professors`, `school`, `userId`, `semesterLabel`.
+- **`src/screens/CoursePickerScreen.tsx`** — Removed all reviews state/effects/handlers and the full reviews Modal JSX. Replaced with `<ReviewsModal>`. Removed unused `KeyboardAvoidingView`, `Platform` imports.
+- **`src/screens/TimetableScreen.tsx`** — Removed all duplicated reviews state/effects/handlers and Animated reviews panel. Replaced with `<ReviewsModal>`. Removed unused `TextInput`, `KeyboardAvoidingView` imports. Reviews now open as a separate Modal when Reviews button is tapped in the course detail sheet.
+
+### Session 49 (Write a Review in TimetableScreen reviews panel)
+- **`src/screens/TimetableScreen.tsx`** — Added `userId` prop. Added `TextInput` to RN imports. Added write review state (`showWriteReview`, `newReviewRating/Difficulty/Workload/Content`, `submittingReview`). Added `fetchCourseReviews()` and `handleSubmitReview()`. Reviews panel now has a "Write a Review" footer button and an overlaid write review form (mirrors CoursePickerScreen). Resets `showWriteReview` on panel close.
+- **`App.tsx`** — Passes `userId={USER_ID}` to `TimetableScreen`.
+
+### Session 51 (Live weather from Open-Meteo)
+- **`src/screens/HomeScreen.tsx`** — Replaced hardcoded `22°`/`72°` and `"Partly Cloudy"` with live data from Open-Meteo API (no key required). Fetches `temperature_2m` and `weathercode` for UCI coordinates on mount. Added `WMO_DESCRIPTIONS` map (WMO codes → label + icon). Temperature converts °C/°F via existing `useCelsius` prop. Shows `'--°'`/`'Loading…'` while fetching. Weather icon updates dynamically.
+
+### Session 50 (BoardScreen — live Supabase posts)
+- **`src/screens/BoardScreen.tsx`** — Replaced `MOCK_POSTS` with live Supabase data. Added `school` and `userId` props. `fetchPosts()` queries `posts`, `post_votes`, and `post_comments` in parallel to compute like counts, per-user liked state, and comment counts. `toggleLike()` does optimistic update then inserts/deletes from `post_votes` (composite PK prevents double-voting). `openPost()` lazy-loads comments on tap. `handleCreatePost()` inserts with school scoping. New Post bottom sheet with category picker, title, and body. Empty state shown when no posts exist.
+- **`App.tsx`** — Passed `school` and `userId` props to `BoardScreen`.
+- **Supabase SQL required** — `ALTER TABLE posts ADD COLUMN author_name text NOT NULL DEFAULT 'Anonymous'; ALTER TABLE post_comments ADD COLUMN author_name text NOT NULL DEFAULT 'Anonymous';`
+
 ### Session 49 (RMP button + Reviews for all section types)
 - **`src/screens/TimetableScreen.tsx`** — Added `expo-linking` import. Added a small "RMP" pill button inline next to the professor name in the course detail sheet; taps open `https://www.ratemyprofessors.com/search/professors?q=<name>` in the browser. Button is hidden for STAFF/empty professors. Removed `isLec` guard so the Reviews button now shows for all section types (Lec, Lab, Dis, Sem, etc.).
 - **`src/screens/CoursePickerScreen.tsx`** — Added `expo-linking` import. Removed `course.sectionLabel?.startsWith('Lec')` guard so the Reviews button appears on every section type. Added a small "RMP" pill button in the section row's right column for non-STAFF professors.
+
+### Session 50 (Settings screen redesign — full sub-screens)
+- **`src/screens/SettingsScreen.tsx`** — Full redesign to match Figma design4. Main screen: profile card, ACCOUNT/PREFERENCES/SUPPORT sections, Log Out button (red), ClassMate v1.0.0 footer. Added sub-screens: EditProfile (inline picker rows for year/dept), PrivacySecurityScreen (radio group + Alert for public), NotificationsScreen (Switch toggles), AppearanceScreen (theme + temp unit radio), LanguageRegionScreen (language/timezone/date format), HelpCenterScreen (FAQ categories with drill-down), AboutScreen (logo + links). Internal `screen` state handles navigation without extra Modals.
+- **`App.tsx`** — Added `handleLogout()` (resets userId/timetables/authScreen to welcome). Passed `onLogout={handleLogout}` to HomeScreen.
+- **`src/screens/HomeScreen.tsx`** — Added `onLogout` prop, forwarded to `<SettingsScreen>`.
+
+### Session 49 (Fix reviews from timetable time block — inline rendering)
+- **`src/components/ReviewsModal.tsx`** — Added `inline?: boolean` prop. When true, renders the content View directly without a Modal/KeyboardAvoidingView wrapper. This allows ReviewsModal to be embedded inside another Modal without triggering iOS's nested-Modal blocking.
+- **`src/screens/TimetableScreen.tsx`** — Replaced `reviewsCourse` state with `showCourseReviews` boolean. Reviews button sets `showCourseReviews(true)` without closing the detail Modal. `<ReviewsModal inline>` is now rendered inside the detail Modal sheet; when visible it expands the sheet to 90% height and fills it with reviews content. This fixes iOS blocking a second Modal while one is already open.
+
+### Session 50 (Dark mode — ThemeContext + useColorScheme)
+- **`src/context/ThemeContext.tsx`** — Created. Defines `ThemePreference` ('light'|'dark'|'auto'), `Colors` type (16 fields), `LIGHT` and `DARK` palettes (Apple HIG-based), `ThemeContext`, `ThemeProvider` (respects auto via `useColorScheme()`), and `useTheme()` hook.
+- **`App.tsx`** — Renamed inner component to `AppContent` (accepts `themePreference`/`onThemeChange` props, calls `useTheme()`). New default export `App()` owns `themePreference` state, wraps `AppContent` in `ThemeProvider`. Tab bar, root view, and tab wrapper backgrounds use theme colors.
+- **`src/screens/SettingsScreen.tsx`** — All sub-components call `useTheme()`. `AppearanceScreen` wired to `themePreference`/`onThemeChange` props so the theme radio group actually applies globally.
+- **`src/screens/HomeScreen.tsx`** — `useTheme()` applied throughout; `themePreference`/`onThemeChange` forwarded to SettingsScreen.
+- **`src/screens/TimetableScreen.tsx`** — `useTheme()` applied to all chrome/modal UI; timetable grid's own `settings.theme` logic intentionally unchanged.
+- **`src/screens/GradesScreen.tsx`** — `useTheme()` applied throughout all sub-components (GpaChart, GradeBadge, GradePickerModal, PastQuarterSection, main screen).
+- **`src/screens/BoardScreen.tsx`** — `useTheme()` applied to both the post detail view and the posts list / new post sheet.
+- **`src/screens/FriendsScreen.tsx`** — `useTheme()` applied to friend timetable view, add-friend modal, and the friends/requests list. Course block colors unchanged.
+- **`src/screens/MessagesScreen.tsx`** — `useTheme()` applied to chat view and chat list; own-message bubbles use `colors.brand`.
+- **`src/components/ReviewsModal.tsx`** — `useTheme()` applied to sheet background, grade distribution panel, review cards, and write-review form.
+- **`src/components/PreviewTimetable.tsx`** — `useTheme()` applied to container border/bg, day header row, time labels, and grid lines. Course block colors unchanged.
+
+### Session 51 (New Post modal redesign)
+- **`src/screens/BoardScreen.tsx`** — Replaced bottom-sheet New Post panel with a full `Modal` (pageSheet). Added Board dropdown (shows all BOARDS with icon + checkmark), red asterisks on Board/Title/Content, tall Content field (minHeight 160), Attachments section (Add Images + Add Files buttons, UI only), Post Options section (Prevent Edit/Delete Switch), and Cancel/Post footer buttons side by side. Extracted `NewPostModal` as a separate function component. Replaced `newPostCategory` state with `newPostBoardId`; category is derived from board at submit time. Added `openNewPost(boardId?)` helper that pre-selects the current board when called from a board detail screen.

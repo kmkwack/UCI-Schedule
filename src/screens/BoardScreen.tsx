@@ -1,293 +1,272 @@
-import { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  View, Text, TouchableOpacity, ScrollView, TextInput,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Switch, Alert,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../lib/supabase';
+import { useTheme } from '../context/ThemeContext';
 
 type Comment = {
   id: string;
-  author: string;
+  post_id: string;
+  user_id: string;
+  author_name: string;
   content: string;
-  timeAgo: string;
+  created_at: string;
 };
 
 type Post = {
   id: string;
-  name: string;
-  role: string;
-  timeAgo: string;
+  user_id: string;
+  author_name: string;
   category: string;
   title: string;
   body: string;
+  created_at: string;
   likes: number;
-  comments: Comment[];
+  commentCount: number;
+  liked: boolean;
 };
 
-const MOCK_POSTS: Post[] = [
-  {
-    id: '1', name: 'Sarah Chen', role: 'Computer Science', timeAgo: '2h ago',
-    category: 'Study Groups',
-    title: 'Looking for study group members for CS 101',
-    body: 'Meeting Tuesday and Thursday at the library. Looking for 2-3 more people!',
-    likes: 24,
-    comments: [
-      { id: 'c1', author: 'Mike Johnson', content: "I'm in!", timeAgo: '1h ago' },
-      { id: 'c2', author: 'Emma Wilson', content: 'Count me in too.', timeAgo: '30m ago' },
-    ],
-  },
-  {
-    id: '2', name: 'Mike Johnson', role: 'Engineering', timeAgo: '4h ago',
-    category: 'Sports',
-    title: 'Basketball pickup game this Saturday',
-    body: 'Looking for players for a casual pickup game at the main gym. All skill levels welcome! 3pm-5pm.',
-    likes: 18,
-    comments: [
-      { id: 'c3', author: 'David Lee', content: "I'm down!", timeAgo: '2h ago' },
-      { id: 'c4', author: 'Alex Kim', content: 'Count me in.', timeAgo: '1h ago' },
-    ],
-  },
-  {
-    id: '3', name: 'Chess Club', role: 'Student Organization', timeAgo: '1d ago',
-    category: 'Club Promotions',
-    title: 'Chess Club - Weekly Meetings',
-    body: 'Join us every Friday evening for friendly chess matches! Beginners and experts welcome. Free pizza!',
-    likes: 156,
-    comments: [
-      { id: 'c5', author: 'Sarah Chen', content: "I'm going!", timeAgo: '30m ago' },
-      { id: 'c6', author: 'Emma Wilson', content: 'Me too.', timeAgo: '15m ago' },
-    ],
-  },
-  {
-    id: '4', name: 'Amy Park', role: 'Business', timeAgo: '2d ago',
-    category: 'Marketplace',
-    title: 'Selling Econ 100A textbook — $25',
-    body: 'Good condition, some highlighting. Perfect for anyone taking Econ 100A this quarter.',
-    likes: 9,
-    comments: [
-      { id: 'c7', author: 'Mike Johnson', content: 'Thanks!', timeAgo: '1h ago' },
-      { id: 'c8', author: 'David Lee', content: "I'll check it out.", timeAgo: '30m ago' },
-    ],
-  },
-  {
-    id: '5', name: 'Jordan Lee', role: 'Biology', timeAgo: '3d ago',
-    category: 'Study Groups',
-    title: 'BIO SCI D103 midterm study session',
-    body: 'Organizing a group study at the Science Library this Sunday 2-5pm. All welcome!',
-    likes: 31,
-    comments: [
-      { id: 'c9', author: 'Alex Kim', content: "I'm down!", timeAgo: '2h ago' },
-      { id: 'c10', author: 'Emma Wilson', content: 'Count me in.', timeAgo: '1h ago' },
-    ],
-  },
+type Board = {
+  id: string;
+  name: string;
+  category: string | null; // null = all posts
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  color: string;
+  iconBg: string;
+};
+
+const BOARDS: Board[] = [
+  { id: 'general',    name: 'General Board',         category: null,              icon: 'chatbubbles-outline', color: '#4169E1', iconBg: '#eef1fb' },
+  { id: 'sports',     name: 'Sports Board',           category: 'Sports',          icon: 'barbell-outline',     color: '#10B981', iconBg: '#ecfdf5' },
+  { id: 'study',      name: 'Study Groups Board',     category: 'Study Groups',    icon: 'book-outline',        color: '#F59E0B', iconBg: '#fef9ec' },
+  { id: 'market',     name: 'Marketplace Board',      category: 'Marketplace',     icon: 'bag-outline',         color: '#8B5CF6', iconBg: '#f5f3ff' },
+  { id: 'clubs',      name: 'Club Promotions Board',  category: 'Club Promotions', icon: 'megaphone-outline',   color: '#EC4899', iconBg: '#fdf2f8' },
 ];
 
-const CATEGORIES = ['All', 'Sports', 'Study Groups', 'Marketplace', 'Club Promotions'];
 
-const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
-  'Study Groups':    { bg: '#eef1fb', text: '#4169E1' },
-  'Sports':         { bg: '#f0fdf4', text: '#16a34a' },
-  'Marketplace':    { bg: '#fefce8', text: '#ca8a04' },
-  'Club Promotions':{ bg: '#fdf4ff', text: '#9333ea' },
-};
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-}
-
-const AVATAR_COLORS = ['#4169E1', '#22c55e', '#f97316', '#a855f7', '#ec4899'];
-function avatarColor(name: string): string {
-  const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+function timeAgo(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(isoString).toLocaleDateString();
 }
 
 type Props = {
   onOpenMessages?: (name: string) => void;
+  school: string;
+  userId: string;
 };
 
-export default function BoardScreen({ onOpenMessages }: Props) {
-  const [search, setSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState('All');
-  const [sort, setSort] = useState<'recent' | 'popular'>('recent');
-  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
-  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
+  const { colors } = useTheme();
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentInput, setCommentInput] = useState('');
+  const [showNewPost, setShowNewPost] = useState(false);
+  const [newPostTitle, setNewPostTitle] = useState('');
+  const [newPostBody, setNewPostBody] = useState('');
+  const [newPostBoardId, setNewPostBoardId] = useState('general');
+  const [preventEdit, setPreventEdit] = useState(false);
+  const [showBoardPicker, setShowBoardPicker] = useState(false);
+  const [submittingPost, setSubmittingPost] = useState(false);
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<'recent' | 'popular'>('recent');
+
+  useEffect(() => { fetchPosts(); }, []);
+
+  async function fetchPosts() {
+    setLoading(true);
+    const { data: postsData, error } = await supabase
+      .from('posts').select('*').eq('school', school).order('created_at', { ascending: false });
+    if (error || !postsData) { setLoading(false); return; }
+    if (postsData.length === 0) { setPosts([]); setLoading(false); return; }
+    const postIds = postsData.map((p: any) => p.id);
+    const [{ data: votesData }, { data: commentsData }] = await Promise.all([
+      supabase.from('post_votes').select('post_id, user_id').in('post_id', postIds),
+      supabase.from('post_comments').select('post_id').in('post_id', postIds),
+    ]);
+    const likeCountMap: Record<string, number> = {};
+    const userLikedSet = new Set<string>();
+    (votesData ?? []).forEach((v: any) => {
+      likeCountMap[v.post_id] = (likeCountMap[v.post_id] ?? 0) + 1;
+      if (v.user_id === userId) userLikedSet.add(v.post_id);
+    });
+    const commentCountMap: Record<string, number> = {};
+    (commentsData ?? []).forEach((c: any) => {
+      commentCountMap[c.post_id] = (commentCountMap[c.post_id] ?? 0) + 1;
+    });
+    setPosts(postsData.map((p: any) => ({
+      id: p.id, user_id: p.user_id,
+      author_name: p.author_name ?? 'Anonymous',
+      category: p.category ?? 'General',
+      title: p.title, body: p.body ?? '',
+      created_at: p.created_at,
+      likes: likeCountMap[p.id] ?? 0,
+      commentCount: commentCountMap[p.id] ?? 0,
+      liked: userLikedSet.has(p.id),
+    })));
+    setLoading(false);
+  }
+
+  async function openPost(post: Post) {
+    setSelectedPost(post);
+    setCommentsLoading(true);
+    const { data } = await supabase.from('post_comments').select('*').eq('post_id', post.id).order('created_at', { ascending: true });
+    setComments(data ?? []);
+    setCommentsLoading(false);
+  }
+
+  async function toggleLike(postId: string) {
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    const wasLiked = post.liked;
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, liked: !wasLiked, likes: wasLiked ? p.likes - 1 : p.likes + 1 } : p));
+    if (wasLiked) {
+      await supabase.from('post_votes').delete().eq('post_id', postId).eq('user_id', userId);
+    } else {
+      await supabase.from('post_votes').insert({ post_id: postId, user_id: userId });
+    }
+  }
+
+  async function handleAddComment() {
+    if (!commentInput.trim() || !selectedPost) return;
+    const { data, error } = await supabase.from('post_comments')
+      .insert({ post_id: selectedPost.id, user_id: userId, author_name: 'You', content: commentInput.trim() })
+      .select().single();
+    if (error || !data) return;
+    setComments(prev => [...prev, data]);
+    setPosts(prev => prev.map(p => p.id === selectedPost.id ? { ...p, commentCount: p.commentCount + 1 } : p));
+    setCommentInput('');
+  }
+
+  async function handleCreatePost() {
+    if (!newPostTitle.trim() || submittingPost) return;
+    setSubmittingPost(true);
+    const board = BOARDS.find(b => b.id === newPostBoardId) ?? BOARDS[0];
+    const category = board.category ?? 'General';
+    const { data, error } = await supabase.from('posts')
+      .insert({ user_id: userId, school, category, title: newPostTitle.trim(), body: newPostBody.trim(), author_name: 'You' })
+      .select().single();
+    setSubmittingPost(false);
+    if (error || !data) {
+      Alert.alert('Post failed', error?.message ?? 'Unknown error');
+      return;
+    }
+    const newPost: Post = {
+      id: data.id, user_id: data.user_id, author_name: data.author_name ?? 'You',
+      category: data.category ?? 'General', title: data.title, body: data.body ?? '',
+      created_at: data.created_at, likes: 0, commentCount: 0, liked: false,
+    };
+    setPosts(prev => [newPost, ...prev]);
+    setShowNewPost(false);
+    setNewPostTitle(''); setNewPostBody(''); setNewPostBoardId('general'); setPreventEdit(false);
+  }
+
+  function openNewPost(boardId?: string) {
+    setNewPostBoardId(boardId ?? selectedBoard?.id ?? 'general');
+    setNewPostTitle('');
+    setNewPostBody('');
+    setPreventEdit(false);
+    setShowNewPost(true);
+  }
+
+  const boardPosts = useMemo(() => {
+    if (!selectedBoard) return [];
+    return selectedBoard.category === null
+      ? posts
+      : posts.filter(p => p.category === selectedBoard.category);
+  }, [posts, selectedBoard]);
 
   const filteredPosts = useMemo(() => {
-    let result = posts.filter(p => {
-      const matchCat = activeCategory === 'All' || p.category === activeCategory;
-      const matchSearch = search === '' ||
-        p.title.toLowerCase().includes(search.toLowerCase()) ||
-        p.body.toLowerCase().includes(search.toLowerCase()) ||
-        p.name.toLowerCase().includes(search.toLowerCase());
-      return matchCat && matchSearch;
-    });
+    let result = boardPosts.filter(p =>
+      search === '' ||
+      p.title.toLowerCase().includes(search.toLowerCase()) ||
+      p.body.toLowerCase().includes(search.toLowerCase()) ||
+      p.author_name.toLowerCase().includes(search.toLowerCase())
+    );
     if (sort === 'popular') result = [...result].sort((a, b) => b.likes - a.likes);
     return result;
-  }, [posts, activeCategory, search, sort]);
+  }, [boardPosts, search, sort]);
 
-  const toggleLike = (id: string) => {
-    setLikedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
+  const postCountForBoard = (board: Board) =>
+    board.category === null ? posts.length : posts.filter(p => p.category === board.category).length;
 
-  const handleAddComment = (postId: string) => {
-    if (!commentInput.trim()) return;
-    const newComment: Comment = {
-      id: `c${Date.now()}`,
-      author: 'You',
-      content: commentInput,
-      timeAgo: 'Just now',
-    };
-    setPosts(prev => prev.map(p =>
-      p.id === postId ? { ...p, comments: [...p.comments, newComment] } : p
-    ));
-    setCommentInput('');
-  };
-
-  const selectedPost = posts.find(p => p.id === selectedPostId) ?? null;
-
-  // ── post detail view ──────────────────────────────────────────────────────
+  // ── post detail ──────────────────────────────────────────────────────────
   if (selectedPost) {
-    const liked = likedIds.has(selectedPost.id);
-    const catStyle = CATEGORY_COLORS[selectedPost.category] ?? { bg: '#f3f4f6', text: '#374151' };
-
+    const post = posts.find(p => p.id === selectedPost.id) ?? selectedPost;
     return (
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: 'white' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        {/* Header */}
-        <View style={{
-          paddingTop: 60, paddingHorizontal: 16, paddingBottom: 14,
-          borderBottomWidth: 1, borderBottomColor: '#e5e7eb',
-          flexDirection: 'row', alignItems: 'center', gap: 10,
-        }}>
-          <TouchableOpacity onPress={() => { setSelectedPostId(null); setCommentInput(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="chevron-back" size={26} color="#111827" />
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity onPress={() => { setSelectedPost(null); setComments([]); setCommentInput(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: '#111827' }}>Post</Text>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Post</Text>
         </View>
-
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
-          {/* Post content */}
-          <View style={{ paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
-            {/* Author */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <View style={{
-                width: 36, height: 36, borderRadius: 18,
-                backgroundColor: avatarColor(selectedPost.name),
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>
-                  {getInitials(selectedPost.name)}
-                </Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#111827' }}>{selectedPost.name}</Text>
-                  <Text style={{ fontSize: 12, color: '#9ca3af' }}>·</Text>
-                  <Text style={{ fontSize: 12, color: '#9ca3af' }}>{selectedPost.role}</Text>
-                  <Text style={{ fontSize: 12, color: '#9ca3af' }}>·</Text>
-                  <Text style={{ fontSize: 12, color: '#9ca3af' }}>{selectedPost.timeAgo}</Text>
-                </View>
-              </View>
-              <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: catStyle.bg }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: catStyle.text }}>{selectedPost.category}</Text>
-              </View>
+          <View style={{ paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{post.author_name}</Text>
+              <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+              <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
+              <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+              <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
             </View>
-
-            <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 10 }}>{selectedPost.title}</Text>
-            <Text style={{ fontSize: 14, color: '#374151', lineHeight: 22, marginBottom: 16 }}>{selectedPost.body}</Text>
-
-            {/* Actions */}
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 10 }}>{post.title}</Text>
+            <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 22, marginBottom: 16 }}>{post.body}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-              <TouchableOpacity
-                onPress={() => toggleLike(selectedPost.id)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-              >
-                <Ionicons
-                  name={liked ? 'thumbs-up' : 'thumbs-up-outline'}
-                  size={18}
-                  color={liked ? '#4169E1' : '#9ca3af'}
-                />
-                <Text style={{ fontSize: 14, color: liked ? '#4169E1' : '#9ca3af', fontWeight: '500' }}>
-                  {selectedPost.likes + (liked ? 1 : 0)}
-                </Text>
+              <TouchableOpacity onPress={() => toggleLike(post.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Ionicons name={post.liked ? 'thumbs-up' : 'thumbs-up-outline'} size={18} color={post.liked ? colors.brand : colors.textTertiary} />
+                <Text style={{ fontSize: 14, color: post.liked ? colors.brand : colors.textTertiary, fontWeight: '500' }}>{post.likes}</Text>
               </TouchableOpacity>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name="chatbubble-outline" size={16} color="#9ca3af" />
-                <Text style={{ fontSize: 14, color: '#9ca3af', fontWeight: '500' }}>{selectedPost.comments.length}</Text>
+                <Ionicons name="chatbubble-outline" size={16} color={colors.textTertiary} />
+                <Text style={{ fontSize: 14, color: colors.textTertiary, fontWeight: '500' }}>{comments.length}</Text>
               </View>
-              {onOpenMessages && (
-                <TouchableOpacity
-                  onPress={() => onOpenMessages(selectedPost.name)}
-                  style={{
-                    marginLeft: 'auto',
-                    width: 36, height: 36, borderRadius: 18,
-                    backgroundColor: '#4169E1', alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
+              {onOpenMessages && post.user_id !== userId && (
+                <TouchableOpacity onPress={() => onOpenMessages(post.author_name)} style={{ marginLeft: 'auto', width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name="send-outline" size={16} color="white" />
                 </TouchableOpacity>
               )}
             </View>
           </View>
-
-          {/* Comments */}
           <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 14 }}>
-              Comments ({selectedPost.comments.length})
-            </Text>
-
-            {selectedPost.comments.map(comment => (
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 14 }}>Comments ({comments.length})</Text>
+            {commentsLoading ? (
+              <ActivityIndicator color={colors.brand} style={{ marginVertical: 16 }} />
+            ) : comments.map(comment => (
               <View key={comment.id} style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
-                <View style={{
-                  width: 32, height: 32, borderRadius: 16,
-                  backgroundColor: '#d1d5db', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: 'white' }}>
-                    {comment.author.charAt(0).toUpperCase()}
-                  </Text>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: 'white' }}>{(comment.author_name ?? 'S').charAt(0).toUpperCase()}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827' }}>{comment.author}</Text>
-                    <Text style={{ fontSize: 11, color: '#9ca3af' }}>{comment.timeAgo}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{comment.author_name ?? 'Student'}</Text>
+                    <Text style={{ fontSize: 11, color: colors.textTertiary }}>{timeAgo(comment.created_at)}</Text>
                   </View>
-                  <Text style={{ fontSize: 14, color: '#374151', lineHeight: 20 }}>{comment.content}</Text>
+                  <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 20 }}>{comment.content}</Text>
                 </View>
               </View>
             ))}
-
-            {/* Add comment */}
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 10,
-              paddingTop: 12, borderTopWidth: 1, borderTopColor: '#e5e7eb',
-            }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
               <TextInput
-                value={commentInput}
-                onChangeText={setCommentInput}
-                placeholder="Add a comment..."
-                placeholderTextColor="#9ca3af"
-                style={{
-                  flex: 1, backgroundColor: '#f3f4f6', borderRadius: 22,
-                  paddingHorizontal: 16, paddingVertical: 10,
-                  fontSize: 14, color: '#111827',
-                }}
-                onSubmitEditing={() => handleAddComment(selectedPost.id)}
-                returnKeyType="send"
+                value={commentInput} onChangeText={setCommentInput}
+                placeholder="Add a comment..." placeholderTextColor={colors.placeholder}
+                style={{ flex: 1, backgroundColor: colors.inputBg, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, fontSize: 14, color: colors.text }}
+                onSubmitEditing={handleAddComment} returnKeyType="send"
               />
-              <TouchableOpacity
-                onPress={() => handleAddComment(selectedPost.id)}
-                disabled={!commentInput.trim()}
-                style={{
-                  width: 40, height: 40, borderRadius: 20,
-                  backgroundColor: commentInput.trim() ? '#4169E1' : '#d1d5db',
-                  alignItems: 'center', justifyContent: 'center',
-                }}
-              >
+              <TouchableOpacity onPress={handleAddComment} disabled={!commentInput.trim()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: commentInput.trim() ? colors.brand : colors.border, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="send" size={16} color="white" />
               </TouchableOpacity>
             </View>
@@ -297,164 +276,337 @@ export default function BoardScreen({ onOpenMessages }: Props) {
     );
   }
 
-  // ── posts list ────────────────────────────────────────────────────────────
+  // ── board detail (post list) ───────────────────────────────────────────────
+  if (selectedBoard) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        {/* Header */}
+        <View style={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <TouchableOpacity onPress={() => { setSelectedBoard(null); setSearch(''); setSort('recent'); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="chevron-back" size={26} color={colors.text} />
+            </TouchableOpacity>
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: selectedBoard.iconBg, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name={selectedBoard.icon} size={18} color={selectedBoard.color} />
+            </View>
+            <Text style={{ flex: 1, fontSize: 18, fontWeight: '700', color: colors.text }}>{selectedBoard.name}</Text>
+            <TouchableOpacity
+              onPress={() => openNewPost(selectedBoard.id)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.brand, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}
+            >
+              <Ionicons name="add" size={15} color="white" />
+              <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
+            </TouchableOpacity>
+          </View>
+          {/* Search */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, gap: 8 }}>
+            <Ionicons name="search-outline" size={16} color={colors.placeholder} />
+            <TextInput placeholder="Search posts..." placeholderTextColor={colors.placeholder} value={search} onChangeText={setSearch} style={{ flex: 1, fontSize: 14, color: colors.text }} />
+          </View>
+        </View>
+
+        {/* Sort tabs */}
+        <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
+          {(['recent', 'popular'] as const).map(s => (
+            <TouchableOpacity
+              key={s}
+              onPress={() => setSort(s)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: sort === s ? colors.brand : 'transparent' }}
+            >
+              <Ionicons name={s === 'recent' ? 'time-outline' : 'trending-up-outline'} size={14} color={sort === s ? 'white' : colors.textTertiary} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: sort === s ? 'white' : colors.textTertiary, textTransform: 'capitalize' }}>{s}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {loading ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator color={colors.brand} />
+          </View>
+        ) : filteredPosts.length === 0 ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <Ionicons name="clipboard-outline" size={40} color={colors.border} />
+            <Text style={{ fontSize: 16, color: colors.textTertiary }}>No posts yet</Text>
+            <Text style={{ fontSize: 14, color: colors.border }}>Be the first to post!</Text>
+          </View>
+        ) : (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+            {filteredPosts.map((post, index) => (
+              <TouchableOpacity key={post.id} onPress={() => openPost(post)} activeOpacity={0.8}>
+                <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6, flexWrap: 'wrap' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{post.author_name}</Text>
+                    <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                    <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
+                    <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                    <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 5 }}>{post.title}</Text>
+                  <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19, marginBottom: 10 }} numberOfLines={2}>{post.body}</Text>
+                  <View style={{ flexDirection: 'row', gap: 16 }}>
+                    <TouchableOpacity onPress={(e) => { e.stopPropagation?.(); toggleLike(post.id); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <Ionicons name={post.liked ? 'thumbs-up' : 'thumbs-up-outline'} size={15} color={post.liked ? colors.brand : colors.textTertiary} />
+                      <Text style={{ fontSize: 13, color: post.liked ? colors.brand : colors.textTertiary, fontWeight: '500' }}>{post.likes}</Text>
+                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <Ionicons name="chatbubble-outline" size={14} color={colors.textTertiary} />
+                      <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '500' }}>{post.commentCount}</Text>
+                    </View>
+                  </View>
+                </View>
+                {index < filteredPosts.length - 1 && <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 16 }} />}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        <NewPostModal
+          visible={showNewPost}
+          onClose={() => setShowNewPost(false)}
+          boards={BOARDS}
+          selectedBoardId={newPostBoardId}
+          onSelectBoard={setNewPostBoardId}
+          showBoardPicker={showBoardPicker}
+          onToggleBoardPicker={() => setShowBoardPicker(v => !v)}
+          title={newPostTitle}
+          onTitleChange={setNewPostTitle}
+          body={newPostBody}
+          onBodyChange={setNewPostBody}
+          preventEdit={preventEdit}
+          onPreventEditChange={setPreventEdit}
+          onSubmit={handleCreatePost}
+          submitting={submittingPost}
+          colors={colors}
+        />
+      </View>
+    );
+  }
+
+  // ── board list (landing) ──────────────────────────────────────────────────
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
-      {/* Header */}
-      <View style={{
-        paddingTop: 60, paddingHorizontal: 16, paddingBottom: 12,
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#111827' }}>Community</Text>
-        <TouchableOpacity style={{
-          flexDirection: 'row', alignItems: 'center', gap: 6,
-          backgroundColor: '#4169E1', borderRadius: 20,
-          paddingHorizontal: 14, paddingVertical: 8,
-        }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <View>
+          <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text }}>Board</Text>
+          <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>Choose a board to explore</Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => openNewPost()}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.brand, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 9, marginTop: 4 }}
+        >
           <Ionicons name="add" size={16} color="white" />
           <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>New Post</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Search */}
-      <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
-        <View style={{
-          flexDirection: 'row', alignItems: 'center',
-          backgroundColor: '#f3f4f6', borderRadius: 12,
-          paddingHorizontal: 12, paddingVertical: 10, gap: 8,
-        }}>
-          <Ionicons name="search-outline" size={18} color="#9ca3af" />
-          <TextInput
-            placeholder="Search posts..."
-            placeholderTextColor="#9ca3af"
-            value={search}
-            onChangeText={setSearch}
-            style={{ flex: 1, fontSize: 15, color: '#111827' }}
-          />
-        </View>
-      </View>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+        {loading ? (
+          <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
+        ) : (
+          <>
+            {BOARDS.map(board => (
+              <TouchableOpacity
+                key={board.id}
+                onPress={() => setSelectedBoard(board)}
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.borderSubtle }}
+                activeOpacity={0.7}
+              >
+                <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: board.iconBg, alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                  <Ionicons name={board.icon} size={22} color={board.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{board.name}</Text>
+                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{postCountForBoard(board)} posts</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+              </TouchableOpacity>
+            ))}
 
-      {/* Category chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingBottom: 4 }}
-        style={{ marginBottom: 12, flexGrow: 0 }}
-      >
-        {CATEGORIES.map(cat => {
-          const isActive = activeCategory === cat;
-          return (
+            {/* Request New Board */}
             <TouchableOpacity
-              key={cat}
-              onPress={() => setActiveCategory(cat)}
-              style={{
-                paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20,
-                backgroundColor: isActive ? '#4169E1' : '#f3f4f6',
-              }}
+              style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 16, padding: 16, borderWidth: 2, borderColor: `${colors.brand}40`, borderStyle: 'dashed', backgroundColor: `${colors.brand}08` }}
+              activeOpacity={0.7}
             >
-              <Text style={{ fontSize: 14, fontWeight: '600', color: isActive ? 'white' : '#374151' }}>
-                {cat}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* Sort tabs */}
-      <View style={{
-        flexDirection: 'row', paddingHorizontal: 16, gap: 20,
-        marginBottom: 4, paddingBottom: 12,
-        borderBottomWidth: 1, borderBottomColor: '#f3f4f6',
-      }}>
-        <TouchableOpacity
-          onPress={() => setSort('recent')}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-        >
-          <Ionicons name="time-outline" size={15} color={sort === 'recent' ? '#4169E1' : '#9ca3af'} />
-          <Text style={{ fontSize: 14, fontWeight: '600', color: sort === 'recent' ? '#4169E1' : '#9ca3af' }}>
-            Recent
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setSort('popular')}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-        >
-          <Ionicons name="trending-up-outline" size={15} color={sort === 'popular' ? '#4169E1' : '#9ca3af'} />
-          <Text style={{ fontSize: 14, fontWeight: '600', color: sort === 'popular' ? '#4169E1' : '#9ca3af' }}>
-            Popular
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Posts */}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
-        {filteredPosts.map((post, index) => {
-          const catStyle = CATEGORY_COLORS[post.category] ?? { bg: '#f3f4f6', text: '#374151' };
-          const liked = likedIds.has(post.id);
-          return (
-            <TouchableOpacity key={post.id} onPress={() => setSelectedPostId(post.id)} activeOpacity={0.8}>
-              <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
-                {/* Post header */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                  <View style={{
-                    width: 36, height: 36, borderRadius: 18,
-                    backgroundColor: avatarColor(post.name),
-                    alignItems: 'center', justifyContent: 'center', marginRight: 10,
-                  }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>
-                      {getInitials(post.name)}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#111827' }}>{post.name}</Text>
-                      <Text style={{ fontSize: 12, color: '#9ca3af' }}>·</Text>
-                      <Text style={{ fontSize: 12, color: '#9ca3af' }}>{post.role}</Text>
-                      <Text style={{ fontSize: 12, color: '#9ca3af' }}>·</Text>
-                      <Text style={{ fontSize: 12, color: '#9ca3af' }}>{post.timeAgo}</Text>
-                    </View>
-                  </View>
-                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: catStyle.bg }}>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: catStyle.text }}>{post.category}</Text>
-                  </View>
-                </View>
-
-                <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 6 }}>
-                  {post.title}
-                </Text>
-                <Text style={{ fontSize: 14, color: '#6b7280', lineHeight: 20, marginBottom: 12 }} numberOfLines={3}>
-                  {post.body}
-                </Text>
-
-                {/* Actions */}
-                <View style={{ flexDirection: 'row', gap: 16 }}>
-                  <TouchableOpacity
-                    onPress={(e) => { e.stopPropagation?.(); toggleLike(post.id); }}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-                  >
-                    <Ionicons
-                      name={liked ? 'thumbs-up' : 'thumbs-up-outline'}
-                      size={16}
-                      color={liked ? '#4169E1' : '#9ca3af'}
-                    />
-                    <Text style={{ fontSize: 13, color: liked ? '#4169E1' : '#9ca3af', fontWeight: '500' }}>
-                      {post.likes + (liked ? 1 : 0)}
-                    </Text>
-                  </TouchableOpacity>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                    <Ionicons name="chatbubble-outline" size={15} color="#9ca3af" />
-                    <Text style={{ fontSize: 13, color: '#9ca3af', fontWeight: '500' }}>{post.comments.length}</Text>
-                  </View>
-                </View>
+              <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: `${colors.brand}15`, alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                <Ionicons name="add" size={22} color={colors.brand} />
               </View>
-
-              {index < filteredPosts.length - 1 && (
-                <View style={{ height: 1, backgroundColor: '#f3f4f6', marginHorizontal: 16 }} />
-              )}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.brand }}>Request New Board</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>Suggest a new community board</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.brand} />
             </TouchableOpacity>
-          );
-        })}
+          </>
+        )}
       </ScrollView>
+
+      {/* New Post Modal */}
+      <NewPostModal
+        visible={showNewPost}
+        onClose={() => setShowNewPost(false)}
+        boards={BOARDS}
+        selectedBoardId={newPostBoardId}
+        onSelectBoard={setNewPostBoardId}
+        showBoardPicker={showBoardPicker}
+        onToggleBoardPicker={() => setShowBoardPicker(v => !v)}
+        title={newPostTitle}
+        onTitleChange={setNewPostTitle}
+        body={newPostBody}
+        onBodyChange={setNewPostBody}
+        preventEdit={preventEdit}
+        onPreventEditChange={setPreventEdit}
+        onSubmit={handleCreatePost}
+        submitting={submittingPost}
+        colors={colors}
+      />
     </View>
+  );
+}
+
+type NewPostModalProps = {
+  visible: boolean;
+  onClose: () => void;
+  boards: Board[];
+  selectedBoardId: string;
+  onSelectBoard: (id: string) => void;
+  showBoardPicker: boolean;
+  onToggleBoardPicker: () => void;
+  title: string;
+  onTitleChange: (v: string) => void;
+  body: string;
+  onBodyChange: (v: string) => void;
+  preventEdit: boolean;
+  onPreventEditChange: (v: boolean) => void;
+  onSubmit: () => void;
+  submitting: boolean;
+  colors: ReturnType<typeof import('../context/ThemeContext').useTheme>['colors'];
+};
+
+function NewPostModal({
+  visible, onClose, boards, selectedBoardId, onSelectBoard,
+  showBoardPicker, onToggleBoardPicker, title, onTitleChange,
+  body, onBodyChange, preventEdit, onPreventEditChange,
+  onSubmit, submitting, colors,
+}: NewPostModalProps) {
+  const selectedBoard = boards.find(b => b.id === selectedBoardId) ?? boards[0];
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <TouchableOpacity onPress={onClose} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="close" size={22} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: colors.text }}>New Post</Text>
+          <View style={{ width: 36 }} />
+        </View>
+
+        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {/* Board */}
+          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 }}>
+            Board <Text style={{ color: '#ef4444' }}>*</Text>
+          </Text>
+          <TouchableOpacity
+            onPress={onToggleBoardPicker}
+            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, marginBottom: 20 }}
+          >
+            <Text style={{ flex: 1, fontSize: 15, color: colors.text }}>{selectedBoard.name}</Text>
+            <Ionicons name="chevron-down" size={18} color={colors.textTertiary} />
+          </TouchableOpacity>
+
+          {showBoardPicker && (
+            <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginTop: -16, marginBottom: 20, overflow: 'hidden' }}>
+              {boards.map((board, i) => (
+                <TouchableOpacity
+                  key={board.id}
+                  onPress={() => { onSelectBoard(board.id); onToggleBoardPicker(); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: i < boards.length - 1 ? 1 : 0, borderBottomColor: colors.borderSubtle }}
+                >
+                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: board.iconBg, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                    <Ionicons name={board.icon} size={14} color={board.color} />
+                  </View>
+                  <Text style={{ flex: 1, fontSize: 15, color: colors.text }}>{board.name}</Text>
+                  {board.id === selectedBoardId && <Ionicons name="checkmark" size={18} color={colors.brand} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Title */}
+          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 }}>
+            Title <Text style={{ color: '#ef4444' }}>*</Text>
+          </Text>
+          <TextInput
+            value={title}
+            onChangeText={onTitleChange}
+            placeholder="Write a clear and descriptive title..."
+            placeholderTextColor={colors.placeholder}
+            style={{ backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: colors.text, marginBottom: 20 }}
+          />
+
+          {/* Content */}
+          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 }}>
+            Content <Text style={{ color: '#ef4444' }}>*</Text>
+          </Text>
+          <TextInput
+            value={body}
+            onChangeText={onBodyChange}
+            placeholder="Share your thoughts, ask questions, or provide details..."
+            placeholderTextColor={colors.placeholder}
+            multiline
+            style={{ backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: colors.text, marginBottom: 20, minHeight: 160, textAlignVertical: 'top' }}
+          />
+
+          {/* Attachments */}
+          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 12 }}>Attachments</Text>
+          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+            <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.border, borderRadius: 12, paddingVertical: 13 }}>
+              <Ionicons name="image-outline" size={18} color={colors.textSecondary} />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary }}>Add Images</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.border, borderRadius: 12, paddingVertical: 13 }}>
+              <Ionicons name="attach-outline" size={18} color={colors.textSecondary} />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary }}>Add Files</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 20 }} />
+
+          {/* Post Options */}
+          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 12 }}>Post Options</Text>
+          <View style={{ backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>Prevent Edit/Delete</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>Lock this post after publishing</Text>
+            </View>
+            <Switch
+              value={preventEdit}
+              onValueChange={onPreventEditChange}
+              trackColor={{ false: colors.border, true: colors.brand }}
+              thumbColor="white"
+            />
+          </View>
+        </ScrollView>
+
+        {/* Footer buttons */}
+        <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16, paddingBottom: Platform.OS === 'ios' ? 32 : 16, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <TouchableOpacity
+            onPress={onClose}
+            style={{ flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: colors.inputBg }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onSubmit}
+            disabled={!title.trim() || submitting}
+            style={{ flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: title.trim() ? colors.brand : colors.border }}
+          >
+            {submitting ? <ActivityIndicator color="white" /> : <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>Post</Text>}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }

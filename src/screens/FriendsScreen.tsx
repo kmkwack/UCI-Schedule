@@ -395,15 +395,15 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
     searchUsers();
   }, [debouncedEmailQuery, friends, pendingRequests, school, sentRequestIds, showAddModal, userEmail, userId]);
 
-  // Re-fetch the selected friend's timetables whenever the dropdown opens (catches newly added quarters)
+  // Re-fetch the selected friend's timetables when their view opens or dropdown opens
   useEffect(() => {
-    if (!selectedFriendId || !showQuarterDropdown) return;
+    if (!selectedFriendId) return;
     async function refreshFriendTimetables() {
       const { data: rows, error } = await supabase
         .from('timetables')
         .select('quarter_key, courses')
         .eq('user_id', selectedFriendId);
-      if (error || !rows) return;
+      if (error || !rows || rows.length === 0) return;
       const timetables: Record<string, Course[]> = {};
       for (const row of rows as { quarter_key: string; courses: Course[] | null }[]) {
         timetables[row.quarter_key] = [
@@ -584,10 +584,7 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
               shadowOpacity: 0.15, shadowRadius: 12, elevation: 8,
               minWidth: 160, overflow: 'hidden',
             }}>
-              {QUARTERS.filter(q => {
-                const courses = friend.timetables[quarterKey(q)];
-                return courses && courses.length > 0;
-              }).map((q, i) => {
+              {[...QUARTERS].reverse().filter(q => friend.timetables[quarterKey(q)] !== undefined).map((q, i) => {
                 const active = quarterKey(q) === quarterKey(friendQuarter);
                 return (
                   <TouchableOpacity

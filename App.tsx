@@ -227,6 +227,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       setUserSettings({
         timetableVisibility: ((settingsRow as Record<string, any> | null | undefined)?.timetable_visibility as TimetableVisibility | undefined) ?? DEFAULT_USER_SETTINGS.timetableVisibility,
+        boardProfileVisible: ((settingsRow as Record<string, any> | null | undefined)?.profile_details as Record<string, any> | undefined)?.boardProfileVisible === true,
         notifications: {
           ...DEFAULT_NOTIFICATION_PREFERENCES,
           ...(((settingsRow as Record<string, any> | null | undefined)?.notification_settings as NotificationPreferences | undefined) ?? {}),
@@ -549,7 +550,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       timetable_visibility: nextSettings.timetableVisibility,
       notification_settings: nextSettings.notifications,
       push_permission_status: nextSettings.pushPermissionStatus,
-      profile_details: profileDetailsFromProfile(nextProfile),
+      profile_details: profileDetailsFromProfile(nextProfile, nextSettings.boardProfileVisible),
       updated_at: new Date().toISOString(),
     };
 
@@ -605,9 +606,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
   };
 
-  const handleSaveVisibility = async (visibility: TimetableVisibility): Promise<boolean> => {
+  const handleSaveVisibility = async ({
+    timetableVisibility,
+    boardProfileVisible,
+  }: {
+    timetableVisibility: TimetableVisibility;
+    boardProfileVisible: boolean;
+  }): Promise<boolean> => {
     setSavingVisibility(true);
-    const nextSettings = { ...userSettings, timetableVisibility: visibility };
+    const nextSettings = { ...userSettings, timetableVisibility, boardProfileVisible };
     try {
       await saveUserSettingsRow(nextSettings);
       setUserSettings(nextSettings);
@@ -772,12 +779,19 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   } else if (currentTab === 'grades') {
     content = <GradesScreen timetables={timetables} userId={USER_ID} />;
   } else if (currentTab === 'board') {
-    content = <BoardScreen onOpenMessages={handleOpenMessages} school={selectedUniversity?.name ?? 'UC Irvine'} userId={USER_ID} />;
+    content = (
+      <BoardScreen
+        onOpenMessages={handleOpenMessages}
+        school={selectedUniversity?.name ?? 'UC Irvine'}
+        userId={USER_ID}
+        boardAuthorName={displayUserName}
+        boardProfileVisible={userSettings.boardProfileVisible}
+      />
+    );
   } else if (currentTab === 'friends') {
     content = (
       <View style={{ flex: 1, paddingTop: 60, backgroundColor: colors.bg }}>
         <FriendsScreen
-          onOpenMessages={handleOpenMessages}
           userId={USER_ID}
           userEmail={userEmail}
           school={selectedUniversity?.name ?? 'UC Irvine'}

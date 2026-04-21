@@ -22,7 +22,7 @@ type Props = {
   themePreference?: ThemePreference;
   onThemeChange?: (v: ThemePreference) => void;
   onSaveProfile: (profile: EditableProfile) => Promise<boolean>;
-  onSaveVisibility: (visibility: TimetableVisibility) => Promise<boolean>;
+  onSaveVisibility: (privacy: { timetableVisibility: TimetableVisibility; boardProfileVisible: boolean }) => Promise<boolean>;
   onSaveNotifications: (notifications: NotificationPreferences, pushPermissionStatus: PushPermissionStatus) => Promise<boolean>;
   onRequestPushPermissions: () => Promise<PushPermissionStatus>;
   savingProfile?: boolean;

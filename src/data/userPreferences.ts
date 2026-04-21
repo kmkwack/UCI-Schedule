@@ -28,6 +28,7 @@ export type PushPermissionStatus = 'granted' | 'denied' | 'undetermined' | 'unav
 
 export type UserSettingsState = {
   timetableVisibility: TimetableVisibility;
+  boardProfileVisible: boolean;
   notifications: NotificationPreferences;
   pushPermissionStatus: PushPermissionStatus;
 };
@@ -46,6 +47,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 
 export const DEFAULT_USER_SETTINGS: UserSettingsState = {
   timetableVisibility: 'friends',
+  boardProfileVisible: false,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   pushPermissionStatus: 'undetermined',
 };
@@ -105,7 +107,7 @@ export function emailName(email: string) {
   return (email.split('@')[0] ?? 'student').trim() || 'student';
 }
 
-export function profileDetailsFromProfile(profile: EditableProfile) {
+export function profileDetailsFromProfile(profile: EditableProfile, boardProfileVisible = false) {
   return {
     firstName: profile.firstName,
     middleName: profile.middleName,
@@ -113,6 +115,7 @@ export function profileDetailsFromProfile(profile: EditableProfile) {
     nickname: profile.nickname,
     gender: profile.gender,
     dateOfBirth: profile.dateOfBirth,
+    boardProfileVisible,
   };
 }
 

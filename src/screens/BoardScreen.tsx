@@ -61,13 +61,19 @@ function timeAgo(isoString: string): string {
   return new Date(isoString).toLocaleDateString();
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 type Props = {
   onOpenMessages?: (target?: ChatTarget | null) => void;
   school: string;
   userId: string;
+  boardAuthorName: string;
+  boardProfileVisible: boolean;
 };
 
-export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
+export default function BoardScreen({ onOpenMessages, school, userId, boardAuthorName, boardProfileVisible }: Props) {
   const { colors } = useTheme();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +94,50 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
 
   const postsCacheKey = `board_posts_${school}_${userId}`;
 
-  useEffect(() => { fetchPosts(); }, []);
+  useEffect(() => { fetchPosts(); }, [boardAuthorName, boardProfileVisible, school, userId]);
+
+  async function resolveAuthorNames(userIds: string[]) {
+    const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
+    if (uniqueIds.length === 0) return {};
+
+    const validIds = uniqueIds.filter(isUuid);
+    const invalidNameMap = Object.fromEntries(
+      uniqueIds
+        .filter((id) => !isUuid(id))
+        .map((id) => [id, 'Anonymous'])
+    );
+
+    if (validIds.length === 0) return invalidNameMap;
+
+    const [{ data: profilesData, error: profilesError }, { data: settingsData, error: settingsError }] = await Promise.all([
+      supabase.from('profiles').select('id, name, email').in('id', validIds),
+      supabase.from('user_settings').select('user_id, profile_details').in('user_id', validIds),
+    ]);
+
+    if (profilesError) console.error('Failed to load board profiles:', profilesError);
+    if (settingsError && settingsError.code !== 'PGRST205') console.error('Failed to load board visibility settings:', settingsError);
+
+    const profilesById = Object.fromEntries(
+      ((profilesData ?? []) as Array<{ id: string; name: string | null; email: string | null }>).map((row) => [row.id, row])
+    );
+    const visibleById = Object.fromEntries(
+      ((settingsData ?? []) as Array<{ user_id: string; profile_details: Record<string, any> | null }>).map((row) => [
+        row.user_id,
+        row.profile_details?.boardProfileVisible === true,
+      ])
+    );
+
+    return {
+      ...invalidNameMap,
+      ...Object.fromEntries(
+        validIds.map((id) => {
+        const profile = profilesById[id];
+        const fallbackName = profile?.name?.trim() || profile?.email?.split('@')[0] || 'Anonymous';
+        return [id, visibleById[id] ? fallbackName : 'Anonymous'];
+        })
+      ),
+    };
+  }
 
   async function fetchPosts() {
     const cached = await AsyncStorage.getItem(postsCacheKey);
@@ -108,6 +157,7 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
       supabase.from('post_votes').select('post_id, user_id').in('post_id', postIds),
       supabase.from('post_comments').select('post_id').in('post_id', postIds),
     ]);
+    const authorNames = await resolveAuthorNames(postsData.map((p: any) => p.user_id));
     const likeCountMap: Record<string, number> = {};
     const userLikedSet = new Set<string>();
     (votesData ?? []).forEach((v: any) => {
@@ -120,7 +170,7 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
     });
     const freshPosts = postsData.map((p: any) => ({
       id: p.id, user_id: p.user_id,
-      author_name: p.author_name ?? 'Anonymous',
+      author_name: authorNames[p.user_id] ?? p.author_name ?? 'Anonymous',
       category: p.category ?? 'General',
       title: p.title, body: p.body ?? '',
       created_at: p.created_at,
@@ -137,7 +187,12 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
     setSelectedPost(post);
     setCommentsLoading(true);
     const { data } = await supabase.from('post_comments').select('*').eq('post_id', post.id).order('created_at', { ascending: true });
-    setComments(data ?? []);
+    const commentRows = (data ?? []) as Comment[];
+    const authorNames = await resolveAuthorNames(commentRows.map((comment) => comment.user_id));
+    setComments(commentRows.map((comment) => ({
+      ...comment,
+      author_name: authorNames[comment.user_id] ?? comment.author_name ?? 'Anonymous',
+    })));
     setCommentsLoading(false);
   }
 
@@ -155,11 +210,12 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
 
   async function handleAddComment() {
     if (!commentInput.trim() || !selectedPost) return;
+    const authorName = boardProfileVisible ? boardAuthorName : 'Anonymous';
     const { data, error } = await supabase.from('post_comments')
-      .insert({ post_id: selectedPost.id, user_id: userId, author_name: 'You', content: commentInput.trim() })
+      .insert({ post_id: selectedPost.id, user_id: userId, author_name: authorName, content: commentInput.trim() })
       .select().single();
     if (error || !data) return;
-    setComments(prev => [...prev, data]);
+    setComments(prev => [...prev, { ...data, author_name: authorName }]);
     setPosts(prev => prev.map(p => p.id === selectedPost.id ? { ...p, commentCount: p.commentCount + 1 } : p));
     setCommentInput('');
   }
@@ -169,8 +225,9 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
     setSubmittingPost(true);
     const board = BOARDS.find(b => b.id === newPostBoardId) ?? BOARDS[0];
     const category = board.category ?? 'General';
+    const authorName = boardProfileVisible ? boardAuthorName : 'Anonymous';
     const { data, error } = await supabase.from('posts')
-      .insert({ user_id: userId, school, category, title: newPostTitle.trim(), body: newPostBody.trim(), author_name: 'You' })
+      .insert({ user_id: userId, school, category, title: newPostTitle.trim(), body: newPostBody.trim(), author_name: authorName })
       .select().single();
     setSubmittingPost(false);
     if (error || !data) {
@@ -178,7 +235,7 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
       return;
     }
     const newPost: Post = {
-      id: data.id, user_id: data.user_id, author_name: data.author_name ?? 'You',
+      id: data.id, user_id: data.user_id, author_name: authorName,
       category: data.category ?? 'General', title: data.title, body: data.body ?? '',
       created_at: data.created_at, likes: 0, commentCount: 0, liked: false,
     };
@@ -403,13 +460,32 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
           <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text }}>Board</Text>
           <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>Choose a board to explore</Text>
         </View>
-        <TouchableOpacity
-          onPress={() => openNewPost()}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.brand, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginTop: 4 }}
-        >
-          <Ionicons name="add" size={16} color="white" />
-          <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+          {onOpenMessages ? (
+            <TouchableOpacity
+              onPress={() => onOpenMessages?.(null)}
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="chatbubble-outline" size={18} color={colors.text} />
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            onPress={() => openNewPost()}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.brand, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}
+          >
+            <Ionicons name="add" size={16} color="white" />
+            <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>

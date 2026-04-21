@@ -23,7 +23,6 @@ import {
   quarterLabel,
 } from '../data/courses';
 import type { TimetableVisibility } from '../data/userPreferences';
-import type { ChatTarget } from '../data/messages';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 
@@ -150,13 +149,12 @@ function mapProfileToFriend(
 }
 
 type Props = {
-  onOpenMessages?: (target?: ChatTarget | null) => void;
   userId: string;
   userEmail?: string;
   school: string;
 };
 
-export default function FriendsScreen({ onOpenMessages, userId, userEmail, school }: Props) {
+export default function FriendsScreen({ userId, userEmail, school }: Props) {
   const { colors } = useTheme();
   const isGuestUser = userId.startsWith('guest');
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -1023,11 +1021,6 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
       <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>ClassMates</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          {onOpenMessages && (
-            <TouchableOpacity onPress={() => onOpenMessages?.(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="chatbubble-outline" size={24} color={colors.text} />
-            </TouchableOpacity>
-          )}
           <TouchableOpacity onPress={() => setShowAddModal(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="person-add-outline" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -1191,17 +1184,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
                     >
                       <Ionicons name="trash-outline" size={16} color="white" />
                     </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      onPress={() => onOpenMessages?.({ id: f.id, name: f.name })}
-                      style={{
-                        width: 36, height: 36, borderRadius: 18,
-                        backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center',
-                      }}
-                    >
-                      <Ionicons name="paper-plane-outline" size={16} color="white" />
-                    </TouchableOpacity>
-                  )}
+                  ) : null}
                 </View>
 
                 {index < filteredFriends.length - 1 && (

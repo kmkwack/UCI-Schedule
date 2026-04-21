@@ -547,3 +547,21 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 60k (Open the latest existing DM from friend actions)
 - **`src/screens/MessagesScreen.tsx`** — Updated the “find or create direct conversation” flow so friend/post message shortcuts now reuse the newest existing conversation returned by `get_user_conversations()` for that partner before creating anything new. This prevents the paper-plane button in the friends list from opening another blank conversation when a DM history with that friend already exists.
+
+### Session 61 (Anonymous board identity + remove friend message UI)
+- **`src/data/userPreferences.ts`** — Added `boardProfileVisible` to user settings defaults and persisted it inside `profile_details`, so board identity can stay anonymous by default without requiring a new Supabase column.
+- **`App.tsx`** — Loaded/saved `boardProfileVisible` from `user_settings.profile_details`, passed the current board display state into `BoardScreen`, and stopped passing message-opening props into `FriendsScreen`.
+- **`src/screens/SettingsScreen.tsx`** — Expanded `Privacy & Security` so it now saves both timetable visibility and a new “Show my profile on board posts” toggle. When off, board activity stays anonymous.
+- **`src/screens/HomeScreen.tsx`** — Updated settings prop typing so the broader privacy payload flows cleanly into the settings modal.
+- **`src/screens/BoardScreen.tsx`** — Board posts and comments now resolve display names from each author’s privacy setting. Users are anonymous by default, and only users who explicitly opt in show their profile name. New posts/comments save with the correct visible/anonymous label, while existing content is rendered dynamically from current settings.
+- **`src/screens/FriendsScreen.tsx`** — Removed the inbox shortcut and per-friend paper-plane button so the ClassMates screen no longer exposes friend DM entry points. Messaging is now intended to come from the board flow instead.
+
+### Session 61b (Move inbox entry from ClassMates to Board)
+- **`src/screens/BoardScreen.tsx`** — Added a messages/inbox shortcut button to the main Board header so users can open their DM list from the anonymous board area, which now owns the messaging flow.
+
+### Session 61c (Ignore guest ids in board author resolution)
+- **`src/screens/BoardScreen.tsx`** — Guarded board author-name resolution so only real UUID user ids are queried from `profiles` and `user_settings`. Guest/dev ids like `guest` now fall back directly to `Anonymous`, preventing the UUID syntax redbox on the board screen.
+
+### Session 62 (Switch messaging back to direct_messages)
+- **`src/screens/MessagesScreen.tsx`** — Replaced the conversation/participant-based inbox and thread logic with a simpler `direct_messages` flow. The messages screen now groups rows by partner id, reads a thread by sender/receiver pair, marks unread incoming rows as read, and writes outgoing messages directly into `direct_messages`.
+- **`src/data/messages.ts`** — Removed the old conversation-specific row types and replaced them with a single `DirectMessageRow` shape so the data layer matches the lighter DM architecture.

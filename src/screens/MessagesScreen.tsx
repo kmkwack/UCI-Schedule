@@ -14,21 +14,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
-import type {
-  ChatTarget,
-  ConversationListRow,
-  MessageRow,
-} from '../data/messages';
+import type { ChatTarget, DirectMessageRow } from '../data/messages';
 import { formatMessageTime } from '../data/messages';
 
 type ConversationPreview = {
-  conversationId: string;
   partnerId: string;
   name: string;
   avatar: string;
   lastMessage: string;
   timestamp: string;
   unread: number;
+  sortStamp: number;
 };
 
 type MessageBubble = {
@@ -38,38 +34,25 @@ type MessageBubble = {
   isMe: boolean;
 };
 
-type ActiveConversation = ChatTarget & {
-  conversationId: string;
-};
-
-type Props = {
-  onClose: () => void;
-  openChatWith?: ChatTarget | null;
-  userId: string;
-};
-
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0] ?? ''}${parts[parts.length - 1][0] ?? ''}`.toUpperCase();
 }
 
-function makeUuid() {
-  const cryptoUuid = globalThis.crypto?.randomUUID?.();
-  if (cryptoUuid) return cryptoUuid;
-
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
-    const rand = Math.floor(Math.random() * 16);
-    const value = char === 'x' ? rand : (rand & 0x3) | 0x8;
-    return value.toString(16);
-  });
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-export default function MessagesScreen({ onClose, openChatWith, userId }: Props) {
+export default function MessagesScreen({ onClose, openChatWith, userId }: {
+  onClose: () => void;
+  openChatWith?: ChatTarget | null;
+  userId: string;
+}) {
   const { colors } = useTheme();
   const isGuestUser = userId.startsWith('guest');
   const [conversations, setConversations] = useState<ConversationPreview[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<ActiveConversation | null>(null);
+  const [selectedChat, setSelectedChat] = useState<ChatTarget | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [messageInput, setMessageInput] = useState('');
   const [messages, setMessages] = useState<MessageBubble[]>([]);
@@ -78,161 +61,160 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: Props)
   const [openingConversation, setOpeningConversation] = useState(false);
   const [sending, setSending] = useState(false);
 
+  const resolvePartnerNames = useCallback(async (partnerIds: string[]) => {
+    const uniqueIds = Array.from(new Set(partnerIds.filter(Boolean)));
+    if (uniqueIds.length === 0) return {};
+
+    const validIds = uniqueIds.filter(isUuid);
+    const invalidNames = Object.fromEntries(uniqueIds.filter((id) => !isUuid(id)).map((id) => [id, 'Anonymous']));
+    if (validIds.length === 0) return invalidNames;
+
+    const [{ data: profilesData, error: profilesError }, { data: settingsData, error: settingsError }] = await Promise.all([
+      supabase.from('profiles').select('id, name, email').in('id', validIds),
+      supabase.from('user_settings').select('user_id, profile_details').in('user_id', validIds),
+    ]);
+
+    if (profilesError) console.error('Failed to load message profiles:', profilesError);
+    if (settingsError && settingsError.code !== 'PGRST205') {
+      console.error('Failed to load message visibility settings:', settingsError);
+    }
+
+    const profilesById = Object.fromEntries(
+      ((profilesData ?? []) as Array<{ id: string; name: string | null; email: string | null }>).map((row) => [row.id, row])
+    );
+    const visibleById = Object.fromEntries(
+      ((settingsData ?? []) as Array<{ user_id: string; profile_details: Record<string, any> | null }>).map((row) => [
+        row.user_id,
+        row.profile_details?.boardProfileVisible === true,
+      ])
+    );
+
+    return {
+      ...invalidNames,
+      ...Object.fromEntries(
+        validIds.map((id) => {
+          const profile = profilesById[id];
+          const fallbackName = profile?.name?.trim() || profile?.email?.split('@')[0] || 'Anonymous';
+          return [id, visibleById[id] ? fallbackName : 'Anonymous'];
+        })
+      ),
+    };
+  }, []);
+
   const fetchConversations = useCallback(async () => {
     if (!userId || isGuestUser) return;
     setLoadingChats(true);
 
-    const { data, error } = await supabase.rpc('get_user_conversations');
+    const { data, error } = await supabase
+      .from('direct_messages')
+      .select('id, sender_id, receiver_id, content, created_at, read_at')
+      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+      .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Failed to load conversation list:', error);
+      console.error('Failed to load direct messages:', error);
       setLoadingChats(false);
       return;
     }
 
-    const rows = (data ?? []) as ConversationListRow[];
+    const rows = (data ?? []) as DirectMessageRow[];
     if (rows.length === 0) {
       setConversations([]);
       setLoadingChats(false);
       return;
     }
 
-    const previewsByPartner = new Map<string, ConversationPreview & { sortStamp: number }>();
-    rows.forEach((row) => {
-      const name = row.partner_name?.trim() || row.partner_email?.split('@')[0] || 'Student';
-      const stamp = row.last_message_at ?? row.updated_at;
-      const sortStamp = new Date(stamp).getTime();
-      const nextPreview = {
-        conversationId: row.conversation_id,
-        partnerId: row.partner_id,
-        name,
-        avatar: getInitials(name),
-        lastMessage: row.last_message_text ?? 'Start the conversation.',
-        timestamp: formatMessageTime(stamp),
-        unread: row.unread_count ?? 0,
-        sortStamp,
-      };
+    const partnerIds = rows.map((row) => (row.sender_id === userId ? row.receiver_id : row.sender_id));
+    const namesById = await resolvePartnerNames(partnerIds);
+    const previewsByPartner = new Map<string, ConversationPreview>();
 
-      const existing = previewsByPartner.get(row.partner_id);
-      if (!existing || sortStamp > existing.sortStamp) {
-        previewsByPartner.set(row.partner_id, nextPreview);
+    rows.forEach((row) => {
+      const partnerId = row.sender_id === userId ? row.receiver_id : row.sender_id;
+      const existing = previewsByPartner.get(partnerId);
+      const sortStamp = new Date(row.created_at).getTime();
+
+      if (!existing) {
+        const name = namesById[partnerId] ?? 'Anonymous';
+        previewsByPartner.set(partnerId, {
+          partnerId,
+          name,
+          avatar: getInitials(name),
+          lastMessage: row.content || 'Start the conversation.',
+          timestamp: formatMessageTime(row.created_at),
+          unread: row.receiver_id === userId && !row.read_at ? 1 : 0,
+          sortStamp,
+        });
+        return;
+      }
+
+      if (row.receiver_id === userId && !row.read_at) {
+        existing.unread += 1;
       }
     });
 
-    setConversations(
-      Array.from(previewsByPartner.values())
-        .sort((a, b) => b.sortStamp - a.sortStamp)
-        .map(({ sortStamp: _sortStamp, ...preview }) => preview)
-    );
+    setConversations(Array.from(previewsByPartner.values()).sort((a, b) => b.sortStamp - a.sortStamp));
     setLoadingChats(false);
-  }, [isGuestUser, userId]);
+  }, [isGuestUser, resolvePartnerNames, userId]);
 
-  const markConversationRead = useCallback(async (conversationId: string) => {
-    if (!conversationId || !userId) return;
-
+  const markThreadRead = useCallback(async (partnerId: string) => {
+    if (!userId || !partnerId) return;
     const now = new Date().toISOString();
     await supabase
-      .from('conversation_participants')
-      .update({ last_read_at: now })
-      .eq('conversation_id', conversationId)
-      .eq('user_id', userId);
+      .from('direct_messages')
+      .update({ read_at: now })
+      .eq('sender_id', partnerId)
+      .eq('receiver_id', userId)
+      .is('read_at', null);
   }, [userId]);
 
-  const fetchMessages = useCallback(async (conversationId: string) => {
-    if (!userId || isGuestUser || !conversationId) return;
+  const fetchMessages = useCallback(async (partner: ChatTarget) => {
+    if (!userId || isGuestUser) return;
     setLoadingMessages(true);
 
     const { data, error } = await supabase
-      .from('messages')
-      .select('id, conversation_id, sender_id, content, created_at')
-      .eq('conversation_id', conversationId)
+      .from('direct_messages')
+      .select('id, sender_id, receiver_id, content, created_at, read_at')
+      .or(`and(sender_id.eq.${userId},receiver_id.eq.${partner.id}),and(sender_id.eq.${partner.id},receiver_id.eq.${userId})`)
       .order('created_at', { ascending: true });
 
     if (error) {
-      console.error('Failed to load messages:', error);
+      console.error('Failed to load direct thread:', error);
       setLoadingMessages(false);
       return;
     }
 
     setMessages(
-      ((data ?? []) as MessageRow[]).map((row) => ({
+      ((data ?? []) as DirectMessageRow[]).map((row) => ({
         id: row.id,
         content: row.content,
         timestamp: formatMessageTime(row.created_at),
         isMe: row.sender_id === userId,
       }))
     );
+
     setLoadingMessages(false);
-    await markConversationRead(conversationId);
-  }, [isGuestUser, markConversationRead, userId]);
+    await markThreadRead(partner.id);
+  }, [isGuestUser, markThreadRead, userId]);
 
-  const createConversation = useCallback(async (partner: ChatTarget) => {
-    const now = new Date().toISOString();
-    const conversationId = makeUuid();
-
-    const { error: conversationError } = await supabase
-      .from('conversations')
-      .insert({
-        id: conversationId,
-        updated_at: now,
-        last_message_text: null,
-        last_message_at: null,
-        last_message_sender_id: null,
-      });
-
-    if (conversationError) {
-      throw conversationError;
-    }
-
-    const { error: participantError } = await supabase
-      .from('conversation_participants')
-      .insert([
-        { conversation_id: conversationId, user_id: userId, last_read_at: now },
-        { conversation_id: conversationId, user_id: partner.id, last_read_at: null },
-      ]);
-
-    if (participantError) {
-      throw participantError;
-    }
-
-    return conversationId;
-  }, [userId]);
-
-  const getOrCreateConversation = useCallback(async (partner: ChatTarget) => {
-    const { data, error } = await supabase.rpc('get_user_conversations');
-
-    if (error) throw error;
-
-    const rows = (data ?? []) as ConversationListRow[];
-    const existingConversation = rows.find((row) => row.partner_id === partner.id);
-
-    if (existingConversation?.conversation_id) {
-      return existingConversation.conversation_id;
-    }
-
-    return createConversation(partner);
-  }, [createConversation]);
-
-  const openConversation = useCallback(async (partner: ChatTarget, conversationId?: string) => {
+  const openConversation = useCallback(async (partner: ChatTarget) => {
     if (!userId || isGuestUser) return;
     setOpeningConversation(true);
 
     try {
-      const resolvedConversationId = conversationId ?? await getOrCreateConversation(partner);
-      setSelectedConversation({ ...partner, conversationId: resolvedConversationId });
-      await fetchMessages(resolvedConversationId);
+      setSelectedChat(partner);
+      await fetchMessages(partner);
       await fetchConversations();
     } catch (error: any) {
       Alert.alert(
         'Could not open chat',
         error?.code === 'PGRST205'
-          ? 'The conversations/messages tables are missing in Supabase. Run the required SQL first.'
+          ? 'The direct_messages table is missing in Supabase. Recreate that table first.'
           : error?.message ?? 'Please try again.'
       );
     } finally {
       setOpeningConversation(false);
     }
-  }, [fetchConversations, fetchMessages, getOrCreateConversation, isGuestUser, userId]);
+  }, [fetchConversations, fetchMessages, isGuestUser, userId]);
 
   useEffect(() => {
     void fetchConversations();
@@ -247,65 +229,41 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: Props)
     if (isGuestUser) return;
     const interval = setInterval(() => {
       void fetchConversations();
-      if (selectedConversation?.conversationId) {
-        void fetchMessages(selectedConversation.conversationId);
+      if (selectedChat) {
+        void fetchMessages(selectedChat);
       }
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [fetchConversations, fetchMessages, isGuestUser, selectedConversation]);
+  }, [fetchConversations, fetchMessages, isGuestUser, selectedChat]);
 
   const handleSend = async () => {
-    if (!messageInput.trim() || !selectedConversation || sending) return;
+    if (!messageInput.trim() || !selectedChat || sending) return;
     setSending(true);
     const content = messageInput.trim();
-    const now = new Date().toISOString();
 
-    const { error: messageError } = await supabase.from('messages').insert({
-      conversation_id: selectedConversation.conversationId,
+    const { error } = await supabase.from('direct_messages').insert({
       sender_id: userId,
+      receiver_id: selectedChat.id,
       content,
-      created_at: now,
+      created_at: new Date().toISOString(),
+      read_at: null,
     });
 
-    if (messageError) {
+    if (error) {
       setSending(false);
       Alert.alert(
         'Could not send message',
-        messageError.code === 'PGRST205'
-          ? 'The conversations/messages tables are missing in Supabase. Run the required SQL first.'
-          : messageError.message
+        error.code === 'PGRST205'
+          ? 'The direct_messages table is missing in Supabase. Recreate that table first.'
+          : error.message
       );
       return;
     }
 
-    const { error: conversationError } = await supabase
-      .from('conversations')
-      .update({
-        updated_at: now,
-        last_message_text: content,
-        last_message_at: now,
-        last_message_sender_id: userId,
-      })
-      .eq('id', selectedConversation.conversationId);
-
-    if (conversationError) {
-      console.error('Failed to update conversation metadata:', conversationError);
-    }
-
-    const { error: selfReadError } = await supabase
-      .from('conversation_participants')
-      .update({ last_read_at: now })
-      .eq('conversation_id', selectedConversation.conversationId)
-      .eq('user_id', userId);
-
-    if (selfReadError) {
-      console.error('Failed to update sender read state:', selfReadError);
-    }
-
     setSending(false);
     setMessageInput('');
-    await fetchMessages(selectedConversation.conversationId);
+    await fetchMessages(selectedChat);
     await fetchConversations();
   };
 
@@ -334,7 +292,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: Props)
     );
   }
 
-  if (selectedConversation) {
+  if (selectedChat) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -343,17 +301,17 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: Props)
             paddingHorizontal: 16, paddingVertical: 12,
             borderBottomWidth: 1, borderBottomColor: colors.border, gap: 12,
           }}>
-            <TouchableOpacity onPress={() => setSelectedConversation(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => setSelectedChat(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="chevron-back" size={26} color={colors.text} />
             </TouchableOpacity>
             <View style={{
               width: 40, height: 40, borderRadius: 20,
               backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center',
             }}>
-              <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>{getInitials(selectedConversation.name)}</Text>
+              <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>{getInitials(selectedChat.name)}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>{selectedConversation.name}</Text>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>{selectedChat.name}</Text>
             </View>
           </View>
 
@@ -458,12 +416,12 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: Props)
       {loadingChats ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <ActivityIndicator size="small" color={colors.brand} />
-          <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading conversations...</Text>
+          <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading messages...</Text>
         </View>
       ) : (
         <FlatList
           data={filteredChats}
-          keyExtractor={(c) => c.conversationId}
+          keyExtractor={(c) => c.partnerId}
           ListEmptyComponent={() => (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
               <Text style={{ fontSize: 14, color: colors.textTertiary }}>No messages found</Text>
@@ -471,7 +429,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: Props)
           )}
           renderItem={({ item: chat }) => (
             <TouchableOpacity
-              onPress={() => { void openConversation({ id: chat.partnerId, name: chat.name }, chat.conversationId); }}
+              onPress={() => { void openConversation({ id: chat.partnerId, name: chat.name }); }}
               style={{
                 flexDirection: 'row', alignItems: 'center',
                 paddingHorizontal: 16, paddingVertical: 14,

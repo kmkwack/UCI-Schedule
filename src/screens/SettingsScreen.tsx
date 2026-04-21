@@ -110,7 +110,7 @@ type Props = {
   themePreference?: ThemePreference;
   onThemeChange?: (v: ThemePreference) => void;
   onSaveProfile: (profile: EditableProfile) => Promise<boolean>;
-  onSaveVisibility: (visibility: TimetableVisibility) => Promise<boolean>;
+  onSaveVisibility: (privacy: { timetableVisibility: TimetableVisibility; boardProfileVisible: boolean }) => Promise<boolean>;
   onSaveNotifications: (notifications: NotificationPreferences, pushPermissionStatus: PushPermissionStatus) => Promise<boolean>;
   onRequestPushPermissions: () => Promise<PushPermissionStatus>;
   savingProfile?: boolean;
@@ -357,20 +357,27 @@ function EditProfileScreen({
 function PrivacySecurityScreen({
   onBack,
   initialVisibility,
+  initialBoardProfileVisible,
   onSave,
   saving,
 }: {
   onBack: () => void;
   initialVisibility: TimetableVisibility;
-  onSave: (visibility: TimetableVisibility) => Promise<boolean>;
+  initialBoardProfileVisible: boolean;
+  onSave: (privacy: { timetableVisibility: TimetableVisibility; boardProfileVisible: boolean }) => Promise<boolean>;
   saving?: boolean;
 }) {
   const { colors } = useTheme();
   const [visibility, setVisibility] = useState<TimetableVisibility>(initialVisibility);
+  const [boardProfileVisible, setBoardProfileVisible] = useState(initialBoardProfileVisible);
 
   useEffect(() => {
     setVisibility(initialVisibility);
   }, [initialVisibility]);
+
+  useEffect(() => {
+    setBoardProfileVisible(initialBoardProfileVisible);
+  }, [initialBoardProfileVisible]);
 
   const options: { value: 'friends' | 'private'; label: string; desc: string }[] = [
     { value: 'friends', label: 'Friends', desc: 'Only your classmates can see' },
@@ -409,12 +416,41 @@ function PrivacySecurityScreen({
             </View>
           </TouchableOpacity>
         ))}
+
+        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginTop: 20, marginBottom: 12 }}>Board Profile Exposure</Text>
+        <View
+          style={{
+            backgroundColor: colors.bgTertiary,
+            borderRadius: 14,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 14,
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 15, fontWeight: '500', color: colors.text }}>Show my profile on board posts</Text>
+            <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
+              Off by default. When disabled, your posts and comments appear as Anonymous.
+            </Text>
+          </View>
+          <Switch
+            value={boardProfileVisible}
+            onValueChange={setBoardProfileVisible}
+            trackColor={{ false: colors.border, true: colors.brand }}
+            thumbColor="white"
+          />
+        </View>
       </ScrollView>
       <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
         <TouchableOpacity
           disabled={saving}
           onPress={async () => {
-            const saved = await onSave(visibility);
+            const saved = await onSave({
+              timetableVisibility: visibility,
+              boardProfileVisible,
+            });
             if (saved) onBack();
           }}
           style={{
@@ -1021,6 +1057,7 @@ export default function SettingsScreen({
           <PrivacySecurityScreen
             onBack={() => setScreen('main')}
             initialVisibility={userSettings.timetableVisibility}
+            initialBoardProfileVisible={userSettings.boardProfileVisible}
             onSave={onSaveVisibility}
             saving={savingVisibility}
           />

@@ -199,18 +199,19 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: Props)
   }, [userId]);
 
   const getOrCreateConversation = useCallback(async (partner: ChatTarget) => {
-    const { data, error } = await supabase.rpc('find_direct_conversation', {
-      other_user_id: partner.id,
-    });
+    const { data, error } = await supabase.rpc('get_user_conversations');
 
     if (error) throw error;
 
-    if (typeof data === 'string' && data) {
-      return data;
+    const rows = (data ?? []) as ConversationListRow[];
+    const existingConversation = rows.find((row) => row.partner_id === partner.id);
+
+    if (existingConversation?.conversation_id) {
+      return existingConversation.conversation_id;
     }
 
     return createConversation(partner);
-  }, [createConversation, userId]);
+  }, [createConversation]);
 
   const openConversation = useCallback(async (partner: ChatTarget, conversationId?: string) => {
     if (!userId || isGuestUser) return;

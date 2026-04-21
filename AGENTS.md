@@ -544,3 +544,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 60j (Collapse duplicate conversations into one DM row)
 - **`src/screens/MessagesScreen.tsx`** — Changed inbox assembly so multiple conversation rows with the same partner collapse into a single visible DM entry, keeping only the most recent conversation for that partner. This makes the Messages screen behave like a normal direct-message list even if earlier failed chat attempts left duplicate conversation rows in Supabase.
+
+### Session 60k (Open the latest existing DM from friend actions)
+- **`src/screens/MessagesScreen.tsx`** — Updated the “find or create direct conversation” flow so friend/post message shortcuts now reuse the newest existing conversation returned by `get_user_conversations()` for that partner before creating anything new. This prevents the paper-plane button in the friends list from opening another blank conversation when a DM history with that friend already exists.

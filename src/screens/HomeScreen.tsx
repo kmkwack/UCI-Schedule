@@ -30,12 +30,6 @@ type Props = {
   savingNotifications?: boolean;
 };
 
-const QUOTES = [
-  { text: 'Success is not final, failure is not fatal: it is the courage to continue that counts.', author: 'Winston Churchill' },
-  { text: 'The secret of getting ahead is getting started.', author: 'Mark Twain' },
-  { text: 'It always seems impossible until it\'s done.', author: 'Nelson Mandela' },
-  { text: 'Don\'t watch the clock; do what it does. Keep going.', author: 'Sam Levenson' },
-];
 
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -153,6 +147,7 @@ export default function HomeScreen({
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
   const [tempC, setTempC] = useState<number | null>(null);
   const [weatherCode, setWeatherCode] = useState<number | null>(null);
+  const [quote, setQuote] = useState<{ text: string; author: string } | null>(null);
 
   useEffect(() => {
     async function loadWeather() {
@@ -189,6 +184,28 @@ export default function HomeScreen({
     }
     loadSports();
   }, []);
+
+  useEffect(() => {
+    async function loadQuote() {
+      const today = new Date().toDateString();
+      const cached = await AsyncStorage.getItem('quote_cache');
+      if (cached) {
+        const { date, text, author } = JSON.parse(cached);
+        if (date === today) { setQuote({ text, author }); return; }
+      }
+      try {
+        const r = await fetch('https://zenquotes.io/api/today');
+        const json = await r.json();
+        const text = json[0]?.q;
+        const author = json[0]?.a;
+        if (text && author) {
+          setQuote({ text, author });
+          AsyncStorage.setItem('quote_cache', JSON.stringify({ date: today, text, author }));
+        }
+      } catch {}
+    }
+    loadQuote();
+  }, []);
   const todayCode = getTodayDayCode();
   const todayCourses = todayCode
     ? activeCourses
@@ -198,7 +215,6 @@ export default function HomeScreen({
 
   const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
   const upcomingClasses = todayCourses.filter(c => extractStartHour(c.time) > nowHour);
-  const quote = QUOTES[new Date().getDay() % QUOTES.length];
 
   return (
     <ScrollView
@@ -266,10 +282,14 @@ export default function HomeScreen({
         <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginBottom: 16 }} />
 
         {/* Quote */}
-        <Text style={{ fontSize: 14, color: colors.textSecondary, fontStyle: 'italic', lineHeight: 20, marginBottom: 6 }}>
-          "{quote.text}"
-        </Text>
-        <Text style={{ fontSize: 13, color: colors.textTertiary }}>— {quote.author}</Text>
+        {quote && (
+          <>
+            <Text style={{ fontSize: 14, color: colors.textSecondary, fontStyle: 'italic', lineHeight: 20, marginBottom: 6 }}>
+              "{quote.text}"
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.textTertiary }}>— {quote.author}</Text>
+          </>
+        )}
 
         {/* Divider */}
         <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 16, marginBottom: 16 }} />
@@ -335,28 +355,38 @@ export default function HomeScreen({
 
         {sportsEvents.length === 0 ? (
           <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading upcoming games…</Text>
-        ) : sportsEvents.map((event, index) => (
-          <View key={event.id}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={{
-                width: 42, height: 42, borderRadius: 21,
-                backgroundColor: event.bg, alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Ionicons name={event.icon} size={20} color={event.color} />
+        ) : sportsEvents.map((event, index) => {
+          const next = sportsEvents[index + 1];
+          const isDayChange = next && next.date.toDateString() !== event.date.toDateString();
+          return (
+            <View key={event.id}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{
+                  width: 42, height: 42, borderRadius: 21,
+                  backgroundColor: event.bg, alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Ionicons name={event.icon} size={20} color={event.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
+                    {event.title}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: colors.textSecondary }}>{formatSportsEventTime(event.date)}</Text>
+                  <Text style={{ fontSize: 13, color: colors.textTertiary }}>{event.location}</Text>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
-                  {event.title}
-                </Text>
-                <Text style={{ fontSize: 13, color: colors.textSecondary }}>{formatSportsEventTime(event.date)}</Text>
-                <Text style={{ fontSize: 13, color: colors.textTertiary }}>{event.location}</Text>
-              </View>
+              {index < sportsEvents.length - 1 && (
+                isDayChange ? (
+                  <View style={{ marginVertical: 14 }}>
+                    <View style={{ height: 2.5, backgroundColor: colors.border, borderRadius: 2 }} />
+                  </View>
+                ) : (
+                  <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginVertical: 14 }} />
+                )
+              )}
             </View>
-            {index < sportsEvents.length - 1 && (
-              <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginVertical: 14 }} />
-            )}
-          </View>
-        ))}
+          );
+        })}
       </View>
     </ScrollView>
   );

@@ -77,17 +77,22 @@ const TIME_LABEL_WIDTH = 52;
 const SIDE_PADDING = 12;
 const CARD_PADDING = 12;
 
-function parseHour(time: string) {
+function parseHour(time: string | undefined) {
+  if (!time || !time.includes(':')) return 0;
   const [h, m] = time.split(':');
   return Number(h) + Number(m) / 60;
 }
 
 function startHour(t: string) {
-  return parseHour(t.split(' - ')[0]);
+  return parseHour(t?.split(' - ')[0]);
 }
 
 function endHour(t: string) {
-  return parseHour(t.split(' - ')[1]);
+  return parseHour(t?.split(' - ')[1]);
+}
+
+function isValidTime(t: string) {
+  return !!t && t !== 'TBA' && t.includes(' - ');
 }
 
 function fmtHour(h: number) {
@@ -170,7 +175,9 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
 
   const screenHeight = Dimensions.get('window').height;
   const friend = selectedFriendId ? friends.find((f) => f.id === selectedFriendId) ?? null : null;
-  const activeCourses: Course[] = friend ? (friend.timetables[quarterKey(friendQuarter)] ?? []) : [];
+  const activeCourses: Course[] = friend
+    ? (friend.timetables[quarterKey(friendQuarter)] ?? []).filter(c => isValidTime(c.time) && c.days !== 'TBA')
+    : [];
 
   const filteredFriends = useMemo(
     () =>

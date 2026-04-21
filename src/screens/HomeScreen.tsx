@@ -1,7 +1,7 @@
 import { useState, useEffect, ComponentProps } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Course } from '../data/courses';
+import { Course, pastelForCourse, blockColorKey } from '../data/courses';
 import SettingsScreen from './SettingsScreen';
 import { useTheme, ThemePreference } from '../context/ThemeContext';
 
@@ -174,6 +174,25 @@ function getTodayDayCode(): string | null {
   return null;
 }
 
+function getDaysArray(daysString: string): string[] {
+  const result: string[] = [];
+  let i = 0;
+  while (i < daysString.length) {
+    const two = daysString.slice(i, i + 2);
+    if (two === 'Th') { result.push('Th'); i += 2; continue; }
+    if (two === 'Tu') { result.push('T');  i += 2; continue; }
+    if (two === 'Sa') { result.push('Sa'); i += 2; continue; }
+    if (two === 'Su') { result.push('Su'); i += 2; continue; }
+    const one = daysString[i];
+    if (one === 'M') result.push('M');
+    if (one === 'T') result.push('T');
+    if (one === 'W') result.push('W');
+    if (one === 'F') result.push('F');
+    i += 1;
+  }
+  return result;
+}
+
 function extractStartHour(timeRange: string): number {
   const start = timeRange.split(' - ')[0];
   const [hour, minute] = start.split(':').map(Number);
@@ -241,17 +260,12 @@ export default function HomeScreen({ activeCourses, onLogout, userEmail, useCels
   const todayCode = getTodayDayCode();
   const todayCourses = todayCode
     ? activeCourses
-        .filter((c) => {
-          // handle multi-day strings like "MWF" — check if today's code is in it
-          if (todayCode === 'Th') return c.days.includes('Th');
-          if (todayCode === 'T') return c.days.includes('T') && !c.days.includes('Th');
-          return c.days.includes(todayCode);
-        })
+        .filter((c) => c.days !== 'TBA' && c.time !== 'TBA' && getDaysArray(c.days).includes(todayCode))
         .sort((a, b) => extractStartHour(a.time) - extractStartHour(b.time))
     : [];
 
   const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
-  const nextClass = todayCourses.find(c => extractStartHour(c.time) > nowHour) ?? null;
+  const upcomingClasses = todayCourses.filter(c => extractStartHour(c.time) > nowHour);
   const quote = QUOTES[new Date().getDay() % QUOTES.length];
 
   return (
@@ -311,21 +325,24 @@ export default function HomeScreen({ activeCourses, onLogout, userEmail, useCels
 
         {/* Coming Up */}
         <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '500', marginBottom: 12 }}>Coming Up</Text>
-        {nextClass ? (
-          <View style={{ flexDirection: 'row' }}>
-            {/* Left accent bar */}
-            <View style={{ width: 3, borderRadius: 2, backgroundColor: '#6366f1', marginRight: 12 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
-                {nextClass.title || nextClass.code}
-              </Text>
-              <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 2 }}>
-                {formatTime(nextClass.time)}
-              </Text>
-              {nextClass.location && (
-                <Text style={{ fontSize: 13, color: colors.textTertiary }}>{nextClass.location}</Text>
-              )}
-            </View>
+        {upcomingClasses.length > 0 ? (
+          <View style={{ gap: 12 }}>
+            {upcomingClasses.map((c) => (
+              <View key={c.id} style={{ flexDirection: 'row' }}>
+                <View style={{ width: 3, borderRadius: 2, backgroundColor: pastelForCourse(blockColorKey(c)).border, marginRight: 12 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
+                    {c.title || c.code}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 2 }}>
+                    {formatTime(c.time)}
+                  </Text>
+                  {c.location && (
+                    <Text style={{ fontSize: 13, color: colors.textTertiary }}>{c.location}</Text>
+                  )}
+                </View>
+              </View>
+            ))}
           </View>
         ) : (
           <Text style={{ fontSize: 14, color: colors.textTertiary }}>No more classes today</Text>

@@ -395,6 +395,29 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
     searchUsers();
   }, [debouncedEmailQuery, friends, pendingRequests, school, sentRequestIds, showAddModal, userEmail, userId]);
 
+  // Re-fetch the selected friend's timetables when their view is opened so new quarters appear
+  useEffect(() => {
+    if (!selectedFriendId) return;
+    async function refreshFriendTimetables() {
+      const { data: rows, error } = await supabase
+        .from('timetables')
+        .select('quarter_key, courses')
+        .eq('user_id', selectedFriendId);
+      if (error || !rows) return;
+      const timetables: Record<string, Course[]> = {};
+      for (const row of rows as { quarter_key: string; courses: Course[] | null }[]) {
+        timetables[row.quarter_key] = [
+          ...(timetables[row.quarter_key] ?? []),
+          ...(row.courses ?? []),
+        ];
+      }
+      setFriends((prev) =>
+        prev.map((f) => (f.id === selectedFriendId ? { ...f, timetables } : f))
+      );
+    }
+    refreshFriendTimetables();
+  }, [selectedFriendId]);
+
   const closeAddModal = () => {
     setEmailQuery('');
     setDebouncedEmailQuery('');
@@ -551,7 +574,7 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
     const gridLine = colors.border;
     const gridLabel = colors.textTertiary;
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <Modal transparent animationType="fade" visible={showQuarterDropdown} onRequestClose={() => setShowQuarterDropdown(false)}>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowQuarterDropdown(false)}>
             <View style={{

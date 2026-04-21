@@ -765,7 +765,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     content = <BoardScreen onOpenMessages={handleOpenMessages} school={selectedUniversity?.name ?? 'UC Irvine'} userId={USER_ID} />;
   } else if (currentTab === 'friends') {
     content = (
-      <View style={{ flex: 1, paddingTop: 60, backgroundColor: colors.bgSecondary }}>
+      <View style={{ flex: 1, paddingTop: 60, backgroundColor: colors.bg }}>
         <FriendsScreen
           onOpenMessages={handleOpenMessages}
           userId={USER_ID}

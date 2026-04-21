@@ -86,17 +86,25 @@ async function fetchDepartment(year, quarter, dept, retries = 3) {
           const time    = meeting?.timeIsTBA ? 'TBA' : formatTime(meeting?.startTime, meeting?.endTime);
 
           rows.push({
-            id:            `${section.sectionCode}::${qKey}`,
-            quarter_key:   qKey,
-            department:    d.deptCode,
+            id:              `${section.sectionCode}::${qKey}`,
+            quarter_key:     qKey,
+            department:      d.deptCode,
+            dept_name:       d.deptName ?? null,
             code,
-            title:         course.courseTitle ?? '',
-            section_label: `${section.sectionType} ${section.sectionNum}`,
-            professor:     section.instructors?.[0] ?? '',
+            title:           course.courseTitle ?? '',
+            section_label:   `${section.sectionType} ${section.sectionNum}`,
+            professor:       section.instructors?.[0] ?? '',
+            instructors:     section.instructors ?? [],
             days,
             time,
-            location:      meeting?.bldg?.[0] ?? null,
-            units:         parseInt(section.units) || null,
+            location:        meeting?.bldg?.[0] ?? null,
+            meetings:        section.meetings ?? [],
+            units:           parseInt(section.units) || null,
+            ge_categories:   section.geCategories ?? [],
+            final_exam:      section.finalExam ?? null,
+            restrictions:    section.restrictions ?? null,
+            prerequisite_link: course.prerequisiteLink ?? null,
+            section_comment: section.sectionComment ?? null,
           });
         }
       }
@@ -142,6 +150,63 @@ async function runConcurrent(items, worker, concurrency) {
   for (let i = 0; i < concurrency; i++) runNext();
   while (active.size > 0) await sleep(50);
   return results;
+}
+
+// ─── seed GE categories (10 API calls per quarter) ───────────────────────────
+
+const GE_CODES = ['GE-1A', 'GE-1B', 'GE-2', 'GE-3', 'GE-4', 'GE-5A', 'GE-5B', 'GE-6', 'GE-7', 'GE-8'];
+
+async function seedGECategories(year, quarter) {
+  console.log(`\n  Seeding GE categories for ${quarter} ${year}…`);
+  const qKey = `${year}-${quarter}`;
+
+  // Map sectionId → Set of GE codes it satisfies
+  const geMap = new Map();
+
+  for (const ge of GE_CODES) {
+    try {
+      await sleep(REQUEST_DELAY_MS);
+      const url = `https://anteaterapi.com/v2/rest/websoc?ge=${ge}&year=${year}&quarter=${quarter}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${ANTEATER_API_KEY}` } });
+      if (!res.ok) { console.error(`  ✗ ${ge} HTTP ${res.status}`); continue; }
+      const json = await res.json();
+      if (!json.ok) continue;
+
+      let count = 0;
+      for (const school of json.data?.schools ?? []) {
+        for (const dept of school.departments ?? []) {
+          for (const course of dept.courses ?? []) {
+            for (const section of course.sections ?? []) {
+              if (section.isCancelled) continue;
+              const id = `${section.sectionCode}::${qKey}`;
+              if (!geMap.has(id)) geMap.set(id, new Set());
+              geMap.get(id).add(ge);
+              count++;
+            }
+          }
+        }
+      }
+      console.log(`  ✓ ${ge.padEnd(8)} ${count} sections`);
+    } catch (err) {
+      console.error(`  ✗ ${ge} ${err.message}`);
+    }
+  }
+
+  // Upsert ge_categories for all matched sections
+  const updates = [...geMap.entries()].map(([id, ges]) => ({
+    id,
+    ge_categories: [...ges],
+  }));
+
+  console.log(`  Updating ${updates.length} sections with GE categories…`);
+  const CHUNK = 500;
+  for (let i = 0; i < updates.length; i += CHUNK) {
+    const { error } = await supabase
+      .from('sections')
+      .upsert(updates.slice(i, i + CHUNK), { onConflict: 'id' });
+    if (error) console.error(`  ✗ GE upsert failed: ${error.message}`);
+  }
+  console.log(`  ✓ GE categories done.`);
 }
 
 // ─── main ────────────────────────────────────────────────────────────────────
@@ -194,6 +259,7 @@ async function main() {
     const { sections, errors } = await seedQuarter(year, quarter, departments);
     totalSections += sections;
     totalErrors   += errors;
+    await seedGECategories(year, quarter);
   }
 
   console.log('\n═════════════════════════════════════════');

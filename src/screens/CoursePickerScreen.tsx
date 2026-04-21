@@ -19,6 +19,20 @@ import ReviewsModal from '../components/ReviewsModal';
 
 const RMP_SCHOOL_IDS: Record<string, string> = { 'UC Irvine': '1074' };
 
+// GE category codes match what Anteater API stores in geCategories[]
+const GE_CATEGORIES = [
+  { code: 'GE-1A', label: 'GE Ia — Lower Division Writing' },
+  { code: 'GE-1B', label: 'GE Ib — Upper Division Writing' },
+  { code: 'GE-2',  label: 'GE II — Science and Technology' },
+  { code: 'GE-3',  label: 'GE III — Social & Behavioral Sciences' },
+  { code: 'GE-4',  label: 'GE IV — Arts and Humanities' },
+  { code: 'GE-5A', label: 'GE Va — Quantitative Reasoning (Lower)' },
+  { code: 'GE-5B', label: 'GE Vb — Quantitative Reasoning (Upper)' },
+  { code: 'GE-6',  label: 'GE VI — Language Other Than English' },
+  { code: 'GE-7',  label: 'GE VII — Multicultural Studies' },
+  { code: 'GE-8',  label: 'GE VIII — International/Global Issues' },
+];
+
 function rmpUrl(professor: string, school: string) {
   const sid = RMP_SCHOOL_IDS[school];
   const base = `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(professor)}`;
@@ -93,8 +107,10 @@ export default function CoursePickerScreen({
 }: Props) {
   const [searchText, setSearchText] = useState('');
   const [selectedDept, setSelectedDept] = useState('');
+  const [selectedGE, setSelectedGE] = useState('');
   const [deptDropdownOpen, setDeptDropdownOpen] = useState(false);
   const [deptSearch, setDeptSearch] = useState('');
+  const [showGESublist, setShowGESublist] = useState(false);
   const [catalogCourses, setCatalogCourses] = useState<CatalogCourse[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
@@ -157,7 +173,7 @@ export default function CoursePickerScreen({
 
   // Global search: fires when search text >= 2 and no dept selected
   useEffect(() => {
-    if (selectedDept || searchText.trim().length < 2) {
+    if (selectedDept || selectedGE || searchText.trim().length < 2) {
       setGlobalCatalog([]);
       setGlobalSectionsMap({});
       return;
@@ -193,13 +209,15 @@ export default function CoursePickerScreen({
     return () => { clearTimeout(timer); setGlobalSearchLoading(false); };
   }, [searchText, selectedDept, selectedQuarter]);
 
-  // Fetch courses + sections from Supabase (pre-seeded from Anteater API)
+  // Fetch courses from Supabase when a department is selected
   useEffect(() => {
     if (!selectedDept) {
-      setCatalogCourses([]);
-      setSectionsMap({});
-      setExpandedCourseId(null);
-      setPreviewCourse(null);
+      if (!selectedGE) {
+        setCatalogCourses([]);
+        setSectionsMap({});
+        setExpandedCourseId(null);
+        setPreviewCourse(null);
+      }
       return;
     }
 
@@ -210,7 +228,6 @@ export default function CoursePickerScreen({
     setPreviewCourse(null);
 
     const qk = quarterKey(selectedQuarter);
-
     supabase
       .from('sections')
       .select('*')
@@ -218,13 +235,45 @@ export default function CoursePickerScreen({
       .eq('quarter_key', qk)
       .then(({ data, error }) => {
         if (error) { console.error('Supabase fetch failed:', error); setCatalogLoading(false); return; }
-
         const { catalog, sections } = buildCatalogFromRows(data ?? []);
         setCatalogCourses(catalog);
         setSectionsMap(sections);
       })
       .finally(() => setCatalogLoading(false));
   }, [selectedDept, selectedQuarter]);
+
+  // Fetch GE courses from Supabase when a GE category is selected
+  useEffect(() => {
+    if (!selectedGE) {
+      if (!selectedDept) {
+        setCatalogCourses([]);
+        setSectionsMap({});
+        setExpandedCourseId(null);
+        setPreviewCourse(null);
+      }
+      return;
+    }
+
+    setCatalogLoading(true);
+    setCatalogCourses([]);
+    setSectionsMap({});
+    setExpandedCourseId(null);
+    setPreviewCourse(null);
+
+    const qk = quarterKey(selectedQuarter);
+    supabase
+      .from('sections')
+      .select('*')
+      .eq('quarter_key', qk)
+      .contains('ge_categories', [selectedGE])
+      .then(({ data, error }) => {
+        if (error) { console.error('GE fetch failed:', error); setCatalogLoading(false); return; }
+        const { catalog, sections } = buildCatalogFromRows(data ?? []);
+        setCatalogCourses(catalog);
+        setSectionsMap(sections);
+      })
+      .finally(() => setCatalogLoading(false));
+  }, [selectedGE, selectedQuarter]);
 
   const fetchEnrollment = async (course: CatalogCourse) => {
     if (enrollmentLoadingIds.has(course.id)) return;
@@ -327,7 +376,7 @@ export default function CoursePickerScreen({
     setPreviewCourse(course);
   };
 
-  const isGlobalSearch = !selectedDept && searchText.trim().length >= 2;
+  const isGlobalSearch = !selectedDept && !selectedGE && searchText.trim().length >= 2;
 
   const filteredCatalog = useMemo(() => {
     const stripH = (s: string) => s.replace(/^H/i, '');
@@ -368,6 +417,12 @@ export default function CoursePickerScreen({
     if (!deptSearch) return UCI_DEPARTMENTS;
     const q = deptSearch.toLowerCase();
     return UCI_DEPARTMENTS.filter((d) => d.toLowerCase().includes(q));
+  }, [deptSearch]);
+
+  const filteredGECategories = useMemo(() => {
+    if (!deptSearch) return GE_CATEGORIES;
+    const q = deptSearch.toLowerCase();
+    return GE_CATEGORIES.filter((g) => g.label.toLowerCase().includes(q) || g.code.toLowerCase().includes(q));
   }, [deptSearch]);
 
   return (
@@ -427,45 +482,60 @@ export default function CoursePickerScreen({
             }}
           />
 
-          {/* Department dropdown */}
+          {/* Department / GE dropdown */}
           <TouchableOpacity
             onPress={() => { setDeptDropdownOpen(true); setDeptSearch(''); }}
             style={{
               flexDirection: 'row',
               justifyContent: 'space-between',
               alignItems: 'center',
-              backgroundColor: selectedDept ? '#eef1fb' : '#f3f4f6',
+              backgroundColor: (selectedDept || selectedGE) ? '#eef1fb' : '#f3f4f6',
               borderRadius: 14,
               paddingHorizontal: 14,
               paddingVertical: 13,
               marginBottom: 10,
               borderWidth: 1,
-              borderColor: selectedDept ? '#3b82f6' : '#e5e7eb',
+              borderColor: (selectedDept || selectedGE) ? '#3b82f6' : '#e5e7eb',
             }}
           >
-            <Text style={{ color: selectedDept ? '#4169E1' : '#9ca3af', fontSize: 15, fontWeight: selectedDept ? '600' : '400' }}>
-              {selectedDept || 'Select a department…'}
+            <Text style={{ color: (selectedDept || selectedGE) ? '#4169E1' : '#9ca3af', fontSize: 15, fontWeight: (selectedDept || selectedGE) ? '600' : '400' }}>
+              {selectedDept || (selectedGE ? GE_CATEGORIES.find(g => g.code === selectedGE)?.label : null) || 'Department or GE category…'}
             </Text>
             <Text style={{ color: '#9ca3af', fontSize: 12 }}>▼</Text>
           </TouchableOpacity>
 
-          {/* Department picker modal */}
-          <Modal visible={deptDropdownOpen} animationType="slide" transparent onRequestClose={() => setDeptDropdownOpen(false)}>
+          {/* Department / GE picker modal */}
+          <Modal
+            visible={deptDropdownOpen}
+            animationType="slide"
+            transparent
+            onRequestClose={() => { setDeptDropdownOpen(false); setShowGESublist(false); }}
+          >
             <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' }}>
-              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setDeptDropdownOpen(false)} />
+              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => { setDeptDropdownOpen(false); setShowGESublist(false); }} />
               <View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 16, maxHeight: '70%' }}>
+
+                {/* Header */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12 }}>
-                  <Text style={{ flex: 1, fontSize: 17, fontWeight: '700' }}>Select Department</Text>
-                  <TouchableOpacity onPress={() => { setDeptDropdownOpen(false); setSelectedDept(''); }}>
+                  {showGESublist ? (
+                    <TouchableOpacity onPress={() => { setShowGESublist(false); setDeptSearch(''); }} style={{ marginRight: 10 }}>
+                      <Ionicons name="chevron-back" size={22} color="#111827" />
+                    </TouchableOpacity>
+                  ) : null}
+                  <Text style={{ flex: 1, fontSize: 17, fontWeight: '700' }}>
+                    {showGESublist ? 'GE Categories' : 'Department or GE'}
+                  </Text>
+                  <TouchableOpacity onPress={() => { setDeptDropdownOpen(false); setSelectedDept(''); setSelectedGE(''); setShowGESublist(false); }}>
                     <Text style={{ fontSize: 26, color: '#9ca3af' }}>×</Text>
                   </TouchableOpacity>
                 </View>
 
+                {/* Search bar */}
                 <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
                   <TextInput
                     value={deptSearch}
                     onChangeText={setDeptSearch}
-                    placeholder="Search departments…"
+                    placeholder={showGESublist ? 'Search GE categories…' : 'Search departments…'}
                     placeholderTextColor="#9ca3af"
                     autoFocus
                     style={{
@@ -478,43 +548,91 @@ export default function CoursePickerScreen({
                   />
                 </View>
 
-                <FlatList
-                  data={filteredDepts}
-                  keyExtractor={(item) => item}
-                  keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
-                  renderItem={({ item }) => {
-                    const isSelected = selectedDept === item;
-                    return (
+                {showGESublist ? (
+                  /* GE sub-list */
+                  <FlatList
+                    data={filteredGECategories}
+                    keyExtractor={(item) => item.code}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+                    renderItem={({ item: ge }) => {
+                      const isSelected = selectedGE === ge.code;
+                      return (
+                        <TouchableOpacity
+                          onPress={() => { setSelectedGE(ge.code); setSelectedDept(''); setDeptDropdownOpen(false); setShowGESublist(false); setDeptSearch(''); }}
+                          style={{
+                            paddingVertical: 14,
+                            borderBottomWidth: 1,
+                            borderBottomColor: '#f3f4f6',
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Text style={{ fontSize: 15, color: isSelected ? '#4169E1' : '#111827', fontWeight: isSelected ? '700' : '400' }}>
+                            {ge.label}
+                          </Text>
+                          {isSelected && <Ionicons name="checkmark" size={18} color="#4169E1" />}
+                        </TouchableOpacity>
+                      );
+                    }}
+                  />
+                ) : (
+                  /* Main dept list with single GE row at top */
+                  <FlatList
+                    data={filteredDepts}
+                    keyExtractor={(item) => `dept-${item}`}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+                    ListHeaderComponent={
                       <TouchableOpacity
-                        onPress={() => {
-                          setSelectedDept(item);
-                          setDeptDropdownOpen(false);
-                        }}
+                        onPress={() => { setShowGESublist(true); setDeptSearch(''); }}
                         style={{
                           paddingVertical: 14,
                           borderBottomWidth: 1,
-                          borderBottomColor: '#f3f4f6',
+                          borderBottomColor: '#e5e7eb',
+                          marginBottom: 4,
                           flexDirection: 'row',
                           justifyContent: 'space-between',
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontSize: 15, color: isSelected ? '#4169E1' : '#111827', fontWeight: isSelected ? '700' : '400' }}>
-                          {item}
+                        <Text style={{ fontSize: 15, color: selectedGE ? '#4169E1' : '#111827', fontWeight: selectedGE ? '700' : '500' }}>
+                          {selectedGE ? GE_CATEGORIES.find(g => g.code === selectedGE)?.label : 'GE Categories'}
                         </Text>
-                        {isSelected && <Text style={{ color: '#4169E1' }}>✓</Text>}
+                        <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
                       </TouchableOpacity>
-                    );
-                  }}
-                />
+                    }
+                    renderItem={({ item }) => {
+                      const isSelected = selectedDept === item;
+                      return (
+                        <TouchableOpacity
+                          onPress={() => { setSelectedDept(item); setSelectedGE(''); setDeptDropdownOpen(false); }}
+                          style={{
+                            paddingVertical: 14,
+                            borderBottomWidth: 1,
+                            borderBottomColor: '#f3f4f6',
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Text style={{ fontSize: 15, color: isSelected ? '#4169E1' : '#111827', fontWeight: isSelected ? '700' : '400' }}>
+                            {item}
+                          </Text>
+                          {isSelected && <Ionicons name="checkmark" size={18} color="#4169E1" />}
+                        </TouchableOpacity>
+                      );
+                    }}
+                  />
+                )}
               </View>
             </View>
           </Modal>
         </View>
 
         {/* Content */}
-        {!selectedDept && !isGlobalSearch ? (
+        {!selectedDept && !selectedGE && !isGlobalSearch ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
             <Ionicons name="search-outline" size={32} color="#d1d5db" style={{ marginBottom: 10 }} />
             <Text style={{ color: '#9ca3af', fontSize: 15, textAlign: 'center', paddingHorizontal: 24 }}>
@@ -525,7 +643,11 @@ export default function CoursePickerScreen({
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
             <ActivityIndicator size="large" color="#4169E1" />
             <Text style={{ color: '#9ca3af', marginTop: 12 }}>
-              {isGlobalSearch ? `Searching "${searchText.trim()}"…` : `Loading ${selectedDept} courses for ${quarterLabel(selectedQuarter)}…`}
+              {isGlobalSearch
+                ? `Searching "${searchText.trim()}"…`
+                : selectedGE
+                ? `Loading ${GE_CATEGORIES.find(g => g.code === selectedGE)?.label ?? selectedGE} for ${quarterLabel(selectedQuarter)}…`
+                : `Loading ${selectedDept} courses for ${quarterLabel(selectedQuarter)}…`}
             </Text>
           </View>
         ) : filteredCatalog.length === 0 ? (

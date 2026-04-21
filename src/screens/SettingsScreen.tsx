@@ -262,21 +262,13 @@ function PrivacySecurityScreen({
     setVisibility(initialVisibility);
   }, [initialVisibility]);
 
-  const options: { value: 'friends' | 'private' | 'public'; label: string; desc: string }[] = [
+  const options: { value: 'friends' | 'private'; label: string; desc: string }[] = [
     { value: 'friends', label: 'Friends', desc: 'Only your classmates can see' },
     { value: 'private', label: 'Private', desc: 'Only you can see your timetable' },
-    { value: 'public', label: 'Public', desc: 'Anyone can see your timetable' },
   ];
 
   const handleSelect = (opt: typeof options[0]) => {
-    if (opt.value === 'public') {
-      Alert.alert('Make Timetable Public?', 'Your timetable will be visible to everyone.', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', onPress: () => setVisibility('public') },
-      ]);
-    } else {
-      setVisibility(opt.value);
-    }
+    setVisibility(opt.value);
   };
 
   return (

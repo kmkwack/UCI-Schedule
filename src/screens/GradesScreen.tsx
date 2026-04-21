@@ -544,7 +544,7 @@ export default function GradesScreen({ timetables, userId }: Props) {
         grades={grades}
         unitOverrides={unitOverrides}
         onEditGrade={setPickerCourseId}
-        defaultExpanded={true}
+        defaultExpanded={false}
       />
 
       {/* Past quarters */}

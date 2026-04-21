@@ -73,10 +73,9 @@ type UserSettingsRow = {
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
 const DEFAULT_START_HOUR = 8;
-const DEFAULT_END_HOUR = 17;
-const TIME_LABEL_WIDTH = 52;
-const SIDE_PADDING = 12;
-const CARD_PADDING = 12;
+const DEFAULT_END_HOUR = 16;
+const TIME_LABEL_WIDTH = 44;
+const GRID_LEFT_PAD = 16;
 const DAY_LABEL: Record<string, string> = {
   M: 'Mon', T: 'Tue', W: 'Wed', Th: 'Thu', F: 'Fri', Sa: 'Sat', Su: 'Sun',
 };
@@ -175,7 +174,6 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
   const [submittingRequestId, setSubmittingRequestId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
 
-  const screenHeight = Dimensions.get('window').height;
   const friend = selectedFriendId ? friends.find((f) => f.id === selectedFriendId) ?? null : null;
   const friendQuarterCourses: Course[] = friend
     ? (friend.timetables[quarterKey(friendQuarter)] ?? [])
@@ -534,21 +532,16 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
   }, [activeCourses]);
 
   const totalHours = displayEnd - displayStart;
-  const timetableHeight = Math.max(320, Math.min(448, screenHeight - 390));
-  const gridViewportHeight = timetableHeight;
-  const hourPx = timetableHeight / totalHours;
+  const [gridBodyHeight, setGridBodyHeight] = useState(0);
+  const timetableHeight = gridBodyHeight > 0 ? gridBodyHeight : 400;
+  const hourPx = timetableHeight / (totalHours + 1);
   const hourLabels = Array.from({ length: totalHours + 1 }, (_, i) => displayStart + i);
   const usableW =
     gridWidth > 0
       ? gridWidth - TIME_LABEL_WIDTH
-      : Dimensions.get('window').width - SIDE_PADDING * 2 - CARD_PADDING * 2 - TIME_LABEL_WIDTH;
+      : Dimensions.get('window').width - GRID_LEFT_PAD - 24 - TIME_LABEL_WIDTH;
   const dayColW = usableW / visibleDays.length;
   const compactGrid = visibleDays.length >= 6 || totalHours >= 11;
-  const courseCodeFontSize = compactGrid ? 9 : 10;
-  const courseMetaFontSize = compactGrid ? 8 : 9;
-  const courseTimeFontSize = compactGrid ? 7 : 8;
-  const tbaCodeFontSize = compactGrid ? 9 : 10;
-  const tbaMetaFontSize = compactGrid ? 8 : 9;
 
   if (friend) {
     const timetableTheme = DEFAULT_TIMETABLE_SETTINGS.theme;
@@ -651,153 +644,112 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
           </View>
         </View>
 
-        <View
-          style={{
-            marginHorizontal: SIDE_PADDING, backgroundColor: colors.card,
-            borderRadius: 16, overflow: 'hidden', paddingBottom: 12,
-          }}
-          onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - CARD_PADDING * 2)}
-        >
-          {tbaCourses.length > 0 && (
-            <View
-              style={{
-                paddingHorizontal: 16,
-                paddingTop: 12,
-                paddingBottom: 6,
-                borderBottomWidth: 1,
-                borderBottomColor: colors.border,
-                backgroundColor: colors.card,
-              }}
-            >
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {tbaCourses.map((course) => {
-                  const { bg, text, border } = getBlockColors(course, timetableTheme);
-                  return (
-                    <View
-                      key={course.id}
-                      style={{
-                        backgroundColor: bg,
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: border,
-                        paddingHorizontal: 10,
-                        paddingVertical: 8,
-                        minWidth: 100,
-                        maxWidth: 160,
-                      }}
-                    >
-                      <Text style={{ color: text, fontWeight: '800', fontSize: tbaCodeFontSize, lineHeight: compactGrid ? 12 : 13 }} numberOfLines={1}>
-                        {course.code}
-                      </Text>
-                      <Text style={{ color: text, fontWeight: '600', fontSize: tbaMetaFontSize, lineHeight: compactGrid ? 10 : 12, opacity: 0.85 }} numberOfLines={2}>
-                        {course.title}
-                      </Text>
-                      <Text style={{ color: text, fontSize: tbaMetaFontSize, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
-                        {getProfLastName(course.professor)}
-                      </Text>
-                      <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
-                        {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
+        {tbaCourses.length > 0 && (
+          <View style={{ paddingHorizontal: 12, marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {tbaCourses.map((course) => {
+                const { bg, text, border } = getBlockColors(course, timetableTheme);
+                return (
+                  <View key={course.id} style={{
+                    backgroundColor: bg, borderRadius: 8, borderWidth: 1, borderColor: border,
+                    paddingHorizontal: 10, paddingVertical: 8, minWidth: 100, maxWidth: 160,
+                  }}>
+                    <Text style={{ color: text, fontWeight: '800', fontSize: compactGrid ? 9 : 10 }} numberOfLines={1}>{course.code}</Text>
+                    <Text style={{ color: text, fontWeight: '600', fontSize: compactGrid ? 8 : 9, opacity: 0.85 }} numberOfLines={2}>{course.title}</Text>
+                    <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>{getProfLastName(course.professor)}</Text>
+                    <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
+                      {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
-          )}
+          </View>
+        )}
 
-          <View
-            style={{
-              paddingHorizontal: CARD_PADDING,
-              paddingTop: 12,
-              paddingBottom: 2,
-            }}
-          >
-            <View
-              style={{
-                backgroundColor: gridFrameBg,
-                borderRadius: 22,
-                borderWidth: 1,
-                borderColor: gridFrameBorder,
-                overflow: 'hidden',
-                shadowColor: '#cfd6e4',
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: 0.18,
-                shadowRadius: 18,
-                elevation: 4,
-              }}
-            >
-              <View>
-                <View style={{
-                  flexDirection: 'row',
+        <View
+          style={{ flex: 1, paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10 }}
+          onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD - 24)}
+        >
+          <View style={{
+            flex: 1,
+            backgroundColor: gridFrameBg,
+            borderRadius: 22,
+            borderWidth: 1,
+            borderColor: gridFrameBorder,
+            overflow: 'hidden',
+            shadowColor: '#cfd6e4',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.18,
+            shadowRadius: 18,
+            elevation: 4,
+          }}>
+            {/* Day headers */}
+            <View style={{
+              flexDirection: 'row',
+              borderBottomWidth: 1,
+              borderBottomColor: gridLine,
+              paddingLeft: GRID_LEFT_PAD,
+              backgroundColor: gridHeaderBg,
+            }}>
+              <View style={{ width: TIME_LABEL_WIDTH }} />
+              {visibleDays.map((day) => (
+                <View key={day} style={{
+                  width: dayColW,
+                  alignItems: 'center',
+                  paddingVertical: compactGrid ? 8 : 10,
+                  borderLeftWidth: 1,
+                  borderLeftColor: gridLine,
                   backgroundColor: gridHeaderBg,
                 }}>
-                  <View style={{ width: TIME_LABEL_WIDTH }} />
-                  {visibleDays.map((day) => (
-                    <View
-                      key={`scroll-header-${day}`}
-                      style={{
-                        width: dayColW,
-                        alignItems: 'center',
-                        paddingVertical: compactGrid ? 8 : 10,
-                        borderLeftWidth: 1,
-                        borderLeftColor: gridLine,
-                        backgroundColor: gridHeaderBg,
-                      }}
-                    >
-                      <Text style={{ fontWeight: '700', fontSize: compactGrid ? 11 : 12, color: colors.textSecondary }}>{DAY_LABEL[day]}</Text>
-                    </View>
-                  ))}
+                  <Text style={{ fontSize: compactGrid ? 11 : 12, fontWeight: '700', color: colors.textSecondary }}>{DAY_LABEL[day]}</Text>
                 </View>
+              ))}
+            </View>
 
-                <View style={{
-                  flexDirection: 'row',
-                  height: gridViewportHeight,
-                  backgroundColor: gridFrameBg,
-                }}>
-                  <View style={{ width: TIME_LABEL_WIDTH, height: gridViewportHeight }}>
-                    {hourLabels.map((h, i) => (
-                      <View key={`line-${h}`} style={{ position: 'absolute', top: i * hourPx, left: 0, right: 0, height: 1, backgroundColor: gridLine }} />
-                    ))}
-                    {hourLabels.map((h, i) => (
-                      <View key={h} style={{ position: 'absolute', top: i * hourPx + hourPx / 2 - 7, left: 0, right: 6, alignItems: 'flex-end' }}>
+            {/* Grid body */}
+            <View style={{ flex: 1 }} onLayout={(e) => setGridBodyHeight(e.nativeEvent.layout.height)}>
+              <View style={{ backgroundColor: gridFrameBg, height: timetableHeight }}>
+                <View style={{ flexDirection: 'row', paddingLeft: GRID_LEFT_PAD }}>
+                  {/* Time labels */}
+                  <View style={{ width: TIME_LABEL_WIDTH, height: timetableHeight }}>
+                    {hourLabels.map((h, index) => (
+                      <View key={h} style={{
+                        position: 'absolute',
+                        top: index * hourPx,
+                        height: hourPx,
+                        left: -GRID_LEFT_PAD,
+                        right: 0,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
                         <Text style={{ fontSize: compactGrid ? 10 : 11, fontWeight: '700', color: gridLabel }}>{fmtHour(h)}</Text>
                       </View>
                     ))}
                   </View>
 
-                  <View style={{
-                    width: dayColW * visibleDays.length,
-                    height: gridViewportHeight,
-                    position: 'relative',
-                    backgroundColor: gridFrameBg,
-                  }}>
-                    <View style={{ flexDirection: 'row', height: gridViewportHeight }}>
+                  {/* Day columns */}
+                  <View style={{ width: dayColW * visibleDays.length, height: timetableHeight, position: 'relative' }}>
+                    <View style={{ flexDirection: 'row', height: timetableHeight }}>
                       {visibleDays.map((day) => (
-                        <View
-                          key={day}
-                          style={{
-                            width: dayColW,
-                            height: gridViewportHeight,
-                            backgroundColor: gridFrameBg,
-                            borderLeftWidth: 1,
-                            borderLeftColor: gridLine,
-                          }}
-                        />
+                        <View key={day} style={{
+                          width: dayColW, height: timetableHeight,
+                          backgroundColor: gridFrameBg,
+                          borderLeftWidth: 1, borderLeftColor: gridLine,
+                        }} />
                       ))}
                     </View>
 
-                    {hourLabels.map((h, i) => (
-                      <View
-                        key={h}
-                        style={{
-                          position: 'absolute',
-                          top: i * hourPx,
-                          left: 0,
-                          right: 0,
-                          height: 1,
-                          backgroundColor: gridLine,
-                        }}
-                      />
+                    {/* Hour lines extending through time column */}
+                    {hourLabels.map((h, index) => (
+                      <View key={h} style={{
+                        position: 'absolute',
+                        top: index * hourPx,
+                        left: -(TIME_LABEL_WIDTH + GRID_LEFT_PAD),
+                        right: 0,
+                        height: 1,
+                        backgroundColor: gridLine,
+                      }} />
                     ))}
 
                     {activeCourses.flatMap((course) => {
@@ -810,45 +762,27 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
                         const col = visibleDays.indexOf(day);
                         if (col === -1) return null;
                         return (
-                          <TouchableOpacity
+                          <View
                             key={`${course.id}-${day}`}
-                            activeOpacity={0.85}
-                            onPress={() => {}}
                             style={{
                               position: 'absolute',
-                              top: top + 2,
-                              left: col * dayColW + 2,
-                              width: dayColW - 4,
-                              height: height - 4,
-                              backgroundColor: bg,
-                              borderRadius: 8,
-                              borderWidth: 1,
-                              borderColor: border,
-                              paddingLeft: compactGrid ? 5 : 6,
-                              paddingRight: 4,
-                              paddingTop: compactGrid ? 4 : 5,
-                              paddingBottom: 4,
+                              top: top + 2, left: col * dayColW + 2,
+                              width: dayColW - 4, height: height - 4,
+                              backgroundColor: bg, borderRadius: 8,
+                              borderWidth: 1, borderColor: border,
+                              paddingLeft: compactGrid ? 5 : 6, paddingRight: 4,
+                              paddingTop: compactGrid ? 4 : 5, paddingBottom: 4,
                               overflow: 'hidden',
                             }}
                           >
-                            <Text style={{ color: text, fontWeight: '800', fontSize: courseCodeFontSize, lineHeight: compactGrid ? 12 : 13 }} numberOfLines={1}>
-                              {course.code}
-                            </Text>
-                            <Text style={{ color: text, fontWeight: '600', fontSize: courseMetaFontSize, lineHeight: compactGrid ? 10 : 12, opacity: 0.85 }} numberOfLines={2}>
-                              {course.title}
-                            </Text>
+                            <Text style={{ color: text, fontWeight: '800', fontSize: compactGrid ? 9 : 10, lineHeight: compactGrid ? 12 : 13 }} numberOfLines={1}>{course.code}</Text>
+                            <Text style={{ color: text, fontWeight: '600', fontSize: compactGrid ? 8 : 9, lineHeight: compactGrid ? 10 : 12, opacity: 0.85 }} numberOfLines={2}>{course.title}</Text>
                             {course.location ? (
-                              <Text style={{ color: text, fontSize: courseMetaFontSize, opacity: 0.75, marginTop: 2 }} numberOfLines={1}>
-                                {course.location}
-                              </Text>
+                              <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.75, marginTop: 2 }} numberOfLines={1}>{course.location}</Text>
                             ) : null}
-                            <Text style={{ color: text, fontSize: courseMetaFontSize, opacity: 0.7, marginTop: 1 }} numberOfLines={1}>
-                              {getProfLastName(course.professor)}
-                            </Text>
-                            <Text style={{ color: text, fontSize: courseTimeFontSize, opacity: 0.6, marginTop: 1 }} numberOfLines={1}>
-                              {course.time}
-                            </Text>
-                          </TouchableOpacity>
+                            <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.7, marginTop: 1 }} numberOfLines={1}>{getProfLastName(course.professor)}</Text>
+                            <Text style={{ color: text, fontSize: compactGrid ? 7 : 8, opacity: 0.6, marginTop: 1 }} numberOfLines={1}>{course.time}</Text>
+                          </View>
                         );
                       });
                     })}

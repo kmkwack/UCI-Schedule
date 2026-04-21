@@ -395,9 +395,9 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
     searchUsers();
   }, [debouncedEmailQuery, friends, pendingRequests, school, sentRequestIds, showAddModal, userEmail, userId]);
 
-  // Re-fetch the selected friend's timetables when their view is opened so new quarters appear
+  // Re-fetch the selected friend's timetables whenever the dropdown opens (catches newly added quarters)
   useEffect(() => {
-    if (!selectedFriendId) return;
+    if (!selectedFriendId || !showQuarterDropdown) return;
     async function refreshFriendTimetables() {
       const { data: rows, error } = await supabase
         .from('timetables')
@@ -416,7 +416,7 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
       );
     }
     refreshFriendTimetables();
-  }, [selectedFriendId]);
+  }, [selectedFriendId, showQuarterDropdown]);
 
   const closeAddModal = () => {
     setEmailQuery('');

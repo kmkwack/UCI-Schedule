@@ -554,7 +554,10 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
               shadowOpacity: 0.15, shadowRadius: 12, elevation: 8,
               minWidth: 160, overflow: 'hidden',
             }}>
-              {QUARTERS.map((q, i) => {
+              {QUARTERS.filter(q => {
+                const courses = friend.timetables[quarterKey(q)];
+                return courses && courses.length > 0;
+              }).map((q, i) => {
                 const active = quarterKey(q) === quarterKey(friendQuarter);
                 return (
                   <TouchableOpacity

@@ -541,43 +541,47 @@ export default function TimetableScreen({
               overflow: 'hidden',
             }}
           >
-            {Array.from(new Set([quarterKey(selectedQuarter), ...timetables.map((t) => t.quarterKey)]))
-              .sort((a, b) => {
-                const QORDER: Record<string, number> = { Winter: 0, Spring: 1, Fall: 2 };
-                const [aYear, aQ] = a.split('-');
-                const [bYear, bQ] = b.split('-');
-                if (bYear !== aYear) return Number(bYear) - Number(aYear);
-                return QORDER[bQ] - QORDER[aQ];
-              })
-              .map((qk, index) => {
+            {(() => {
+              const academicYear = (qk: string) => {
+                const [year, quarter] = qk.split('-');
+                return quarter === 'Fall' ? Number(year) : Number(year) - 1;
+              };
+              const sorted = Array.from(new Set([quarterKey(selectedQuarter), ...timetables.map((t) => t.quarterKey)]))
+                .sort((a, b) => {
+                  const QORDER: Record<string, number> = { Winter: 0, Spring: 1, Fall: 2 };
+                  const [aYear, aQ] = a.split('-');
+                  const [bYear, bQ] = b.split('-');
+                  if (bYear !== aYear) return Number(bYear) - Number(aYear);
+                  return QORDER[bQ] - QORDER[aQ];
+                });
+              return sorted.map((qk, index) => {
                 const [year, quarter] = qk.split('-');
                 const q: Quarter = { year, quarter };
-                return { q, qk, index };
-              })
-              .map(({ q, qk, index }) => {
-              const isActive = qk === quarterKey(selectedQuarter);
-              return (
-                <TouchableOpacity
-                  key={qk}
-                  onPress={() => { onChangeQuarter(q); setShowQuarterDropdown(false); }}
-                  style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 12,
-                    backgroundColor: isActive ? colors.brandBg : colors.card,
-                    borderTopWidth: index === 0 ? 0 : 1,
-                    borderTopColor: colors.borderSubtle,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <Text style={{ color: isActive ? colors.brand : colors.textSecondary, fontWeight: isActive ? '700' : '400', fontSize: 14 }}>
-                    {quarterLabel(q)}
-                  </Text>
-                  {isActive && <Ionicons name="checkmark" size={16} color={colors.brand} />}
-                </TouchableOpacity>
-              );
-            })}
+                const isActive = qk === quarterKey(selectedQuarter);
+                const isNewGroup = index > 0 && academicYear(qk) !== academicYear(sorted[index - 1]);
+                return (
+                  <TouchableOpacity
+                    key={qk}
+                    onPress={() => { onChangeQuarter(q); setShowQuarterDropdown(false); }}
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      backgroundColor: isActive ? colors.brandBg : colors.card,
+                      borderTopWidth: index === 0 ? 0 : isNewGroup ? 2 : 1,
+                      borderTopColor: isNewGroup ? colors.border : colors.borderSubtle,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <Text style={{ color: isActive ? colors.brand : colors.textSecondary, fontWeight: isActive ? '700' : '400', fontSize: 14 }}>
+                      {quarterLabel(q)}
+                    </Text>
+                    {isActive && <Ionicons name="checkmark" size={16} color={colors.brand} />}
+                  </TouchableOpacity>
+                );
+              });
+            })()}
           </View>
         </TouchableOpacity>
       </Modal>

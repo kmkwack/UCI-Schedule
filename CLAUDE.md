@@ -451,3 +451,48 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 51 (New Post modal redesign)
 - **`src/screens/BoardScreen.tsx`** — Replaced bottom-sheet New Post panel with a full `Modal` (pageSheet). Added Board dropdown (shows all BOARDS with icon + checkmark), red asterisks on Board/Title/Content, tall Content field (minHeight 160), Attachments section (Add Images + Add Files buttons, UI only), Post Options section (Prevent Edit/Delete Switch), and Cancel/Post footer buttons side by side. Extracted `NewPostModal` as a separate function component. Replaced `newPostCategory` state with `newPostBoardId`; category is derived from board at submit time. Added `openNewPost(boardId?)` helper that pre-selects the current board when called from a board detail screen.
+
+### Session 54 (ClassMates top bar color fix)
+- **`App.tsx`** — Changed the FriendsScreen wrapper `backgroundColor` from `colors.bgSecondary` to `colors.bg` so the dynamic island / status bar area matches the rest of the screen.
+
+### Session 54 (Hide Edit pill on Requests tab)
+- **`src/screens/FriendsScreen.tsx`** — Edit/Done pill is now hidden when `activeTab === 'requests'`.
+
+### Session 54 (Reviews — quarter field)
+- **`src/components/ReviewsModal.tsx`** — Added `quarterTaken` state. Quarter picker rendered as a horizontal scroll of pill buttons using `[...QUARTERS].reverse()`. Quarter value included in Supabase INSERT payload (`quarter: quarterTaken`). Review cards display the quarter label (e.g. "Spring 2026") alongside rating/difficulty/workload.
+- **Supabase SQL required** — `ALTER TABLE reviews ADD COLUMN quarter TEXT;`
+
+### Session 54 (Reviews — edit/delete own reviews)
+- **`src/components/ReviewsModal.tsx`** — Added `editingReviewId` state. `CourseReview` type includes `userId` field (mapped from `r.user_id`). Edit icon (pencil) and delete icon (trash) shown only on cards where `review.userId === userId`. Tapping edit pre-fills all form fields and sets `editingReviewId`; submit does UPDATE instead of INSERT. Tapping delete shows confirmation Alert then DELETEs the row and re-fetches. Shows Alert with error message on any Supabase failure.
+- **Supabase SQL required** — UPDATE policy: `CREATE POLICY "Users can update own reviews" ON reviews FOR UPDATE USING (user_id = auth.uid()::text);` DELETE policy: `CREATE POLICY "Users can delete own reviews" ON reviews FOR DELETE USING (user_id = auth.uid()::text);`
+
+### Session 54 (Reviews — remove Anonymous author label)
+- **`src/components/ReviewsModal.tsx`** — Removed the author name line from review cards entirely. Cards now show only rating/difficulty/workload badges and the review content text.
+
+### Session 54 (Grade distribution bars — color fill only)
+- **`src/components/ReviewsModal.tsx`** — Removed gray background track from grade distribution bars; each bar now shows only the colored portion. P/NP entries are filtered out only when both are at exactly 0%; all letter grades (A+, A, A-, B+…) are shown even at 0%.
+
+### Session 54 (Home screen — current quarter courses only)
+- **`App.tsx`** — Added `CURRENT_QUARTER_KEY = '2026-Spring'`. Derived `currentQuarterCourses` as courses from all timetables matching that quarter key. Passes `currentQuarterCourses` to HomeScreen as `activeCourses`.
+- **`src/screens/HomeScreen.tsx`** — "Your Day" and "Coming Up" sections now use `activeCourses` (which is always `2026-Spring` courses) regardless of which timetable quarter the user has selected on the Timetable screen.
+
+### Session 54 (Live daily quote — ZenQuotes API)
+- **`src/screens/HomeScreen.tsx`** — Replaced hardcoded `QUOTES` array with live fetch from `https://zenquotes.io/api/today`. Response is `[{ q: string, a: string }]`. Quote cached in AsyncStorage under key `quote_cache` with the date as a sub-key; only re-fetches when the calendar day changes. Shows blank text while loading.
+
+### Session 54 (Campus Events — thicker day-change dividers)
+- **`src/screens/HomeScreen.tsx`** — Added `isDayChange` boolean per event: true when the event's date is different from the previous event's date. Day-change dividers render with `height: 2.5` and `colors.border`; same-day dividers use `height: 1` and `colors.borderSubtle`.
+
+### Session 54 (COMPARISON.md created)
+- **`COMPARISON.md`** — New file comparing ClassMate vs AntAlmanac feature-by-feature across 8 categories (Schedule Building, Calendar View, Course Information, Grades, Notifications, Import/Export, Map, Social). Includes "What ClassMate Has Uniquely" summary and prioritized additions list (🔴 .ics export, notifications, advanced filters, share link; 🟡 finals view, enrollment history, WebReg import, custom events; 🟢 undo/redo, planner, real DMs, PWA).
+
+### Session 54 (Friend timetable crash — TBA course guard)
+- **`src/screens/FriendsScreen.tsx`** — Added `isValidTime(t)` helper: returns `false` for undefined, `'TBA'`, or strings without `' - '`. `activeCourses` for friend timetable filtered with `isValidTime(c.time) && c.days !== 'TBA'` before any grid calculations. `parseHour` guarded: returns `0` immediately for undefined or non-time strings. Prevents crash when `split(' - ')` was called on `undefined`.
+
+### Session 54 (Friend quarter dropdown — empty quarters hidden)
+- **`src/screens/FriendsScreen.tsx`** — Friend's quarter dropdown now only shows quarters where `friend.timetables[quarterKey(q)]?.length > 0`, eliminating empty quarter options that appeared when a friend had placeholder timetable keys with no courses.
+
+### Session 55 (CoursePickerScreen — cross-department global search)
+- **`src/screens/CoursePickerScreen.tsx`** — Added global search mode: when `searchText.length >= 2` and no department is selected, queries Supabase `.or('code.ilike,title.ilike,professor.ilike')` across all departments (debounced 400ms, limit 300 rows). Results grouped and sorted (by department, then course number) in a separate `globalCatalog`/`globalSectionsMap` state. `isGlobalSearch` flag drives which state the FlatList and ReviewsModal use. `buildCatalogFromRows()` helper extracted to deduplicate per-dept and global data-building logic. Empty state now shows "Search by course name, code, or professor" hint with icon. Searching within a selected department still uses client-side filtering (existing behavior).
+
+### Session 54 (TimetableScreen — academic year group dividers in quarter dropdown)
+- **`src/screens/TimetableScreen.tsx`** — Quarter dropdown rows now have academic-year group dividers. Added `academicYear(qk)` function: `quarter === 'Fall' ? year : year - 1`. Built sorted array of quarter keys first, then mapped with index; `isNewGroup = index > 0 && academicYear(qk) !== academicYear(sorted[index - 1])`. Group boundary rows get `borderTopWidth: 2, borderTopColor: colors.border`; non-boundary rows get `borderTopWidth: 1, borderTopColor: colors.borderSubtle`. Groups: Fall 2024/Winter+Spring 2025 = AY 2024; Fall 2025/Winter+Spring 2026 = AY 2025; Fall 2026 = AY 2026.

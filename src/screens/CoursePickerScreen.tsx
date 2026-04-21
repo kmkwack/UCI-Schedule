@@ -104,6 +104,95 @@ export default function CoursePickerScreen({
   const [enrollmentLoadingIds, setEnrollmentLoadingIds] = useState<Set<string>>(new Set());
   const [reviewsCourse, setReviewsCourse] = useState<CatalogCourse | null>(null);
 
+  // Global search state (cross-department, triggers when no dept selected + text >= 2)
+  const [globalCatalog, setGlobalCatalog] = useState<CatalogCourse[]>([]);
+  const [globalSectionsMap, setGlobalSectionsMap] = useState<Record<string, Course[]>>({});
+  const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
+
+  function buildCatalogFromRows(rows: any[]): { catalog: CatalogCourse[]; sections: Record<string, Course[]> } {
+    const catalogMap: Record<string, CatalogCourse> = {};
+    const rawSections: Record<string, any[]> = {};
+
+    rows.forEach((row: any) => {
+      const courseNumber = row.code.slice(row.department.length).trim();
+      const courseId = `${row.department}${courseNumber}`;
+      if (!catalogMap[courseId]) {
+        catalogMap[courseId] = { id: courseId, department: row.department, courseNumber, title: row.title, units: row.units?.toString() };
+        rawSections[courseId] = [];
+      } else {
+        const existing = parseInt(catalogMap[courseId].units ?? '0') || 0;
+        const incoming = row.units ?? 0;
+        if (incoming > existing) catalogMap[courseId].units = incoming.toString();
+      }
+      rawSections[courseId].push(row);
+    });
+
+    const sections: Record<string, Course[]> = {};
+    Object.entries(rawSections).forEach(([courseId, sectionRows]) => {
+      const sorted = sectionRows.slice().sort((a, b) => {
+        const typeOrder = (t: string) => ({ Lec: 0, Dis: 1, Lab: 2 }[t] ?? 3);
+        const aType = a.section_label?.split(' ')[0] ?? '';
+        const bType = b.section_label?.split(' ')[0] ?? '';
+        if (typeOrder(aType) !== typeOrder(bType)) return typeOrder(aType) - typeOrder(bType);
+        return (a.section_label ?? '').localeCompare(b.section_label ?? '', undefined, { numeric: true });
+      });
+      sections[courseId] = sorted.map((row: any): Course => ({
+        id: row.id.split('::')[0],
+        code: row.code,
+        title: row.title,
+        professor: row.professor ?? '',
+        days: row.days ?? 'TBA',
+        time: row.time ?? 'TBA',
+        department: row.department,
+        addedCount: 0,
+        rating: 0,
+        location: row.location ?? undefined,
+        units: row.units ?? undefined,
+        sectionLabel: row.section_label ?? undefined,
+      }));
+    });
+
+    return { catalog: Object.values(catalogMap), sections };
+  }
+
+  // Global search: fires when search text >= 2 and no dept selected
+  useEffect(() => {
+    if (selectedDept || searchText.trim().length < 2) {
+      setGlobalCatalog([]);
+      setGlobalSectionsMap({});
+      return;
+    }
+
+    const q = searchText.trim();
+    // Normalize "eecs125" → "eecs 125" so it matches DB codes stored with a space
+    const qNorm = q.replace(/^([a-zA-Z]+)\s*(\d+.*)$/i, '$1 $2').trim();
+    setGlobalSearchLoading(true);
+
+    const timer = setTimeout(async () => {
+      const qk = quarterKey(selectedQuarter);
+      const baseClauses = `code.ilike.%${q}%,title.ilike.%${q}%,professor.ilike.%${q}%`;
+      const orClause = qNorm !== q
+        ? `${baseClauses},code.ilike.%${qNorm}%`
+        : baseClauses;
+      const { data, error } = await supabase
+        .from('sections')
+        .select('*')
+        .eq('quarter_key', qk)
+        .or(orClause)
+        .order('code', { ascending: true })
+        .limit(500);
+
+      if (!error && data) {
+        const { catalog, sections } = buildCatalogFromRows(data);
+        setGlobalCatalog(catalog);
+        setGlobalSectionsMap(sections);
+      }
+      setGlobalSearchLoading(false);
+    }, 400);
+
+    return () => { clearTimeout(timer); setGlobalSearchLoading(false); };
+  }, [searchText, selectedDept, selectedQuarter]);
+
   // Fetch courses + sections from Supabase (pre-seeded from Anteater API)
   useEffect(() => {
     if (!selectedDept) {
@@ -130,65 +219,9 @@ export default function CoursePickerScreen({
       .then(({ data, error }) => {
         if (error) { console.error('Supabase fetch failed:', error); setCatalogLoading(false); return; }
 
-        const rows = data ?? [];
-
-        // Group rows by course (e.g. "EECS125")
-        const catalogMap: Record<string, CatalogCourse> = {};
-        const rawSections: Record<string, any[]> = {};
-
-        rows.forEach((row: any) => {
-          const courseNumber = row.code.slice(row.department.length).trim();
-          const courseId = `${row.department}${courseNumber}`;
-
-          if (!catalogMap[courseId]) {
-            catalogMap[courseId] = {
-              id: courseId,
-              department: row.department,
-              courseNumber,
-              title: row.title,
-              units: row.units?.toString(),
-            };
-            rawSections[courseId] = [];
-          } else {
-            // Use the highest unit count seen across all sections (Dis sections are often 0)
-            const existing = parseInt(catalogMap[courseId].units ?? '0') || 0;
-            const incoming = row.units ?? 0;
-            if (incoming > existing) {
-              catalogMap[courseId].units = incoming.toString();
-            }
-          }
-          rawSections[courseId].push(row);
-        });
-
-        // Build sectionsMap: sort sections then map to Course objects
-        const newSectionsMap: Record<string, Course[]> = {};
-        Object.entries(rawSections).forEach(([courseId, sectionRows]) => {
-          const sorted = sectionRows.slice().sort((a, b) => {
-            const typeOrder = (t: string) => ({ Lec: 0, Dis: 1, Lab: 2 }[t] ?? 3);
-            const aType = a.section_label?.split(' ')[0] ?? '';
-            const bType = b.section_label?.split(' ')[0] ?? '';
-            if (typeOrder(aType) !== typeOrder(bType)) return typeOrder(aType) - typeOrder(bType);
-            return (a.section_label ?? '').localeCompare(b.section_label ?? '', undefined, { numeric: true });
-          });
-
-          newSectionsMap[courseId] = sorted.map((row: any): Course => ({
-            id: row.id.split('::')[0], // strip ::quarterKey suffix — raw section code for enrollment lookup
-            code: row.code,
-            title: row.title,
-            professor: row.professor ?? '',
-            days: row.days ?? 'TBA',
-            time: row.time ?? 'TBA',
-            department: row.department,
-            addedCount: 0,
-            rating: 0,
-            location: row.location ?? undefined,
-            units: row.units ?? undefined,
-            sectionLabel: row.section_label ?? undefined,
-          }));
-        });
-
-        setCatalogCourses(Object.values(catalogMap));
-        setSectionsMap(newSectionsMap);
+        const { catalog, sections } = buildCatalogFromRows(data ?? []);
+        setCatalogCourses(catalog);
+        setSectionsMap(sections);
       })
       .finally(() => setCatalogLoading(false));
   }, [selectedDept, selectedQuarter]);
@@ -294,7 +327,25 @@ export default function CoursePickerScreen({
     setPreviewCourse(course);
   };
 
+  const isGlobalSearch = !selectedDept && searchText.trim().length >= 2;
+
   const filteredCatalog = useMemo(() => {
+    const stripH = (s: string) => s.replace(/^H/i, '');
+    const sortCatalog = (list: CatalogCourse[]) =>
+      [...list].sort((a, b) => {
+        // In global search, sort by department first, then course number
+        if (isGlobalSearch && a.department !== b.department)
+          return a.department.localeCompare(b.department);
+        const numA = parseInt(stripH(a.courseNumber)) || 0;
+        const numB = parseInt(stripH(b.courseNumber)) || 0;
+        if (numA !== numB) return numA - numB;
+        const suffixA = stripH(a.courseNumber).replace(/^\d+/, '');
+        const suffixB = stripH(b.courseNumber).replace(/^\d+/, '');
+        return suffixA.localeCompare(suffixB);
+      });
+
+    if (isGlobalSearch) return sortCatalog(globalCatalog);
+
     const list = !searchText
       ? catalogCourses
       : catalogCourses.filter((c) => {
@@ -305,22 +356,13 @@ export default function CoursePickerScreen({
             c.department.toLowerCase().includes(q) ||
             `${c.department} ${c.courseNumber}`.toLowerCase().includes(q)
           ) return true;
-          // Also match against professor names in any section
           return (sectionsMap[c.id] ?? []).some((s) =>
             s.professor.toLowerCase().includes(q)
           );
         });
 
-    const stripH = (s: string) => s.replace(/^H/i, '');
-    return [...list].sort((a, b) => {
-      const numA = parseInt(stripH(a.courseNumber)) || 0;
-      const numB = parseInt(stripH(b.courseNumber)) || 0;
-      if (numA !== numB) return numA - numB;
-      const suffixA = stripH(a.courseNumber).replace(/^\d+/, '');
-      const suffixB = stripH(b.courseNumber).replace(/^\d+/, '');
-      return suffixA.localeCompare(suffixB);
-    });
-  }, [catalogCourses, searchText, sectionsMap]);
+    return sortCatalog(list);
+  }, [catalogCourses, searchText, sectionsMap, isGlobalSearch, globalCatalog]);
 
   const filteredDepts = useMemo(() => {
     if (!deptSearch) return UCI_DEPARTMENTS;
@@ -414,7 +456,7 @@ export default function CoursePickerScreen({
               <View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 16, maxHeight: '70%' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12 }}>
                   <Text style={{ flex: 1, fontSize: 17, fontWeight: '700' }}>Select Department</Text>
-                  <TouchableOpacity onPress={() => setDeptDropdownOpen(false)}>
+                  <TouchableOpacity onPress={() => { setDeptDropdownOpen(false); setSelectedDept(''); }}>
                     <Text style={{ fontSize: 26, color: '#9ca3af' }}>×</Text>
                   </TouchableOpacity>
                 </View>
@@ -472,15 +514,19 @@ export default function CoursePickerScreen({
         </View>
 
         {/* Content */}
-        {!selectedDept ? (
+        {!selectedDept && !isGlobalSearch ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
-            <Text style={{ color: '#9ca3af', fontSize: 15 }}>Select a department to browse courses</Text>
+            <Ionicons name="search-outline" size={32} color="#d1d5db" style={{ marginBottom: 10 }} />
+            <Text style={{ color: '#9ca3af', fontSize: 15, textAlign: 'center', paddingHorizontal: 24 }}>
+              Search by course name, code, or professor — or select a department below
+            </Text>
           </View>
-        ) : catalogLoading ? (
+        ) : (catalogLoading && selectedDept) || (globalSearchLoading && isGlobalSearch) ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
             <ActivityIndicator size="large" color="#4169E1" />
-            <Text style={{ color: '#9ca3af', marginTop: 12 }}>Loading {selectedDept} courses for {quarterLabel(selectedQuarter)}…</Text>
-            <Text style={{ color: '#c4c9d4', marginTop: 6, fontSize: 12 }}>Filtering out courses with no sections</Text>
+            <Text style={{ color: '#9ca3af', marginTop: 12 }}>
+              {isGlobalSearch ? `Searching "${searchText.trim()}"…` : `Loading ${selectedDept} courses for ${quarterLabel(selectedQuarter)}…`}
+            </Text>
           </View>
         ) : filteredCatalog.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
@@ -493,7 +539,8 @@ export default function CoursePickerScreen({
             contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 30 }}
             renderItem={({ item }) => {
               const isExpanded = expandedCourseId === item.id;
-              const sections = sectionsMap[item.id] ?? [];
+              const activeSectionsMap = isGlobalSearch ? globalSectionsMap : sectionsMap;
+              const sections = activeSectionsMap[item.id] ?? [];
 
               return (
                 <TouchableOpacity
@@ -662,7 +709,7 @@ export default function CoursePickerScreen({
           courseNumber={reviewsCourse.courseNumber}
           title={reviewsCourse.title}
           professors={[...new Set(
-            (sectionsMap[reviewsCourse.id] ?? [])
+            ((isGlobalSearch ? globalSectionsMap : sectionsMap)[reviewsCourse.id] ?? [])
               .map((s) => s.professor)
               .filter((p): p is string => !!p && !p.includes('STAFF'))
           )]}

@@ -537,3 +537,10 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 60h (Add UUID fallback for React Native chat creation)
 - **`src/screens/MessagesScreen.tsx`** — Replaced the direct dependency on `globalThis.crypto.randomUUID()` with a small local UUID fallback helper so conversation creation also works on React Native environments where `crypto.randomUUID` is unavailable. This fixes the “This device could not generate a conversation id” alert when opening a new chat.
+
+### Session 60i (Load conversation list through security-definer RPCs)
+- **`src/data/messages.ts`** — Added a typed `ConversationListRow` shape for server-returned inbox rows that already include partner identity, last-message metadata, and unread counts.
+- **`src/screens/MessagesScreen.tsx`** — Stopped trying to assemble the inbox by directly reading other users’ `conversation_participants` rows under RLS. The messages screen now expects two Supabase RPC helpers: `get_user_conversations()` for inbox rows and `find_direct_conversation(other_user_id)` for existing 1:1 lookup. This fixes the state where conversation/message rows existed in the database but the inbox still rendered empty because partner participant rows were not selectable from the client.
+
+### Session 60j (Collapse duplicate conversations into one DM row)
+- **`src/screens/MessagesScreen.tsx`** — Changed inbox assembly so multiple conversation rows with the same partner collapse into a single visible DM entry, keeping only the most recent conversation for that partner. This makes the Messages screen behave like a normal direct-message list even if earlier failed chat attempts left duplicate conversation rows in Supabase.

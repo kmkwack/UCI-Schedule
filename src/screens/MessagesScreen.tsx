@@ -16,8 +16,7 @@ import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import type {
   ChatTarget,
-  ConversationParticipantRow,
-  ConversationRow,
+  ConversationListRow,
   MessageRow,
 } from '../data/messages';
 import { formatMessageTime } from '../data/messages';
@@ -41,12 +40,6 @@ type MessageBubble = {
 
 type ActiveConversation = ChatTarget & {
   conversationId: string;
-};
-
-type ProfileRow = {
-  id: string;
-  name: string | null;
-  email: string;
 };
 
 type Props = {
@@ -89,130 +82,48 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: Props)
     if (!userId || isGuestUser) return;
     setLoadingChats(true);
 
-    const { data: participantRows, error: participantError } = await supabase
-      .from('conversation_participants')
-      .select('conversation_id, user_id, last_read_at')
-      .eq('user_id', userId);
+    const { data, error } = await supabase.rpc('get_user_conversations');
 
-    if (participantError) {
-      console.error('Failed to load conversation memberships:', participantError);
+    if (error) {
+      console.error('Failed to load conversation list:', error);
       setLoadingChats(false);
       return;
     }
 
-    const ownParticipants = (participantRows ?? []) as ConversationParticipantRow[];
-    if (ownParticipants.length === 0) {
+    const rows = (data ?? []) as ConversationListRow[];
+    if (rows.length === 0) {
       setConversations([]);
       setLoadingChats(false);
       return;
     }
 
-    const conversationIds = ownParticipants.map((row) => row.conversation_id);
-    const lastReadByConversation = Object.fromEntries(
-      ownParticipants.map((row) => [row.conversation_id, row.last_read_at])
-    ) as Record<string, string | null>;
+    const previewsByPartner = new Map<string, ConversationPreview & { sortStamp: number }>();
+    rows.forEach((row) => {
+      const name = row.partner_name?.trim() || row.partner_email?.split('@')[0] || 'Student';
+      const stamp = row.last_message_at ?? row.updated_at;
+      const sortStamp = new Date(stamp).getTime();
+      const nextPreview = {
+        conversationId: row.conversation_id,
+        partnerId: row.partner_id,
+        name,
+        avatar: getInitials(name),
+        lastMessage: row.last_message_text ?? 'Start the conversation.',
+        timestamp: formatMessageTime(stamp),
+        unread: row.unread_count ?? 0,
+        sortStamp,
+      };
 
-    const { data: conversationRows, error: conversationError } = await supabase
-      .from('conversations')
-      .select('id, created_at, updated_at, last_message_text, last_message_at, last_message_sender_id')
-      .in('id', conversationIds);
-
-    if (conversationError) {
-      console.error('Failed to load conversations:', conversationError);
-      setLoadingChats(false);
-      return;
-    }
-
-    const conversationsData = (conversationRows ?? []) as ConversationRow[];
-    const { data: allParticipantRows, error: allParticipantError } = await supabase
-      .from('conversation_participants')
-      .select('conversation_id, user_id, last_read_at')
-      .in('conversation_id', conversationIds);
-
-    if (allParticipantError) {
-      console.error('Failed to load conversation participants:', allParticipantError);
-      setLoadingChats(false);
-      return;
-    }
-
-    const allParticipants = (allParticipantRows ?? []) as ConversationParticipantRow[];
-    const partnerIds = Array.from(
-      new Set(
-        allParticipants
-          .filter((row) => row.user_id !== userId)
-          .map((row) => row.user_id)
-      )
-    );
-
-    let profilesById: Record<string, ProfileRow> = {};
-    if (partnerIds.length > 0) {
-      const { data: profileRows, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, name, email')
-        .in('id', partnerIds);
-
-      if (profileError) {
-        console.error('Failed to load conversation profiles:', profileError);
-      } else {
-        profilesById = Object.fromEntries(((profileRows ?? []) as ProfileRow[]).map((profile) => [profile.id, profile]));
+      const existing = previewsByPartner.get(row.partner_id);
+      if (!existing || sortStamp > existing.sortStamp) {
+        previewsByPartner.set(row.partner_id, nextPreview);
       }
-    }
+    });
 
-    const partnerIdByConversation = Object.fromEntries(
-      conversationIds.map((conversationId) => {
-        const partner = allParticipants.find(
-          (row) => row.conversation_id === conversationId && row.user_id !== userId
-        );
-        return [conversationId, partner?.user_id ?? ''];
-      })
-    ) as Record<string, string>;
-
-    const unreadCounts = await Promise.all(
-      conversationsData.map(async (conversation) => {
-        const lastReadAt = lastReadByConversation[conversation.id];
-        let query = supabase
-          .from('messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('conversation_id', conversation.id)
-          .neq('sender_id', userId);
-
-        if (lastReadAt) {
-          query = query.gt('created_at', lastReadAt);
-        }
-
-        const { count } = await query;
-        return [conversation.id, count ?? 0] as const;
-      })
+    setConversations(
+      Array.from(previewsByPartner.values())
+        .sort((a, b) => b.sortStamp - a.sortStamp)
+        .map(({ sortStamp: _sortStamp, ...preview }) => preview)
     );
-
-    const unreadByConversation = Object.fromEntries(unreadCounts) as Record<string, number>;
-    const previews = conversationsData
-      .map((conversation) => {
-        const partnerId = partnerIdByConversation[conversation.id];
-        if (!partnerId) return null;
-        const profile = profilesById[partnerId];
-        const name = profile?.name?.trim() || profile?.email?.split('@')[0] || 'Student';
-        const stamp = conversation.last_message_at ?? conversation.updated_at ?? conversation.created_at;
-        return {
-          conversationId: conversation.id,
-          partnerId,
-          name,
-          avatar: getInitials(name),
-          lastMessage: conversation.last_message_text ?? 'Start the conversation.',
-          timestamp: formatMessageTime(stamp),
-          unread: unreadByConversation[conversation.id] ?? 0,
-        } satisfies ConversationPreview;
-      })
-      .filter((conversation): conversation is ConversationPreview => !!conversation)
-      .sort((a, b) => {
-        const aConversation = conversationsData.find((row) => row.id === a.conversationId);
-        const bConversation = conversationsData.find((row) => row.id === b.conversationId);
-        const aTime = new Date(aConversation?.last_message_at ?? aConversation?.updated_at ?? aConversation?.created_at ?? 0).getTime();
-        const bTime = new Date(bConversation?.last_message_at ?? bConversation?.updated_at ?? bConversation?.created_at ?? 0).getTime();
-        return bTime - aTime;
-      });
-
-    setConversations(previews);
     setLoadingChats(false);
   }, [isGuestUser, userId]);
 
@@ -288,26 +199,14 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: Props)
   }, [userId]);
 
   const getOrCreateConversation = useCallback(async (partner: ChatTarget) => {
-    const { data: ownParticipantRows, error: ownParticipantError } = await supabase
-      .from('conversation_participants')
-      .select('conversation_id')
-      .eq('user_id', userId);
+    const { data, error } = await supabase.rpc('find_direct_conversation', {
+      other_user_id: partner.id,
+    });
 
-    if (ownParticipantError) throw ownParticipantError;
+    if (error) throw error;
 
-    const candidateConversationIds = (ownParticipantRows ?? []).map((row) => row.conversation_id);
-
-    if (candidateConversationIds.length > 0) {
-      const { data: sharedRows, error: sharedError } = await supabase
-        .from('conversation_participants')
-        .select('conversation_id, user_id, last_read_at')
-        .in('conversation_id', candidateConversationIds)
-        .eq('user_id', partner.id);
-
-      if (sharedError) throw sharedError;
-
-      const existingConversationId = (sharedRows ?? [])[0]?.conversation_id as string | undefined;
-      if (existingConversationId) return existingConversationId;
+    if (typeof data === 'string' && data) {
+      return data;
     }
 
     return createConversation(partner);

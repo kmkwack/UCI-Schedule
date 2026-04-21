@@ -26,6 +26,17 @@ export type MessageRow = {
   created_at: string;
 };
 
+export type ConversationListRow = {
+  conversation_id: string;
+  partner_id: string;
+  partner_name: string | null;
+  partner_email: string | null;
+  last_message_text: string | null;
+  last_message_at: string | null;
+  updated_at: string;
+  unread_count: number | null;
+};
+
 export function formatMessageTime(isoString: string) {
   const date = new Date(isoString);
   const now = new Date();

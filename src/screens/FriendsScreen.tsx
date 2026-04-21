@@ -164,6 +164,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
   const [searchLoading, setSearchLoading] = useState(false);
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [submittingRequestId, setSubmittingRequestId] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
 
   const screenHeight = Dimensions.get('window').height;
   const friend = selectedFriendId ? friends.find((f) => f.id === selectedFriendId) ?? null : null;
@@ -374,6 +375,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
       .from('friend_requests')
       .select('id, status')
       .or(`and(sender_id.eq.${userId},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${userId})`)
+      .in('status', ['pending', 'accepted'])
       .limit(1);
 
     if (existingError) {
@@ -384,15 +386,14 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
 
     if ((existingRows ?? []).length > 0) {
       setSubmittingRequestId(null);
-      Alert.alert('Request already exists', 'You already have a friend request history with this user.');
+      Alert.alert('Request already exists', 'You already have a pending or active friend request with this user.');
       return;
     }
 
-    const { error } = await supabase.from('friend_requests').insert({
-      sender_id: userId,
-      receiver_id: target.id,
-      status: 'pending',
-    });
+    const { error } = await supabase.from('friend_requests').upsert(
+      { sender_id: userId, receiver_id: target.id, status: 'pending' },
+      { onConflict: 'sender_id,receiver_id' }
+    );
 
     setSubmittingRequestId(null);
 
@@ -425,6 +426,20 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
     if (status === 'accepted' && request) {
       setFriends((prev) => [...prev, { ...request, timetableVisibility: 'friends', timetables: {} }]);
     }
+  };
+
+  const handleDeleteFriend = async (friendId: string) => {
+    const [{ error: e1 }, { error: e2 }] = await Promise.all([
+      supabase.from('friend_requests').update({ status: 'rejected' }).eq('sender_id', userId).eq('receiver_id', friendId),
+      supabase.from('friend_requests').update({ status: 'rejected' }).eq('sender_id', friendId).eq('receiver_id', userId),
+    ]);
+
+    if (e1 || e2) {
+      Alert.alert('Could not remove friend', (e1 ?? e2)!.message);
+      return;
+    }
+
+    setFriends((prev) => prev.filter((f) => f.id !== friendId));
   };
 
   const visibleDays = useMemo(() => {
@@ -842,45 +857,59 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 4 }}>
-        <TouchableOpacity
-          onPress={() => setActiveTab('friends')}
-          style={{
-            paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-            backgroundColor: activeTab === 'friends' ? colors.brand : colors.bgTertiary,
-          }}
-        >
-          <Text style={{
-            fontSize: 14, fontWeight: '600',
-            color: activeTab === 'friends' ? 'white' : colors.textSecondary,
-          }}>
-            ClassMates ({friends.length})
-          </Text>
-        </TouchableOpacity>
+      <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 4, alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => setActiveTab('friends')}
+            style={{
+              paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+              backgroundColor: activeTab === 'friends' ? colors.brand : colors.bgTertiary,
+            }}
+          >
+            <Text style={{
+              fontSize: 14, fontWeight: '600',
+              color: activeTab === 'friends' ? 'white' : colors.textSecondary,
+            }}>
+              ClassMates ({friends.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setActiveTab('requests')}
+            style={{
+              paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+              backgroundColor: activeTab === 'requests' ? colors.brand : colors.bgTertiary,
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+            }}
+          >
+            <Text style={{
+              fontSize: 14, fontWeight: '600',
+              color: activeTab === 'requests' ? 'white' : colors.textSecondary,
+            }}>
+              Requests
+            </Text>
+            {pendingRequests.length > 0 && (
+              <View style={{
+                width: 18, height: 18, borderRadius: 9,
+                backgroundColor: activeTab === 'requests' ? 'rgba(255,255,255,0.3)' : colors.destructive,
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: 'white' }}>{pendingRequests.length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity
-          onPress={() => setActiveTab('requests')}
+          onPress={() => setEditMode((prev) => !prev)}
           style={{
             paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-            backgroundColor: activeTab === 'requests' ? colors.brand : colors.bgTertiary,
-            flexDirection: 'row', alignItems: 'center', gap: 4,
+            backgroundColor: editMode ? colors.destructive : colors.bgTertiary,
           }}
         >
-          <Text style={{
-            fontSize: 14, fontWeight: '600',
-            color: activeTab === 'requests' ? 'white' : colors.textSecondary,
-          }}>
-            Requests
+          <Text style={{ fontSize: 14, fontWeight: '600', color: editMode ? 'white' : colors.textSecondary }}>
+            {editMode ? 'Done' : 'Edit'}
           </Text>
-          {pendingRequests.length > 0 && (
-            <View style={{
-              width: 18, height: 18, borderRadius: 9,
-              backgroundColor: activeTab === 'requests' ? 'rgba(255,255,255,0.3)' : colors.destructive,
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: 'white' }}>{pendingRequests.length}</Text>
-            </View>
-          )}
         </TouchableOpacity>
       </View>
 
@@ -928,36 +957,55 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
                     )}
                   </View>
 
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (f.timetableVisibility === 'private') {
-                        Alert.alert('Private timetable', `${f.name} has chosen to keep their timetable private.`);
-                        return;
-                      }
-                      setSelectedFriendId(f.id);
-                    }}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 6,
-                      backgroundColor: f.timetableVisibility === 'private' ? colors.bgTertiary : colors.brand,
-                      borderRadius: 20,
-                      paddingHorizontal: 12, paddingVertical: 7, marginRight: 8,
-                    }}
-                  >
-                    <Ionicons name={f.timetableVisibility === 'private' ? 'lock-closed-outline' : 'calendar-outline'} size={14} color={f.timetableVisibility === 'private' ? colors.textTertiary : 'white'} />
-                    <Text style={{ color: f.timetableVisibility === 'private' ? colors.textTertiary : 'white', fontSize: 13, fontWeight: '600' }}>
-                      {f.timetableVisibility === 'private' ? 'Private' : 'Timetable'}
-                    </Text>
-                  </TouchableOpacity>
+                  {!editMode && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (f.timetableVisibility === 'private') {
+                          Alert.alert('Private timetable', `${f.name} has chosen to keep their timetable private.`);
+                          return;
+                        }
+                        setSelectedFriendId(f.id);
+                      }}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 6,
+                        backgroundColor: f.timetableVisibility === 'private' ? colors.bgTertiary : colors.brand,
+                        borderRadius: 20,
+                        paddingHorizontal: 12, paddingVertical: 7, marginRight: 8,
+                      }}
+                    >
+                      <Ionicons name={f.timetableVisibility === 'private' ? 'lock-closed-outline' : 'calendar-outline'} size={14} color={f.timetableVisibility === 'private' ? colors.textTertiary : 'white'} />
+                      <Text style={{ color: f.timetableVisibility === 'private' ? colors.textTertiary : 'white', fontSize: 13, fontWeight: '600' }}>
+                        {f.timetableVisibility === 'private' ? 'Private' : 'Timetable'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
-                  <TouchableOpacity
-                    onPress={() => onOpenMessages?.(f.name)}
-                    style={{
-                      width: 36, height: 36, borderRadius: 18,
-                      backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >
-                    <Ionicons name="paper-plane-outline" size={16} color="white" />
-                  </TouchableOpacity>
+                  {editMode ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        Alert.alert('Remove ClassMate', `Remove ${f.name} from your ClassMates?`, [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Remove', style: 'destructive', onPress: () => handleDeleteFriend(f.id) },
+                        ])
+                      }
+                      style={{
+                        width: 36, height: 36, borderRadius: 18,
+                        backgroundColor: colors.destructive, alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={16} color="white" />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => onOpenMessages?.(f.name)}
+                      style={{
+                        width: 36, height: 36, borderRadius: 18,
+                        backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="paper-plane-outline" size={16} color="white" />
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {index < filteredFriends.length - 1 && (

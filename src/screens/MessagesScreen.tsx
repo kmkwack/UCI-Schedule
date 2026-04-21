@@ -23,25 +23,6 @@ type Chat = {
   unread: number;
 };
 
-const MOCK_CHATS: Chat[] = [
-  { id: '1', name: 'Sarah Chen', avatar: 'SC', lastMessage: 'See you at the library!', timestamp: '2h ago', unread: 2 },
-  { id: '2', name: 'Alex Kim', avatar: 'AK', lastMessage: 'Thanks for the notes!', timestamp: '5h ago', unread: 0 },
-  { id: '3', name: 'Mike Johnson', avatar: 'MJ', lastMessage: 'About the basketball game...', timestamp: '1d ago', unread: 1 },
-  { id: '4', name: 'Emma Wilson', avatar: 'EW', lastMessage: 'When do you want to play tennis?', timestamp: '2d ago', unread: 0 },
-];
-
-const MOCK_MESSAGES: Record<string, Message[]> = {
-  '1': [
-    { id: 'm1', content: 'Hey! Are you free to study today?', timestamp: '10:30 AM', isMe: false },
-    { id: 'm2', content: "Yes! I'll be at the library around 2pm", timestamp: '10:35 AM', isMe: true },
-    { id: 'm3', content: 'Perfect! See you at the library!', timestamp: '10:36 AM', isMe: false },
-  ],
-  '2': [
-    { id: 'm4', content: 'Can you share the CS 101 notes?', timestamp: 'Yesterday', isMe: false },
-    { id: 'm5', content: "Sure! I'll send them over", timestamp: 'Yesterday', isMe: true },
-    { id: 'm6', content: 'Thanks for the notes!', timestamp: 'Yesterday', isMe: false },
-  ],
-};
 
 type Props = {
   onClose: () => void;
@@ -50,11 +31,11 @@ type Props = {
 
 export default function MessagesScreen({ onClose, openChatWith }: Props) {
   const { colors } = useTheme();
-  const [chats, setChats] = useState<Chat[]>(MOCK_CHATS);
+  const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [messageInput, setMessageInput] = useState('');
-  const [messages, setMessages] = useState<Record<string, Message[]>>(MOCK_MESSAGES);
+  const [messages, setMessages] = useState<Record<string, Message[]>>({});
 
   useEffect(() => {
     if (!openChatWith) return;

@@ -24,6 +24,8 @@ type Props = {
   onClose: () => void;
   selectedQuarter: Quarter;
   timetableSettings?: TimetableSettings;
+  userId: string;
+  school: string;
 };
 
 type CatalogCourse = {
@@ -65,24 +67,6 @@ type CourseReview = {
   workload: number;
 };
 
-const MOCK_REVIEWS: CourseReview[] = [
-  {
-    id: 'r1', author: 'Anonymous', rating: 5, date: '2025-12-15',
-    content: 'Excellent course! The professor explains complex concepts very intuitively. Assignments are challenging but fair. Highly recommend.',
-    semester: 'Fall 2025', difficulty: 4, workload: 4,
-  },
-  {
-    id: 'r2', author: 'Student123', rating: 4, date: '2025-12-10',
-    content: 'Great course overall. Very useful and applicable material. Exams were tough but the curve helps. Make sure to attend all lectures.',
-    semester: 'Fall 2025', difficulty: 5, workload: 5,
-  },
-  {
-    id: 'r3', author: 'UCIAnteater', rating: 4, date: '2025-11-20',
-    content: 'Interesting content with well-organized lectures. Homework reinforced the material well. The midterm was harder than expected.',
-    semester: 'Fall 2025', difficulty: 3, workload: 4,
-  },
-];
-
 
 function getDaysArray(daysString: string) {
   const result: string[] = [];
@@ -117,6 +101,8 @@ export default function CoursePickerScreen({
   onClose,
   selectedQuarter,
   timetableSettings = DEFAULT_TIMETABLE_SETTINGS,
+  userId,
+  school,
 }: Props) {
   const [searchText, setSearchText] = useState('');
   const [selectedDept, setSelectedDept] = useState('');
@@ -138,7 +124,9 @@ export default function CoursePickerScreen({
   const [newReviewDifficulty, setNewReviewDifficulty] = useState(3);
   const [newReviewWorkload, setNewReviewWorkload] = useState(3);
   const [newReviewContent, setNewReviewContent] = useState('');
-  const [extraReviews, setExtraReviews] = useState<CourseReview[]>([]);
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviews, setReviews] = useState<CourseReview[]>([]);
+  const [reviewsListLoading, setReviewsListLoading] = useState(false);
 
   // Fetch courses + sections from Supabase (pre-seeded from Anteater API)
   useEffect(() => {
@@ -208,7 +196,7 @@ export default function CoursePickerScreen({
           });
 
           newSectionsMap[courseId] = sorted.map((row: any): Course => ({
-            id: row.id,
+            id: row.id.split('::')[0], // strip ::quarterKey suffix — raw section code for enrollment lookup
             code: row.code,
             title: row.title,
             professor: row.professor ?? '',
@@ -255,6 +243,63 @@ export default function CoursePickerScreen({
       .catch(() => setGradesCache((prev) => ({ ...prev, [cacheKey]: null })))
       .finally(() => setGradeLoading(false));
   }, [reviewsCourse, reviewsInstructor]);
+
+  // Fetch reviews from Supabase
+  async function fetchReviews(courseCode: string) {
+    setReviewsListLoading(true);
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .eq('school', school)
+      .eq('course_code', courseCode)
+      .order('created_at', { ascending: false });
+    if (!error && data) {
+      setReviews(data.map((r: any) => ({
+        id: r.id,
+        author: r.author,
+        rating: r.rating,
+        date: r.created_at.slice(0, 10),
+        content: r.content,
+        semester: r.semester,
+        difficulty: r.difficulty,
+        workload: r.workload,
+      })));
+    }
+    setReviewsListLoading(false);
+  }
+
+  useEffect(() => {
+    if (!reviewsCourse) { setReviews([]); return; }
+    fetchReviews(`${reviewsCourse.department} ${reviewsCourse.courseNumber}`);
+  }, [reviewsCourse]);
+
+  async function handleSubmitReview() {
+    if (!newReviewContent.trim() || !reviewsCourse) return;
+    setSubmittingReview(true);
+    const courseCode = `${reviewsCourse.department} ${reviewsCourse.courseNumber}`;
+    const { error } = await supabase.from('reviews').insert({
+      school,
+      course_code: courseCode,
+      department: reviewsCourse.department,
+      course_number: reviewsCourse.courseNumber,
+      user_id: userId,
+      author: 'Anonymous',
+      rating: newReviewRating,
+      difficulty: newReviewDifficulty,
+      workload: newReviewWorkload,
+      content: newReviewContent.trim(),
+      semester: quarterLabel(selectedQuarter),
+    });
+    setSubmittingReview(false);
+    if (!error) {
+      setNewReviewRating(5);
+      setNewReviewDifficulty(3);
+      setNewReviewWorkload(3);
+      setNewReviewContent('');
+      setShowWriteReview(false);
+      await fetchReviews(courseCode);
+    }
+  }
 
   const fetchEnrollment = async (course: CatalogCourse) => {
     if (enrollmentLoadingIds.has(course.id)) return;
@@ -471,8 +516,9 @@ export default function CoursePickerScreen({
           </TouchableOpacity>
 
           {/* Department picker modal */}
-          <Modal visible={deptDropdownOpen} animationType="slide" transparent>
+          <Modal visible={deptDropdownOpen} animationType="slide" transparent onRequestClose={() => setDeptDropdownOpen(false)}>
             <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' }}>
+              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setDeptDropdownOpen(false)} />
               <View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 16, maxHeight: '70%' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12 }}>
                   <Text style={{ flex: 1, fontSize: 17, fontWeight: '700' }}>Select Department</Text>
@@ -831,44 +877,57 @@ export default function CoursePickerScreen({
 
                     {/* ── Student reviews ── */}
                     <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                        <View style={{ flexDirection: 'row', gap: 2 }}>
-                          {[1,2,3,4,5].map(i => (
-                            <Ionicons key={i} name={i <= 4 ? 'star' : 'star-half'} size={16} color="#f59e0b" />
-                          ))}
+                      {reviewsListLoading ? (
+                        <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                          <ActivityIndicator size="small" color="#4169E1" />
                         </View>
-                        <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>4.3</Text>
-                        <Text style={{ fontSize: 13, color: '#9ca3af' }}>
-                          {MOCK_REVIEWS.length + extraReviews.length} reviews
+                      ) : reviews.length === 0 ? (
+                        <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', paddingVertical: 20 }}>
+                          No reviews yet. Be the first to write one!
                         </Text>
-                      </View>
-                    {[...MOCK_REVIEWS, ...extraReviews].map((review) => (
-                      <View key={review.id} style={{ backgroundColor: '#f9fafb', borderRadius: 14, padding: 14, marginBottom: 10 }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                          <View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                              <Text style={{ fontWeight: '700', fontSize: 14, color: '#111827' }}>{review.author}</Text>
-                              <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.semester}</Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', gap: 2 }}>
-                              {[1,2,3,4,5].map(i => (
-                                <Ionicons key={i} name={i <= review.rating ? 'star' : 'star-outline'} size={13} color={i <= review.rating ? '#f59e0b' : '#d1d5db'} />
-                              ))}
-                            </View>
+                      ) : (
+                        <>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                            {(() => {
+                              const avg = reviews.reduce((s, r) => s + r.rating, 0) / reviews.length;
+                              return (
+                                <>
+                                  <View style={{ flexDirection: 'row', gap: 2 }}>
+                                    {[1,2,3,4,5].map(i => (
+                                      <Ionicons key={i} name={i <= Math.round(avg) ? 'star' : 'star-outline'} size={16} color="#f59e0b" />
+                                    ))}
+                                  </View>
+                                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>{avg.toFixed(1)}</Text>
+                                  <Text style={{ fontSize: 13, color: '#9ca3af' }}>{reviews.length} {reviews.length === 1 ? 'review' : 'reviews'}</Text>
+                                </>
+                              );
+                            })()}
                           </View>
-                          <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.date}</Text>
-                        </View>
-                        <Text style={{ fontSize: 13, color: '#374151', lineHeight: 19, marginBottom: 8 }}>{review.content}</Text>
-                        <View style={{ flexDirection: 'row', gap: 16 }}>
-                          <Text style={{ fontSize: 12, color: '#9ca3af' }}>
-                            Difficulty: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.difficulty}/5</Text>
-                          </Text>
-                          <Text style={{ fontSize: 12, color: '#9ca3af' }}>
-                            Workload: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.workload}/5</Text>
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
+                          {reviews.map((review) => (
+                            <View key={review.id} style={{ backgroundColor: '#f9fafb', borderRadius: 14, padding: 14, marginBottom: 10 }}>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                                <View>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                    <Text style={{ fontWeight: '700', fontSize: 14, color: '#111827' }}>{review.author}</Text>
+                                    <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.semester}</Text>
+                                  </View>
+                                  <View style={{ flexDirection: 'row', gap: 2 }}>
+                                    {[1,2,3,4,5].map(i => (
+                                      <Ionicons key={i} name={i <= review.rating ? 'star' : 'star-outline'} size={13} color={i <= review.rating ? '#f59e0b' : '#d1d5db'} />
+                                    ))}
+                                  </View>
+                                </View>
+                                <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.date}</Text>
+                              </View>
+                              <Text style={{ fontSize: 13, color: '#374151', lineHeight: 19, marginBottom: 8 }}>{review.content}</Text>
+                              <View style={{ flexDirection: 'row', gap: 16 }}>
+                                <Text style={{ fontSize: 12, color: '#9ca3af' }}>Difficulty: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.difficulty}/5</Text></Text>
+                                <Text style={{ fontSize: 12, color: '#9ca3af' }}>Workload: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.workload}/5</Text></Text>
+                              </View>
+                            </View>
+                          ))}
+                        </>
+                      )}
                     </View>
                   </ScrollView>
 
@@ -972,31 +1031,17 @@ export default function CoursePickerScreen({
 
                     {/* Submit */}
                     <TouchableOpacity
-                      onPress={() => {
-                        if (!newReviewContent.trim()) return;
-                        setExtraReviews(prev => [...prev, {
-                          id: `user-${Date.now()}`,
-                          author: 'You',
-                          rating: newReviewRating,
-                          date: new Date().toISOString().slice(0, 10),
-                          content: newReviewContent.trim(),
-                          semester: 'Spring 2026',
-                          difficulty: newReviewDifficulty,
-                          workload: newReviewWorkload,
-                        }]);
-                        setNewReviewRating(5);
-                        setNewReviewDifficulty(3);
-                        setNewReviewWorkload(3);
-                        setNewReviewContent('');
-                        setShowWriteReview(false);
-                      }}
-                      disabled={!newReviewContent.trim()}
+                      onPress={handleSubmitReview}
+                      disabled={!newReviewContent.trim() || submittingReview}
                       style={{
                         backgroundColor: newReviewContent.trim() ? '#4169E1' : '#d1d5db',
                         borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 8,
                       }}
                     >
-                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Submit Review</Text>
+                      {submittingReview
+                        ? <ActivityIndicator size="small" color="white" />
+                        : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Submit Review</Text>
+                      }
                     </TouchableOpacity>
                   </ScrollView>
                 </>

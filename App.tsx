@@ -147,9 +147,11 @@ export default function App() {
   };
 
   const handleCreateTimetable = async () => {
-    const existing = quarterTimetables.length;
-    const name = existing === 0 ? 'My Schedule' : `Plan ${String.fromCharCode(65 + existing)}`; // Plan A, Plan B, ...
-    await createTimetable(activeKey, name);
+    if (quarterTimetables.length === 0) { await createTimetable(activeKey, 'My Schedule'); return; }
+    const usedNames = new Set(quarterTimetables.map((t) => t.name));
+    let code = 65; // 'A'
+    while (usedNames.has(`Plan ${String.fromCharCode(code)}`)) code++;
+    await createTimetable(activeKey, `Plan ${String.fromCharCode(code)}`);
   };
 
   const handleAddQuarter = async (q: Quarter) => {
@@ -170,17 +172,28 @@ export default function App() {
     if (!activeTimetable) return;
     const { error } = await supabase.from('timetables').delete().eq('id', activeTimetable.id);
     if (error) { console.error('Failed to delete timetable:', error); return; }
-    setTimetables((prev) => prev.filter((t) => t.id !== activeTimetable.id));
+
     const remaining = quarterTimetables.filter((t) => t.id !== activeTimetable.id);
+    let updatedTimetables = timetables.filter((t) => t.id !== activeTimetable.id);
+
+    // If 'My Schedule' no longer exists in this quarter, promote the first remaining one
+    if (remaining.length > 0 && !remaining.some((t) => t.name === 'My Schedule')) {
+      const toRename = remaining[0];
+      await supabase.from('timetables').update({ name: 'My Schedule' }).eq('id', toRename.id);
+      updatedTimetables = updatedTimetables.map((t) =>
+        t.id === toRename.id ? { ...t, name: 'My Schedule' } : t
+      );
+    }
+
+    setTimetables(updatedTimetables);
+
     if (remaining.length > 0) {
       setSelectedTimetableId(remaining[0].id);
     } else {
       // Quarter is now empty — switch to current quarter
       const currentQk = quarterKey(CURRENT_QUARTER);
       setSelectedQuarter(CURRENT_QUARTER);
-      const currentQTimetables = timetables.filter(
-        (t) => t.quarterKey === currentQk && t.id !== activeTimetable.id
-      );
+      const currentQTimetables = updatedTimetables.filter((t) => t.quarterKey === currentQk);
       setSelectedTimetableId(currentQTimetables.length > 0 ? currentQTimetables[0].id : null);
     }
   };
@@ -298,6 +311,8 @@ export default function App() {
           onFocusCourse={handleFocusCourse}
           onChangeQuarter={handleChangeQuarter}
           onOpenCoursePicker={() => setShowCoursePicker(true)}
+          onRemoveCourse={handleToggleCourse}
+          school={selectedUniversity?.name ?? 'UC Irvine'}
           timetables={timetables}
           quarterTimetables={quarterTimetables}
           activeTimetableId={activeTimetable?.id ?? null}
@@ -403,6 +418,8 @@ export default function App() {
             onClose={() => setShowCoursePicker(false)}
             selectedQuarter={selectedQuarter}
             timetableSettings={timetableSettings}
+            userId={USER_ID}
+            school={selectedUniversity?.name ?? 'UC Irvine'}
           />
         </Animated.View>
       )}

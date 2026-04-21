@@ -1,11 +1,23 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, LayoutAnimation, PanResponder, Platform, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Easing, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, QUARTERS, quarterKey, quarterLabel, getBlockColors } from '../data/courses';
 import { supabase } from '../lib/supabase';
 import { captureRef } from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
+
+type GradeDistribution = {
+  averageGPA: number | null;
+  gradeACount: number; gradeBCount: number; gradeCCount: number;
+  gradeDCount: number; gradeFCount: number;
+  gradePCount: number; gradeNPCount: number;
+};
+
+type CourseReview = {
+  id: string; author: string; rating: number; date: string;
+  content: string; semester: string; difficulty: number; workload: number;
+};
 
 type Props = {
   activeCourses: Course[];
@@ -14,6 +26,8 @@ type Props = {
   onFocusCourse: (courseId: string) => void;
   onChangeQuarter: (q: Quarter) => void;
   onOpenCoursePicker: () => void;
+  onRemoveCourse: (course: Course) => void;
+  school: string;
   quarterTimetables: Timetable[];
   activeTimetableId: string | null;
   onSelectTimetable: (id: string) => void;
@@ -86,6 +100,8 @@ export default function TimetableScreen({
   onFocusCourse,
   onChangeQuarter,
   onOpenCoursePicker,
+  onRemoveCourse,
+  school,
   quarterTimetables,
   activeTimetableId,
   onSelectTimetable,
@@ -107,6 +123,17 @@ export default function TimetableScreen({
   const [addableQuarters, setAddableQuarters] = useState<Quarter[]>([]);
   const [loadingAddableQuarters, setLoadingAddableQuarters] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Course detail sheet
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [showCourseReviews, setShowCourseReviews] = useState(false);
+  const [showReviewsPanel, setShowReviewsPanel] = useState(false);
+  const reviewsSlideAnim = useRef(new Animated.Value(800)).current;
+  const [reviewsInstructor, setReviewsInstructor] = useState('');
+  const [gradesCache, setGradesCache] = useState<Record<string, GradeDistribution | null>>({});
+  const [gradeLoading, setGradeLoading] = useState(false);
+  const [courseReviews, setCourseReviews] = useState<CourseReview[]>([]);
+  const [courseReviewsLoading, setCourseReviewsLoading] = useState(false);
 
   // Pending settings (in the modal, before Apply is tapped)
   const [pendingTheme, setPendingTheme] = useState<TimetableTheme>('default');
@@ -173,9 +200,11 @@ export default function TimetableScreen({
   }, [scheduledCourses]);
 
   const totalHours = displayEndHour - displayStartHour;
-  const HOUR_HEIGHT = 72; // fixed px per hour — always taller than viewport → enables scrolling
-  const timetableHeight = totalHours * HOUR_HEIGHT + HOUR_HEIGHT; // full extra row so bottom label is fully scrollable
-  const hourHeight = HOUR_HEIGHT;
+  const MIN_HOUR_HEIGHT = 50;
+  const hourHeight = scrollAreaHeight > 0
+    ? Math.max(MIN_HOUR_HEIGHT, scrollAreaHeight / (totalHours + 1))
+    : 72;
+  const timetableHeight = (totalHours + 1) * hourHeight;
   const hourLabels = Array.from({ length: totalHours + 1 }, (_, i) => displayStartHour + i);
 
   const usableGridWidth =
@@ -317,6 +346,76 @@ export default function TimetableScreen({
     viewportWidth,
     visibleDays,
   ]);
+
+  // Fetch grade distribution when reviews sheet opens
+  useEffect(() => {
+    if (!selectedCourse || !showCourseReviews) return;
+    const department = selectedCourse.department;
+    const courseNumber = selectedCourse.code.slice(department.length).trim();
+    const instructor = reviewsInstructor || undefined;
+    const cacheKey = `${department}${courseNumber}${instructor ?? ''}`;
+    if (cacheKey in gradesCache) return;
+
+    setGradeLoading(true);
+    const params = new URLSearchParams({ department, courseNumber });
+    if (instructor) params.append('instructor', instructor);
+    fetch(`https://anteaterapi.com/v2/rest/grades/aggregate?${params}`)
+      .then((r) => r.json())
+      .then((json) => {
+        const dist: GradeDistribution | null = json?.data?.gradeDistribution ?? null;
+        setGradesCache((prev) => ({ ...prev, [cacheKey]: dist }));
+      })
+      .catch(() => setGradesCache((prev) => ({ ...prev, [cacheKey]: null })))
+      .finally(() => setGradeLoading(false));
+  }, [selectedCourse, showCourseReviews, reviewsInstructor]);
+
+  // Slide reviews panel in/out
+  useEffect(() => {
+    if (showCourseReviews) {
+      setShowReviewsPanel(true);
+      Animated.timing(reviewsSlideAnim, {
+        toValue: 0,
+        duration: 300,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(reviewsSlideAnim, {
+        toValue: screenHeight,
+        duration: 240,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => { if (finished) setShowReviewsPanel(false); });
+    }
+  }, [showCourseReviews]);
+
+  // Fetch reviews from Supabase when reviews panel opens
+  useEffect(() => {
+    if (!showReviewsPanel || !selectedCourse) return;
+    const courseCode = selectedCourse.code;
+    setCourseReviewsLoading(true);
+    supabase
+      .from('reviews')
+      .select('*')
+      .eq('school', school)
+      .eq('course_code', courseCode)
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setCourseReviews(data.map((r: any) => ({
+            id: r.id,
+            author: r.author,
+            rating: r.rating,
+            date: r.created_at.slice(0, 10),
+            content: r.content,
+            semester: r.semester,
+            difficulty: r.difficulty,
+            workload: r.workload,
+          })));
+        }
+        setCourseReviewsLoading(false);
+      });
+  }, [showReviewsPanel, selectedCourse]);
 
   async function openAddQuarterModal() {
     setLoadingAddableQuarters(true);
@@ -921,7 +1020,7 @@ export default function TimetableScreen({
                 <TouchableOpacity
                   key={course.id}
                   activeOpacity={0.85}
-                  onPress={() => onFocusCourse(course.id)}
+                  onPress={() => setSelectedCourse(course)}
                   style={{
                     backgroundColor: bg, borderRadius: 8,
                     borderWidth: 1, borderColor: border,
@@ -953,6 +1052,242 @@ export default function TimetableScreen({
           </View>
         </View>
       )}
+
+      {/* ── Course detail bottom sheet ── */}
+      <Modal
+        visible={!!selectedCourse}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (showCourseReviews) { setShowCourseReviews(false); }
+          else { setSelectedCourse(null); setReviewsInstructor(''); }
+        }}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
+
+          {/* Detail sheet */}
+          {selectedCourse && (() => {
+            const isLec = selectedCourse.sectionLabel?.startsWith('Lec') ?? true;
+            return (
+              <View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
+                <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                      <Text style={{ fontSize: 19, fontWeight: '800', color: '#111827' }}>{selectedCourse.code}</Text>
+                      <Text style={{ fontSize: 14, color: '#374151', marginTop: 3, fontWeight: '500' }}>{selectedCourse.title}</Text>
+                      {selectedCourse.sectionLabel && (
+                        <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{selectedCourse.sectionLabel}</Text>
+                      )}
+                    </View>
+                    <TouchableOpacity onPress={() => { setSelectedCourse(null); setReviewsInstructor(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close" size={22} color="#6b7280" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+                  {selectedCourse.professor ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Ionicons name="person-outline" size={16} color="#6b7280" />
+                      <Text style={{ fontSize: 14, color: '#374151' }}>{selectedCourse.professor}</Text>
+                    </View>
+                  ) : null}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name="time-outline" size={16} color="#6b7280" />
+                    <Text style={{ fontSize: 14, color: '#374151' }}>{selectedCourse.days} · {selectedCourse.time}</Text>
+                  </View>
+                  {selectedCourse.location ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Ionicons name="location-outline" size={16} color="#6b7280" />
+                      <Text style={{ fontSize: 14, color: '#374151' }}>{selectedCourse.location}</Text>
+                    </View>
+                  ) : null}
+                  {selectedCourse.units != null ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Ionicons name="school-outline" size={16} color="#6b7280" />
+                      <Text style={{ fontSize: 14, color: '#374151' }}>{selectedCourse.units} {selectedCourse.units === 1 ? 'unit' : 'units'}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 10 }}>
+                  {isLec && (
+                    <TouchableOpacity
+                      onPress={() => { setReviewsInstructor(''); setShowCourseReviews(true); }}
+                      style={{ backgroundColor: '#4169E1', borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                    >
+                      <Ionicons name="star-outline" size={17} color="white" />
+                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => { onRemoveCourse(selectedCourse); setSelectedCourse(null); }}
+                    style={{ borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: '#fca5a5', backgroundColor: '#fff5f5' }}
+                  >
+                    <Ionicons name="trash-outline" size={17} color="#ef4444" />
+                    <Text style={{ color: '#ef4444', fontWeight: '700', fontSize: 15 }}>Remove Course</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })()}
+
+          {/* Reviews panel — slides up on top of detail sheet */}
+          {showReviewsPanel && selectedCourse && (() => {
+            const department = selectedCourse.department;
+            const courseNumber = selectedCourse.code.slice(department.length).trim();
+            const cacheKey = `${department}${courseNumber}${reviewsInstructor}`;
+            const grades = gradesCache[cacheKey];
+            const allEntries = grades ? [
+              { label: 'A', count: grades.gradeACount, color: '#22c55e' },
+              { label: 'B', count: grades.gradeBCount, color: '#4169E1' },
+              { label: 'C', count: grades.gradeCCount, color: '#f59e0b' },
+              { label: 'D', count: grades.gradeDCount, color: '#f97316' },
+              { label: 'F', count: grades.gradeFCount, color: '#ef4444' },
+              { label: 'P', count: grades.gradePCount, color: '#14b8a6' },
+              { label: 'NP', count: grades.gradeNPCount, color: '#9ca3af' },
+            ].filter((e) => e.count > 0) : [];
+            const total = allEntries.reduce((s, e) => s + e.count, 0);
+            const professors = selectedCourse.professor && !selectedCourse.professor.includes('STAFF')
+              ? [selectedCourse.professor] : [];
+            return (
+              <Animated.View style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0,
+                height: screenHeight * 0.92,
+                backgroundColor: 'white',
+                borderTopLeftRadius: 24, borderTopRightRadius: 24,
+                transform: [{ translateY: reviewsSlideAnim }],
+              }}>
+                {/* Header */}
+                <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                      <TouchableOpacity onPress={() => setShowCourseReviews(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="chevron-back" size={22} color="#6b7280" />
+                      </TouchableOpacity>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>{selectedCourse.code}</Text>
+                        <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 1 }}>{selectedCourse.title}</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity onPress={() => { setSelectedCourse(null); setShowCourseReviews(false); setReviewsInstructor(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close" size={22} color="#6b7280" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+                  {/* Grade Distribution */}
+                  <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 10 }}>Grade Distribution</Text>
+                    {professors.length > 0 && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          {['', ...professors].map((p) => {
+                            const isSel = reviewsInstructor === p;
+                            return (
+                              <TouchableOpacity
+                                key={p || '__all__'}
+                                onPress={() => setReviewsInstructor(p)}
+                                style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: isSel ? '#4169E1' : '#f3f4f6', borderWidth: 1, borderColor: isSel ? '#4169E1' : '#e5e7eb' }}
+                              >
+                                <Text style={{ fontSize: 12, fontWeight: '600', color: isSel ? 'white' : '#374151' }}>
+                                  {p === '' ? 'All Professors' : p.split(',')[0]}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </ScrollView>
+                    )}
+                    {gradeLoading ? (
+                      <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                        <ActivityIndicator size="small" color="#4169E1" />
+                      </View>
+                    ) : !grades || allEntries.length === 0 ? (
+                      <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', paddingVertical: 12 }}>No grade data available</Text>
+                    ) : (
+                      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+                        <View style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f4ff', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, minWidth: 72 }}>
+                          <Text style={{ fontSize: 26, fontWeight: '800', color: '#4169E1' }}>
+                            {grades.averageGPA != null ? grades.averageGPA.toFixed(2) : '—'}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>avg GPA</Text>
+                        </View>
+                        <View style={{ flex: 1, gap: 5 }}>
+                          {allEntries.map((entry) => {
+                            const pct = total > 0 ? entry.count / total : 0;
+                            return (
+                              <View key={entry.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={{ fontSize: 11, fontWeight: '700', color: '#374151', width: 18, textAlign: 'right' }}>{entry.label}</Text>
+                                <View style={{ flex: 1, height: 10, backgroundColor: '#f3f4f6', borderRadius: 5, overflow: 'hidden' }}>
+                                  <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: entry.color, borderRadius: 5 }} />
+                                </View>
+                                <Text style={{ fontSize: 11, color: '#6b7280', width: 34, textAlign: 'right' }}>{(pct * 100).toFixed(0)}%</Text>
+                              </View>
+                            );
+                          })}
+                          <Text style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>Based on {total.toLocaleString()} students · all available terms</Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Student reviews */}
+                  <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
+                    {courseReviewsLoading ? (
+                      <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                        <ActivityIndicator size="small" color="#4169E1" />
+                      </View>
+                    ) : courseReviews.length === 0 ? (
+                      <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', paddingVertical: 20 }}>
+                        No reviews yet.
+                      </Text>
+                    ) : (
+                      <>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                          {(() => {
+                            const avg = courseReviews.reduce((s, r) => s + r.rating, 0) / courseReviews.length;
+                            return (
+                              <>
+                                <View style={{ flexDirection: 'row', gap: 2 }}>
+                                  {[1,2,3,4,5].map(i => <Ionicons key={i} name={i <= Math.round(avg) ? 'star' : 'star-outline'} size={16} color="#f59e0b" />)}
+                                </View>
+                                <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>{avg.toFixed(1)}</Text>
+                                <Text style={{ fontSize: 13, color: '#9ca3af' }}>{courseReviews.length} {courseReviews.length === 1 ? 'review' : 'reviews'}</Text>
+                              </>
+                            );
+                          })()}
+                        </View>
+                        {courseReviews.map((review) => (
+                          <View key={review.id} style={{ backgroundColor: '#f9fafb', borderRadius: 14, padding: 14, marginBottom: 10 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                              <View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                  <Text style={{ fontWeight: '700', fontSize: 14, color: '#111827' }}>{review.author}</Text>
+                                  <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.semester}</Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', gap: 2 }}>
+                                  {[1,2,3,4,5].map(i => <Ionicons key={i} name={i <= review.rating ? 'star' : 'star-outline'} size={13} color={i <= review.rating ? '#f59e0b' : '#d1d5db'} />)}
+                                </View>
+                              </View>
+                              <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.date}</Text>
+                            </View>
+                            <Text style={{ fontSize: 13, color: '#374151', lineHeight: 19, marginBottom: 8 }}>{review.content}</Text>
+                            <View style={{ flexDirection: 'row', gap: 16 }}>
+                              <Text style={{ fontSize: 12, color: '#9ca3af' }}>Difficulty: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.difficulty}/5</Text></Text>
+                              <Text style={{ fontSize: 12, color: '#9ca3af' }}>Workload: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.workload}/5</Text></Text>
+                            </View>
+                          </View>
+                        ))}
+                      </>
+                    )}
+                  </View>
+                </ScrollView>
+              </Animated.View>
+            );
+          })()}
+
+        </View>
+      </Modal>
 
       {/* Grid container */}
       <View
@@ -1092,7 +1427,7 @@ export default function TimetableScreen({
                       <TouchableOpacity
                         key={`${course.id}-${day}`}
                         activeOpacity={0.85}
-                        onPress={() => onFocusCourse(course.id)}
+                        onPress={() => setSelectedCourse(course)}
                         style={{
                           position: 'absolute',
                           top: top + 2,

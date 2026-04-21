@@ -1247,7 +1247,7 @@ export default function TimetableScreen({
                           position: 'absolute',
                           top: index * hourHeight,
                           height: hourHeight,
-                          left: 0, right: 0,
+                          left: -GRID_LEFT_PAD, right: 0,
                           alignItems: 'center',
                           justifyContent: 'center',
                         }}>

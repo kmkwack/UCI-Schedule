@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
 
 const UCI_MAJORS = [
   'Aerospace Engineering',
@@ -265,7 +265,7 @@ function EditProfileScreen({
     setForm(initialProfile);
   }, [initialProfile]);
 
-  const field = (label: string, key: keyof typeof form, disabled = false, placeholder?: string) => (
+  const field = (label: string, key: keyof typeof form, disabled = false, placeholder?: string, inputProps?: object) => (
     <View style={{ marginBottom: 18 }}>
       <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>
         {label.replace(' *', '')}{label.endsWith(' *') && <Text style={{ color: colors.destructive }}> *</Text>}
@@ -282,6 +282,7 @@ function EditProfileScreen({
           placeholder={placeholder}
           placeholderTextColor={colors.placeholder}
           style={{ fontSize: 14, color: disabled ? colors.textTertiary : colors.text }}
+          {...(inputProps ?? {})}
         />
       </View>
       {disabled && <Text style={{ fontSize: 11, color: colors.textTertiary, marginTop: 4 }}>Email cannot be changed</Text>}
@@ -289,13 +290,13 @@ function EditProfileScreen({
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.card }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.card }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <SubHeader title="Edit Profile" onBack={onBack} />
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {field('First Name *', 'firstName')}
         {field('Middle Name', 'middleName', false, 'Optional')}
         {field('Last Name *', 'lastName')}
-        {field('Nickname *', 'nickname')}
+        {field('Nickname *', 'nickname', false, undefined, { autoCapitalize: 'none' })}
         {field('University Email *', 'email', true)}
         <DropdownPicker
           label="Year" required value={form.year}
@@ -316,7 +317,7 @@ function EditProfileScreen({
             options={['Prefer not to say', 'Male', 'Female', 'Other']}
             onSelect={v => setForm(f => ({ ...f, gender: v }))}
           />
-          {field('Date of Birth', 'dateOfBirth', false, 'mm/dd/yyyy')}
+          {field('Date of Birth', 'dateOfBirth', false, 'mm/dd/yyyy', { keyboardType: 'number-pad' })}
         </View>
       </ScrollView>
       <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
@@ -348,7 +349,7 @@ function EditProfileScreen({
           </Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

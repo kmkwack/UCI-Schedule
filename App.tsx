@@ -133,6 +133,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const activeTimetable = quarterTimetables.find((t) => t.id === selectedTimetableId) ?? quarterTimetables[0] ?? null;
   const activeCourses = activeTimetable?.courses ?? [];
 
+  const CURRENT_QUARTER_KEY = '2026-Spring';
+  const currentQuarterCourses = timetables
+    .filter((t) => t.quarterKey === CURRENT_QUARTER_KEY)
+    .flatMap((t) => t.courses);
+
   const USER_ID = userId ?? 'guest';
   const isGuestUser = !!userId?.startsWith('guest');
   const displayUserName = buildDisplayName({ ...userProfile, email: userEmail || userProfile.email });
@@ -712,7 +717,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   if (currentTab === 'home') {
     content = (
       <HomeScreen
-        activeCourses={activeCourses}
+        activeCourses={currentQuarterCourses}
         onGoToTimetable={() => setCurrentTab('timetable')}
         onGoToGrades={() => setCurrentTab('grades')}
         onLogout={handleLogout}

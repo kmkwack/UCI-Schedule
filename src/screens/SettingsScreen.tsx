@@ -1,7 +1,15 @@
-import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTheme, ThemePreference } from '../context/ThemeContext';
+import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
+import type {
+  EditableProfile,
+  NotificationPreferences,
+  PushPermissionStatus,
+  TimetableVisibility,
+  UserSettingsState,
+} from '../data/userPreferences';
 
 type Props = {
   visible: boolean;
@@ -9,13 +17,37 @@ type Props = {
   onLogout?: () => void;
   userName?: string;
   userEmail?: string;
+  userProfile: EditableProfile;
+  userSettings: UserSettingsState;
   useCelsius?: boolean;
   onUseCelsiusChange?: (v: boolean) => void;
   themePreference?: ThemePreference;
   onThemeChange?: (v: ThemePreference) => void;
+  onSaveProfile: (profile: EditableProfile) => Promise<boolean>;
+  onSaveVisibility: (visibility: TimetableVisibility) => Promise<boolean>;
+  onSaveNotifications: (notifications: NotificationPreferences, pushPermissionStatus: PushPermissionStatus) => Promise<boolean>;
+  onRequestPushPermissions: () => Promise<PushPermissionStatus>;
+  savingProfile?: boolean;
+  savingVisibility?: boolean;
+  savingNotifications?: boolean;
 };
 
 type Screen = 'main' | 'profile' | 'privacy' | 'notifications' | 'appearance' | 'language' | 'help' | 'about';
+
+const SUPPORT_EMAIL = 'support@classmate.app';
+
+async function openSupportEmail() {
+  const subject = encodeURIComponent('ClassMate Support Request');
+  const body = encodeURIComponent('Hi ClassMate team,\n\nI need help with:\n');
+  const url = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ─── Sub-screen: Back header ────────────────────────────────────────────────
 function SubHeader({ title, onBack }: { title: string; onBack: () => void }) {
@@ -105,14 +137,25 @@ function DropdownPicker({ label, required, value, options, onSelect }: {
   );
 }
 
-function EditProfileScreen({ onBack, userEmail }: { onBack: () => void; userEmail?: string }) {
+function EditProfileScreen({
+  onBack,
+  userEmail,
+  initialProfile,
+  onSave,
+  saving,
+}: {
+  onBack: () => void;
+  userEmail?: string;
+  initialProfile: EditableProfile;
+  onSave: (profile: EditableProfile) => Promise<boolean>;
+  saving?: boolean;
+}) {
   const { colors } = useTheme();
-  const [form, setForm] = useState({
-    firstName: 'John', middleName: '', lastName: 'Doe',
-    nickname: 'Johnny', email: userEmail ?? '',
-    year: 'Junior', department: 'Computer Science',
-    gender: 'Prefer not to say', dateOfBirth: '',
-  });
+  const [form, setForm] = useState<EditableProfile>(initialProfile);
+
+  useEffect(() => {
+    setForm(initialProfile);
+  }, [initialProfile]);
 
   const field = (label: string, key: keyof typeof form, disabled = false, placeholder?: string) => (
     <View style={{ marginBottom: 18 }}>
@@ -152,9 +195,9 @@ function EditProfileScreen({ onBack, userEmail }: { onBack: () => void; userEmai
           onSelect={v => setForm(f => ({ ...f, year: v }))}
         />
         <DropdownPicker
-          label="Department" required value={form.department}
+          label="Department" required value={form.major}
           options={['Computer Science', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Business', 'Engineering', 'Psychology']}
-          onSelect={v => setForm(f => ({ ...f, department: v }))}
+          onSelect={v => setForm(f => ({ ...f, major: v }))}
         />
 
         <View style={{ paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.borderSubtle, marginBottom: 4 }}>
@@ -169,11 +212,31 @@ function EditProfileScreen({ onBack, userEmail }: { onBack: () => void; userEmai
       </ScrollView>
       <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
         <TouchableOpacity
-          onPress={onBack}
-          style={{ backgroundColor: colors.brand, borderRadius: 14, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+          disabled={saving}
+          onPress={async () => {
+            const requiredMissing = !form.firstName.trim() || !form.lastName.trim() || !form.nickname.trim();
+            if (requiredMissing) {
+              Alert.alert('Missing information', 'Please complete your first name, last name, and nickname before saving.');
+              return;
+            }
+            const saved = await onSave({ ...form, email: userEmail ?? form.email });
+            if (saved) onBack();
+          }}
+          style={{
+            backgroundColor: colors.brand,
+            borderRadius: 14,
+            paddingVertical: 15,
+            alignItems: 'center',
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 8,
+            opacity: saving ? 0.7 : 1,
+          }}
         >
-          <Ionicons name="save-outline" size={18} color="white" />
-          <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Save Changes</Text>
+          {saving ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="save-outline" size={18} color="white" />}
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -181,9 +244,23 @@ function EditProfileScreen({ onBack, userEmail }: { onBack: () => void; userEmai
 }
 
 // ─── Sub-screen: Privacy & Security ──────────────────────────────────────────
-function PrivacySecurityScreen({ onBack }: { onBack: () => void }) {
+function PrivacySecurityScreen({
+  onBack,
+  initialVisibility,
+  onSave,
+  saving,
+}: {
+  onBack: () => void;
+  initialVisibility: TimetableVisibility;
+  onSave: (visibility: TimetableVisibility) => Promise<boolean>;
+  saving?: boolean;
+}) {
   const { colors } = useTheme();
-  const [visibility, setVisibility] = useState<'friends' | 'private' | 'public'>('friends');
+  const [visibility, setVisibility] = useState<TimetableVisibility>(initialVisibility);
+
+  useEffect(() => {
+    setVisibility(initialVisibility);
+  }, [initialVisibility]);
 
   const options: { value: 'friends' | 'private' | 'public'; label: string; desc: string }[] = [
     { value: 'friends', label: 'Friends', desc: 'Only your classmates can see' },
@@ -231,21 +308,76 @@ function PrivacySecurityScreen({ onBack }: { onBack: () => void }) {
           </TouchableOpacity>
         ))}
       </ScrollView>
+      <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
+        <TouchableOpacity
+          disabled={saving}
+          onPress={async () => {
+            const saved = await onSave(visibility);
+            if (saved) onBack();
+          }}
+          style={{
+            backgroundColor: colors.brand,
+            borderRadius: 14,
+            paddingVertical: 15,
+            alignItems: 'center',
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 8,
+            opacity: saving ? 0.7 : 1,
+          }}
+        >
+          {saving ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="shield-checkmark-outline" size={18} color="white" />}
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>
+            {saving ? 'Saving...' : 'Save Privacy Settings'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 // ─── Sub-screen: Notifications ────────────────────────────────────────────────
-function NotificationsScreen({ onBack }: { onBack: () => void }) {
+function NotificationsScreen({
+  onBack,
+  initialSettings,
+  initialPermissionStatus,
+  onSave,
+  onRequestPushPermissions,
+  saving,
+}: {
+  onBack: () => void;
+  initialSettings: NotificationPreferences;
+  initialPermissionStatus: PushPermissionStatus;
+  onSave: (notifications: NotificationPreferences, pushPermissionStatus: PushPermissionStatus) => Promise<boolean>;
+  onRequestPushPermissions: () => Promise<PushPermissionStatus>;
+  saving?: boolean;
+}) {
   const { colors } = useTheme();
-  const [s, setS] = useState({
-    pushNotifications: true, emailNotifications: true,
-    classReminders: true, sportsGameReminders: true,
-    friendRequests: true, comments: true, messages: true,
-  });
-  const toggle = (k: keyof typeof s) => setS(prev => ({ ...prev, [k]: !prev[k] }));
+  const [s, setS] = useState<NotificationPreferences>(initialSettings);
+  const [permissionStatus, setPermissionStatus] = useState<PushPermissionStatus>(initialPermissionStatus);
+  const toggleableKeys: Array<
+    'pushNotifications' | 'emailNotifications' | 'classReminders' | 'sportsGameReminders' | 'friendRequests' | 'comments' | 'messages'
+  > = ['pushNotifications', 'emailNotifications', 'classReminders', 'sportsGameReminders', 'friendRequests', 'comments', 'messages'];
 
-  const row = (key: keyof typeof s, label: string, subLabel?: string, last = false) => (
+  useEffect(() => {
+    setS(initialSettings);
+  }, [initialSettings]);
+
+  useEffect(() => {
+    setPermissionStatus(initialPermissionStatus);
+  }, [initialPermissionStatus]);
+
+  const toggle = (k: (typeof toggleableKeys)[number]) => setS(prev => ({ ...prev, [k]: !prev[k] }));
+
+  const permissionCopy: Record<PushPermissionStatus, string> = {
+    granted: 'Push permission is enabled on this device.',
+    denied: 'Push permission is turned off for ClassMate. You can re-enable it in system settings.',
+    undetermined: 'Push permission has not been requested yet.',
+    unavailable: 'Push permission is unavailable on this device or simulator.',
+  };
+  const reminderMinuteOptions = [5, 10, 15, 30, 60];
+
+  const row = (key: (typeof toggleableKeys)[number], label: string, subLabel?: string, last = false) => (
     <View key={key}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 }}>
         <View style={{ flex: 1 }}>
@@ -276,6 +408,34 @@ function NotificationsScreen({ onBack }: { onBack: () => void }) {
     <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
       <SubHeader title="Notifications" onBack={onBack} />
       <ScrollView contentContainerStyle={{ paddingTop: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        <View
+          style={{
+            marginHorizontal: 20,
+            marginBottom: 24,
+            padding: 16,
+            borderRadius: 14,
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.borderSubtle,
+          }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 6 }}>
+            Device Push Permission
+          </Text>
+          <Text style={{ fontSize: 13, lineHeight: 20, color: colors.textSecondary }}>
+            {permissionCopy[permissionStatus]}
+          </Text>
+          {permissionStatus === 'denied' && (
+            <TouchableOpacity
+              onPress={() => {
+                void Linking.openSettings();
+              }}
+              style={{ marginTop: 10 }}
+            >
+              <Text style={{ color: colors.brand, fontSize: 13, fontWeight: '700' }}>Open System Settings</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         {section('GENERAL', <>
           {row('pushNotifications', 'Push Notifications', 'Receive notifications on your device')}
           {row('emailNotifications', 'Email Notifications', 'Receive updates via email', true)}
@@ -284,12 +444,110 @@ function NotificationsScreen({ onBack }: { onBack: () => void }) {
           {row('classReminders', 'Class Reminders')}
           {row('sportsGameReminders', 'Sports Game Reminders', undefined, true)}
         </>)}
+        {section('REMINDER TIMING', <>
+          <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>
+            <Text style={{ fontSize: 15, color: colors.text, marginBottom: 10 }}>Class reminder lead time</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {reminderMinuteOptions.map((minutes) => {
+                const active = s.classReminderMinutes === minutes;
+                return (
+                  <TouchableOpacity
+                    key={`class-${minutes}`}
+                    onPress={() => setS((prev) => ({ ...prev, classReminderMinutes: minutes }))}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 18,
+                      borderWidth: 1,
+                      borderColor: active ? colors.brand : colors.border,
+                      backgroundColor: active ? colors.brandBg : colors.card,
+                    }}
+                  >
+                    <Text style={{ color: active ? colors.brand : colors.textSecondary, fontSize: 13, fontWeight: '600' }}>
+                      {minutes} min
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+          <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginLeft: 20, marginTop: 14 }} />
+          <View style={{ paddingHorizontal: 20, paddingVertical: 14 }}>
+            <Text style={{ fontSize: 15, color: colors.text, marginBottom: 10 }}>Game reminder lead time</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {reminderMinuteOptions.map((minutes) => {
+                const active = s.sportsGameReminderMinutes === minutes;
+                return (
+                  <TouchableOpacity
+                    key={`sports-${minutes}`}
+                    onPress={() => setS((prev) => ({ ...prev, sportsGameReminderMinutes: minutes }))}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 18,
+                      borderWidth: 1,
+                      borderColor: active ? colors.brand : colors.border,
+                      backgroundColor: active ? colors.brandBg : colors.card,
+                    }}
+                  >
+                    <Text style={{ color: active ? colors.brand : colors.textSecondary, fontSize: 13, fontWeight: '600' }}>
+                      {minutes} min
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </>)}
         {section('SOCIAL', <>
           {row('friendRequests', 'Friend Requests')}
           {row('comments', 'Comments')}
           {row('messages', 'Messages', undefined, true)}
         </>)}
       </ScrollView>
+      <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle, backgroundColor: colors.card }}>
+        <TouchableOpacity
+          disabled={saving}
+          onPress={async () => {
+            let nextPermissionStatus = permissionStatus;
+            let nextNotifications = { ...s };
+
+            if (nextNotifications.pushNotifications) {
+              nextPermissionStatus = await onRequestPushPermissions();
+              setPermissionStatus(nextPermissionStatus);
+
+              if (nextPermissionStatus !== 'granted') {
+                nextNotifications = { ...nextNotifications, pushNotifications: false };
+                setS(nextNotifications);
+                Alert.alert(
+                  'Push permission required',
+                  nextPermissionStatus === 'unavailable'
+                    ? 'Push notifications are not available on this device or simulator.'
+                    : 'Push notifications stay off until ClassMate is allowed to send notifications.'
+                );
+              }
+            }
+
+            const saved = await onSave(nextNotifications, nextPermissionStatus);
+            if (saved) onBack();
+          }}
+          style={{
+            backgroundColor: colors.brand,
+            borderRadius: 14,
+            paddingVertical: 15,
+            alignItems: 'center',
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 8,
+            opacity: saving ? 0.7 : 1,
+          }}
+        >
+          {saving ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="notifications-outline" size={18} color="white" />}
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>
+            {saving ? 'Saving...' : 'Save Notification Settings'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -442,6 +700,7 @@ function LanguageRegionScreen({ onBack }: { onBack: () => void }) {
 function HelpCenterScreen({ onBack }: { onBack: () => void }) {
   const { colors } = useTheme();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [showSupportFallback, setShowSupportFallback] = useState(false);
 
   const categories = [
     { title: 'Getting Started', icon: '📚', faqs: [
@@ -523,9 +782,39 @@ function HelpCenterScreen({ onBack }: { onBack: () => void }) {
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12 }}>
             Need More Help?
           </Text>
-          <TouchableOpacity style={{ backgroundColor: colors.brand, borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}>
+          <TouchableOpacity
+            onPress={async () => {
+              const opened = await openSupportEmail();
+              if (!opened) {
+                setShowSupportFallback(true);
+              }
+            }}
+            style={{ backgroundColor: colors.brand, borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}
+          >
             <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Contact Support</Text>
           </TouchableOpacity>
+          {showSupportFallback && (
+            <View
+              style={{
+                marginTop: 12,
+                backgroundColor: colors.inputBg,
+                borderRadius: 14,
+                padding: 14,
+                borderWidth: 1,
+                borderColor: colors.borderSubtle,
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 6 }}>
+                Mail app unavailable
+              </Text>
+              <Text style={{ fontSize: 13, lineHeight: 20, color: colors.textSecondary, marginBottom: 8 }}>
+                If Mail does not open on this device or simulator, contact support directly at:
+              </Text>
+              <Text selectable style={{ fontSize: 14, color: colors.brand, fontWeight: '700' }}>
+                {SUPPORT_EMAIL}
+              </Text>
+            </View>
+          )}
         </View>
 
       </ScrollView>
@@ -536,7 +825,12 @@ function HelpCenterScreen({ onBack }: { onBack: () => void }) {
 // ─── Sub-screen: About ────────────────────────────────────────────────────────
 function AboutScreen({ onBack }: { onBack: () => void }) {
   const { colors } = useTheme();
-  const links = ['Terms of Service', 'Privacy Policy', 'Open Source Licenses'];
+  const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
+  const links: { label: string; document: LegalDocumentType }[] = [
+    { label: 'Terms of Service', document: 'terms' },
+    { label: 'Privacy Policy', document: 'privacy' },
+    { label: 'Open Source Licenses', document: 'licenses' },
+  ];
   return (
     <View style={{ flex: 1, backgroundColor: colors.card }}>
       <SubHeader title="About ClassMate" onBack={onBack} />
@@ -554,24 +848,50 @@ function AboutScreen({ onBack }: { onBack: () => void }) {
           <Text style={{ fontSize: 14, color: colors.textSecondary }}>Built with ❤️ for students, by students</Text>
         </View>
 
-        {links.map((l, i) => (
+        {links.map((link, i) => (
           <TouchableOpacity
             key={i}
+            onPress={() => setActiveDocument(link.document)}
             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.bgTertiary, borderRadius: 14, padding: 16, marginBottom: 8 }}
           >
-            <Text style={{ fontSize: 15, color: colors.text }}>{l}</Text>
+            <Text style={{ fontSize: 15, color: colors.text }}>{link.label}</Text>
             <Ionicons name="chevron-forward" size={16} color={colors.border} />
           </TouchableOpacity>
         ))}
 
         <Text style={{ textAlign: 'center', color: colors.border, fontSize: 12, marginTop: 20 }}>© 2026 ClassMate. All rights reserved.</Text>
       </ScrollView>
+      <LegalDocumentModal
+        visible={!!activeDocument}
+        document={activeDocument ?? 'terms'}
+        onClose={() => setActiveDocument(null)}
+        accentColor={colors.brand}
+      />
     </View>
   );
 }
 
 // ─── Main Settings screen ─────────────────────────────────────────────────────
-export default function SettingsScreen({ visible, onClose, onLogout, userName = 'John Doe', userEmail = 'john.doe@university.edu', useCelsius, onUseCelsiusChange, themePreference, onThemeChange }: Props) {
+export default function SettingsScreen({
+  visible,
+  onClose,
+  onLogout,
+  userName = 'John Doe',
+  userEmail = 'john.doe@university.edu',
+  userProfile,
+  userSettings,
+  useCelsius,
+  onUseCelsiusChange,
+  themePreference,
+  onThemeChange,
+  onSaveProfile,
+  onSaveVisibility,
+  onSaveNotifications,
+  onRequestPushPermissions,
+  savingProfile,
+  savingVisibility,
+  savingNotifications,
+}: Props) {
   const { colors } = useTheme();
   const [screen, setScreen] = useState<Screen>('main');
 
@@ -584,9 +904,36 @@ export default function SettingsScreen({ visible, onClose, onLogout, userName = 
 
   const renderSubScreen = () => {
     switch (screen) {
-      case 'profile': return <EditProfileScreen onBack={() => setScreen('main')} userEmail={userEmail} />;
-      case 'privacy': return <PrivacySecurityScreen onBack={() => setScreen('main')} />;
-      case 'notifications': return <NotificationsScreen onBack={() => setScreen('main')} />;
+      case 'profile':
+        return (
+          <EditProfileScreen
+            onBack={() => setScreen('main')}
+            userEmail={userEmail}
+            initialProfile={userProfile}
+            onSave={onSaveProfile}
+            saving={savingProfile}
+          />
+        );
+      case 'privacy':
+        return (
+          <PrivacySecurityScreen
+            onBack={() => setScreen('main')}
+            initialVisibility={userSettings.timetableVisibility}
+            onSave={onSaveVisibility}
+            saving={savingVisibility}
+          />
+        );
+      case 'notifications':
+        return (
+          <NotificationsScreen
+            onBack={() => setScreen('main')}
+            initialSettings={userSettings.notifications}
+            initialPermissionStatus={userSettings.pushPermissionStatus}
+            onSave={onSaveNotifications}
+            onRequestPushPermissions={onRequestPushPermissions}
+            saving={savingNotifications}
+          />
+        );
       case 'appearance': return <AppearanceScreen onBack={() => setScreen('main')} useCelsius={useCelsius} onUseCelsiusChange={onUseCelsiusChange} themePreference={themePreference} onThemeChange={onThemeChange} />;
       case 'language': return <LanguageRegionScreen onBack={() => setScreen('main')} />;
       case 'help': return <HelpCenterScreen onBack={() => setScreen('main')} />;
@@ -631,7 +978,9 @@ export default function SettingsScreen({ visible, onClose, onLogout, userName = 
               <View>
                 <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>{userName}</Text>
                 <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>{userEmail}</Text>
-                <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>Computer Science · Junior</Text>
+                <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>
+                  {userProfile.major} · {userProfile.year}
+                </Text>
               </View>
             </View>
 

@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import type { University } from './UniversitySelectionScreen';
+import LegalConsentText from '../components/LegalConsentText';
+import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
 
 type Props = {
   university?: University;
@@ -26,6 +29,7 @@ function GoogleIcon() {
 
 export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSignIn }: Props) {
   const uni = university ?? UCI;
+  const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
@@ -121,11 +125,14 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
 
         {/* Terms */}
         <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 20 }}>
-          <Text style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', lineHeight: 16 }}>
-            By continuing, you agree to ClassMate's Terms of Service and Privacy Policy
-          </Text>
+          <LegalConsentText onOpenDocument={setActiveDocument} color="#9ca3af" linkColor="#4169E1" />
         </View>
       </ScrollView>
+      <LegalDocumentModal
+        visible={!!activeDocument}
+        document={activeDocument ?? 'terms'}
+        onClose={() => setActiveDocument(null)}
+      />
     </SafeAreaView>
   );
 }

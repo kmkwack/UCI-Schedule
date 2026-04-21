@@ -428,3 +428,45 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 53h (Avoid false map failure alerts)
 - **`src/screens/TimetableScreen.tsx`** — Removed the `canOpenURL` gate from the Apple Maps/web map flow and now tries `openURL` directly. This avoids false “Could not open Maps” alerts on devices/simulators where the URL opens successfully but `canOpenURL` reports unreliably.
+
+### Session 54 (Legal docs, support mail, and guest ClassMates guard)
+- **`src/components/LegalDocumentModal.tsx`** — Added a reusable in-app legal document modal for Terms of Service, Privacy Policy, and Open Source Licenses so the app now has actual tappable legal content instead of dead text rows.
+- **`src/components/LegalConsentText.tsx`** — Added a shared inline consent component with tappable legal links for auth screens.
+- **`src/screens/WelcomeScreen.tsx`**, **`src/screens/SignInScreen.tsx`**, **`src/screens/SignUpScreen.tsx`** — Replaced plain “Terms of Service / Privacy Policy” copy with tappable legal links that open the new modal documents directly in-app.
+- **`src/screens/SettingsScreen.tsx`** — Wired `Help Center` → `Contact Support` to open the device mail app via `mailto:` and made `About` rows open the new in-app legal/license modal.
+- **`App.tsx`** — Added a sign-in-required alert when guest users tap the `ClassMates` tab so the app explains why social features are unavailable before entering that flow.
+- **`src/screens/FriendsScreen.tsx`** — Normalized guest detection so all dev guest accounts (`guest`, `guest2`, etc.) are treated consistently when loading/searching/sending ClassMates data.
+
+### Session 54b (Tighten welcome-screen legal line)
+- **`src/components/LegalConsentText.tsx`** — Added optional `fontSize` and `lineHeight` props so auth screens can fine-tune the legal consent line without duplicating the component.
+- **`src/screens/WelcomeScreen.tsx`** — Reduced the consent line size and spacing on the first screen so the “By continuing…” copy sits more cleanly on a single line where space allows.
+
+### Session 55 (Persist settings profile/privacy/notifications)
+- **`src/data/userPreferences.ts`** — Added shared profile/settings types, defaults, and helpers for editable profile data, timetable visibility, notification preferences, push permission state, and display-name generation.
+- **`App.tsx`** — Added signed-in user preference loading from Supabase (`profiles` + `user_settings`), plus save handlers for profile edits, timetable visibility, and notification preferences. Added real push-permission requests through `expo-notifications`, guest-safe fallbacks, and state wiring for the Settings screen.
+- **`src/screens/HomeScreen.tsx`** — Passed live profile/settings state and save callbacks down into Settings so the Home avatar sheet reflects the signed-in user’s stored data.
+- **`src/screens/SettingsScreen.tsx`** — Reworked `Edit Profile`, `Privacy & Security`, and `Notifications` into real save flows. Profile edits now persist, timetable visibility now saves, and notification settings now request device push permission before enabling push notifications. Added permission-status messaging and a shortcut to system settings when push access is denied.
+- **`package.json` / `package-lock.json`** — Added `expo-notifications` for native push-permission integration.
+- **Supabase SQL required** — Create a `user_settings` table before this feature can work end-to-end. Example minimum schema:
+  `create table if not exists user_settings (user_id uuid primary key references profiles(id) on delete cascade, timetable_visibility text not null default 'friends' check (timetable_visibility in ('friends','private','public')), notification_settings jsonb not null default '{}'::jsonb, profile_details jsonb not null default '{}'::jsonb, push_permission_status text not null default 'undetermined', updated_at timestamptz not null default now());`
+  `alter table user_settings enable row level security;`
+  `create policy "user_settings_select_own" on user_settings for select to authenticated using (auth.uid() = user_id);`
+  `create policy "user_settings_upsert_own" on user_settings for insert to authenticated with check (auth.uid() = user_id);`
+  `create policy "user_settings_update_own" on user_settings for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);`
+
+### Session 55b (Support contact fallback)
+- **`src/screens/SettingsScreen.tsx`** — Changed `Contact Support` so mail-open failure no longer ends in a dead-end alert. When Mail is unavailable, the Help Center now shows an inline fallback card with a selectable support email address the user can copy manually.
+
+### Session 56 (Unify timetable header and grid surface)
+- **`src/screens/TimetableScreen.tsx`** — Reworked the timetable layout so the title row, quarter controls, plan pills, optional TBA pills, and the grid all live inside one rounded surface instead of feeling like separate white sections stacked on top of each other. The page background now softly frames the timetable card, making the top controls and schedule read as one cleaner, continuous block.
+
+### Session 57 (Enforce timetable visibility and schedule real reminder notifications)
+- **`App.tsx`** — Added signed-in reminder scheduling through `expo-notifications`. The app now reschedules upcoming class reminders and UCI sports reminders on-device using the user’s saved notification preferences, reminder lead times, and push-permission status. Added Android channel setup, guest-safe fallbacks, and logout cleanup so scheduled reminders do not linger across sessions.
+- **`src/data/userPreferences.ts`** — Extended notification preferences with `classReminderMinutes` and `sportsGameReminderMinutes`, plus defaults used across Settings and notification scheduling.
+- **`src/data/sportsEvents.ts`** — Added a shared UCI athletics calendar parser/formatter so the same sports-event data can drive both the Home screen list and scheduled sports reminders without duplicating ICS parsing logic.
+- **`src/screens/HomeScreen.tsx`** — Switched the Campus Events card to the shared sports calendar helpers, keeping live UCI event rendering aligned with the reminder scheduler.
+- **`src/screens/SettingsScreen.tsx`** — Expanded Notifications settings so users can choose how many minutes before a class or sports game they want to be reminded. Kept push-permission handling tied to the save flow so reminders only turn on when the device actually grants permission.
+- **`src/screens/FriendsScreen.tsx`** — Wired saved `timetable_visibility` into the ClassMates experience. Friends whose visibility is `private` now show as locked, their timetable button no longer opens the schedule, and the UI explains that the timetable is private instead of silently failing.
+
+### Session 57b (Revert unified timetable surface)
+- **`src/screens/TimetableScreen.tsx`** — Reverted the “single rounded surface” timetable layout and restored the previous separated header / TBA strip / grid structure because the combined card treatment felt worse in actual use and made the screen look heavier than intended.

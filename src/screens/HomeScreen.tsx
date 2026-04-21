@@ -1,139 +1,33 @@
-import { useState, useEffect, ComponentProps } from 'react';
+import { useState, useEffect, type ComponentProps } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, pastelForCourse, blockColorKey } from '../data/courses';
+import { formatSportsEventTime, parseSportsCalendar, type SportsEvent } from '../data/sportsEvents';
 import SettingsScreen from './SettingsScreen';
 import { useTheme, ThemePreference } from '../context/ThemeContext';
+import type { EditableProfile, NotificationPreferences, PushPermissionStatus, TimetableVisibility, UserSettingsState } from '../data/userPreferences';
 
 type Props = {
   activeCourses: Course[];
   onGoToTimetable: () => void;
   onGoToGrades: () => void;
   onLogout?: () => void;
+  userName?: string;
   userEmail?: string;
+  userProfile: EditableProfile;
+  userSettings: UserSettingsState;
   useCelsius: boolean;
   onUseCelsiusChange: (v: boolean) => void;
   themePreference?: ThemePreference;
   onThemeChange?: (v: ThemePreference) => void;
+  onSaveProfile: (profile: EditableProfile) => Promise<boolean>;
+  onSaveVisibility: (visibility: TimetableVisibility) => Promise<boolean>;
+  onSaveNotifications: (notifications: NotificationPreferences, pushPermissionStatus: PushPermissionStatus) => Promise<boolean>;
+  onRequestPushPermissions: () => Promise<PushPermissionStatus>;
+  savingProfile?: boolean;
+  savingVisibility?: boolean;
+  savingNotifications?: boolean;
 };
-
-type SportsEvent = {
-  id: string;
-  title: string;
-  time: string;
-  location: string;
-  icon: ComponentProps<typeof Ionicons>['name'];
-  color: string;
-  bg: string;
-};
-
-const SPORT_STYLES: Record<string, { icon: ComponentProps<typeof Ionicons>['name']; color: string; bg: string }> = {
-  'Baseball':      { icon: 'baseball-outline',    color: '#f97316', bg: '#fff7ed' },
-  'Softball':      { icon: 'baseball-outline',    color: '#f97316', bg: '#fff7ed' },
-  'Basketball':    { icon: 'basketball-outline',  color: '#3b82f6', bg: '#eff6ff' },
-  'Soccer':        { icon: 'football-outline',    color: '#22c55e', bg: '#f0fdf4' },
-  'Tennis':        { icon: 'tennisball-outline',  color: '#eab308', bg: '#fefce8' },
-  'Volleyball':    { icon: 'trophy-outline',      color: '#8b5cf6', bg: '#f5f3ff' },
-  'Water Polo':    { icon: 'water-outline',       color: '#06b6d4', bg: '#ecfeff' },
-  'Track & Field': { icon: 'fitness-outline',     color: '#f43f5e', bg: '#fff1f2' },
-  'Golf':          { icon: 'flag-outline',        color: '#10b981', bg: '#ecfdf5' },
-  'Cross Country': { icon: 'walk-outline',        color: '#64748b', bg: '#f8fafc' },
-};
-
-function getSportStyle(sport: string) {
-  const normalized = sport.replace(/^(Men's|Women's)\s+/i, '');
-  return SPORT_STYLES[normalized] ?? { icon: 'trophy-outline' as ComponentProps<typeof Ionicons>['name'], color: '#f97316', bg: '#fff7ed' };
-}
-
-function parseDTSTART(val: string): Date {
-  const y = val.slice(0, 4), mo = val.slice(4, 6), d = val.slice(6, 8);
-  if (!val.includes('T')) return new Date(`${y}-${mo}-${d}T00:00:00Z`);
-  const h = val.slice(9, 11), m = val.slice(11, 13);
-  return new Date(`${y}-${mo}-${d}T${h}:${m}:00Z`);
-}
-
-function parseLocation(loc: string): string {
-  const unescaped = loc.replace(/\\,/g, ',');
-  const parts = unescaped.split(', ');
-  if (parts.length >= 3) return parts.slice(2).join(', ');
-  return unescaped;
-}
-
-function formatEventTime(date: Date): string {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrow = new Date(today.getTime() + 86400000);
-  const eventDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  if (eventDay.getTime() === today.getTime()) return `Today, ${timeStr}`;
-  if (eventDay.getTime() === tomorrow.getTime()) return `Tomorrow, ${timeStr}`;
-  return `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}, ${timeStr}`;
-}
-
-function parseSummary(raw: string): { sport: string; opponent: string; isHome: boolean } | null {
-  const s = raw.replace(/^\[.\]\s*/, '').replace(/^UCI\s+/, '');
-  const vsIdx = s.indexOf(' vs ');
-  const atIdx = s.indexOf(' at ');
-  let sport: string, rest: string, isHome: boolean;
-  if (vsIdx !== -1 && (atIdx === -1 || vsIdx < atIdx)) {
-    sport = s.slice(0, vsIdx).trim();
-    rest = s.slice(vsIdx + 4).trim();
-    isHome = true;
-  } else if (atIdx !== -1) {
-    sport = s.slice(0, atIdx).trim();
-    rest = s.slice(atIdx + 4).trim();
-    isHome = false;
-  } else {
-    return null;
-  }
-  const dashIdx = rest.indexOf(' - ');
-  const opponent = (dashIdx !== -1 ? rest.slice(0, dashIdx) : rest).trim().replace(/^#\d+\s+/, '');
-  return { sport, opponent, isHome };
-}
-
-function parseICalEvents(text: string): SportsEvent[] {
-  const unfolded = text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
-  const now = new Date();
-  const results: Array<{ date: Date; event: SportsEvent }> = [];
-
-  for (const block of unfolded.split('BEGIN:VEVENT').slice(1)) {
-    const get = (key: string) => {
-      const m = block.match(new RegExp(`^${key}[^:]*:(.+)$`, 'm'));
-      return m ? m[1].trim() : '';
-    };
-    const dtstart = get('DTSTART');
-    const summary = get('SUMMARY');
-    const location = get('LOCATION');
-    const uid = get('UID');
-    if (!dtstart || !summary) continue;
-    const date = parseDTSTART(dtstart);
-    if (isNaN(date.getTime())) continue;
-    const eventDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const dayOffset = Math.round((eventDay.getTime() - today.getTime()) / 86400000);
-    if (dayOffset < 0 || dayOffset > 2) continue;
-    const parsed = parseSummary(summary);
-    if (!parsed) continue;
-    const { sport, opponent, isHome } = parsed;
-    const style = getSportStyle(sport);
-    const sportShort = sport.replace(/^(Men's|Women's)\s+/i, '');
-    results.push({
-      date,
-      event: {
-        id: uid || String(date.getTime()),
-        title: `${sportShort} ${isHome ? 'vs' : 'at'} ${opponent}`,
-        time: formatEventTime(date),
-        location: parseLocation(location) || (isHome ? 'UCI Campus' : 'Away'),
-        icon: style.icon,
-        color: style.color,
-        bg: style.bg,
-      },
-    });
-  }
-
-  results.sort((a, b) => a.date.getTime() - b.date.getTime());
-  return results.map(e => e.event);
-}
 
 const QUOTES = [
   { text: 'Success is not final, failure is not fatal: it is the courage to continue that counts.', author: 'Winston Churchill' },
@@ -234,7 +128,25 @@ const WMO_DESCRIPTIONS: Record<number, { label: string; icon: ComponentProps<typ
   99: { label: 'Thunderstorm',    icon: 'thunderstorm-outline' },
 };
 
-export default function HomeScreen({ activeCourses, onLogout, userEmail, useCelsius, onUseCelsiusChange, themePreference, onThemeChange }: Props) {
+export default function HomeScreen({
+  activeCourses,
+  onLogout,
+  userName,
+  userEmail,
+  userProfile,
+  userSettings,
+  useCelsius,
+  onUseCelsiusChange,
+  themePreference,
+  onThemeChange,
+  onSaveProfile,
+  onSaveVisibility,
+  onSaveNotifications,
+  onRequestPushPermissions,
+  savingProfile,
+  savingVisibility,
+  savingNotifications,
+}: Props) {
   const { colors } = useTheme();
   const [showSettings, setShowSettings] = useState(false);
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
@@ -254,7 +166,7 @@ export default function HomeScreen({ activeCourses, onLogout, userEmail, useCels
   useEffect(() => {
     fetch('https://ucirvinesports.com/calendar.ics')
       .then(r => r.text())
-      .then(text => setSportsEvents(parseICalEvents(text)))
+      .then(text => setSportsEvents(parseSportsCalendar(text, { maxDaysAhead: 2, includePastDays: 0 })))
       .catch(() => {});
   }, []);
   const todayCode = getTodayDayCode();
@@ -293,7 +205,26 @@ export default function HomeScreen({ activeCourses, onLogout, userEmail, useCels
         {getDateLabel()}
       </Text>
 
-      <SettingsScreen visible={showSettings} onClose={() => setShowSettings(false)} onLogout={onLogout} userEmail={userEmail} useCelsius={useCelsius} onUseCelsiusChange={onUseCelsiusChange} themePreference={themePreference} onThemeChange={onThemeChange} />
+      <SettingsScreen
+        visible={showSettings}
+        onClose={() => setShowSettings(false)}
+        onLogout={onLogout}
+        userName={userName}
+        userEmail={userEmail}
+        userProfile={userProfile}
+        userSettings={userSettings}
+        useCelsius={useCelsius}
+        onUseCelsiusChange={onUseCelsiusChange}
+        themePreference={themePreference}
+        onThemeChange={onThemeChange}
+        onSaveProfile={onSaveProfile}
+        onSaveVisibility={onSaveVisibility}
+        onSaveNotifications={onSaveNotifications}
+        onRequestPushPermissions={onRequestPushPermissions}
+        savingProfile={savingProfile}
+        savingVisibility={savingVisibility}
+        savingNotifications={savingNotifications}
+      />
 
       {/* Your Day card */}
       <View style={{
@@ -397,7 +328,7 @@ export default function HomeScreen({ activeCourses, onLogout, userEmail, useCels
                 <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
                   {event.title}
                 </Text>
-                <Text style={{ fontSize: 13, color: colors.textSecondary }}>{event.time}</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary }}>{formatSportsEventTime(event.date)}</Text>
                 <Text style={{ fontSize: 13, color: colors.textTertiary }}>{event.location}</Text>
               </View>
             </View>

@@ -7,6 +7,8 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { supabase } from '../lib/supabase';
 import type { University } from './UniversitySelectionScreen';
+import LegalConsentText from '../components/LegalConsentText';
+import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -31,6 +33,7 @@ function GoogleIcon() {
 
 export default function SignInScreen({ university, onBack, onSignedIn, onGoToSignUp, onGuest }: Props) {
   const [loading, setLoading] = useState(false);
+  const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
   const hd = university.domain.replace('@', ''); // e.g. "uci.edu"
 
   const handleGoogleSignIn = async () => {
@@ -169,9 +172,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
 
         {/* Terms */}
         <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 20, marginBottom: 8 }}>
-          <Text style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', lineHeight: 16 }}>
-            By continuing, you agree to ClassMate's Terms of Service and Privacy Policy
-          </Text>
+          <LegalConsentText onOpenDocument={setActiveDocument} color="#9ca3af" linkColor="#4169E1" />
         </View>
 
         {/* Guest access (dev shortcut) */}
@@ -195,6 +196,11 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
           </View>
         </View>
       </ScrollView>
+      <LegalDocumentModal
+        visible={!!activeDocument}
+        document={activeDocument ?? 'terms'}
+        onClose={() => setActiveDocument(null)}
+      />
     </SafeAreaView>
   );
 }

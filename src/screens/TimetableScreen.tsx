@@ -872,151 +872,6 @@ export default function TimetableScreen({
         </View>
       </Modal>
 
-      {/* Header */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-        {/* Row 1: Title + Quarter picker + three-dots */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>
-            Timetable
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <TouchableOpacity
-              onPress={() => setShowQuarterDropdown(true)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 20,
-                paddingHorizontal: 12,
-                paddingVertical: 7,
-                backgroundColor: colors.card,
-                gap: 4,
-              }}
-            >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
-                {timetables.length === 0 ? '--' : quarterLabel(selectedQuarter)}
-              </Text>
-              <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={openSettings}
-              style={{
-                padding: 6,
-                borderRadius: 8,
-              }}
-            >
-              <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Row 2: Plan tabs + + Add */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            scrollEnabled={!draggingId}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingRight: 4 }}
-            {...pillPanResponder.panHandlers}
-          >
-            {orderedTimetables.map((t) => {
-              const isActive = t.id === activeTimetableId;
-              const isDragging = t.id === draggingId;
-              return (
-                <Animated.View
-                  key={t.id}
-                  onLayout={(e) => {
-                    pillXPos.current[t.id] = e.nativeEvent.layout.x;
-                    pillWidthRef.current[t.id] = e.nativeEvent.layout.width;
-                  }}
-                  style={isDragging ? {
-                    transform: [{ translateX: dragTranslate }, { scale: dragScaleAnim }],
-                    zIndex: 10,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.18,
-                    shadowRadius: 8,
-                    elevation: 8,
-                  } : {}}
-                >
-                  <TouchableOpacity
-                    onPress={() => { if (!draggingId) onSelectTimetable(t.id); }}
-                    onLongPress={() => handleLongPressPill(t.id)}
-                    delayLongPress={400}
-                    activeOpacity={0.8}
-                    style={{
-                      paddingHorizontal: 16,
-                      paddingVertical: 7,
-                      borderRadius: 20,
-                      backgroundColor: isActive ? colors.brand : colors.card,
-                      borderWidth: 1.5,
-                      borderColor: isActive ? colors.brand : colors.border,
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: isActive ? 'white' : colors.textSecondary }}>
-                      {t.name}
-                    </Text>
-                  </TouchableOpacity>
-                </Animated.View>
-              );
-            })}
-          </ScrollView>
-          <TouchableOpacity onPress={() => setShowAddMenu(true)} style={{ paddingVertical: 7, paddingLeft: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.brand }}>+ Add</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* TBA / Online courses — above the grid */}
-      {tbaCourses.length > 0 && (
-        <View style={{
-          paddingHorizontal: 16, paddingVertical: 10,
-          borderBottomWidth: 1,
-          borderBottomColor: theme === 'dark' ? '#1e293b' : '#ececec',
-          backgroundColor: theme === 'dark' ? '#0f172a' : '#fff',
-        }}>
-<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {tbaCourses.map((course) => {
-              const { bg, text, border } = getBlockColors(course, theme);
-              return (
-                <TouchableOpacity
-                  key={course.id}
-                  activeOpacity={0.85}
-                  onPress={() => setSelectedCourse(course)}
-                  style={{
-                    backgroundColor: bg, borderRadius: 8,
-                    borderWidth: 1, borderColor: border,
-                    paddingHorizontal: 10, paddingVertical: 8,
-                    minWidth: 100, maxWidth: 160,
-                  }}
-                >
-                  {showCode && (
-                    <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1}>
-                      {course.code}
-                    </Text>
-                  )}
-                  {showClassName && (
-                    <Text style={{ color: text, fontWeight: '600', fontSize: 9, lineHeight: 12, opacity: 0.85 }} numberOfLines={2}>
-                      {course.title}
-                    </Text>
-                  )}
-                  {showInstructor && (
-                    <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
-                      {getProfLastName(course.professor)}
-                    </Text>
-                  )}
-                  <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
-                    {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      )}
-
       {/* ── Course detail bottom sheet ── */}
       <Modal
         visible={!!selectedCourse}
@@ -1201,6 +1056,151 @@ export default function TimetableScreen({
           userId={userId}
           semesterLabel={quarterLabel(selectedQuarter)}
         />
+      )}
+
+      {/* Header */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+        {/* Row 1: Title + Quarter picker + three-dots */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>
+            Timetable
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <TouchableOpacity
+              onPress={() => setShowQuarterDropdown(true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 20,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                backgroundColor: colors.card,
+                gap: 4,
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
+                {timetables.length === 0 ? '--' : quarterLabel(selectedQuarter)}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={openSettings}
+              style={{
+                padding: 6,
+                borderRadius: 8,
+              }}
+            >
+              <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Row 2: Plan tabs + + Add */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={!draggingId}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingRight: 4 }}
+            {...pillPanResponder.panHandlers}
+          >
+            {orderedTimetables.map((t) => {
+              const isActive = t.id === activeTimetableId;
+              const isDragging = t.id === draggingId;
+              return (
+                <Animated.View
+                  key={t.id}
+                  onLayout={(e) => {
+                    pillXPos.current[t.id] = e.nativeEvent.layout.x;
+                    pillWidthRef.current[t.id] = e.nativeEvent.layout.width;
+                  }}
+                  style={isDragging ? {
+                    transform: [{ translateX: dragTranslate }, { scale: dragScaleAnim }],
+                    zIndex: 10,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.18,
+                    shadowRadius: 8,
+                    elevation: 8,
+                  } : {}}
+                >
+                  <TouchableOpacity
+                    onPress={() => { if (!draggingId) onSelectTimetable(t.id); }}
+                    onLongPress={() => handleLongPressPill(t.id)}
+                    delayLongPress={400}
+                    activeOpacity={0.8}
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingVertical: 7,
+                      borderRadius: 20,
+                      backgroundColor: isActive ? colors.brand : colors.card,
+                      borderWidth: 1.5,
+                      borderColor: isActive ? colors.brand : colors.border,
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: isActive ? 'white' : colors.textSecondary }}>
+                      {t.name}
+                    </Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              );
+            })}
+          </ScrollView>
+          <TouchableOpacity onPress={() => setShowAddMenu(true)} style={{ paddingVertical: 7, paddingLeft: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.brand }}>+ Add</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* TBA / Online courses — above the grid */}
+      {tbaCourses.length > 0 && (
+        <View style={{
+          paddingHorizontal: 16, paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: theme === 'dark' ? '#1e293b' : '#ececec',
+          backgroundColor: theme === 'dark' ? '#0f172a' : '#fff',
+        }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {tbaCourses.map((course) => {
+              const { bg, text, border } = getBlockColors(course, theme);
+              return (
+                <TouchableOpacity
+                  key={course.id}
+                  activeOpacity={0.85}
+                  onPress={() => setSelectedCourse(course)}
+                  style={{
+                    backgroundColor: bg, borderRadius: 8,
+                    borderWidth: 1, borderColor: border,
+                    paddingHorizontal: 10, paddingVertical: 8,
+                    minWidth: 100, maxWidth: 160,
+                  }}
+                >
+                  {showCode && (
+                    <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1}>
+                      {course.code}
+                    </Text>
+                  )}
+                  {showClassName && (
+                    <Text style={{ color: text, fontWeight: '600', fontSize: 9, lineHeight: 12, opacity: 0.85 }} numberOfLines={2}>
+                      {course.title}
+                    </Text>
+                  )}
+                  {showInstructor && (
+                    <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
+                      {getProfLastName(course.professor)}
+                    </Text>
+                  )}
+                  <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
+                    {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
       )}
 
       {/* Grid container */}
@@ -1409,7 +1409,7 @@ export default function TimetableScreen({
 </View>
           </ScrollView>
         </ScrollView>
-        </View>
+      </View>
       </View>
     </View>
   );

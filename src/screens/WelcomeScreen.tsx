@@ -1,12 +1,17 @@
+import { useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import LegalConsentText from '../components/LegalConsentText';
+import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
 
 type Props = {
   onGetStarted: () => void;
 };
 
 export default function WelcomeScreen({ onGetStarted }: Props) {
+  const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
       <View style={{ flex: 1, paddingHorizontal: 24, justifyContent: 'center', alignItems: 'center' }}>
@@ -47,11 +52,20 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
             <Ionicons name="arrow-forward" size={18} color="white" />
           </TouchableOpacity>
 
-          <Text style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 24, lineHeight: 18 }}>
-            By continuing, you agree to our Terms of Service and Privacy Policy
-          </Text>
+          <View style={{ marginTop: 22 }}>
+            <LegalConsentText
+              onOpenDocument={setActiveDocument}
+              fontSize={10.5}
+              lineHeight={14}
+            />
+          </View>
         </View>
       </View>
+      <LegalDocumentModal
+        visible={!!activeDocument}
+        document={activeDocument ?? 'terms'}
+        onClose={() => setActiveDocument(null)}
+      />
     </SafeAreaView>
   );
 }

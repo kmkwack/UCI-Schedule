@@ -20,6 +20,7 @@ import {
   quarterLabel,
   pastelForCourse,
 } from '../data/courses';
+import type { TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 
@@ -29,6 +30,7 @@ type Friend = {
   email: string;
   major: string;
   year: string;
+  timetableVisibility: TimetableVisibility;
   timetables: Record<string, Course[]>;
 };
 
@@ -60,6 +62,11 @@ type TimetableRow = {
   user_id: string;
   quarter_key: string;
   courses: Course[] | null;
+};
+
+type UserSettingsRow = {
+  user_id: string;
+  timetable_visibility: TimetableVisibility | null;
 };
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
@@ -115,13 +122,18 @@ function getInitials(name: string): string {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
-function mapProfileToFriend(profile: ProfileRow, timetables: Record<string, Course[]> = {}): Friend {
+function mapProfileToFriend(
+  profile: ProfileRow,
+  timetables: Record<string, Course[]> = {},
+  timetableVisibility: TimetableVisibility = 'friends'
+): Friend {
   return {
     id: profile.id,
     name: profile.name?.trim() || profile.email.split('@')[0],
     email: profile.email,
     major: profile.major?.trim() || 'Undeclared',
     year: profile.year?.trim() || 'Student',
+    timetableVisibility,
     timetables,
   };
 }
@@ -135,6 +147,7 @@ type Props = {
 
 export default function FriendsScreen({ onOpenMessages, userId, userEmail, school }: Props) {
   const { colors } = useTheme();
+  const isGuestUser = userId.startsWith('guest');
   const [friends, setFriends] = useState<Friend[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingFriend[]>([]);
   const [sentRequestIds, setSentRequestIds] = useState<string[]>([]);
@@ -171,7 +184,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
   }, [emailQuery]);
 
   useEffect(() => {
-    if (!userId || userId === 'guest') return;
+    if (!userId || isGuestUser) return;
 
     async function loadClassmates() {
       setFriendsLoading(true);
@@ -228,6 +241,25 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
         }
       }
 
+      let visibilityByUserId: Record<string, TimetableVisibility> = {};
+      if (acceptedIds.length > 0) {
+        const { data: settingsRows, error: settingsError } = await supabase
+          .from('user_settings')
+          .select('user_id, timetable_visibility')
+          .in('user_id', acceptedIds);
+
+        if (settingsError && settingsError.code !== 'PGRST205') {
+          console.error('Failed to load friend visibility settings:', settingsError);
+        } else {
+          visibilityByUserId = Object.fromEntries(
+            ((settingsRows ?? []) as UserSettingsRow[]).map((row) => [
+              row.user_id,
+              row.timetable_visibility ?? 'friends',
+            ])
+          );
+        }
+      }
+
       const friendTimetablesByUser: Record<string, Record<string, Course[]>> = {};
       if (acceptedIds.length > 0) {
         const { data: timetableRows, error: timetablesError } = await supabase
@@ -239,6 +271,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
           console.error('Failed to load friend timetables:', timetablesError);
         } else {
           for (const row of (timetableRows ?? []) as TimetableRow[]) {
+            if ((visibilityByUserId[row.user_id] ?? 'friends') === 'private') continue;
             if (!friendTimetablesByUser[row.user_id]) friendTimetablesByUser[row.user_id] = {};
             friendTimetablesByUser[row.user_id][row.quarter_key] = [
               ...(friendTimetablesByUser[row.user_id][row.quarter_key] ?? []),
@@ -252,7 +285,13 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
         acceptedIds
           .map((id) => profilesById[id])
           .filter((profile): profile is ProfileRow => !!profile)
-          .map((profile) => mapProfileToFriend(profile, friendTimetablesByUser[profile.id] ?? {}))
+          .map((profile) =>
+            mapProfileToFriend(
+              profile,
+              friendTimetablesByUser[profile.id] ?? {},
+              visibilityByUserId[profile.id] ?? 'friends'
+            )
+          )
       );
 
       setPendingRequests(
@@ -273,10 +312,10 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
     }
 
     loadClassmates();
-  }, [userId]);
+  }, [isGuestUser, userId]);
 
   useEffect(() => {
-    if (!showAddModal || !debouncedEmailQuery || !userId || userId === 'guest') {
+    if (!showAddModal || !debouncedEmailQuery || !userId || isGuestUser) {
       setSearchResults([]);
       setSearchLoading(false);
       return;
@@ -315,7 +354,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
     }
 
     searchUsers();
-  }, [debouncedEmailQuery, friends, pendingRequests, school, sentRequestIds, showAddModal, userEmail, userId]);
+  }, [debouncedEmailQuery, friends, isGuestUser, pendingRequests, school, sentRequestIds, showAddModal, userEmail, userId]);
 
   const closeAddModal = () => {
     setEmailQuery('');
@@ -325,7 +364,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
   };
 
   const sendFriendRequest = async (target: Friend) => {
-    if (!userId || userId === 'guest') {
+    if (!userId || isGuestUser) {
       Alert.alert('Sign in required', 'Please sign in to send a friend request.');
       return;
     }
@@ -384,7 +423,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
     setPendingRequests((prev) => prev.filter((row) => row.id !== requesterId));
 
     if (status === 'accepted' && request) {
-      setFriends((prev) => [...prev, { ...request, timetables: {} }]);
+      setFriends((prev) => [...prev, { ...request, timetableVisibility: 'friends', timetables: {} }]);
     }
   };
 
@@ -882,18 +921,32 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
                     <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
                       {f.major} • {f.year}
                     </Text>
+                    {f.timetableVisibility === 'private' && (
+                      <Text style={{ fontSize: 11, color: colors.brand, marginTop: 4, fontWeight: '700' }}>
+                        Timetable is private
+                      </Text>
+                    )}
                   </View>
 
                   <TouchableOpacity
-                    onPress={() => setSelectedFriendId(f.id)}
+                    onPress={() => {
+                      if (f.timetableVisibility === 'private') {
+                        Alert.alert('Private timetable', `${f.name} has chosen to keep their timetable private.`);
+                        return;
+                      }
+                      setSelectedFriendId(f.id);
+                    }}
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 6,
-                      backgroundColor: colors.brand, borderRadius: 20,
+                      backgroundColor: f.timetableVisibility === 'private' ? colors.bgTertiary : colors.brand,
+                      borderRadius: 20,
                       paddingHorizontal: 12, paddingVertical: 7, marginRight: 8,
                     }}
                   >
-                    <Ionicons name="calendar-outline" size={14} color="white" />
-                    <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>Timetable</Text>
+                    <Ionicons name={f.timetableVisibility === 'private' ? 'lock-closed-outline' : 'calendar-outline'} size={14} color={f.timetableVisibility === 'private' ? colors.textTertiary : 'white'} />
+                    <Text style={{ color: f.timetableVisibility === 'private' ? colors.textTertiary : 'white', fontSize: 13, fontWeight: '600' }}>
+                      {f.timetableVisibility === 'private' ? 'Private' : 'Timetable'}
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity

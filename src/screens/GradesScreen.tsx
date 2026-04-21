@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TouchableOpacity, ScrollView, Modal,
   Animated, Easing, Dimensions, LayoutAnimation,
@@ -374,9 +375,15 @@ export default function GradesScreen({ timetables, userId }: Props) {
   // Compound key: "2026-Spring|36120" — prevents collisions if section codes repeat across years
   const gk = (qk: string, courseId: string) => `${qk}|${courseId}`;
 
-  // Load grades from Supabase on mount
+  const cacheKey = `grades_${userId}`;
+
   useEffect(() => {
     async function loadGrades() {
+      // Load cache first for instant display
+      const cached = await AsyncStorage.getItem(cacheKey);
+      if (cached) setGrades(JSON.parse(cached));
+
+      // Then fetch from Supabase and update
       const { data, error } = await supabase
         .from('grades')
         .select('quarter_key, course_id, grade')
@@ -385,13 +392,16 @@ export default function GradesScreen({ timetables, userId }: Props) {
       const loaded: Record<string, string> = {};
       (data ?? []).forEach((row: any) => { loaded[gk(row.quarter_key, row.course_id)] = row.grade; });
       setGrades(loaded);
+      AsyncStorage.setItem(cacheKey, JSON.stringify(loaded));
     }
     loadGrades();
   }, [userId]);
 
   // key is the compound "qk|courseId" string
   async function handleSetGrade(key: string, grade: string) {
-    setGrades(prev => ({ ...prev, [key]: grade }));
+    const updated = { ...grades, [key]: grade };
+    setGrades(updated);
+    AsyncStorage.setItem(cacheKey, JSON.stringify(updated));
     const [qk, courseId] = key.split('|');
     const { error } = await supabase
       .from('grades')

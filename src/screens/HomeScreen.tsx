@@ -1,4 +1,5 @@
 import { useState, useEffect, type ComponentProps } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, pastelForCourse, blockColorKey } from '../data/courses';
@@ -154,20 +155,39 @@ export default function HomeScreen({
   const [weatherCode, setWeatherCode] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=33.6405&longitude=-117.8443&current=temperature_2m,weathercode&temperature_unit=celsius')
-      .then(r => r.json())
-      .then(json => {
-        setTempC(json.current?.temperature_2m ?? null);
-        setWeatherCode(json.current?.weathercode ?? null);
-      })
-      .catch(() => {});
+    async function loadWeather() {
+      const cached = await AsyncStorage.getItem('weather_cache');
+      if (cached) {
+        const { tempC, weatherCode } = JSON.parse(cached);
+        setTempC(tempC);
+        setWeatherCode(weatherCode);
+      }
+      try {
+        const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=33.6405&longitude=-117.8443&current=temperature_2m,weathercode&temperature_unit=celsius');
+        const json = await r.json();
+        const tempC = json.current?.temperature_2m ?? null;
+        const weatherCode = json.current?.weathercode ?? null;
+        setTempC(tempC);
+        setWeatherCode(weatherCode);
+        AsyncStorage.setItem('weather_cache', JSON.stringify({ tempC, weatherCode }));
+      } catch {}
+    }
+    loadWeather();
   }, []);
 
   useEffect(() => {
-    fetch('https://ucirvinesports.com/calendar.ics')
-      .then(r => r.text())
-      .then(text => setSportsEvents(parseSportsCalendar(text, { maxDaysAhead: 2, includePastDays: 0 })))
-      .catch(() => {});
+    async function loadSports() {
+      const cached = await AsyncStorage.getItem('sports_cache');
+      if (cached) setSportsEvents(JSON.parse(cached).map((e: any) => ({ ...e, date: new Date(e.date) })));
+      try {
+        const r = await fetch('https://ucirvinesports.com/calendar.ics');
+        const text = await r.text();
+        const events = parseSportsCalendar(text, { maxDaysAhead: 2, includePastDays: 0 });
+        setSportsEvents(events);
+        AsyncStorage.setItem('sports_cache', JSON.stringify(events));
+      } catch {}
+    }
+    loadSports();
   }, []);
   const todayCode = getTodayDayCode();
   const todayCourses = todayCode

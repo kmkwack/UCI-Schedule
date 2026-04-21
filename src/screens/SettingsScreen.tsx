@@ -1,4 +1,90 @@
-import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList } from 'react-native';
+
+const UCI_MAJORS = [
+  'Aerospace Engineering',
+  'African American Studies',
+  'Anthropology',
+  'Applied Physics',
+  'Applied and Computational Mathematics',
+  'Art History',
+  'Art',
+  'Asian American Studies',
+  'Biochemistry and Molecular Biology',
+  'Biological Sciences',
+  'Biology/Education',
+  'Biomedical Engineering',
+  'Biomedical Engineering: Premedical',
+  'Business Administration',
+  'Business Economics',
+  'Business Information Management',
+  'Chemical Engineering',
+  'Chemistry',
+  'Chicano/Latino Studies',
+  'Chinese Studies',
+  'Civil Engineering',
+  'Classics',
+  'Cognitive Sciences',
+  'Comparative Literature',
+  'Computer Engineering',
+  'Computer Science and Engineering',
+  'Computer Science',
+  'Criminology, Law and Society',
+  'Dance',
+  'Data Science',
+  'Developmental and Cell Biology',
+  'Drama',
+  'East Asian Cultures',
+  'Ecology and Evolutionary Biology',
+  'Economics',
+  'Education Sciences',
+  'Electrical Engineering',
+  'English',
+  'Environmental Engineering',
+  'Environmental Science and Policy',
+  'Environmental and Earth System Science',
+  'European Studies',
+  'Film and Media Studies',
+  'French',
+  'Game Design and Interactive Media',
+  'Gender and Sexuality Studies',
+  'Genetics',
+  'German Studies',
+  'Global Cultures',
+  'History',
+  'Human Biology',
+  'Informatics',
+  'Information and Computer Science',
+  'International Studies',
+  'Japanese Language and Literature',
+  'Korean Literature and Culture',
+  'Language Science',
+  'Literary Journalism',
+  'Materials Science and Engineering',
+  'Mathematics',
+  'Mechanical Engineering',
+  'Microbiology and Immunology',
+  'Music Theatre',
+  'Music',
+  'Neurobiology',
+  'Nursing Science',
+  'Pharmaceutical Sciences',
+  'Philosophy',
+  'Physics',
+  'Physiology and Exercise Science',
+  'Political Science',
+  'Psychology',
+  'Public Health Policy',
+  'Public Health Science',
+  'Quantitative Economics',
+  'Religious Studies',
+  'Social Ecology',
+  'Social Policy and Public Service',
+  'Sociology',
+  'Software Engineering',
+  'Spanish',
+  'Undergraduate/Undeclared',
+  'Urban Studies',
+];
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { useTheme, ThemePreference } from '../context/ThemeContext';
@@ -83,18 +169,22 @@ function SettingRow({
 }
 
 // ─── Sub-screen: Edit Profile ────────────────────────────────────────────────
-function DropdownPicker({ label, required, value, options, onSelect }: {
-  label: string; required?: boolean; value: string; options: string[]; onSelect: (v: string) => void;
+function DropdownPicker({ label, required, value, options, onSelect, searchable }: {
+  label: string; required?: boolean; value: string; options: string[]; onSelect: (v: string) => void; searchable?: boolean;
 }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const filtered = searchable && search
+    ? options.filter(o => o.toLowerCase().includes(search.toLowerCase()))
+    : options;
   return (
     <View style={{ marginBottom: 18 }}>
       <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>
         {label}{required && <Text style={{ color: colors.destructive }}> *</Text>}
       </Text>
       <TouchableOpacity
-        onPress={() => setOpen(true)}
+        onPress={() => { setOpen(true); setSearch(''); }}
         style={{
           backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 12,
           paddingHorizontal: 14, paddingVertical: 13,
@@ -105,31 +195,49 @@ function DropdownPicker({ label, required, value, options, onSelect }: {
         <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }} activeOpacity={1} onPress={() => setOpen(false)}>
-          <TouchableOpacity activeOpacity={1} style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 32 }}>
+          <TouchableOpacity activeOpacity={1} style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 32, maxHeight: '75%' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
               <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{label}</Text>
               <TouchableOpacity onPress={() => setOpen(false)}>
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
-              {options.map((opt, i) => (
+            {searchable && (
+              <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder={`Search ${label.toLowerCase()}…`}
+                  placeholderTextColor={colors.placeholder}
+                  autoFocus
+                  style={{
+                    backgroundColor: colors.inputBg, borderRadius: 10,
+                    paddingHorizontal: 12, paddingVertical: 9,
+                    fontSize: 14, color: colors.text,
+                  }}
+                />
+              </View>
+            )}
+            <FlatList
+              data={filtered}
+              keyExtractor={item => item}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item: opt }) => (
                 <TouchableOpacity
-                  key={opt}
-                  onPress={() => { onSelect(opt); setOpen(false); }}
+                  onPress={() => { onSelect(opt); setOpen(false); setSearch(''); }}
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                     paddingHorizontal: 20, paddingVertical: 14,
-                    borderBottomWidth: i < options.length - 1 ? 1 : 0, borderBottomColor: colors.borderSubtle,
+                    borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
                   }}
                 >
-                  <Text style={{ fontSize: 15, color: colors.text }}>{opt}</Text>
+                  <Text style={{ fontSize: 15, color: colors.text, flex: 1 }}>{opt}</Text>
                   {value === opt && <Ionicons name="checkmark" size={18} color={colors.brand} />}
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              )}
+            />
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -195,9 +303,10 @@ function EditProfileScreen({
           onSelect={v => setForm(f => ({ ...f, year: v }))}
         />
         <DropdownPicker
-          label="Department" required value={form.major}
-          options={['Computer Science', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Business', 'Engineering', 'Psychology']}
+          label="Major" required value={form.major}
+          options={UCI_MAJORS}
           onSelect={v => setForm(f => ({ ...f, major: v }))}
+          searchable
         />
 
         <View style={{ paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.borderSubtle, marginBottom: 4 }}>

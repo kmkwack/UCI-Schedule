@@ -48,6 +48,28 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   const USER_ID = userId ?? 'guest';
 
+  useEffect(() => {
+    if (!userId || !userEmail) return;
+    async function ensureProfile() {
+      const fallbackName = userEmail.split('@')[0]
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ') || 'Student';
+
+      const { error } = await supabase.from('profiles').upsert({
+        id: userId,
+        email: userEmail,
+        name: fallbackName,
+        school: selectedUniversity?.name ?? 'UC Irvine',
+        updated_at: new Date().toISOString(),
+      });
+
+      if (error) console.error('Failed to ensure profile:', error);
+    }
+    ensureProfile();
+  }, [selectedUniversity?.name, userEmail, userId]);
+
   // Load all timetables from Supabase on mount (or when user logs in)
   useEffect(() => {
     if (!userId) return;
@@ -353,7 +375,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   } else if (currentTab === 'friends') {
     content = (
       <View style={{ flex: 1, paddingTop: 60, backgroundColor: colors.bgSecondary }}>
-        <FriendsScreen onOpenMessages={handleOpenMessages} />
+        <FriendsScreen
+          onOpenMessages={handleOpenMessages}
+          userId={USER_ID}
+          userEmail={userEmail}
+          school={selectedUniversity?.name ?? 'UC Irvine'}
+        />
       </View>
     );
   }

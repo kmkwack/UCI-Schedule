@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing, LayoutAnimation, PanResponder, Platform, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, QUARTERS, quarterKey, quarterLabel, getBlockColors } from '../data/courses';
+import { getUciMapLocation, type UciMapLocation } from '../data/uciLocations';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import ReviewsModal from '../components/ReviewsModal';
@@ -9,6 +10,7 @@ import { captureRef } from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import * as Linking from 'expo-linking';
+import MapView, { Marker } from 'react-native-maps';
 
 const RMP_SCHOOL_IDS: Record<string, string> = { 'UC Irvine': '1074' };
 
@@ -16,6 +18,41 @@ function rmpUrl(professor: string, school: string) {
   const sid = RMP_SCHOOL_IDS[school];
   const base = `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(professor)}`;
   return sid ? `${base}&sid=${sid}` : base;
+}
+
+function mapSearchUrl(location: string, school: string) {
+  const campusHint = school === 'UC Irvine' ? 'UC Irvine' : school;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${campusHint} ${location}`)}`;
+}
+
+function appleMapsUrl(location: string, school: string) {
+  const campusHint = school === 'UC Irvine' ? 'UC Irvine' : school;
+  return `maps://?q=${encodeURIComponent(`${campusHint} ${location}`)}`;
+}
+
+function appleMapsCoordinateUrl(location: UciMapLocation) {
+  return `maps://?ll=${location.latitude},${location.longitude}&q=${encodeURIComponent(location.name)}`;
+}
+
+async function openMaps(location: string, school: string, mappedLocation?: UciMapLocation | null) {
+  const appleUrl = mappedLocation ? appleMapsCoordinateUrl(mappedLocation) : appleMapsUrl(location, school);
+  const fallbackUrl = mapSearchUrl(location, school);
+
+  try {
+    await Linking.openURL(appleUrl);
+    return;
+  } catch (error) {
+    console.warn('Apple Maps open failed, falling back to web maps:', error);
+  }
+
+  try {
+    await Linking.openURL(fallbackUrl);
+    return;
+  } catch (error) {
+    console.warn('Map fallback open failed:', error);
+  }
+
+  Alert.alert('Could not open Maps', 'Maps is unavailable on this device right now.');
 }
 
 type Props = {
@@ -994,6 +1031,14 @@ export default function TimetableScreen({
             const professor = selectedCourse.professor;
             const hasRmp = !!professor && professor !== 'STAFF' && professor.trim() !== '';
             const profRmpUrl = hasRmp ? rmpUrl(professor, school) : null;
+            const rawLocation = selectedCourse.location?.trim() ?? '';
+            const hasMapLocation = !!rawLocation
+              && rawLocation.toLowerCase() !== 'tba'
+              && !rawLocation.toLowerCase().includes('online')
+              && !rawLocation.toLowerCase().includes('remote');
+            const mappedLocation = school === 'UC Irvine' ? getUciMapLocation(rawLocation) : null;
+            const mapQuery = mappedLocation?.name ?? rawLocation;
+            const courseMapUrl = hasMapLocation ? appleMapsUrl(mapQuery, school) : null;
             return (
               <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
                 <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
@@ -1017,7 +1062,7 @@ export default function TimetableScreen({
                       <Text style={{ fontSize: 14, color: colors.textSecondary, flex: 1 }}>{professor}</Text>
                       {profRmpUrl && (
                         <TouchableOpacity
-                          onPress={() => Linking.openURL(profRmpUrl)}
+                          onPress={() => { void Linking.openURL(profRmpUrl); }}
                           style={{ backgroundColor: colors.brandBg, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: colors.brand }}
                         >
                           <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand }}>RMP</Text>
@@ -1042,6 +1087,65 @@ export default function TimetableScreen({
                     </View>
                   ) : null}
                 </View>
+                {mappedLocation ? (
+                  <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 6 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                      Location Preview
+                    </Text>
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPress={() => { if (mapQuery) void openMaps(mapQuery, school, mappedLocation); }}
+                      style={{
+                        borderRadius: 18,
+                        overflow: 'hidden',
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.bgTertiary,
+                      }}
+                    >
+                      {Platform.OS === 'web' ? (
+                        <View style={{ height: 150, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
+                          <Ionicons name="map-outline" size={26} color={colors.brand} />
+                          <Text style={{ marginTop: 10, fontSize: 14, fontWeight: '700', color: colors.text }}>{mappedLocation.name}</Text>
+                          <Text style={{ marginTop: 4, fontSize: 12, color: colors.textSecondary, textAlign: 'center' }}>
+                            Live map preview is available on iOS and Android. Use Maps below on web.
+                          </Text>
+                        </View>
+                      ) : (
+                        <MapView
+                          style={{ width: '100%', height: 150 }}
+                          pointerEvents="none"
+                          initialRegion={{
+                            latitude: mappedLocation.latitude,
+                            longitude: mappedLocation.longitude,
+                            latitudeDelta: 0.0035,
+                            longitudeDelta: 0.0035,
+                          }}
+                        >
+                          <Marker
+                            coordinate={{ latitude: mappedLocation.latitude, longitude: mappedLocation.longitude }}
+                            title={mappedLocation.name}
+                            description={selectedCourse.location}
+                          />
+                        </MapView>
+                      )}
+                      <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{mappedLocation.name}</Text>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 3 }}>
+                              {selectedCourse.location}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <Ionicons name="logo-apple" size={14} color={colors.brand} />
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.brand }}>Open</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
                 <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 10 }}>
                   {['Lec', 'Lab', 'Sem'].some(t => selectedCourse.sectionLabel?.startsWith(t)) && (
                     <TouchableOpacity
@@ -1055,6 +1159,15 @@ export default function TimetableScreen({
                     >
                       <Ionicons name="star-outline" size={17} color="white" />
                       <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
+                    </TouchableOpacity>
+                  )}
+                  {courseMapUrl && !mappedLocation && (
+                    <TouchableOpacity
+                      onPress={() => { if (mapQuery) void openMaps(mapQuery, school, mappedLocation); }}
+                      style={{ borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.brand, backgroundColor: colors.brandBg }}
+                    >
+                      <Ionicons name="map-outline" size={17} color={colors.brand} />
+                      <Text style={{ color: colors.brand, fontWeight: '700', fontSize: 15 }}>Maps</Text>
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity

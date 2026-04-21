@@ -939,7 +939,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => setActiveTab('requests')}
+            onPress={() => { setActiveTab('requests'); setEditMode(false); }}
             style={{
               paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
               backgroundColor: activeTab === 'requests' ? colors.brand : colors.bgTertiary,
@@ -964,17 +964,19 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          onPress={() => setEditMode((prev) => !prev)}
-          style={{
-            paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-            backgroundColor: editMode ? colors.destructive : colors.bgTertiary,
-          }}
-        >
-          <Text style={{ fontSize: 14, fontWeight: '600', color: editMode ? 'white' : colors.textSecondary }}>
-            {editMode ? 'Done' : 'Edit'}
-          </Text>
-        </TouchableOpacity>
+        {activeTab === 'friends' && (
+          <TouchableOpacity
+            onPress={() => setEditMode((prev) => !prev)}
+            style={{
+              paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+              backgroundColor: editMode ? colors.destructive : colors.bgTertiary,
+            }}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '600', color: editMode ? 'white' : colors.textSecondary }}>
+              {editMode ? 'Done' : 'Edit'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 12 }} />

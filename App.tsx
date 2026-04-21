@@ -15,6 +15,7 @@ import UniversitySelectionScreen from './src/screens/UniversitySelectionScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 import MessagesScreen from './src/screens/MessagesScreen';
+import type { ChatTarget } from './src/data/messages';
 import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey } from './src/data/courses';
 import {
   buildDisplayName,
@@ -125,7 +126,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [focusedCourseId, setFocusedCourseId] = useState<string | null>(null);
   const [timetableSettings, setTimetableSettings] = useState<TimetableSettings>(DEFAULT_TIMETABLE_SETTINGS);
   const [showMessages, setShowMessages] = useState(false);
-  const [messagesOpenWith, setMessagesOpenWith] = useState<string | null>(null);
+  const [messagesOpenWith, setMessagesOpenWith] = useState<ChatTarget | null>(null);
   const pickerTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
 
   const activeKey = quarterKey(selectedQuarter);
@@ -484,8 +485,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     );
   };
 
-  const handleOpenMessages = (name: string) => {
-    setMessagesOpenWith(name || null);
+  const handleOpenMessages = (target?: ChatTarget | null) => {
+    if (isGuestUser) {
+      Alert.alert('Sign in required', 'Messages are available only for signed-in university accounts.');
+      return;
+    }
+    setMessagesOpenWith(target ?? null);
     setShowMessages(true);
   };
 
@@ -837,6 +842,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           <MessagesScreen
             onClose={() => { setShowMessages(false); setMessagesOpenWith(null); }}
             openChatWith={messagesOpenWith}
+            userId={USER_ID}
           />
         </View>
       )}

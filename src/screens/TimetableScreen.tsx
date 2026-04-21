@@ -153,8 +153,6 @@ export default function TimetableScreen({
 }: Props) {
   const { colors, isDark } = useTheme();
   const [gridWidth, setGridWidth] = useState(0);
-  const [viewportWidth, setViewportWidth] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollAreaHeight, setScrollAreaHeight] = useState(0);
   const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -179,8 +177,6 @@ export default function TimetableScreen({
   // Destructure applied settings from props
   const { theme, showCode, showClassName, showRoomNumber, showInstructor, showTime } = settings;
 
-  const horizontalScrollRef = useRef<ScrollView>(null);
-  const verticalScrollRef = useRef<ScrollView>(null);
   const timetableRef = useRef<View>(null);
   const screenWidth = Dimensions.get('window').width;
 
@@ -233,11 +229,8 @@ export default function TimetableScreen({
   }, [scheduledCourses]);
 
   const totalHours = displayEndHour - displayStartHour;
-  const MIN_HOUR_HEIGHT = 50;
-  const hourHeight = scrollAreaHeight > 0
-    ? Math.max(MIN_HOUR_HEIGHT, scrollAreaHeight / (totalHours + 1))
-    : 72;
-  const timetableHeight = (totalHours + 1) * hourHeight;
+  const timetableHeight = scrollAreaHeight > 0 ? scrollAreaHeight : 72 * (totalHours + 1);
+  const hourHeight = timetableHeight / (totalHours + 1);
   const hourLabels = Array.from({ length: totalHours + 1 }, (_, i) => displayStartHour + i);
 
   const usableGridWidth =
@@ -246,6 +239,10 @@ export default function TimetableScreen({
       : screenWidth - GRID_LEFT_PAD - TIME_LABEL_WIDTH;
 
   const dayColumnWidth = usableGridWidth / visibleDays.length;
+  const compactGrid = visibleDays.length >= 6 || totalHours >= 11;
+  const codeFontSize = compactGrid ? 9 : 10;
+  const metaFontSize = compactGrid ? 8 : 9;
+  const timeFontSize = compactGrid ? 7 : 8;
 
   // Sync localOrder from props (skip while dragging), always sorted by order field
   useEffect(() => {
@@ -346,40 +343,6 @@ export default function TimetableScreen({
     Animated.spring(dragScaleAnim, { toValue: 1.1, friction: 6, tension: 200, useNativeDriver: true }).start();
   }
 
-  useEffect(() => {
-    if (!focusedCourseId || viewportWidth === 0 || viewportHeight === 0) return;
-
-    const focusedCourse = scheduledCourses.find((course) => course.id === focusedCourseId);
-    if (!focusedCourse) return;
-
-    const courseDays = getDaysArray(focusedCourse.days);
-    const dayIndex = visibleDays.indexOf(courseDays[0]);
-    if (dayIndex === -1) return;
-
-    const startHour = getCourseStartHour(focusedCourse.time);
-    const endHour = getCourseEndHour(focusedCourse.time);
-    const top = (startHour - displayStartHour) * hourHeight;
-    const height = Math.max((endHour - startHour) * hourHeight, 48);
-    const left = dayIndex * dayColumnWidth;
-
-    const horizontalTarget = Math.max(left + dayColumnWidth / 2 - viewportWidth / 2, 0);
-    const verticalTarget = Math.max(top + height / 2 - viewportHeight / 2, 0);
-
-    requestAnimationFrame(() => {
-      horizontalScrollRef.current?.scrollTo({ x: horizontalTarget, animated: true });
-      verticalScrollRef.current?.scrollTo({ y: verticalTarget, animated: true });
-    });
-  }, [
-    dayColumnWidth,
-    displayStartHour,
-    focusedCourseId,
-    hourHeight,
-    scheduledCourses,
-    viewportHeight,
-    viewportWidth,
-    visibleDays,
-  ]);
-
   async function openAddQuarterModal() {
     setLoadingAddableQuarters(true);
     setShowAddQuarterModal(true);
@@ -455,7 +418,7 @@ export default function TimetableScreen({
     );
   }
 
-  const THEMES: { key: Theme; label: string }[] = [
+  const THEMES: { key: TimetableTheme; label: string }[] = [
     { key: 'default', label: 'Default' },
     { key: 'minimal', label: 'Minimal' },
     { key: 'colorful', label: 'Colorful' },
@@ -518,6 +481,12 @@ export default function TimetableScreen({
     else if (key === 'instructor') setPendingShowInstructor((v) => !v);
     else if (key === 'time')       setPendingShowTime((v) => !v);
   }
+
+  const gridFrameBg = theme === 'dark' ? '#0f172a' : '#ffffff';
+  const gridFrameBorder = theme === 'dark' ? '#243041' : '#d9dee8';
+  const gridHeaderBg = theme === 'dark' ? '#0a1628' : '#f5f5f7';
+  const gridLine = theme === 'dark' ? '#1e293b' : '#e0e0e5';
+  const gridLabel = theme === 'dark' ? '#475569' : '#6b7280';
 
   return (
     <View style={{ flex: 1, backgroundColor: theme === 'dark' ? '#0f172a' : '#fff' }}>
@@ -1211,210 +1180,202 @@ export default function TimetableScreen({
       <View
         ref={timetableRef}
         collapsable={false}
-        style={{ flex: 1 }}
-        onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD)}
+        style={{ flex: 1, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10 }}
+        onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD - 24)}
       >
-        {/* Day headers row */}
         <View
           style={{
-            flexDirection: 'row',
-            borderBottomWidth: 1,
-            borderBottomColor: theme === 'dark' ? '#1e293b' : '#e0e0e5',
-            paddingLeft: GRID_LEFT_PAD,
-            backgroundColor: theme === 'dark' ? '#0a1628' : '#f5f5f7',
+            flex: 1,
+            backgroundColor: gridFrameBg,
+            borderRadius: 22,
+            borderWidth: 1,
+            borderColor: gridFrameBorder,
+            overflow: 'hidden',
+            shadowColor: theme === 'dark' ? '#000' : '#cfd6e4',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: theme === 'dark' ? 0.18 : 0.18,
+            shadowRadius: 18,
+            elevation: 4,
           }}
         >
-          <View style={{ width: TIME_LABEL_WIDTH }} />
-          {visibleDays.map((day, index) => (
-            <View
-              key={day}
-              style={{
-                width: dayColumnWidth,
-                alignItems: 'center',
-                paddingVertical: 10,
-                borderLeftWidth: 1,
-                borderLeftColor: theme === 'dark' ? '#1e293b' : '#e0e0e5',
-                backgroundColor: theme === 'dark' ? '#0a1628' : '#f5f5f7',
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '600', color: theme === 'dark' ? '#64748b' : '#6b7280' }}>
-                {DAY_LABEL[day]}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Scroll area wrapper — measures the true available height for the viewport */}
-        <View
-          style={{ flex: 1 }}
-          onLayout={(e) => setScrollAreaHeight(e.nativeEvent.layout.height)}
-        >
-        {/* Scrollable grid */}
-        <ScrollView
-          ref={horizontalScrollRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          bounces={false}
-          style={scrollAreaHeight > 0 ? { height: scrollAreaHeight } : { flex: 1 }}
-          onLayout={(e) => setViewportWidth(e.nativeEvent.layout.width - TIME_LABEL_WIDTH - GRID_LEFT_PAD)}
-        >
-          <ScrollView
-            ref={verticalScrollRef}
-            style={scrollAreaHeight > 0 ? { height: scrollAreaHeight } : { flex: 1 }}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-            onLayout={(e) => setViewportHeight(e.nativeEvent.layout.height)}
-          >
-            <View style={{ backgroundColor: theme === 'dark' ? '#0a1628' : '#f5f5f7' }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                paddingLeft: GRID_LEFT_PAD,
-              }}
-            >
-              {/* Time labels */}
-              <View style={{ width: TIME_LABEL_WIDTH, height: timetableHeight }}>
-                {hourLabels.map((hour, index) => (
-                  <View key={`line-${hour}`} style={{ position: 'absolute', top: index * hourHeight, left: 0, right: 0, height: 1, backgroundColor: theme === 'dark' ? '#1e293b' : '#e0e0e5' }} />
-                ))}
-                {hourLabels.map((hour, index) => (
-                  <View key={hour} style={{
-                    position: 'absolute',
-                    top: index * hourHeight + hourHeight / 2 - 7,   // centered in slot (last label uses phantom half-slot)
-                    left: 0, right: 4, alignItems: 'flex-end',
-                  }}>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: theme === 'dark' ? '#475569' : '#6b7280' }}>
-                      {formatHourLabel(hour)}
+              {/* Day headers row */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  borderBottomWidth: 1,
+                  borderBottomColor: gridLine,
+                  paddingLeft: GRID_LEFT_PAD,
+                  backgroundColor: gridHeaderBg,
+                }}
+              >
+                <View style={{ width: TIME_LABEL_WIDTH }} />
+                {visibleDays.map((day) => (
+                  <View
+                    key={day}
+                    style={{
+                      width: dayColumnWidth,
+                      alignItems: 'center',
+                      paddingVertical: compactGrid ? 8 : 10,
+                      borderLeftWidth: 1,
+                      borderLeftColor: gridLine,
+                      backgroundColor: gridHeaderBg,
+                    }}
+                  >
+                    <Text style={{ fontSize: compactGrid ? 11 : 12, fontWeight: '700', color: colors.textSecondary }}>
+                      {DAY_LABEL[day]}
                     </Text>
                   </View>
                 ))}
               </View>
 
-              {/* Day columns + course blocks */}
+              {/* Scroll area wrapper — measures the true available height for the viewport */}
               <View
-                style={{
-                  width: dayColumnWidth * visibleDays.length,
-                  height: timetableHeight,
-                  position: 'relative',
-                }}
+                style={{ flex: 1 }}
+                onLayout={(e) => setScrollAreaHeight(e.nativeEvent.layout.height)}
               >
-                {/* Day column separators with white cell backgrounds */}
-                <View style={{ flexDirection: 'row', height: timetableHeight }}>
-                  {visibleDays.map((day, index) => (
-                    <View
-                      key={day}
-                      style={{
-                        width: dayColumnWidth,
-                        height: timetableHeight,
-                        backgroundColor: theme === 'dark' ? '#111827' : '#ffffff',
-                        borderLeftWidth: 1,
-                        borderLeftColor: theme === 'dark' ? '#1e293b' : '#e0e0e5',
-                      }}
-                    />
-                  ))}
-                </View>
-
-                {/* Hour lines — rendered after day columns so they appear on top */}
-                {hourLabels.map((hour, index) => (
+                <View style={{ backgroundColor: gridFrameBg, height: timetableHeight }}>
                   <View
-                    key={hour}
                     style={{
-                      position: 'absolute',
-                      top: index * hourHeight,
-                      left: 0,
-                      right: 0,
-                      height: 1,
-                      backgroundColor: theme === 'dark' ? '#1e293b' : '#e0e0e5',
+                      flexDirection: 'row',
+                      paddingLeft: GRID_LEFT_PAD,
                     }}
-                  />
-                ))}
-
-                {/* Course blocks */}
-                {scheduledCourses.flatMap((course) => {
-                  const courseDays = getDaysArray(course.days);
-                  const startHour = getCourseStartHour(course.time);
-                  const endHour = getCourseEndHour(course.time);
-                  const top = (startHour - displayStartHour) * hourHeight;
-                  const height = (endHour - startHour) * hourHeight;
-                  const { bg, text, border } = getBlockColors(course, theme);
-
-                  return courseDays.map((day) => {
-                    const dayIndex = visibleDays.indexOf(day);
-                    if (dayIndex === -1) return null;
-                    return (
-                      <TouchableOpacity
-                        key={`${course.id}-${day}`}
-                        activeOpacity={0.85}
-                        onPress={() => setSelectedCourse(course)}
-                        style={{
+                  >
+                    <View style={{ width: TIME_LABEL_WIDTH, height: timetableHeight }}>
+                      {hourLabels.map((hour, index) => (
+                        <View key={`line-${hour}`} style={{ position: 'absolute', top: index * hourHeight, left: 0, right: 0, height: 1, backgroundColor: gridLine }} />
+                      ))}
+                      {hourLabels.map((hour, index) => (
+                        <View key={hour} style={{
                           position: 'absolute',
-                          top: top + 2,
-                          left: dayIndex * dayColumnWidth + 2,
-                          width: dayColumnWidth - 4,
-                          height: height - 4,
-                          backgroundColor: bg,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: border,
-                          paddingLeft: 6,
-                          paddingRight: 4,
-                          paddingTop: 5,
-                          paddingBottom: 4,
-                          overflow: 'hidden',
-                        }}
-                      >
-                        {showCode && (
-                          <Text
-                            style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }}
-                            numberOfLines={1}
-                          >
-                            {course.code}
+                          top: index * hourHeight + hourHeight / 2 - 7,
+                          left: 0, right: 4, alignItems: 'flex-end',
+                        }}>
+                          <Text style={{ fontSize: compactGrid ? 10 : 11, fontWeight: '700', color: gridLabel }}>
+                            {formatHourLabel(hour)}
                           </Text>
-                        )}
-                        {showClassName && (
-                          <Text
-                            style={{ color: text, fontWeight: '600', fontSize: 9, lineHeight: 12, opacity: 0.85 }}
-                            numberOfLines={2}
-                          >
-                            {course.title}
-                          </Text>
-                        )}
-                        {showRoomNumber && course.location ? (
-                          <Text
-                            style={{ color: text, fontSize: 9, opacity: 0.75, marginTop: 2 }}
-                            numberOfLines={1}
-                          >
-                            {course.location}
-                          </Text>
-                        ) : null}
-                        {showInstructor && (
-                          <Text
-                            style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 1 }}
-                            numberOfLines={1}
-                          >
-                            {getProfLastName(course.professor)}
-                          </Text>
-                        )}
-                        {showTime && (
-                          <Text
-                            style={{ color: text, fontSize: 8, opacity: 0.6, marginTop: 1 }}
-                            numberOfLines={1}
-                          >
-                            {course.time}
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  });
-                })}
+                        </View>
+                      ))}
+                    </View>
+
+                    <View
+                      style={{
+                        width: dayColumnWidth * visibleDays.length,
+                        height: timetableHeight,
+                        position: 'relative',
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', height: timetableHeight }}>
+                        {visibleDays.map((day) => (
+                          <View
+                            key={day}
+                            style={{
+                              width: dayColumnWidth,
+                              height: timetableHeight,
+                              backgroundColor: gridFrameBg,
+                              borderLeftWidth: 1,
+                              borderLeftColor: gridLine,
+                            }}
+                          />
+                        ))}
+                      </View>
+
+                      {hourLabels.map((hour, index) => (
+                        <View
+                          key={hour}
+                          style={{
+                            position: 'absolute',
+                            top: index * hourHeight,
+                            left: 0,
+                            right: 0,
+                            height: 1,
+                            backgroundColor: gridLine,
+                          }}
+                        />
+                      ))}
+
+                      {scheduledCourses.flatMap((course) => {
+                        const courseDays = getDaysArray(course.days);
+                        const startHour = getCourseStartHour(course.time);
+                        const endHour = getCourseEndHour(course.time);
+                        const top = (startHour - displayStartHour) * hourHeight;
+                        const height = (endHour - startHour) * hourHeight;
+                        const { bg, text, border } = getBlockColors(course, theme);
+
+                        return courseDays.map((day) => {
+                          const dayIndex = visibleDays.indexOf(day);
+                          if (dayIndex === -1) return null;
+                          return (
+                            <TouchableOpacity
+                              key={`${course.id}-${day}`}
+                              activeOpacity={0.85}
+                              onPress={() => setSelectedCourse(course)}
+                              style={{
+                                position: 'absolute',
+                                top: top + 2,
+                                left: dayIndex * dayColumnWidth + 2,
+                                width: dayColumnWidth - 4,
+                                height: height - 4,
+                                backgroundColor: bg,
+                                borderRadius: 8,
+                                borderWidth: 1,
+                                borderColor: border,
+                                paddingLeft: compactGrid ? 5 : 6,
+                                paddingRight: 4,
+                                paddingTop: compactGrid ? 4 : 5,
+                                paddingBottom: 4,
+                                overflow: 'hidden',
+                              }}
+                            >
+                              {showCode && (
+                                <Text
+                                  style={{ color: text, fontWeight: '800', fontSize: codeFontSize, lineHeight: compactGrid ? 12 : 13 }}
+                                  numberOfLines={1}
+                                >
+                                  {course.code}
+                                </Text>
+                              )}
+                              {showClassName && (
+                                <Text
+                                  style={{ color: text, fontWeight: '600', fontSize: metaFontSize, lineHeight: compactGrid ? 10 : 12, opacity: 0.85 }}
+                                  numberOfLines={2}
+                                >
+                                  {course.title}
+                                </Text>
+                              )}
+                              {showRoomNumber && course.location ? (
+                                <Text
+                                  style={{ color: text, fontSize: metaFontSize, opacity: 0.75, marginTop: 2 }}
+                                  numberOfLines={1}
+                                >
+                                  {course.location}
+                                </Text>
+                              ) : null}
+                              {showInstructor && (
+                                <Text
+                                  style={{ color: text, fontSize: metaFontSize, opacity: 0.7, marginTop: 1 }}
+                                  numberOfLines={1}
+                                >
+                                  {getProfLastName(course.professor)}
+                                </Text>
+                              )}
+                              {showTime && (
+                                <Text
+                                  style={{ color: text, fontSize: timeFontSize, opacity: 0.6, marginTop: 1 }}
+                                  numberOfLines={1}
+                                >
+                                  {course.time}
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          );
+                        });
+                      })}
+                    </View>
+                  </View>
+                </View>
               </View>
             </View>
-
-</View>
-          </ScrollView>
-        </ScrollView>
-      </View>
-      </View>
+        </View>
     </View>
   );
 }

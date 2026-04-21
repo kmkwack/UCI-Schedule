@@ -470,3 +470,36 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 57b (Revert unified timetable surface)
 - **`src/screens/TimetableScreen.tsx`** — Reverted the “single rounded surface” timetable layout and restored the previous separated header / TBA strip / grid structure because the combined card treatment felt worse in actual use and made the screen look heavier than intended.
+
+### Session 58 (Timetable screen redesign to match cleaner reference)
+- **`src/screens/TimetableScreen.tsx`** — Restyled the timetable screen to more closely match the provided reference while keeping all existing functionality intact. The page now uses a soft app background with a lighter, cleaner timetable shell, rounded quarter/actions row, chunkier plan pills, a framed inner grid, and softer course cards with more breathing room. TBA/online pills were also restyled to sit naturally inside the card system instead of feeling tacked on.
+
+### Session 58b (Limit redesign to the timetable grid only)
+- **`src/screens/TimetableScreen.tsx`** — Reverted the broader timetable-screen redesign after feedback and kept only the requested part: the schedule grid itself now sits inside a rounded card with a subtle border/shadow, while the header, quarter controls, plan pills, TBA strip, and course block styling return to their previous look.
+
+### Session 59 (Match friend timetable layout and show TBA courses)
+- **`src/screens/FriendsScreen.tsx`** — Updated the friend timetable detail view so it follows the same overall schedule format as the main timetable screen instead of using a noticeably different grid style. The friend schedule now uses the same day-header treatment, course card content structure, and a rounded grid card frame. Also fixed friend TBA/online sections not appearing by separating quarter courses into scheduled blocks and TBA chips, so unscheduled courses are visible above the friend grid just like they are in the main timetable.
+
+### Session 59b (Fix friend timetable clipping and scrolling)
+- **`src/screens/FriendsScreen.tsx`** — Fixed the friend timetable grid clipping the Friday column and not scrolling. The friend schedule table now uses a minimum day-column width plus nested horizontal/vertical scrolling so wide schedules stay readable and tall schedules can be browsed instead of being cut off.
+
+### Session 60 (Implement real direct messages)
+- **`src/data/messages.ts`** — Added shared direct-message types plus timestamp formatting helpers so the messaging UI and message routing use a single shape for chat targets and Supabase rows.
+- **`src/screens/MessagesScreen.tsx`** — Replaced the mock inbox/thread UI with a real Supabase-backed direct-messages screen. Conversations now load from `direct_messages`, partner names resolve from `profiles`, unread counts are derived from `read_at`, opening a thread marks inbound messages as read, and sending a message inserts a real row instead of mutating local mock state. Guest users now see a sign-in-required empty state.
+- **`App.tsx`** — Changed message routing from name-only strings to `{ id, name }` chat targets so the app can open a real DM thread for a specific user. Added a sign-in-required guard before the messages screen opens for guest users.
+- **`src/screens/BoardScreen.tsx`** — Updated the post-detail message action to open the real DM screen with the post author’s user id and display name.
+- **`src/screens/FriendsScreen.tsx`** — Updated friend-message actions to open the real DM screen with the selected friend’s user id/name while keeping the top-right messages button as a normal inbox entry point.
+- **Supabase SQL required** — Create a `direct_messages` table before this feature can work end-to-end. Example minimum schema:
+  `create table if not exists direct_messages (id uuid primary key default gen_random_uuid(), sender_id uuid not null references profiles(id) on delete cascade, receiver_id uuid not null references profiles(id) on delete cascade, content text not null, created_at timestamptz not null default now(), read_at timestamptz null);`
+  `create index if not exists direct_messages_sender_idx on direct_messages (sender_id, created_at desc);`
+  `create index if not exists direct_messages_receiver_idx on direct_messages (receiver_id, created_at desc);`
+  `alter table direct_messages enable row level security;`
+  `create policy "direct_messages_select_own" on direct_messages for select to authenticated using (auth.uid() = sender_id or auth.uid() = receiver_id);`
+  `create policy "direct_messages_insert_own" on direct_messages for insert to authenticated with check (auth.uid() = sender_id);`
+  `create policy "direct_messages_update_receiver" on direct_messages for update to authenticated using (auth.uid() = receiver_id) with check (auth.uid() = receiver_id);`
+
+### Session 60b (Fit friend timetable inside the card)
+- **`src/screens/FriendsScreen.tsx`** — Removed the nested horizontal/vertical scroll behavior from the friend timetable detail view and made the grid scale to fit the card width and height instead. Weekend columns and later time ranges now shrink the friend grid cells and labels so the whole schedule stays visible inside the card at once, matching the intended “see the full timetable in one glance” behavior.
+
+### Session 60c (Fit main timetable inside the card)
+- **`src/screens/TimetableScreen.tsx`** — Updated the main timetable grid to use the same fit-within-card behavior as the friend timetable instead of growing into a scrollable canvas when weekends or later hours appear. The grid now scales its row height and block typography to the available card space so Saturday/Sunday columns and post-5pm time ranges stay visible inside the rounded timetable card without changing the rest of the screen layout.

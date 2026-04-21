@@ -17,11 +17,13 @@ import {
   Course,
   Quarter,
   QUARTERS,
+  DEFAULT_TIMETABLE_SETTINGS,
+  getBlockColors,
   quarterKey,
   quarterLabel,
-  pastelForCourse,
 } from '../data/courses';
 import type { TimetableVisibility } from '../data/userPreferences';
+import type { ChatTarget } from '../data/messages';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 
@@ -76,6 +78,9 @@ const DEFAULT_END_HOUR = 17;
 const TIME_LABEL_WIDTH = 52;
 const SIDE_PADDING = 12;
 const CARD_PADDING = 12;
+const DAY_LABEL: Record<string, string> = {
+  M: 'Mon', T: 'Tue', W: 'Wed', Th: 'Thu', F: 'Fri', Sa: 'Sat', Su: 'Sun',
+};
 
 function parseHour(time: string | undefined) {
   if (!time || !time.includes(':')) return 0;
@@ -116,10 +121,10 @@ function parseDays(s: string) {
   return out;
 }
 
-function formatCourseLabel(code: string) {
-  const parts = code.trim().split(/\s+/);
-  if (parts.length < 2) return code;
-  return `${parts[0]}\n${parts.slice(1).join(' ')}`;
+function getProfLastName(professor: string) {
+  const last = professor.split(',')[0].trim();
+  if (!last) return professor;
+  return last.charAt(0).toUpperCase() + last.slice(1).toLowerCase();
 }
 
 function getInitials(name: string): string {
@@ -145,7 +150,7 @@ function mapProfileToFriend(
 }
 
 type Props = {
-  onOpenMessages?: (name: string) => void;
+  onOpenMessages?: (target?: ChatTarget | null) => void;
   userId: string;
   userEmail?: string;
   school: string;
@@ -175,9 +180,11 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
 
   const screenHeight = Dimensions.get('window').height;
   const friend = selectedFriendId ? friends.find((f) => f.id === selectedFriendId) ?? null : null;
-  const activeCourses: Course[] = friend
-    ? (friend.timetables[quarterKey(friendQuarter)] ?? []).filter(c => isValidTime(c.time) && c.days !== 'TBA')
+  const friendQuarterCourses: Course[] = friend
+    ? (friend.timetables[quarterKey(friendQuarter)] ?? [])
     : [];
+  const activeCourses: Course[] = friendQuarterCourses.filter(c => isValidTime(c.time) && c.days !== 'TBA');
+  const tbaCourses: Course[] = friendQuarterCourses.filter(c => !isValidTime(c.time) || c.days === 'TBA');
 
   const filteredFriends = useMemo(
     () =>
@@ -533,7 +540,8 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
   }, [activeCourses]);
 
   const totalHours = displayEnd - displayStart;
-  const timetableHeight = Math.max(448, screenHeight - 342);
+  const timetableHeight = Math.max(320, Math.min(448, screenHeight - 390));
+  const gridViewportHeight = timetableHeight;
   const hourPx = timetableHeight / totalHours;
   const hourLabels = Array.from({ length: totalHours + 1 }, (_, i) => displayStart + i);
   const usableW =
@@ -541,8 +549,20 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
       ? gridWidth - TIME_LABEL_WIDTH
       : Dimensions.get('window').width - SIDE_PADDING * 2 - CARD_PADDING * 2 - TIME_LABEL_WIDTH;
   const dayColW = usableW / visibleDays.length;
+  const compactGrid = visibleDays.length >= 6 || totalHours >= 11;
+  const courseCodeFontSize = compactGrid ? 9 : 10;
+  const courseMetaFontSize = compactGrid ? 8 : 9;
+  const courseTimeFontSize = compactGrid ? 7 : 8;
+  const tbaCodeFontSize = compactGrid ? 9 : 10;
+  const tbaMetaFontSize = compactGrid ? 8 : 9;
 
   if (friend) {
+    const timetableTheme = DEFAULT_TIMETABLE_SETTINGS.theme;
+    const gridFrameBg = colors.card;
+    const gridFrameBorder = colors.border;
+    const gridHeaderBg = colors.bgTertiary;
+    const gridLine = colors.border;
+    const gridLabel = colors.textTertiary;
     return (
       <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
         <Modal transparent animationType="fade" visible={showQuarterDropdown} onRequestClose={() => setShowQuarterDropdown(false)}>
@@ -644,103 +664,205 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
           }}
           onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - CARD_PADDING * 2)}
         >
-          <View style={{
-            flexDirection: 'row', paddingTop: 12, paddingBottom: 8,
-            paddingHorizontal: CARD_PADDING,
-            borderBottomWidth: 1, borderBottomColor: colors.border,
-          }}>
-            <View style={{ width: TIME_LABEL_WIDTH }} />
-            {visibleDays.map((day) => (
-              <View key={day} style={{ width: dayColW, alignItems: 'center' }}>
-                <Text style={{ fontWeight: '700', fontSize: 12, color: colors.text }}>{day}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={{
-            flexDirection: 'row', paddingHorizontal: CARD_PADDING,
-            paddingTop: 4, height: timetableHeight + 12,
-          }}>
-            <View style={{ width: TIME_LABEL_WIDTH, height: timetableHeight }}>
-              {hourLabels.map((h, i) => (
-                <View key={h} style={{ position: 'absolute', top: i * hourPx - 8, left: 0 }}>
-                  <Text style={{ fontSize: 11, color: colors.textTertiary }}>{fmtHour(h)}</Text>
-                </View>
-              ))}
-            </View>
-
-            <View style={{
-              width: dayColW * visibleDays.length, height: timetableHeight,
-              position: 'relative', backgroundColor: colors.card,
-            }}>
-              {hourLabels.map((h, i) => (
-                <View
-                  key={h}
-                  style={{
-                    position: 'absolute', top: i * hourPx, left: 0, right: 0,
-                    height: 1, backgroundColor: colors.border,
-                  }}
-                />
-              ))}
-              <View style={{ flexDirection: 'row', height: timetableHeight }}>
-                {visibleDays.map((day, index) => (
-                  <View
-                    key={day}
-                    style={{
-                      width: dayColW,
-                      borderRightWidth: index === visibleDays.length - 1 ? 0 : 1,
-                      borderRightColor: colors.border,
-                    }}
-                  />
-                ))}
-              </View>
-              {activeCourses.flatMap((course) => {
-                const sh = startHour(course.time);
-                const eh = endHour(course.time);
-                const top = (sh - displayStart) * hourPx;
-                const height = (eh - sh) * hourPx;
-                return parseDays(course.days).map((day) => {
-                  const col = visibleDays.indexOf(day);
-                  if (col === -1) return null;
+          {tbaCourses.length > 0 && (
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingTop: 12,
+                paddingBottom: 6,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                backgroundColor: colors.card,
+              }}
+            >
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {tbaCourses.map((course) => {
+                  const { bg, text, border } = getBlockColors(course, timetableTheme);
                   return (
                     <View
-                      key={`${course.id}-${day}`}
-                      style={(() => {
-                        const sType = course.sectionLabel?.split(' ')[0];
-                        const cKey = sType ? `${course.code}-${sType}` : course.code;
-                        const c = pastelForCourse(cKey);
-                        return {
-                          position: 'absolute' as const,
-                          top,
-                          left: col * dayColW + 2,
-                          width: dayColW - 4,
-                          height,
-                          backgroundColor: c.bg,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: c.border,
-                          padding: 5,
-                          overflow: 'hidden' as const,
-                        };
-                      })()}
+                      key={course.id}
+                      style={{
+                        backgroundColor: bg,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: border,
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                        minWidth: 100,
+                        maxWidth: 160,
+                      }}
                     >
-                      {(() => {
-                        const sType = course.sectionLabel?.split(' ')[0];
-                        const cKey = sType ? `${course.code}-${sType}` : course.code;
-                        const c = pastelForCourse(cKey);
-                        return (
-                          <>
-                            <Text style={{ color: c.text, fontWeight: '700', fontSize: 10 }} numberOfLines={2}>
-                              {formatCourseLabel(course.code)}
-                            </Text>
-                            <Text style={{ color: c.text, fontSize: 8, opacity: 0.7 }} numberOfLines={1}>{course.professor}</Text>
-                          </>
-                        );
-                      })()}
+                      <Text style={{ color: text, fontWeight: '800', fontSize: tbaCodeFontSize, lineHeight: compactGrid ? 12 : 13 }} numberOfLines={1}>
+                        {course.code}
+                      </Text>
+                      <Text style={{ color: text, fontWeight: '600', fontSize: tbaMetaFontSize, lineHeight: compactGrid ? 10 : 12, opacity: 0.85 }} numberOfLines={2}>
+                        {course.title}
+                      </Text>
+                      <Text style={{ color: text, fontSize: tbaMetaFontSize, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
+                        {getProfLastName(course.professor)}
+                      </Text>
+                      <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
+                        {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
+                      </Text>
                     </View>
                   );
-                });
-              })}
+                })}
+              </View>
+            </View>
+          )}
+
+          <View
+            style={{
+              paddingHorizontal: CARD_PADDING,
+              paddingTop: 12,
+              paddingBottom: 2,
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: gridFrameBg,
+                borderRadius: 22,
+                borderWidth: 1,
+                borderColor: gridFrameBorder,
+                overflow: 'hidden',
+                shadowColor: '#cfd6e4',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.18,
+                shadowRadius: 18,
+                elevation: 4,
+              }}
+            >
+              <View>
+                <View style={{
+                  flexDirection: 'row',
+                  paddingLeft: CARD_PADDING,
+                  backgroundColor: gridHeaderBg,
+                }}>
+                  <View style={{ width: TIME_LABEL_WIDTH }} />
+                  {visibleDays.map((day) => (
+                    <View
+                      key={`scroll-header-${day}`}
+                      style={{
+                        width: dayColW,
+                        alignItems: 'center',
+                        paddingVertical: compactGrid ? 8 : 10,
+                        borderLeftWidth: 1,
+                        borderLeftColor: gridLine,
+                        backgroundColor: gridHeaderBg,
+                      }}
+                    >
+                      <Text style={{ fontWeight: '700', fontSize: compactGrid ? 11 : 12, color: colors.textSecondary }}>{DAY_LABEL[day]}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={{
+                  flexDirection: 'row',
+                  paddingLeft: CARD_PADDING,
+                  height: gridViewportHeight,
+                  backgroundColor: gridFrameBg,
+                }}>
+                  <View style={{ width: TIME_LABEL_WIDTH, height: gridViewportHeight }}>
+                    {hourLabels.map((h, i) => (
+                      <View key={`line-${h}`} style={{ position: 'absolute', top: i * hourPx, left: 0, right: 0, height: 1, backgroundColor: gridLine }} />
+                    ))}
+                    {hourLabels.map((h, i) => (
+                      <View key={h} style={{ position: 'absolute', top: i * hourPx + hourPx / 2 - 7, left: 0, right: 4, alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: compactGrid ? 10 : 11, fontWeight: '700', color: gridLabel }}>{fmtHour(h)}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <View style={{
+                    width: dayColW * visibleDays.length,
+                    height: gridViewportHeight,
+                    position: 'relative',
+                    backgroundColor: gridFrameBg,
+                  }}>
+                    <View style={{ flexDirection: 'row', height: gridViewportHeight }}>
+                      {visibleDays.map((day) => (
+                        <View
+                          key={day}
+                          style={{
+                            width: dayColW,
+                            height: gridViewportHeight,
+                            backgroundColor: gridFrameBg,
+                            borderLeftWidth: 1,
+                            borderLeftColor: gridLine,
+                          }}
+                        />
+                      ))}
+                    </View>
+
+                    {hourLabels.map((h, i) => (
+                      <View
+                        key={h}
+                        style={{
+                          position: 'absolute',
+                          top: i * hourPx,
+                          left: 0,
+                          right: 0,
+                          height: 1,
+                          backgroundColor: gridLine,
+                        }}
+                      />
+                    ))}
+
+                    {activeCourses.flatMap((course) => {
+                      const sh = startHour(course.time);
+                      const eh = endHour(course.time);
+                      const top = (sh - displayStart) * hourPx;
+                      const height = (eh - sh) * hourPx;
+                      const { bg, text, border } = getBlockColors(course, timetableTheme);
+                      return parseDays(course.days).map((day) => {
+                        const col = visibleDays.indexOf(day);
+                        if (col === -1) return null;
+                        return (
+                          <TouchableOpacity
+                            key={`${course.id}-${day}`}
+                            activeOpacity={0.85}
+                            onPress={() => {}}
+                            style={{
+                              position: 'absolute',
+                              top: top + 2,
+                              left: col * dayColW + 2,
+                              width: dayColW - 4,
+                              height: height - 4,
+                              backgroundColor: bg,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: border,
+                              paddingLeft: compactGrid ? 5 : 6,
+                              paddingRight: 4,
+                              paddingTop: compactGrid ? 4 : 5,
+                              paddingBottom: 4,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <Text style={{ color: text, fontWeight: '800', fontSize: courseCodeFontSize, lineHeight: compactGrid ? 12 : 13 }} numberOfLines={1}>
+                              {course.code}
+                            </Text>
+                            <Text style={{ color: text, fontWeight: '600', fontSize: courseMetaFontSize, lineHeight: compactGrid ? 10 : 12, opacity: 0.85 }} numberOfLines={2}>
+                              {course.title}
+                            </Text>
+                            {course.location ? (
+                              <Text style={{ color: text, fontSize: courseMetaFontSize, opacity: 0.75, marginTop: 2 }} numberOfLines={1}>
+                                {course.location}
+                              </Text>
+                            ) : null}
+                            <Text style={{ color: text, fontSize: courseMetaFontSize, opacity: 0.7, marginTop: 1 }} numberOfLines={1}>
+                              {getProfLastName(course.professor)}
+                            </Text>
+                            <Text style={{ color: text, fontSize: courseTimeFontSize, opacity: 0.6, marginTop: 1 }} numberOfLines={1}>
+                              {course.time}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      });
+                    })}
+                  </View>
+                </View>
+              </View>
             </View>
           </View>
         </View>
@@ -904,7 +1026,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
         <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>ClassMates</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           {onOpenMessages && (
-            <TouchableOpacity onPress={() => onOpenMessages('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => onOpenMessages?.(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="chatbubble-outline" size={24} color={colors.text} />
             </TouchableOpacity>
           )}
@@ -1073,7 +1195,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
-                      onPress={() => onOpenMessages?.(f.name)}
+                      onPress={() => onOpenMessages?.({ id: f.id, name: f.name })}
                       style={{
                         width: 36, height: 36, borderRadius: 18,
                         backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center',

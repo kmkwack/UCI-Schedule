@@ -7,6 +7,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
+import type { ChatTarget } from '../data/messages';
 
 type Comment = {
   id: string;
@@ -61,7 +62,7 @@ function timeAgo(isoString: string): string {
 }
 
 type Props = {
-  onOpenMessages?: (name: string) => void;
+  onOpenMessages?: (target?: ChatTarget | null) => void;
   school: string;
   userId: string;
 };
@@ -247,7 +248,7 @@ export default function BoardScreen({ onOpenMessages, school, userId }: Props) {
                 <Text style={{ fontSize: 14, color: colors.textTertiary, fontWeight: '500' }}>{comments.length}</Text>
               </View>
               {onOpenMessages && post.user_id !== userId && (
-                <TouchableOpacity onPress={() => onOpenMessages(post.author_name)} style={{ marginLeft: 'auto', width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }}>
+                <TouchableOpacity onPress={() => onOpenMessages?.({ id: post.user_id, name: post.author_name })} style={{ marginLeft: 'auto', width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name="send-outline" size={16} color="white" />
                 </TouchableOpacity>
               )}

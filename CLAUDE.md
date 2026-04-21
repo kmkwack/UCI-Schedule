@@ -500,5 +500,8 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 54 (Privacy settings — remove Public option)
 - **`src/screens/SettingsScreen.tsx`** — Removed the "Public" visibility option from the Privacy & Security screen. Options array now only contains `friends` and `private`. Removed the confirmation Alert that was tied to the public option; `handleSelect` now sets visibility directly.
 
+### Session 55 (Timetable grid — horizontal lines extend through time column)
+- **`src/screens/TimetableScreen.tsx`** — Grid hour lines now extend all the way to the left edge of the screen. Changed `left: 0` to `left: -(TIME_LABEL_WIDTH + GRID_LEFT_PAD)` on the absolute-positioned hour lines in the day columns container. Removed the duplicate lines that were drawn separately inside the time label column.
+
 ### Session 54 (TimetableScreen — academic year group dividers in quarter dropdown)
 - **`src/screens/TimetableScreen.tsx`** — Quarter dropdown rows now have academic-year group dividers. Added `academicYear(qk)` function: `quarter === 'Fall' ? year : year - 1`. Built sorted array of quarter keys first, then mapped with index; `isNewGroup = index > 0 && academicYear(qk) !== academicYear(sorted[index - 1])`. Group boundary rows get `borderTopWidth: 2, borderTopColor: colors.border`; non-boundary rows get `borderTopWidth: 1, borderTopColor: colors.borderSubtle`. Groups: Fall 2024/Winter+Spring 2025 = AY 2024; Fall 2025/Winter+Spring 2026 = AY 2025; Fall 2026 = AY 2026.

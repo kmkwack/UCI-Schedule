@@ -1242,13 +1242,13 @@ export default function TimetableScreen({
                   >
                     <View style={{ width: TIME_LABEL_WIDTH, height: timetableHeight }}>
                       {hourLabels.map((hour, index) => (
-                        <View key={`line-${hour}`} style={{ position: 'absolute', top: index * hourHeight, left: 0, right: 0, height: 1, backgroundColor: gridLine }} />
-                      ))}
-                      {hourLabels.map((hour, index) => (
                         <View key={hour} style={{
                           position: 'absolute',
-                          top: index * hourHeight + hourHeight / 2 - 7,
-                          left: 0, right: 4, alignItems: 'flex-end',
+                          top: index * hourHeight,
+                          height: hourHeight,
+                          left: 0, right: 0,
+                          alignItems: 'center',
+                          justifyContent: 'center',
                         }}>
                           <Text style={{ fontSize: compactGrid ? 10 : 11, fontWeight: '700', color: gridLabel }}>
                             {formatHourLabel(hour)}
@@ -1285,7 +1285,7 @@ export default function TimetableScreen({
                           style={{
                             position: 'absolute',
                             top: index * hourHeight,
-                            left: 0,
+                            left: -(TIME_LABEL_WIDTH + GRID_LEFT_PAD),
                             right: 0,
                             height: 1,
                             backgroundColor: gridLine,

@@ -231,7 +231,8 @@ export default function TimetableScreen({
   const totalHours = displayEndHour - displayStartHour;
   const timetableHeight = scrollAreaHeight > 0 ? scrollAreaHeight : 72 * (totalHours + 1);
   const hourHeight = timetableHeight / (totalHours + 1);
-  const hourLabels = Array.from({ length: totalHours + 1 }, (_, i) => displayStartHour + i);
+  const hourLabels = Array.from({ length: totalHours }, (_, i) => displayStartHour + i);
+  const hourBoundaries = Array.from({ length: totalHours + 1 }, (_, i) => displayStartHour + i);
 
   const usableGridWidth =
     gridWidth > 0
@@ -1279,7 +1280,7 @@ export default function TimetableScreen({
                         ))}
                       </View>
 
-                      {hourLabels.map((hour, index) => (
+                      {hourBoundaries.map((hour, index) => (
                         <View
                           key={hour}
                           style={{

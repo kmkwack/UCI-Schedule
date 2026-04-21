@@ -735,7 +735,6 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
               <View>
                 <View style={{
                   flexDirection: 'row',
-                  paddingLeft: CARD_PADDING,
                   backgroundColor: gridHeaderBg,
                 }}>
                   <View style={{ width: TIME_LABEL_WIDTH }} />
@@ -758,7 +757,6 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
 
                 <View style={{
                   flexDirection: 'row',
-                  paddingLeft: CARD_PADDING,
                   height: gridViewportHeight,
                   backgroundColor: gridFrameBg,
                 }}>
@@ -767,7 +765,7 @@ export default function FriendsScreen({ onOpenMessages, userId, userEmail, schoo
                       <View key={`line-${h}`} style={{ position: 'absolute', top: i * hourPx, left: 0, right: 0, height: 1, backgroundColor: gridLine }} />
                     ))}
                     {hourLabels.map((h, i) => (
-                      <View key={h} style={{ position: 'absolute', top: i * hourPx + hourPx / 2 - 7, left: 0, right: 4, alignItems: 'flex-end' }}>
+                      <View key={h} style={{ position: 'absolute', top: i * hourPx + hourPx / 2 - 7, left: 0, right: 6, alignItems: 'flex-end' }}>
                         <Text style={{ fontSize: compactGrid ? 10 : 11, fontWeight: '700', color: gridLabel }}>{fmtHour(h)}</Text>
                       </View>
                     ))}

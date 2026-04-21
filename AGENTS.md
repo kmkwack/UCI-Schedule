@@ -503,3 +503,37 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 60c (Fit main timetable inside the card)
 - **`src/screens/TimetableScreen.tsx`** — Updated the main timetable grid to use the same fit-within-card behavior as the friend timetable instead of growing into a scrollable canvas when weekends or later hours appear. The grid now scales its row height and block typography to the available card space so Saturday/Sunday columns and post-5pm time ranges stay visible inside the rounded timetable card without changing the rest of the screen layout.
+
+### Session 60d (Migrate chat to conversation-based storage)
+- **`src/data/messages.ts`** — Replaced the old direct-message row shape with shared conversation, participant, and message row types so the chat layer now models a real conversation-based backend instead of a flat sender/receiver message table.
+- **`src/screens/MessagesScreen.tsx`** — Migrated the messaging UI from `direct_messages` to `conversations` + `conversation_participants` + `messages`. The inbox now loads per-conversation previews from conversation metadata, unread state is derived from each participant’s `last_read_at`, opening a DM finds or creates a 1:1 conversation, and sending a message inserts into `messages` while updating the parent conversation’s last-message metadata.
+- **Supabase SQL required** — This migration supersedes the earlier `direct_messages` schema. New minimum schema:
+  `create table if not exists conversations (id uuid primary key default gen_random_uuid(), created_at timestamptz not null default now(), updated_at timestamptz not null default now(), last_message_text text null, last_message_at timestamptz null, last_message_sender_id uuid null references profiles(id) on delete set null);`
+  `create table if not exists conversation_participants (conversation_id uuid not null references conversations(id) on delete cascade, user_id uuid not null references profiles(id) on delete cascade, last_read_at timestamptz null, created_at timestamptz not null default now(), primary key (conversation_id, user_id));`
+  `create table if not exists messages (id uuid primary key default gen_random_uuid(), conversation_id uuid not null references conversations(id) on delete cascade, sender_id uuid not null references profiles(id) on delete cascade, content text not null, created_at timestamptz not null default now());`
+  `create index if not exists conversation_participants_user_idx on conversation_participants (user_id, conversation_id);`
+  `create index if not exists conversations_updated_at_idx on conversations (updated_at desc);`
+  `create index if not exists messages_conversation_created_idx on messages (conversation_id, created_at asc);`
+  `alter table conversations enable row level security;`
+  `alter table conversation_participants enable row level security;`
+  `alter table messages enable row level security;`
+  `create policy "conversations_select_own" on conversations for select to authenticated using (exists (select 1 from conversation_participants cp where cp.conversation_id = id and cp.user_id = auth.uid()));`
+  `create policy "conversations_insert_authenticated" on conversations for insert to authenticated with check (true);`
+  `create policy "conversations_update_own" on conversations for update to authenticated using (exists (select 1 from conversation_participants cp where cp.conversation_id = id and cp.user_id = auth.uid())) with check (exists (select 1 from conversation_participants cp where cp.conversation_id = id and cp.user_id = auth.uid()));`
+  `create policy "conversation_participants_select_own" on conversation_participants for select to authenticated using (user_id = auth.uid() or exists (select 1 from conversation_participants cp where cp.conversation_id = conversation_id and cp.user_id = auth.uid()));`
+  `create policy "conversation_participants_insert_authenticated" on conversation_participants for insert to authenticated with check (true);`
+  `create policy "conversation_participants_update_own" on conversation_participants for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());`
+  `create policy "messages_select_own_conversations" on messages for select to authenticated using (exists (select 1 from conversation_participants cp where cp.conversation_id = conversation_id and cp.user_id = auth.uid()));`
+  `create policy "messages_insert_own_conversations" on messages for insert to authenticated with check (sender_id = auth.uid() and exists (select 1 from conversation_participants cp where cp.conversation_id = conversation_id and cp.user_id = auth.uid()));`
+
+### Session 60e (Center timetable hour labels within each row)
+- **`src/screens/TimetableScreen.tsx`** — Adjusted the main timetable’s time-label rendering so labels are created once per hour row instead of once per boundary line. This keeps the hour text visually centered inside each left-hand time cell while leaving the horizontal grid lines unchanged.
+
+### Session 60f (Fix friend timetable width and left edge alignment)
+- **`src/screens/FriendsScreen.tsx`** — Removed the extra left padding inside the friend timetable grid frame so the computed day columns now use the full available card width. This fixes the Friday column clipping and makes the left-hand time column connect cleanly to the card edge instead of floating inward from the rounded corner.
+
+### Session 60g (Avoid conversation insert RLS failure on chat open)
+- **`src/screens/MessagesScreen.tsx`** — Stopped using `insert(...).select().single()` when creating a new conversation because the conversation could not be selected yet under RLS before participant rows existed. The screen now generates the conversation id client-side, inserts the conversation without a returning select, and then inserts participants, avoiding the immediate “row violates row-level security policy for table conversations” failure when starting a new DM.
+
+### Session 60h (Add UUID fallback for React Native chat creation)
+- **`src/screens/MessagesScreen.tsx`** — Replaced the direct dependency on `globalThis.crypto.randomUUID()` with a small local UUID fallback helper so conversation creation also works on React Native environments where `crypto.randomUUID` is unavailable. This fixes the “This device could not generate a conversation id” alert when opening a new chat.

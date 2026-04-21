@@ -16,6 +16,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, UCI_DEPARTMENTS, quarterLabel, quarterKey } from '../data/courses';
 import PreviewTimetable from '../components/PreviewTimetable';
 import { supabase } from '../lib/supabase';
+import * as Linking from 'expo-linking';
+
+const RMP_SCHOOL_IDS: Record<string, string> = { 'UC Irvine': '1074' };
+
+function rmpUrl(professor: string, school: string) {
+  const sid = RMP_SCHOOL_IDS[school];
+  const base = `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(professor)}`;
+  return sid ? `${base}&sid=${sid}` : base;
+}
 
 type Props = {
   activeCourses: Course[];
@@ -716,22 +725,34 @@ export default function CoursePickerScreen({
                                       {isAdded ? 'Remove' : 'Add'}
                                     </Text>
                                   </TouchableOpacity>
-                                  {course.sectionLabel?.startsWith('Lec') && (
-                                    <TouchableOpacity
-                                      onPress={(e) => {
-                                        e.stopPropagation();
-                                        setReviewsCourse(item);
-                                      }}
-                                      style={{
-                                        paddingHorizontal: 10, paddingVertical: 5,
-                                        borderRadius: 999, backgroundColor: '#4169E1',
-                                        alignSelf: 'flex-end',
-                                      }}
-                                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                                    >
-                                      <Text style={{ fontSize: 11, color: 'white', fontWeight: '600' }}>Reviews</Text>
-                                    </TouchableOpacity>
-                                  )}
+                                  <TouchableOpacity
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      setReviewsCourse(item);
+                                    }}
+                                    style={{
+                                      paddingHorizontal: 10, paddingVertical: 5,
+                                      borderRadius: 999, backgroundColor: '#4169E1',
+                                      alignSelf: 'flex-end',
+                                    }}
+                                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                  >
+                                    <Text style={{ fontSize: 11, color: 'white', fontWeight: '600' }}>Reviews</Text>
+                                  </TouchableOpacity>
+                                  {(() => {
+                                    const prof = course.professor;
+                                    if (!prof || prof === 'STAFF' || prof.trim() === '') return null;
+                                    const profRmpUrl = rmpUrl(prof, school);
+                                    return (
+                                      <TouchableOpacity
+                                        onPress={(e) => { e.stopPropagation(); Linking.openURL(profRmpUrl); }}
+                                        style={{ backgroundColor: '#f0f4ff', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: '#c7d4f9', alignSelf: 'flex-end' }}
+                                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                      >
+                                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#4169E1' }}>RMP</Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })()}
                                 </View>
                               </View>
                             </TouchableOpacity>

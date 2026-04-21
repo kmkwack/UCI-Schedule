@@ -6,6 +6,15 @@ import { supabase } from '../lib/supabase';
 import { captureRef } from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
+import * as Linking from 'expo-linking';
+
+const RMP_SCHOOL_IDS: Record<string, string> = { 'UC Irvine': '1074' };
+
+function rmpUrl(professor: string, school: string) {
+  const sid = RMP_SCHOOL_IDS[school];
+  const base = `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(professor)}`;
+  return sid ? `${base}&sid=${sid}` : base;
+}
 
 type GradeDistribution = {
   averageGPA: number | null;
@@ -517,6 +526,7 @@ export default function TimetableScreen({
 
   async function saveSchedule() {
     setShowSettings(false);
+    await new Promise((r) => setTimeout(r, 350));
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
@@ -533,6 +543,7 @@ export default function TimetableScreen({
 
   async function shareSchedule() {
     setShowSettings(false);
+    await new Promise((r) => setTimeout(r, 350));
     try {
       const uri = await captureRef(timetableRef, { format: 'png', quality: 1 });
       const isAvailable = await Sharing.isAvailableAsync();
@@ -1067,7 +1078,11 @@ export default function TimetableScreen({
 
           {/* Detail sheet */}
           {selectedCourse && (() => {
-            const isLec = selectedCourse.sectionLabel?.startsWith('Lec') ?? true;
+            const professor = selectedCourse.professor;
+            const hasRmp = !!professor && professor !== 'STAFF' && professor.trim() !== '';
+            const rmpUrl = hasRmp
+              ? rmpUrl(professor, school)
+              : null;
             return (
               <View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
                 <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
@@ -1085,10 +1100,18 @@ export default function TimetableScreen({
                   </View>
                 </View>
                 <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-                  {selectedCourse.professor ? (
+                  {professor ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                       <Ionicons name="person-outline" size={16} color="#6b7280" />
-                      <Text style={{ fontSize: 14, color: '#374151' }}>{selectedCourse.professor}</Text>
+                      <Text style={{ fontSize: 14, color: '#374151', flex: 1 }}>{professor}</Text>
+                      {rmpUrl && (
+                        <TouchableOpacity
+                          onPress={() => Linking.openURL(rmpUrl)}
+                          style={{ backgroundColor: '#f0f4ff', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: '#c7d4f9' }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#4169E1' }}>RMP</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ) : null}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -1109,15 +1132,13 @@ export default function TimetableScreen({
                   ) : null}
                 </View>
                 <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 10 }}>
-                  {isLec && (
-                    <TouchableOpacity
-                      onPress={() => { setReviewsInstructor(''); setShowCourseReviews(true); }}
-                      style={{ backgroundColor: '#4169E1', borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-                    >
-                      <Ionicons name="star-outline" size={17} color="white" />
-                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    onPress={() => { setReviewsInstructor(''); setShowCourseReviews(true); }}
+                    style={{ backgroundColor: '#4169E1', borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                  >
+                    <Ionicons name="star-outline" size={17} color="white" />
+                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => { onRemoveCourse(selectedCourse); setSelectedCourse(null); }}
                     style={{ borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: '#fca5a5', backgroundColor: '#fff5f5' }}

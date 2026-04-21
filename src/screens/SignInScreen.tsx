@@ -13,7 +13,7 @@ WebBrowser.maybeCompleteAuthSession();
 type Props = {
   university: University;
   onBack: () => void;
-  onSignedIn: (userId: string) => void;
+  onSignedIn: (userId: string, email: string) => void;
   onGoToSignUp: () => void;
   onGuest: (id: string) => void;
 };
@@ -70,7 +70,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
       Alert.alert('Wrong account', `Please sign in with your ${university.domain} email.`);
       return;
     }
-    onSignedIn(sd.user.id);
+    onSignedIn(sd.user.id, email);
   };
 
   return (

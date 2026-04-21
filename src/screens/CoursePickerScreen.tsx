@@ -9,14 +9,13 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, UCI_DEPARTMENTS, quarterLabel, quarterKey } from '../data/courses';
 import PreviewTimetable from '../components/PreviewTimetable';
 import { supabase } from '../lib/supabase';
 import * as Linking from 'expo-linking';
+import ReviewsModal from '../components/ReviewsModal';
 
 const RMP_SCHOOL_IDS: Record<string, string> = { 'UC Irvine': '1074' };
 
@@ -54,27 +53,6 @@ type SectionEnrollment = {
   waitlistCap: number;
 };
 
-type GradeDistribution = {
-  averageGPA: number | null;
-  gradeACount: number;
-  gradeBCount: number;
-  gradeCCount: number;
-  gradeDCount: number;
-  gradeFCount: number;
-  gradePCount: number;
-  gradeNPCount: number;
-};
-
-type CourseReview = {
-  id: string;
-  author: string;
-  rating: number;
-  date: string;
-  content: string;
-  semester: string;
-  difficulty: number;
-  workload: number;
-};
 
 
 function getDaysArray(daysString: string) {
@@ -125,17 +103,6 @@ export default function CoursePickerScreen({
   const [enrollmentCache, setEnrollmentCache] = useState<Record<string, SectionEnrollment>>({});
   const [enrollmentLoadingIds, setEnrollmentLoadingIds] = useState<Set<string>>(new Set());
   const [reviewsCourse, setReviewsCourse] = useState<CatalogCourse | null>(null);
-  const [reviewsInstructor, setReviewsInstructor] = useState<string>('');
-  const [gradesCache, setGradesCache] = useState<Record<string, GradeDistribution | null>>({});
-  const [gradeLoading, setGradeLoading] = useState(false);
-  const [showWriteReview, setShowWriteReview] = useState(false);
-  const [newReviewRating, setNewReviewRating] = useState(5);
-  const [newReviewDifficulty, setNewReviewDifficulty] = useState(3);
-  const [newReviewWorkload, setNewReviewWorkload] = useState(3);
-  const [newReviewContent, setNewReviewContent] = useState('');
-  const [submittingReview, setSubmittingReview] = useState(false);
-  const [reviews, setReviews] = useState<CourseReview[]>([]);
-  const [reviewsListLoading, setReviewsListLoading] = useState(false);
 
   // Fetch courses + sections from Supabase (pre-seeded from Anteater API)
   useEffect(() => {
@@ -225,90 +192,6 @@ export default function CoursePickerScreen({
       })
       .finally(() => setCatalogLoading(false));
   }, [selectedDept, selectedQuarter]);
-
-  // Reset instructor selection when a different course's reviews are opened
-  useEffect(() => {
-    setReviewsInstructor('');
-  }, [reviewsCourse]);
-
-  // Fetch grade distribution from Anteater API (with client-side cache)
-  useEffect(() => {
-    if (!reviewsCourse) return;
-    const { department, courseNumber } = reviewsCourse;
-    const instructor = reviewsInstructor || undefined;
-    const cacheKey = `${department}${courseNumber}${instructor ?? ''}`;
-    if (cacheKey in gradesCache) return;
-
-    setGradeLoading(true);
-    const params = new URLSearchParams({ department, courseNumber });
-    if (instructor) params.append('instructor', instructor);
-
-    fetch(`https://anteaterapi.com/v2/rest/grades/aggregate?${params}`)
-      .then((r) => r.json())
-      .then((json) => {
-        const dist: GradeDistribution | null = json?.data?.gradeDistribution ?? null;
-        setGradesCache((prev) => ({ ...prev, [cacheKey]: dist }));
-      })
-      .catch(() => setGradesCache((prev) => ({ ...prev, [cacheKey]: null })))
-      .finally(() => setGradeLoading(false));
-  }, [reviewsCourse, reviewsInstructor]);
-
-  // Fetch reviews from Supabase
-  async function fetchReviews(courseCode: string) {
-    setReviewsListLoading(true);
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('school', school)
-      .eq('course_code', courseCode)
-      .order('created_at', { ascending: false });
-    if (!error && data) {
-      setReviews(data.map((r: any) => ({
-        id: r.id,
-        author: r.author,
-        rating: r.rating,
-        date: r.created_at.slice(0, 10),
-        content: r.content,
-        semester: r.semester,
-        difficulty: r.difficulty,
-        workload: r.workload,
-      })));
-    }
-    setReviewsListLoading(false);
-  }
-
-  useEffect(() => {
-    if (!reviewsCourse) { setReviews([]); return; }
-    fetchReviews(`${reviewsCourse.department} ${reviewsCourse.courseNumber}`);
-  }, [reviewsCourse]);
-
-  async function handleSubmitReview() {
-    if (!newReviewContent.trim() || !reviewsCourse) return;
-    setSubmittingReview(true);
-    const courseCode = `${reviewsCourse.department} ${reviewsCourse.courseNumber}`;
-    const { error } = await supabase.from('reviews').insert({
-      school,
-      course_code: courseCode,
-      department: reviewsCourse.department,
-      course_number: reviewsCourse.courseNumber,
-      user_id: userId,
-      author: 'Anonymous',
-      rating: newReviewRating,
-      difficulty: newReviewDifficulty,
-      workload: newReviewWorkload,
-      content: newReviewContent.trim(),
-      semester: quarterLabel(selectedQuarter),
-    });
-    setSubmittingReview(false);
-    if (!error) {
-      setNewReviewRating(5);
-      setNewReviewDifficulty(3);
-      setNewReviewWorkload(3);
-      setNewReviewContent('');
-      setShowWriteReview(false);
-      await fetchReviews(courseCode);
-    }
-  }
 
   const fetchEnrollment = async (course: CatalogCourse) => {
     if (enrollmentLoadingIds.has(course.id)) return;
@@ -725,20 +608,22 @@ export default function CoursePickerScreen({
                                       {isAdded ? 'Remove' : 'Add'}
                                     </Text>
                                   </TouchableOpacity>
-                                  <TouchableOpacity
-                                    onPress={(e) => {
-                                      e.stopPropagation();
-                                      setReviewsCourse(item);
-                                    }}
-                                    style={{
-                                      paddingHorizontal: 10, paddingVertical: 5,
-                                      borderRadius: 999, backgroundColor: '#4169E1',
-                                      alignSelf: 'flex-end',
-                                    }}
-                                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                                  >
-                                    <Text style={{ fontSize: 11, color: 'white', fontWeight: '600' }}>Reviews</Text>
-                                  </TouchableOpacity>
+                                  {['Lec', 'Lab', 'Sem'].some(t => course.sectionLabel?.startsWith(t)) && (
+                                    <TouchableOpacity
+                                      onPress={(e) => {
+                                        e.stopPropagation();
+                                        setReviewsCourse(item);
+                                      }}
+                                      style={{
+                                        paddingHorizontal: 10, paddingVertical: 5,
+                                        borderRadius: 999, backgroundColor: '#4169E1',
+                                        alignSelf: 'flex-end',
+                                      }}
+                                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                    >
+                                      <Text style={{ fontSize: 11, color: 'white', fontWeight: '600' }}>Reviews</Text>
+                                    </TouchableOpacity>
+                                  )}
                                   {(() => {
                                     const prof = course.professor;
                                     if (!prof || prof === 'STAFF' || prof.trim() === '') return null;
@@ -768,310 +653,24 @@ export default function CoursePickerScreen({
         )}
       </View>
 
-      {/* ── Reviews / Write Review — single Modal to avoid iOS stacking limit ── */}
-      <Modal
-        visible={!!reviewsCourse}
-        transparent
-        animationType="slide"
-        onRequestClose={() => {
-          if (showWriteReview) { setShowWriteReview(false); }
-          else { setReviewsCourse(null); }
-        }}
-      >
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-            <View style={{
-              backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-              maxHeight: '90%', flex: 1,
-            }}>
-
-              {/* ── Reviews list view ── */}
-              {!showWriteReview && (
-                <>
-                  {/* Header */}
-                  <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <View style={{ flex: 1, paddingRight: 12 }}>
-                        <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 4 }}>
-                          {reviewsCourse?.department} {reviewsCourse?.courseNumber}
-                        </Text>
-                        <Text style={{ fontSize: 13, color: '#6b7280' }}>{reviewsCourse?.title}</Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => { setReviewsCourse(null); setShowWriteReview(false); }}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="close" size={22} color="#6b7280" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
-                    {/* ── Grade Distribution ── */}
-                    {reviewsCourse && (() => {
-                      const professors = [...new Set(
-                        (sectionsMap[reviewsCourse.id] ?? [])
-                          .map((s) => s.professor)
-                          .filter((p) => p && !p.includes('STAFF'))
-                      )];
-                      const cacheKey = `${reviewsCourse.department}${reviewsCourse.courseNumber}${reviewsInstructor}`;
-                      const grades = gradesCache[cacheKey];
-                      const allEntries = grades ? [
-                        { label: 'A', count: grades.gradeACount, color: '#22c55e' },
-                        { label: 'B', count: grades.gradeBCount, color: '#4169E1' },
-                        { label: 'C', count: grades.gradeCCount, color: '#f59e0b' },
-                        { label: 'D', count: grades.gradeDCount, color: '#f97316' },
-                        { label: 'F', count: grades.gradeFCount, color: '#ef4444' },
-                        { label: 'P', count: grades.gradePCount, color: '#14b8a6' },
-                        { label: 'NP', count: grades.gradeNPCount, color: '#9ca3af' },
-                      ].filter((e) => e.count > 0) : [];
-                      const total = allEntries.reduce((s, e) => s + e.count, 0);
-                      return (
-                        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-                          <Text style={{ fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 10 }}>Grade Distribution</Text>
-                          {/* Professor selector */}
-                          {professors.length > 0 && (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-                          <View style={{ flexDirection: 'row', gap: 8 }}>
-                            {['', ...professors].map((p) => {
-                              const isSelected = reviewsInstructor === p;
-                              return (
-                                <TouchableOpacity
-                                  key={p || '__all__'}
-                                  onPress={() => setReviewsInstructor(p)}
-                                  style={{
-                                    paddingHorizontal: 12, paddingVertical: 7,
-                                    borderRadius: 999,
-                                    backgroundColor: isSelected ? '#4169E1' : '#f3f4f6',
-                                    borderWidth: 1,
-                                    borderColor: isSelected ? '#4169E1' : '#e5e7eb',
-                                  }}
-                                >
-                                  <Text style={{ fontSize: 12, fontWeight: '600', color: isSelected ? 'white' : '#374151' }}>
-                                    {p === '' ? 'All Professors' : p.split(',')[0]}
-                                  </Text>
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        </ScrollView>
-                          )}
-                          {/* Chart */}
-                          {gradeLoading ? (
-                            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-                              <ActivityIndicator size="small" color="#4169E1" />
-                            </View>
-                          ) : !grades || allEntries.length === 0 ? (
-                            <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', paddingVertical: 12 }}>
-                              No grade data available
-                            </Text>
-                          ) : (
-                            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
-                              <View style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f4ff', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, minWidth: 72 }}>
-                                <Text style={{ fontSize: 26, fontWeight: '800', color: '#4169E1' }}>
-                                  {grades.averageGPA != null ? grades.averageGPA.toFixed(2) : '—'}
-                                </Text>
-                                <Text style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>avg GPA</Text>
-                              </View>
-                              <View style={{ flex: 1, gap: 5 }}>
-                                {allEntries.map((entry) => {
-                                  const pct = total > 0 ? entry.count / total : 0;
-                                  return (
-                                    <View key={entry.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#374151', width: 18, textAlign: 'right' }}>{entry.label}</Text>
-                                      <View style={{ flex: 1, height: 10, backgroundColor: '#f3f4f6', borderRadius: 5, overflow: 'hidden' }}>
-                                        <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: entry.color, borderRadius: 5 }} />
-                                      </View>
-                                      <Text style={{ fontSize: 11, color: '#6b7280', width: 34, textAlign: 'right' }}>{(pct * 100).toFixed(0)}%</Text>
-                                    </View>
-                                  );
-                                })}
-                                <Text style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>
-                                  Based on {total.toLocaleString()} students · all available terms
-                                </Text>
-                              </View>
-                            </View>
-                          )}
-                        </View>
-                      );
-                    })()}
-
-                    {/* ── Student reviews ── */}
-                    <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
-                      {reviewsListLoading ? (
-                        <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-                          <ActivityIndicator size="small" color="#4169E1" />
-                        </View>
-                      ) : reviews.length === 0 ? (
-                        <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', paddingVertical: 20 }}>
-                          No reviews yet. Be the first to write one!
-                        </Text>
-                      ) : (
-                        <>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                            {(() => {
-                              const avg = reviews.reduce((s, r) => s + r.rating, 0) / reviews.length;
-                              return (
-                                <>
-                                  <View style={{ flexDirection: 'row', gap: 2 }}>
-                                    {[1,2,3,4,5].map(i => (
-                                      <Ionicons key={i} name={i <= Math.round(avg) ? 'star' : 'star-outline'} size={16} color="#f59e0b" />
-                                    ))}
-                                  </View>
-                                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>{avg.toFixed(1)}</Text>
-                                  <Text style={{ fontSize: 13, color: '#9ca3af' }}>{reviews.length} {reviews.length === 1 ? 'review' : 'reviews'}</Text>
-                                </>
-                              );
-                            })()}
-                          </View>
-                          {reviews.map((review) => (
-                            <View key={review.id} style={{ backgroundColor: '#f9fafb', borderRadius: 14, padding: 14, marginBottom: 10 }}>
-                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                                <View>
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                                    <Text style={{ fontWeight: '700', fontSize: 14, color: '#111827' }}>{review.author}</Text>
-                                    <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.semester}</Text>
-                                  </View>
-                                  <View style={{ flexDirection: 'row', gap: 2 }}>
-                                    {[1,2,3,4,5].map(i => (
-                                      <Ionicons key={i} name={i <= review.rating ? 'star' : 'star-outline'} size={13} color={i <= review.rating ? '#f59e0b' : '#d1d5db'} />
-                                    ))}
-                                  </View>
-                                </View>
-                                <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.date}</Text>
-                              </View>
-                              <Text style={{ fontSize: 13, color: '#374151', lineHeight: 19, marginBottom: 8 }}>{review.content}</Text>
-                              <View style={{ flexDirection: 'row', gap: 16 }}>
-                                <Text style={{ fontSize: 12, color: '#9ca3af' }}>Difficulty: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.difficulty}/5</Text></Text>
-                                <Text style={{ fontSize: 12, color: '#9ca3af' }}>Workload: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.workload}/5</Text></Text>
-                              </View>
-                            </View>
-                          ))}
-                        </>
-                      )}
-                    </View>
-                  </ScrollView>
-
-                  {/* Footer */}
-                  <View style={{ paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
-                    <TouchableOpacity
-                      onPress={() => setShowWriteReview(true)}
-                      style={{ backgroundColor: '#4169E1', borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}
-                    >
-                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Write a Review</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
-
-              {/* ── Write review view ── */}
-              {showWriteReview && (
-                <>
-                  {/* Header */}
-                  <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <TouchableOpacity onPress={() => setShowWriteReview(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Ionicons name="chevron-back" size={22} color="#6b7280" />
-                      </TouchableOpacity>
-                      <View>
-                        <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Write a Review</Text>
-                        <Text style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>
-                          {reviewsCourse?.department} {reviewsCourse?.courseNumber}
-                        </Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => { setReviewsCourse(null); setShowWriteReview(false); }}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons name="close" size={22} color="#6b7280" />
-                    </TouchableOpacity>
-                  </View>
-
-                  <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 20 }} keyboardShouldPersistTaps="handled">
-                    {/* Overall Rating */}
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 10 }}>Overall Rating</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-                      {[1,2,3,4,5].map(r => (
-                        <TouchableOpacity key={r} onPress={() => setNewReviewRating(r)}>
-                          <Ionicons name={r <= newReviewRating ? 'star' : 'star-outline'} size={36} color={r <= newReviewRating ? '#f59e0b' : '#d1d5db'} />
-                        </TouchableOpacity>
-                      ))}
-                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#374151', marginLeft: 4 }}>{newReviewRating}/5</Text>
-                    </View>
-
-                    {/* Difficulty */}
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 10 }}>
-                      Difficulty (1 = Easy, 5 = Hard)
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
-                      {[1,2,3,4,5].map(l => (
-                        <TouchableOpacity
-                          key={l}
-                          onPress={() => setNewReviewDifficulty(l)}
-                          style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: newReviewDifficulty === l ? '#4169E1' : '#f3f4f6' }}
-                        >
-                          <Text style={{ fontWeight: '700', color: newReviewDifficulty === l ? 'white' : '#374151' }}>{l}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                    {/* Workload */}
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 10 }}>
-                      Workload (1 = Light, 5 = Heavy)
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
-                      {[1,2,3,4,5].map(l => (
-                        <TouchableOpacity
-                          key={l}
-                          onPress={() => setNewReviewWorkload(l)}
-                          style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: newReviewWorkload === l ? '#4169E1' : '#f3f4f6' }}
-                        >
-                          <Text style={{ fontWeight: '700', color: newReviewWorkload === l ? 'white' : '#374151' }}>{l}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                    {/* Review text */}
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 10 }}>Your Review</Text>
-                    <TextInput
-                      value={newReviewContent}
-                      onChangeText={setNewReviewContent}
-                      placeholder="Share your experience with this course..."
-                      placeholderTextColor="#9ca3af"
-                      multiline
-                      textAlignVertical="top"
-                      style={{
-                        backgroundColor: '#f9fafb', borderRadius: 14,
-                        borderWidth: 1, borderColor: '#e5e7eb',
-                        paddingHorizontal: 14, paddingVertical: 12,
-                        fontSize: 14, color: '#111827', minHeight: 120,
-                        marginBottom: 20,
-                      }}
-                    />
-
-                    {/* Submit */}
-                    <TouchableOpacity
-                      onPress={handleSubmitReview}
-                      disabled={!newReviewContent.trim() || submittingReview}
-                      style={{
-                        backgroundColor: newReviewContent.trim() ? '#4169E1' : '#d1d5db',
-                        borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 8,
-                      }}
-                    >
-                      {submittingReview
-                        ? <ActivityIndicator size="small" color="white" />
-                        : <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Submit Review</Text>
-                      }
-                    </TouchableOpacity>
-                  </ScrollView>
-                </>
-              )}
-
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      {reviewsCourse && (
+        <ReviewsModal
+          visible={!!reviewsCourse}
+          onClose={() => setReviewsCourse(null)}
+          courseCode={`${reviewsCourse.department} ${reviewsCourse.courseNumber}`}
+          department={reviewsCourse.department}
+          courseNumber={reviewsCourse.courseNumber}
+          title={reviewsCourse.title}
+          professors={[...new Set(
+            (sectionsMap[reviewsCourse.id] ?? [])
+              .map((s) => s.professor)
+              .filter((p): p is string => !!p && !p.includes('STAFF'))
+          )]}
+          school={school}
+          userId={userId}
+          semesterLabel={quarterLabel(selectedQuarter)}
+        />
+      )}
     </View>
   );
 }

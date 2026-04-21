@@ -8,6 +8,7 @@ import Svg, { Path, Circle, Line, Defs, ClipPath, G } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, quarterKey, quarterLabel } from '../data/courses';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../context/ThemeContext';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -79,6 +80,7 @@ function buildMonotonePath(pts: { x: number; y: number }[]): string {
 }
 
 function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
+  const { colors } = useTheme();
   const screenWidth = Dimensions.get('window').width;
   const chartWidth  = screenWidth - 64 - 36;
   const chartHeight = 140;
@@ -116,7 +118,7 @@ function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
   if (history.length === 0) {
     return (
       <View style={{ height: 80, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: '#9ca3af', fontSize: 13 }}>No past quarter data yet</Text>
+        <Text style={{ color: colors.textTertiary, fontSize: 13 }}>No past quarter data yet</Text>
       </View>
     );
   }
@@ -138,7 +140,7 @@ function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
         {/* Y axis */}
         <View style={{ width: 36, height: chartHeight, justifyContent: 'space-between' }}>
           {yLabels.map(l => (
-            <Text key={l} style={{ fontSize: 10, color: '#9ca3af', marginTop: -4 }}>{l}</Text>
+            <Text key={l} style={{ fontSize: 10, color: colors.textTertiary, marginTop: -4 }}>{l}</Text>
           ))}
         </View>
 
@@ -154,14 +156,14 @@ function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
           {/* Grid lines */}
           {yLabels.map(l => {
             const y = vPad + (1 - (l - minY) / (maxY - minY)) * (chartHeight - vPad * 2);
-            return <Line key={l} x1={0} y1={y} x2={chartWidth} y2={y} stroke="#f3f4f6" strokeWidth={1} />;
+            return <Line key={l} x1={0} y1={y} x2={chartWidth} y2={y} stroke={colors.borderSubtle} strokeWidth={1} />;
           })}
 
           {/* Animated line + dots */}
           <G clipPath="url(#revealClip)">
             <Path d={pathD} fill="none" stroke="#4169E1" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
             {pts.map(p => (
-              <Circle key={p.label} cx={p.x} cy={p.y} r={5} fill="#4169E1" stroke="white" strokeWidth={2} />
+              <Circle key={p.label} cx={p.x} cy={p.y} r={5} fill="#4169E1" stroke={colors.card} strokeWidth={2} />
             ))}
           </G>
         </Svg>
@@ -176,7 +178,7 @@ function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
             width: 44,
             alignItems: 'center',
           }}>
-            <Text style={{ fontSize: 10, color: '#9ca3af' }}>{p.label}</Text>
+            <Text style={{ fontSize: 10, color: colors.textTertiary }}>{p.label}</Text>
           </View>
         ))}
       </View>
@@ -188,24 +190,25 @@ function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
 // ── grade badge ───────────────────────────────────────────────────────────────
 
 function GradeBadge({ grade, onPress }: { grade?: string; onPress: () => void }) {
+  const { colors } = useTheme();
   if (grade) {
     return (
       <TouchableOpacity onPress={onPress} style={{
         minWidth: 44, height: 36, borderRadius: 10,
-        backgroundColor: '#f3f4f6', alignItems: 'center',
+        backgroundColor: colors.inputBg, alignItems: 'center',
         justifyContent: 'center', paddingHorizontal: 10,
       }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: '#374151' }}>{grade}</Text>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textSecondary }}>{grade}</Text>
       </TouchableOpacity>
     );
   }
   return (
     <TouchableOpacity onPress={onPress} style={{
       height: 36, borderRadius: 10, borderWidth: 1.5,
-      borderColor: '#e5e7eb', paddingHorizontal: 12,
+      borderColor: colors.border, paddingHorizontal: 12,
       alignItems: 'center', justifyContent: 'center',
     }}>
-      <Text style={{ fontSize: 13, color: '#9ca3af', fontWeight: '500' }}>Select Grade</Text>
+      <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '500' }}>Select Grade</Text>
     </TouchableOpacity>
   );
 }
@@ -222,6 +225,7 @@ function GradePickerModal({
   onSetUnits: (u: number) => void;
   onClose: () => void;
 }) {
+  const { colors } = useTheme();
   const [showUnitsPicker, setShowUnitsPicker] = useState(false);
 
   useEffect(() => { if (!visible) setShowUnitsPicker(false); }, [visible]);
@@ -232,10 +236,10 @@ function GradePickerModal({
         activeOpacity={1} onPress={onClose}>
         <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
           <View style={{
-            backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20,
+            backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
             padding: 20, paddingBottom: 36,
           }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 16 }}>Select Grade</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 16 }}>Select Grade</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
               {GRADE_OPTIONS.map(g => {
                 const selected = current === g;
@@ -246,11 +250,11 @@ function GradePickerModal({
                     onPress={() => { onSelect(g); onClose(); }}
                     style={{
                       width: isWide ? 76 : 58, height: 44, borderRadius: 12,
-                      backgroundColor: selected ? '#4169E1' : '#f3f4f6',
+                      backgroundColor: selected ? colors.brand : colors.inputBg,
                       alignItems: 'center', justifyContent: 'center',
                     }}
                   >
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: selected ? 'white' : '#374151' }}>{g}</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: selected ? 'white' : colors.textSecondary }}>{g}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -258,19 +262,19 @@ function GradePickerModal({
                 onPress={() => setShowUnitsPicker(v => !v)}
                 style={{
                   height: 44, borderRadius: 12, paddingHorizontal: 14,
-                  backgroundColor: showUnitsPicker ? '#4169E1' : '#f3f4f6',
+                  backgroundColor: showUnitsPicker ? colors.brand : colors.inputBg,
                   alignItems: 'center', justifyContent: 'center',
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: '700', color: showUnitsPicker ? 'white' : '#374151' }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: showUnitsPicker ? 'white' : colors.textSecondary }}>
                   Edit Units
                 </Text>
               </TouchableOpacity>
             </View>
 
             {showUnitsPicker && (
-              <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#6b7280', marginBottom: 12 }}>
+              <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: colors.borderSubtle, paddingTop: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginBottom: 12 }}>
                   Units (current: {currentUnits})
                 </Text>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -280,11 +284,11 @@ function GradePickerModal({
                       onPress={() => { onSetUnits(u); setShowUnitsPicker(false); }}
                       style={{
                         width: 52, height: 44, borderRadius: 12,
-                        backgroundColor: currentUnits === u ? '#4169E1' : '#f3f4f6',
+                        backgroundColor: currentUnits === u ? colors.brand : colors.inputBg,
                         alignItems: 'center', justifyContent: 'center',
                       }}
                     >
-                      <Text style={{ fontSize: 16, fontWeight: '700', color: currentUnits === u ? 'white' : '#374151' }}>
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: currentUnits === u ? 'white' : colors.textSecondary }}>
                         {u}
                       </Text>
                     </TouchableOpacity>
@@ -312,6 +316,7 @@ function PastQuarterSection({
   onEditGrade: (key: string) => void;
   defaultExpanded?: boolean;
 }) {
+  const { colors } = useTheme();
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
 
   const toggle = () => {
@@ -321,7 +326,7 @@ function PastQuarterSection({
 
   return (
     <View style={{
-      backgroundColor: 'white', borderRadius: 16, marginBottom: 12, overflow: 'hidden',
+      backgroundColor: colors.card, borderRadius: 16, marginBottom: 12, overflow: 'hidden',
       shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
     }}>
       <TouchableOpacity onPress={toggle} style={{
@@ -329,23 +334,23 @@ function PastQuarterSection({
         padding: 16,
       }}>
         <View>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>{label}</Text>
-          <Text style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>{courses.length} course{courses.length !== 1 ? 's' : ''}</Text>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>{label}</Text>
+          <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{courses.length} course{courses.length !== 1 ? 's' : ''}</Text>
         </View>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color="#9ca3af" />
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textTertiary} />
       </TouchableOpacity>
 
       {expanded && (
         <View style={{ paddingHorizontal: 12, paddingBottom: 12, gap: 8 }}>
           {courses.map(c => (
             <View key={c.id} style={{
-              backgroundColor: 'white', borderRadius: 12, padding: 14,
+              backgroundColor: colors.card, borderRadius: 12, padding: 14,
               flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-              borderWidth: 1, borderColor: '#f3f4f6',
+              borderWidth: 1, borderColor: colors.borderSubtle,
             }}>
               <View style={{ flex: 1, marginRight: 12 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827' }}>{c.title || c.code}</Text>
-                <Text style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>{unitOverrides[`${qk}|${c.id}`] ?? c.units ?? 0} credits</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{c.title || c.code}</Text>
+                <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{unitOverrides[`${qk}|${c.id}`] ?? c.units ?? 0} credits</Text>
               </View>
               <GradeBadge grade={grades[`${qk}|${c.id}`]} onPress={() => onEditGrade(`${qk}|${c.id}`)} />
             </View>
@@ -359,6 +364,7 @@ function PastQuarterSection({
 // ── main screen ───────────────────────────────────────────────────────────────
 
 export default function GradesScreen({ timetables, userId }: Props) {
+  const { colors } = useTheme();
   const currentTimetable = timetables.find(t => t.quarterKey === CURRENT_QK && t.name === 'My Schedule') ?? null;
   const activeCourses = currentTimetable?.courses ?? [];
   const [grades, setGrades] = useState<Record<string, string>>({});
@@ -488,8 +494,8 @@ export default function GradesScreen({ timetables, userId }: Props) {
   }, [grades, activeCourses, pastQuarterItems, unitOverrides]);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: '#f7f8fa' }} contentContainerStyle={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#111827', marginBottom: 20 }}>Grades</Text>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.bgSecondary }} contentContainerStyle={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', color: colors.text, marginBottom: 20 }}>Grades</Text>
 
       {/* Stats row */}
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
@@ -499,65 +505,42 @@ export default function GradesScreen({ timetables, userId }: Props) {
           { label: 'Courses', value: String(courseCount) },
         ].map(stat => (
           <View key={stat.label} style={{
-            flex: 1, backgroundColor: 'white', borderRadius: 16, padding: 14,
+            flex: 1, backgroundColor: colors.card, borderRadius: 16, padding: 14,
             shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
           }}>
-            <Text style={{ fontSize: 12, color: '#9ca3af', fontWeight: '500' }}>{stat.label}</Text>
-            <Text style={{ fontSize: 26, fontWeight: 'bold', color: '#111827', marginTop: 4 }}>{stat.value}</Text>
+            <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '500' }}>{stat.label}</Text>
+            <Text style={{ fontSize: 26, fontWeight: 'bold', color: colors.text, marginTop: 4 }}>{stat.value}</Text>
           </View>
         ))}
       </View>
 
       {/* GPA Trend card */}
       <View style={{
-        backgroundColor: 'white', borderRadius: 16, padding: 16, marginBottom: 24,
+        backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 24,
         shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
       }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 14 }}>GPA Trend</Text>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 14 }}>GPA Trend</Text>
         <GpaChart history={gpaHistory} />
       </View>
 
       {/* Current quarter */}
-      <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 12 }}>
+      <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 12 }}>
         Current Quarter
       </Text>
-
-      {activeCourses.filter(c => (c.units ?? 0) > 0).length === 0 ? (
-        <View style={{
-          backgroundColor: 'white', borderRadius: 16, padding: 20,
-          alignItems: 'center', marginBottom: 24,
-        }}>
-          <Text style={{ color: '#9ca3af', fontSize: 14 }}>No courses added yet</Text>
-        </View>
-      ) : (
-        <View style={{ gap: 10, marginBottom: 24 }}>
-          {activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0).map(course => (
-            <View key={course.id} style={{
-              backgroundColor: 'white', borderRadius: 14, padding: 16,
-              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-              shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
-            }}>
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827' }}>
-                  {course.title || course.code}
-                </Text>
-                <Text style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>
-                  {getUnits(CURRENT_QK, course)} credits
-                </Text>
-              </View>
-              <GradeBadge
-                grade={grades[gk(CURRENT_QK, course.id)]}
-                onPress={() => setPickerCourseId(gk(CURRENT_QK, course.id))}
-              />
-            </View>
-          ))}
-        </View>
-      )}
+      <PastQuarterSection
+        label={quarterLabel(CURRENT_QUARTER)}
+        qk={CURRENT_QK}
+        courses={activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0)}
+        grades={grades}
+        unitOverrides={unitOverrides}
+        onEditGrade={setPickerCourseId}
+        defaultExpanded={true}
+      />
 
       {/* Past quarters */}
       {pastQuarterItems.length > 0 && (
         <>
-          <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827', marginBottom: 12 }}>
+          <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 12 }}>
             Past Quarters
           </Text>
           {pastQuarterItems.map((item, idx) => (

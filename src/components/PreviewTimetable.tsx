@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Dimensions, Pressable } from 'react-native';
 import { Course, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, getBlockColors } from '../data/courses';
+import { useTheme } from '../context/ThemeContext';
 
 type Props = {
   selectedCourses: Course[];
@@ -79,6 +80,7 @@ export default function PreviewTimetable({
   onBackgroundPress,
   settings = DEFAULT_TIMETABLE_SETTINGS,
 }: Props) {
+  const { colors } = useTheme();
   const { theme, showCode, showClassName, showRoomNumber, showInstructor, showTime } = settings;
   const verticalScrollRef = useRef<ScrollView>(null);
   const horizontalScrollRef = useRef<ScrollView>(null);
@@ -170,9 +172,9 @@ export default function PreviewTimetable({
         marginTop: 8,
         borderRadius: 18,
         overflow: 'hidden',
-        backgroundColor: 'white',
+        backgroundColor: colors.card,
         borderWidth: 1,
-        borderColor: '#e5e7eb',
+        borderColor: colors.border,
       }}
     >
       <ScrollView
@@ -194,8 +196,8 @@ export default function PreviewTimetable({
               paddingBottom: 8,
               paddingHorizontal: TIMETABLE_CARD_PADDING,
               borderBottomWidth: 1,
-              borderBottomColor: '#e5e7eb',
-              backgroundColor: 'white',
+              borderBottomColor: colors.border,
+              backgroundColor: colors.card,
             }}
           >
             <View style={{ width: TIME_LABEL_WIDTH }} />
@@ -207,7 +209,7 @@ export default function PreviewTimetable({
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#374151', fontWeight: '600', fontSize: 12 }}>
+                <Text style={{ color: colors.textSecondary, fontWeight: '600', fontSize: 12 }}>
                   {day}
                 </Text>
               </View>
@@ -232,7 +234,7 @@ export default function PreviewTimetable({
                       left: 0,
                     }}
                   >
-                    <Text style={{ color: '#9ca3af', fontSize: 11 }}>
+                    <Text style={{ color: colors.textTertiary, fontSize: 11 }}>
                       {formatHourLabel(hour)}
                     </Text>
                   </View>
@@ -268,7 +270,7 @@ export default function PreviewTimetable({
                       left: 0,
                       right: 0,
                       height: 1,
-                      backgroundColor: '#e5e7eb',
+                      backgroundColor: colors.borderSubtle,
                     }}
                   />
                 ))}
@@ -280,7 +282,7 @@ export default function PreviewTimetable({
                       style={{
                         width: dayColumnWidth,
                         borderRightWidth: index === visibleDays.length - 1 ? 0 : 1,
-                        borderRightColor: '#e5e7eb',
+                        borderRightColor: colors.borderSubtle,
                       }}
                     />
                   ))}
@@ -381,7 +383,7 @@ export default function PreviewTimetable({
                           style={{ color: 'white', fontSize: 10, fontWeight: '700' }}
                           numberOfLines={2}
                         >
-                          {formatCourseLabel(previewCourse.code)}
+                          {previewCourse.code.replace(' ', '\n')}
                         </Text>
                       </View>
                     );

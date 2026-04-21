@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Easing, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Easing, LayoutAnimation, PanResponder, Platform, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, QUARTERS, quarterKey, quarterLabel, getBlockColors } from '../data/courses';
+import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
+import ReviewsModal from '../components/ReviewsModal';
 import { captureRef } from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
@@ -16,18 +18,6 @@ function rmpUrl(professor: string, school: string) {
   return sid ? `${base}&sid=${sid}` : base;
 }
 
-type GradeDistribution = {
-  averageGPA: number | null;
-  gradeACount: number; gradeBCount: number; gradeCCount: number;
-  gradeDCount: number; gradeFCount: number;
-  gradePCount: number; gradeNPCount: number;
-};
-
-type CourseReview = {
-  id: string; author: string; rating: number; date: string;
-  content: string; semester: string; difficulty: number; workload: number;
-};
-
 type Props = {
   activeCourses: Course[];
   selectedQuarter: Quarter;
@@ -37,6 +27,7 @@ type Props = {
   onOpenCoursePicker: () => void;
   onRemoveCourse: (course: Course) => void;
   school: string;
+  userId: string;
   quarterTimetables: Timetable[];
   activeTimetableId: string | null;
   onSelectTimetable: (id: string) => void;
@@ -111,6 +102,7 @@ export default function TimetableScreen({
   onOpenCoursePicker,
   onRemoveCourse,
   school,
+  userId,
   quarterTimetables,
   activeTimetableId,
   onSelectTimetable,
@@ -122,6 +114,7 @@ export default function TimetableScreen({
   settings,
   onSettingsApply,
 }: Props) {
+  const { colors, isDark } = useTheme();
   const [gridWidth, setGridWidth] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -135,14 +128,8 @@ export default function TimetableScreen({
 
   // Course detail sheet
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const [showCourseReviews, setShowCourseReviews] = useState(false);
-  const [showReviewsPanel, setShowReviewsPanel] = useState(false);
-  const reviewsSlideAnim = useRef(new Animated.Value(800)).current;
-  const [reviewsInstructor, setReviewsInstructor] = useState('');
-  const [gradesCache, setGradesCache] = useState<Record<string, GradeDistribution | null>>({});
-  const [gradeLoading, setGradeLoading] = useState(false);
-  const [courseReviews, setCourseReviews] = useState<CourseReview[]>([]);
-  const [courseReviewsLoading, setCourseReviewsLoading] = useState(false);
+  const [reviewsCourse, setReviewsCourse] = useState<Course | null>(null);
+  const skipDetailAnimRef = useRef(false);
 
   // Pending settings (in the modal, before Apply is tapped)
   const [pendingTheme, setPendingTheme] = useState<TimetableTheme>('default');
@@ -356,76 +343,6 @@ export default function TimetableScreen({
     visibleDays,
   ]);
 
-  // Fetch grade distribution when reviews sheet opens
-  useEffect(() => {
-    if (!selectedCourse || !showCourseReviews) return;
-    const department = selectedCourse.department;
-    const courseNumber = selectedCourse.code.slice(department.length).trim();
-    const instructor = reviewsInstructor || undefined;
-    const cacheKey = `${department}${courseNumber}${instructor ?? ''}`;
-    if (cacheKey in gradesCache) return;
-
-    setGradeLoading(true);
-    const params = new URLSearchParams({ department, courseNumber });
-    if (instructor) params.append('instructor', instructor);
-    fetch(`https://anteaterapi.com/v2/rest/grades/aggregate?${params}`)
-      .then((r) => r.json())
-      .then((json) => {
-        const dist: GradeDistribution | null = json?.data?.gradeDistribution ?? null;
-        setGradesCache((prev) => ({ ...prev, [cacheKey]: dist }));
-      })
-      .catch(() => setGradesCache((prev) => ({ ...prev, [cacheKey]: null })))
-      .finally(() => setGradeLoading(false));
-  }, [selectedCourse, showCourseReviews, reviewsInstructor]);
-
-  // Slide reviews panel in/out
-  useEffect(() => {
-    if (showCourseReviews) {
-      setShowReviewsPanel(true);
-      Animated.timing(reviewsSlideAnim, {
-        toValue: 0,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(reviewsSlideAnim, {
-        toValue: screenHeight,
-        duration: 240,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }).start(({ finished }) => { if (finished) setShowReviewsPanel(false); });
-    }
-  }, [showCourseReviews]);
-
-  // Fetch reviews from Supabase when reviews panel opens
-  useEffect(() => {
-    if (!showReviewsPanel || !selectedCourse) return;
-    const courseCode = selectedCourse.code;
-    setCourseReviewsLoading(true);
-    supabase
-      .from('reviews')
-      .select('*')
-      .eq('school', school)
-      .eq('course_code', courseCode)
-      .order('created_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (!error && data) {
-          setCourseReviews(data.map((r: any) => ({
-            id: r.id,
-            author: r.author,
-            rating: r.rating,
-            date: r.created_at.slice(0, 10),
-            content: r.content,
-            semester: r.semester,
-            difficulty: r.difficulty,
-            workload: r.workload,
-          })));
-        }
-        setCourseReviewsLoading(false);
-      });
-  }, [showReviewsPanel, selectedCourse]);
-
   async function openAddQuarterModal() {
     setLoadingAddableQuarters(true);
     setShowAddQuarterModal(true);
@@ -576,7 +493,7 @@ export default function TimetableScreen({
               position: 'absolute',
               top: 96,
               right: 52,
-              backgroundColor: 'white',
+              backgroundColor: colors.card,
               borderRadius: 12,
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 4 },
@@ -609,18 +526,18 @@ export default function TimetableScreen({
                   style={{
                     paddingHorizontal: 16,
                     paddingVertical: 12,
-                    backgroundColor: isActive ? '#eef1fb' : 'white',
+                    backgroundColor: isActive ? colors.brandBg : colors.card,
                     borderTopWidth: index === 0 ? 0 : 1,
-                    borderTopColor: '#f3f4f6',
+                    borderTopColor: colors.borderSubtle,
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                   }}
                 >
-                  <Text style={{ color: isActive ? '#4169E1' : '#374151', fontWeight: isActive ? '700' : '400', fontSize: 14 }}>
+                  <Text style={{ color: isActive ? colors.brand : colors.textSecondary, fontWeight: isActive ? '700' : '400', fontSize: 14 }}>
                     {quarterLabel(q)}
                   </Text>
-                  {isActive && <Ionicons name="checkmark" size={16} color="#4169E1" />}
+                  {isActive && <Ionicons name="checkmark" size={16} color={colors.brand} />}
                 </TouchableOpacity>
               );
             })}
@@ -636,7 +553,7 @@ export default function TimetableScreen({
               position: 'absolute',
               top: 96,
               right: 16,
-              backgroundColor: 'white',
+              backgroundColor: colors.card,
               borderRadius: 14,
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 4 },
@@ -652,24 +569,24 @@ export default function TimetableScreen({
               disabled={timetables.length === 0}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 15, opacity: timetables.length === 0 ? 0.35 : 1 }}
             >
-              <Ionicons name="add" size={19} color="#374151" />
-              <Text style={{ fontSize: 15, color: '#111827', fontWeight: '500' }}>Add Course</Text>
+              <Ionicons name="add" size={19} color={colors.textSecondary} />
+              <Text style={{ fontSize: 15, color: colors.text, fontWeight: '500' }}>Add Course</Text>
             </TouchableOpacity>
-            <View style={{ height: 1, backgroundColor: '#f3f4f6' }} />
+            <View style={{ height: 1, backgroundColor: colors.borderSubtle }} />
             <TouchableOpacity
               onPress={() => { setShowAddMenu(false); onCreateTimetable(); }}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 15 }}
             >
-              <Ionicons name="calendar-outline" size={19} color="#374151" />
-              <Text style={{ fontSize: 15, color: '#111827', fontWeight: '500' }}>Add Timetable</Text>
+              <Ionicons name="calendar-outline" size={19} color={colors.textSecondary} />
+              <Text style={{ fontSize: 15, color: colors.text, fontWeight: '500' }}>Add Timetable</Text>
             </TouchableOpacity>
-            <View style={{ height: 1, backgroundColor: '#f3f4f6' }} />
+            <View style={{ height: 1, backgroundColor: colors.borderSubtle }} />
             <TouchableOpacity
               onPress={() => { setShowAddMenu(false); openAddQuarterModal(); }}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 15 }}
             >
-              <Ionicons name="earth-outline" size={19} color="#374151" />
-              <Text style={{ fontSize: 15, color: '#111827', fontWeight: '500' }}>Add Quarter</Text>
+              <Ionicons name="earth-outline" size={19} color={colors.textSecondary} />
+              <Text style={{ fontSize: 15, color: colors.text, fontWeight: '500' }}>Add Quarter</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -679,20 +596,20 @@ export default function TimetableScreen({
       <Modal transparent animationType="fade" visible={showAddQuarterModal} onRequestClose={() => setShowAddQuarterModal(false)}>
         <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }} activeOpacity={1} onPress={() => setShowAddQuarterModal(false)}>
           <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
-            <View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' }}>
-                <Text style={{ fontSize: 20, fontWeight: '700', color: '#111827' }}>Select Quarter</Text>
+            <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>Select Quarter</Text>
                 <TouchableOpacity onPress={() => setShowAddQuarterModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="close" size={24} color="#374151" />
+                  <Ionicons name="close" size={24} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
               {loadingAddableQuarters ? (
                 <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-                  <Text style={{ color: '#9ca3af', fontSize: 14 }}>Loading quarters…</Text>
+                  <Text style={{ color: colors.textTertiary, fontSize: 14 }}>Loading quarters…</Text>
                 </View>
               ) : addableQuarters.length === 0 ? (
                 <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-                  <Text style={{ color: '#9ca3af', fontSize: 14 }}>No new quarters available</Text>
+                  <Text style={{ color: colors.textTertiary, fontSize: 14 }}>No new quarters available</Text>
                 </View>
               ) : (
                 <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 360 }}>
@@ -703,11 +620,11 @@ export default function TimetableScreen({
                       style={{
                         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                         paddingHorizontal: 24, paddingVertical: 16,
-                        borderTopWidth: index === 0 ? 0 : 1, borderTopColor: '#f3f4f6',
+                        borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.borderSubtle,
                       }}
                     >
-                      <Text style={{ fontSize: 16, color: '#111827' }}>{quarterLabel(q)}</Text>
-                      <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+                      <Text style={{ fontSize: 16, color: colors.text }}>{quarterLabel(q)}</Text>
+                      <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -722,7 +639,7 @@ export default function TimetableScreen({
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <View
             style={{
-              backgroundColor: 'white',
+              backgroundColor: colors.card,
               borderTopLeftRadius: 24,
               borderTopRightRadius: 24,
               maxHeight: screenHeight * 0.92,
@@ -738,19 +655,19 @@ export default function TimetableScreen({
                 paddingTop: 18,
                 paddingBottom: 12,
                 borderBottomWidth: 1,
-                borderBottomColor: '#f0f0f0',
+                borderBottomColor: colors.borderSubtle,
               }}
             >
-              <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827' }}>Timetable Settings</Text>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>Timetable Settings</Text>
               <TouchableOpacity onPress={() => setShowSettings(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={22} color="#374151" />
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
               {/* Timetable Theme */}
               <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#6b7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Timetable Theme
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
@@ -768,8 +685,8 @@ export default function TimetableScreen({
                           paddingHorizontal: 12,
                           borderRadius: 20,
                           borderWidth: 1.5,
-                          borderColor: isSelected ? '#4169E1' : '#e5e7eb',
-                          backgroundColor: isSelected ? '#eef1fb' : 'white',
+                          borderColor: isSelected ? colors.brand : colors.border,
+                          backgroundColor: isSelected ? colors.brandBg : colors.card,
                         }}
                       >
                         <View
@@ -778,14 +695,14 @@ export default function TimetableScreen({
                             height: 14,
                             borderRadius: 7,
                             borderWidth: 2,
-                            borderColor: isSelected ? '#4169E1' : '#9ca3af',
+                            borderColor: isSelected ? colors.brand : colors.textTertiary,
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
                         >
-                          {isSelected && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#4169E1' }} />}
+                          {isSelected && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.brand }} />}
                         </View>
-                        <Text style={{ fontSize: 13, color: isSelected ? '#4169E1' : '#374151', fontWeight: isSelected ? '600' : '400' }}>{t.label}</Text>
+                        <Text style={{ fontSize: 13, color: isSelected ? colors.brand : colors.textSecondary, fontWeight: isSelected ? '600' : '400' }}>{t.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -794,7 +711,7 @@ export default function TimetableScreen({
 
               {/* Display Information */}
               <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#6b7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Display Information
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
@@ -812,8 +729,8 @@ export default function TimetableScreen({
                           paddingHorizontal: 12,
                           borderRadius: 20,
                           borderWidth: 1.5,
-                          borderColor: isChecked ? '#4169E1' : '#e5e7eb',
-                          backgroundColor: isChecked ? '#eef1fb' : 'white',
+                          borderColor: isChecked ? colors.brand : colors.border,
+                          backgroundColor: isChecked ? colors.brandBg : colors.card,
                         }}
                       >
                         <View
@@ -821,16 +738,16 @@ export default function TimetableScreen({
                             width: 14,
                             height: 14,
                             borderRadius: 3,
-                            backgroundColor: isChecked ? '#4169E1' : 'white',
+                            backgroundColor: isChecked ? colors.brand : colors.card,
                             borderWidth: 1.5,
-                            borderColor: isChecked ? '#4169E1' : '#9ca3af',
+                            borderColor: isChecked ? colors.brand : colors.textTertiary,
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
                         >
                           {isChecked && <Ionicons name="checkmark" size={10} color="white" />}
                         </View>
-                        <Text style={{ fontSize: 13, color: isChecked ? '#4169E1' : '#374151', fontWeight: isChecked ? '600' : '400' }}>{opt.label}</Text>
+                        <Text style={{ fontSize: 13, color: isChecked ? colors.brand : colors.textSecondary, fontWeight: isChecked ? '600' : '400' }}>{opt.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -838,14 +755,14 @@ export default function TimetableScreen({
               </View>
 
               {/* Divider */}
-              <View style={{ height: 1, backgroundColor: '#f0f0f0', marginTop: 14, marginHorizontal: 20 }} />
+              <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 14, marginHorizontal: 20 }} />
 
               {/* Apply Settings */}
               <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>
                 <TouchableOpacity
                   onPress={applySettings}
                   style={{
-                    backgroundColor: '#4169E1',
+                    backgroundColor: colors.brand,
                     borderRadius: 12,
                     paddingVertical: 13,
                     alignItems: 'center',
@@ -868,12 +785,12 @@ export default function TimetableScreen({
                     justifyContent: 'center',
                     gap: 6,
                     borderWidth: 1.5,
-                    borderColor: '#d1d5db',
-                    backgroundColor: '#f9fafb',
+                    borderColor: colors.border,
+                    backgroundColor: colors.bgTertiary,
                   }}
                 >
-                  <Ionicons name="download-outline" size={16} color="#374151" />
-                  <Text style={{ color: '#374151', fontSize: 14, fontWeight: '600' }}>Save</Text>
+                  <Ionicons name="download-outline" size={16} color={colors.textSecondary} />
+                  <Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '600' }}>Save</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={shareSchedule}
@@ -886,12 +803,12 @@ export default function TimetableScreen({
                     justifyContent: 'center',
                     gap: 6,
                     borderWidth: 1.5,
-                    borderColor: '#d1d5db',
-                    backgroundColor: '#f9fafb',
+                    borderColor: colors.border,
+                    backgroundColor: colors.bgTertiary,
                   }}
                 >
-                  <Ionicons name="share-outline" size={16} color="#374151" />
-                  <Text style={{ color: '#374151', fontSize: 14, fontWeight: '600' }}>Share</Text>
+                  <Ionicons name="share-outline" size={16} color={colors.textSecondary} />
+                  <Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '600' }}>Share</Text>
                 </TouchableOpacity>
               </View>
 
@@ -904,11 +821,11 @@ export default function TimetableScreen({
                     paddingVertical: 13,
                     alignItems: 'center',
                     borderWidth: 1.5,
-                    borderColor: '#fca5a5',
-                    backgroundColor: '#fff5f5',
+                    borderColor: colors.destructive,
+                    backgroundColor: colors.destructiveBg,
                   }}
                 >
-                  <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '600' }}>
+                  <Text style={{ color: colors.destructive, fontSize: 14, fontWeight: '600' }}>
                     Delete Current Timetable
                   </Text>
                 </TouchableOpacity>
@@ -922,7 +839,7 @@ export default function TimetableScreen({
       <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
         {/* Row 1: Title + Quarter picker + three-dots */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 28, fontWeight: 'bold', color: theme === 'dark' ? '#f1f5f9' : '#111827' }}>
+          <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>
             Timetable
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -932,28 +849,27 @@ export default function TimetableScreen({
                 flexDirection: 'row',
                 alignItems: 'center',
                 borderWidth: 1,
-                borderColor: theme === 'dark' ? '#334155' : '#e5e7eb',
+                borderColor: colors.border,
                 borderRadius: 20,
                 paddingHorizontal: 12,
                 paddingVertical: 7,
-                backgroundColor: theme === 'dark' ? '#1e293b' : 'white',
+                backgroundColor: colors.card,
                 gap: 4,
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: theme === 'dark' ? '#e2e8f0' : '#374151' }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
                 {timetables.length === 0 ? '--' : quarterLabel(selectedQuarter)}
               </Text>
-              <Ionicons name="chevron-down" size={14} color={theme === 'dark' ? '#94a3b8' : '#6b7280'} />
+              <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={openSettings}
               style={{
                 padding: 6,
                 borderRadius: 8,
-                backgroundColor: theme === 'dark' ? '#1e293b' : 'transparent',
               }}
             >
-              <Ionicons name="ellipsis-vertical" size={20} color={theme === 'dark' ? '#94a3b8' : '#374151'} />
+              <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -997,12 +913,12 @@ export default function TimetableScreen({
                       paddingHorizontal: 16,
                       paddingVertical: 7,
                       borderRadius: 20,
-                      backgroundColor: isActive ? '#4169E1' : (theme === 'dark' ? '#1e293b' : 'white'),
+                      backgroundColor: isActive ? colors.brand : colors.card,
                       borderWidth: 1.5,
-                      borderColor: isActive ? '#4169E1' : (theme === 'dark' ? '#334155' : '#d1d5db'),
+                      borderColor: isActive ? colors.brand : colors.border,
                     }}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: isActive ? 'white' : (theme === 'dark' ? '#94a3b8' : '#374151') }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: isActive ? 'white' : colors.textSecondary }}>
                       {t.name}
                     </Text>
                   </TouchableOpacity>
@@ -1011,7 +927,7 @@ export default function TimetableScreen({
             })}
           </ScrollView>
           <TouchableOpacity onPress={() => setShowAddMenu(true)} style={{ paddingVertical: 7, paddingLeft: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#4169E1' }}>+ Add</Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.brand }}>+ Add</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1068,11 +984,8 @@ export default function TimetableScreen({
       <Modal
         visible={!!selectedCourse}
         transparent
-        animationType="slide"
-        onRequestClose={() => {
-          if (showCourseReviews) { setShowCourseReviews(false); }
-          else { setSelectedCourse(null); setReviewsInstructor(''); }
-        }}
+        animationType={skipDetailAnimRef.current ? 'none' : 'slide'}
+        onRequestClose={() => setSelectedCourse(null)}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
 
@@ -1080,235 +993,102 @@ export default function TimetableScreen({
           {selectedCourse && (() => {
             const professor = selectedCourse.professor;
             const hasRmp = !!professor && professor !== 'STAFF' && professor.trim() !== '';
-            const rmpUrl = hasRmp
-              ? rmpUrl(professor, school)
-              : null;
+            const profRmpUrl = hasRmp ? rmpUrl(professor, school) : null;
             return (
-              <View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
-                <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+              <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
+                <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <View style={{ flex: 1, paddingRight: 12 }}>
-                      <Text style={{ fontSize: 19, fontWeight: '800', color: '#111827' }}>{selectedCourse.code}</Text>
-                      <Text style={{ fontSize: 14, color: '#374151', marginTop: 3, fontWeight: '500' }}>{selectedCourse.title}</Text>
+                      <Text style={{ fontSize: 19, fontWeight: '800', color: colors.text }}>{selectedCourse.code}</Text>
+                      <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 3, fontWeight: '500' }}>{selectedCourse.title}</Text>
                       {selectedCourse.sectionLabel && (
-                        <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{selectedCourse.sectionLabel}</Text>
+                        <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{selectedCourse.sectionLabel}</Text>
                       )}
                     </View>
-                    <TouchableOpacity onPress={() => { setSelectedCourse(null); setReviewsInstructor(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Ionicons name="close" size={22} color="#6b7280" />
+                    <TouchableOpacity onPress={() => setSelectedCourse(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close" size={22} color={colors.textTertiary} />
                     </TouchableOpacity>
                   </View>
                 </View>
-                <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+                <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 10, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
                   {professor ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <Ionicons name="person-outline" size={16} color="#6b7280" />
-                      <Text style={{ fontSize: 14, color: '#374151', flex: 1 }}>{professor}</Text>
-                      {rmpUrl && (
+                      <Ionicons name="person-outline" size={16} color={colors.textTertiary} />
+                      <Text style={{ fontSize: 14, color: colors.textSecondary, flex: 1 }}>{professor}</Text>
+                      {profRmpUrl && (
                         <TouchableOpacity
-                          onPress={() => Linking.openURL(rmpUrl)}
-                          style={{ backgroundColor: '#f0f4ff', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: '#c7d4f9' }}
+                          onPress={() => Linking.openURL(profRmpUrl)}
+                          style={{ backgroundColor: colors.brandBg, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: colors.brand }}
                         >
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#4169E1' }}>RMP</Text>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand }}>RMP</Text>
                         </TouchableOpacity>
                       )}
                     </View>
                   ) : null}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Ionicons name="time-outline" size={16} color="#6b7280" />
-                    <Text style={{ fontSize: 14, color: '#374151' }}>{selectedCourse.days} · {selectedCourse.time}</Text>
+                    <Ionicons name="time-outline" size={16} color={colors.textTertiary} />
+                    <Text style={{ fontSize: 14, color: colors.textSecondary }}>{selectedCourse.days} · {selectedCourse.time}</Text>
                   </View>
                   {selectedCourse.location ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <Ionicons name="location-outline" size={16} color="#6b7280" />
-                      <Text style={{ fontSize: 14, color: '#374151' }}>{selectedCourse.location}</Text>
+                      <Ionicons name="location-outline" size={16} color={colors.textTertiary} />
+                      <Text style={{ fontSize: 14, color: colors.textSecondary }}>{selectedCourse.location}</Text>
                     </View>
                   ) : null}
                   {selectedCourse.units != null ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <Ionicons name="school-outline" size={16} color="#6b7280" />
-                      <Text style={{ fontSize: 14, color: '#374151' }}>{selectedCourse.units} {selectedCourse.units === 1 ? 'unit' : 'units'}</Text>
+                      <Ionicons name="school-outline" size={16} color={colors.textTertiary} />
+                      <Text style={{ fontSize: 14, color: colors.textSecondary }}>{selectedCourse.units} {selectedCourse.units === 1 ? 'unit' : 'units'}</Text>
                     </View>
                   ) : null}
                 </View>
                 <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 10 }}>
-                  <TouchableOpacity
-                    onPress={() => { setReviewsInstructor(''); setShowCourseReviews(true); }}
-                    style={{ backgroundColor: '#4169E1', borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-                  >
-                    <Ionicons name="star-outline" size={17} color="white" />
-                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
-                  </TouchableOpacity>
+                  {['Lec', 'Lab', 'Sem'].some(t => selectedCourse.sectionLabel?.startsWith(t)) && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        skipDetailAnimRef.current = true;
+                        setReviewsCourse(selectedCourse);
+                        setSelectedCourse(null);
+                        setTimeout(() => { skipDetailAnimRef.current = false; }, 500);
+                      }}
+                      style={{ backgroundColor: colors.brand, borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                    >
+                      <Ionicons name="star-outline" size={17} color="white" />
+                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={() => { onRemoveCourse(selectedCourse); setSelectedCourse(null); }}
-                    style={{ borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: '#fca5a5', backgroundColor: '#fff5f5' }}
+                    style={{ borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.destructive, backgroundColor: colors.destructiveBg }}
                   >
-                    <Ionicons name="trash-outline" size={17} color="#ef4444" />
-                    <Text style={{ color: '#ef4444', fontWeight: '700', fontSize: 15 }}>Remove Course</Text>
+                    <Ionicons name="trash-outline" size={17} color={colors.destructive} />
+                    <Text style={{ color: colors.destructive, fontWeight: '700', fontSize: 15 }}>Remove Course</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             );
           })()}
 
-          {/* Reviews panel — slides up on top of detail sheet */}
-          {showReviewsPanel && selectedCourse && (() => {
-            const department = selectedCourse.department;
-            const courseNumber = selectedCourse.code.slice(department.length).trim();
-            const cacheKey = `${department}${courseNumber}${reviewsInstructor}`;
-            const grades = gradesCache[cacheKey];
-            const allEntries = grades ? [
-              { label: 'A', count: grades.gradeACount, color: '#22c55e' },
-              { label: 'B', count: grades.gradeBCount, color: '#4169E1' },
-              { label: 'C', count: grades.gradeCCount, color: '#f59e0b' },
-              { label: 'D', count: grades.gradeDCount, color: '#f97316' },
-              { label: 'F', count: grades.gradeFCount, color: '#ef4444' },
-              { label: 'P', count: grades.gradePCount, color: '#14b8a6' },
-              { label: 'NP', count: grades.gradeNPCount, color: '#9ca3af' },
-            ].filter((e) => e.count > 0) : [];
-            const total = allEntries.reduce((s, e) => s + e.count, 0);
-            const professors = selectedCourse.professor && !selectedCourse.professor.includes('STAFF')
-              ? [selectedCourse.professor] : [];
-            return (
-              <Animated.View style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0,
-                height: screenHeight * 0.92,
-                backgroundColor: 'white',
-                borderTopLeftRadius: 24, borderTopRightRadius: 24,
-                transform: [{ translateY: reviewsSlideAnim }],
-              }}>
-                {/* Header */}
-                <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                      <TouchableOpacity onPress={() => setShowCourseReviews(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Ionicons name="chevron-back" size={22} color="#6b7280" />
-                      </TouchableOpacity>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>{selectedCourse.code}</Text>
-                        <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 1 }}>{selectedCourse.title}</Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity onPress={() => { setSelectedCourse(null); setShowCourseReviews(false); setReviewsInstructor(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Ionicons name="close" size={22} color="#6b7280" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
-                  {/* Grade Distribution */}
-                  <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 10 }}>Grade Distribution</Text>
-                    {professors.length > 0 && (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                          {['', ...professors].map((p) => {
-                            const isSel = reviewsInstructor === p;
-                            return (
-                              <TouchableOpacity
-                                key={p || '__all__'}
-                                onPress={() => setReviewsInstructor(p)}
-                                style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: isSel ? '#4169E1' : '#f3f4f6', borderWidth: 1, borderColor: isSel ? '#4169E1' : '#e5e7eb' }}
-                              >
-                                <Text style={{ fontSize: 12, fontWeight: '600', color: isSel ? 'white' : '#374151' }}>
-                                  {p === '' ? 'All Professors' : p.split(',')[0]}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      </ScrollView>
-                    )}
-                    {gradeLoading ? (
-                      <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-                        <ActivityIndicator size="small" color="#4169E1" />
-                      </View>
-                    ) : !grades || allEntries.length === 0 ? (
-                      <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', paddingVertical: 12 }}>No grade data available</Text>
-                    ) : (
-                      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
-                        <View style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f4ff', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, minWidth: 72 }}>
-                          <Text style={{ fontSize: 26, fontWeight: '800', color: '#4169E1' }}>
-                            {grades.averageGPA != null ? grades.averageGPA.toFixed(2) : '—'}
-                          </Text>
-                          <Text style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>avg GPA</Text>
-                        </View>
-                        <View style={{ flex: 1, gap: 5 }}>
-                          {allEntries.map((entry) => {
-                            const pct = total > 0 ? entry.count / total : 0;
-                            return (
-                              <View key={entry.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                <Text style={{ fontSize: 11, fontWeight: '700', color: '#374151', width: 18, textAlign: 'right' }}>{entry.label}</Text>
-                                <View style={{ flex: 1, height: 10, backgroundColor: '#f3f4f6', borderRadius: 5, overflow: 'hidden' }}>
-                                  <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: entry.color, borderRadius: 5 }} />
-                                </View>
-                                <Text style={{ fontSize: 11, color: '#6b7280', width: 34, textAlign: 'right' }}>{(pct * 100).toFixed(0)}%</Text>
-                              </View>
-                            );
-                          })}
-                          <Text style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>Based on {total.toLocaleString()} students · all available terms</Text>
-                        </View>
-                      </View>
-                    )}
-                  </View>
-
-                  {/* Student reviews */}
-                  <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
-                    {courseReviewsLoading ? (
-                      <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-                        <ActivityIndicator size="small" color="#4169E1" />
-                      </View>
-                    ) : courseReviews.length === 0 ? (
-                      <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', paddingVertical: 20 }}>
-                        No reviews yet.
-                      </Text>
-                    ) : (
-                      <>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                          {(() => {
-                            const avg = courseReviews.reduce((s, r) => s + r.rating, 0) / courseReviews.length;
-                            return (
-                              <>
-                                <View style={{ flexDirection: 'row', gap: 2 }}>
-                                  {[1,2,3,4,5].map(i => <Ionicons key={i} name={i <= Math.round(avg) ? 'star' : 'star-outline'} size={16} color="#f59e0b" />)}
-                                </View>
-                                <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>{avg.toFixed(1)}</Text>
-                                <Text style={{ fontSize: 13, color: '#9ca3af' }}>{courseReviews.length} {courseReviews.length === 1 ? 'review' : 'reviews'}</Text>
-                              </>
-                            );
-                          })()}
-                        </View>
-                        {courseReviews.map((review) => (
-                          <View key={review.id} style={{ backgroundColor: '#f9fafb', borderRadius: 14, padding: 14, marginBottom: 10 }}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                              <View>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                                  <Text style={{ fontWeight: '700', fontSize: 14, color: '#111827' }}>{review.author}</Text>
-                                  <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.semester}</Text>
-                                </View>
-                                <View style={{ flexDirection: 'row', gap: 2 }}>
-                                  {[1,2,3,4,5].map(i => <Ionicons key={i} name={i <= review.rating ? 'star' : 'star-outline'} size={13} color={i <= review.rating ? '#f59e0b' : '#d1d5db'} />)}
-                                </View>
-                              </View>
-                              <Text style={{ fontSize: 12, color: '#9ca3af' }}>{review.date}</Text>
-                            </View>
-                            <Text style={{ fontSize: 13, color: '#374151', lineHeight: 19, marginBottom: 8 }}>{review.content}</Text>
-                            <View style={{ flexDirection: 'row', gap: 16 }}>
-                              <Text style={{ fontSize: 12, color: '#9ca3af' }}>Difficulty: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.difficulty}/5</Text></Text>
-                              <Text style={{ fontSize: 12, color: '#9ca3af' }}>Workload: <Text style={{ fontWeight: '700', color: '#6b7280' }}>{review.workload}/5</Text></Text>
-                            </View>
-                          </View>
-                        ))}
-                      </>
-                    )}
-                  </View>
-                </ScrollView>
-              </Animated.View>
-            );
-          })()}
-
         </View>
       </Modal>
+
+      {reviewsCourse && (
+        <ReviewsModal
+          visible={!!reviewsCourse}
+          onClose={() => setReviewsCourse(null)}
+          courseCode={reviewsCourse.code}
+          department={reviewsCourse.department}
+          courseNumber={reviewsCourse.code.slice(reviewsCourse.department.length).trim()}
+          title={reviewsCourse.title}
+          professors={
+            reviewsCourse.professor && !reviewsCourse.professor.includes('STAFF')
+              ? [reviewsCourse.professor] : []
+          }
+          school={school}
+          userId={userId}
+          semesterLabel={quarterLabel(selectedQuarter)}
+        />
+      )}
 
       {/* Grid container */}
       <View

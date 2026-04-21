@@ -3,11 +3,18 @@ import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course } from '../data/courses';
 import SettingsScreen from './SettingsScreen';
+import { useTheme, ThemePreference } from '../context/ThemeContext';
 
 type Props = {
   activeCourses: Course[];
   onGoToTimetable: () => void;
   onGoToGrades: () => void;
+  onLogout?: () => void;
+  userEmail?: string;
+  useCelsius: boolean;
+  onUseCelsiusChange: (v: boolean) => void;
+  themePreference?: ThemePreference;
+  onThemeChange?: (v: ThemePreference) => void;
 };
 
 type SportsEvent = {
@@ -184,11 +191,46 @@ function formatTime(timeRange: string): string {
   return `${fmtH(sh)}${fmtM(sm)} - ${fmtH(eh)}${fmtM(em)} ${period}`;
 }
 
-export default function HomeScreen({ activeCourses }: Props) {
+const WMO_DESCRIPTIONS: Record<number, { label: string; icon: ComponentProps<typeof Ionicons>['name'] }> = {
+  0:  { label: 'Clear Sky',       icon: 'sunny-outline' },
+  1:  { label: 'Mainly Clear',    icon: 'sunny-outline' },
+  2:  { label: 'Partly Cloudy',   icon: 'partly-sunny-outline' },
+  3:  { label: 'Overcast',        icon: 'cloud-outline' },
+  45: { label: 'Foggy',           icon: 'cloud-outline' },
+  48: { label: 'Icy Fog',         icon: 'cloud-outline' },
+  51: { label: 'Light Drizzle',   icon: 'rainy-outline' },
+  53: { label: 'Drizzle',         icon: 'rainy-outline' },
+  55: { label: 'Heavy Drizzle',   icon: 'rainy-outline' },
+  61: { label: 'Light Rain',      icon: 'rainy-outline' },
+  63: { label: 'Rain',            icon: 'rainy-outline' },
+  65: { label: 'Heavy Rain',      icon: 'rainy-outline' },
+  71: { label: 'Light Snow',      icon: 'snow-outline' },
+  73: { label: 'Snow',            icon: 'snow-outline' },
+  75: { label: 'Heavy Snow',      icon: 'snow-outline' },
+  80: { label: 'Rain Showers',    icon: 'rainy-outline' },
+  81: { label: 'Rain Showers',    icon: 'rainy-outline' },
+  82: { label: 'Heavy Showers',   icon: 'thunderstorm-outline' },
+  95: { label: 'Thunderstorm',    icon: 'thunderstorm-outline' },
+  96: { label: 'Thunderstorm',    icon: 'thunderstorm-outline' },
+  99: { label: 'Thunderstorm',    icon: 'thunderstorm-outline' },
+};
+
+export default function HomeScreen({ activeCourses, onLogout, userEmail, useCelsius, onUseCelsiusChange, themePreference, onThemeChange }: Props) {
+  const { colors } = useTheme();
   const [showSettings, setShowSettings] = useState(false);
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
-  const [useCelsius, setUseCelsius] = useState(true);
-  const [showTempPicker, setShowTempPicker] = useState(false);
+  const [tempC, setTempC] = useState<number | null>(null);
+  const [weatherCode, setWeatherCode] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=33.6405&longitude=-117.8443&current=temperature_2m,weathercode&temperature_unit=celsius')
+      .then(r => r.json())
+      .then(json => {
+        setTempC(json.current?.temperature_2m ?? null);
+        setWeatherCode(json.current?.weathercode ?? null);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch('https://ucirvinesports.com/calendar.ics')
@@ -214,139 +256,117 @@ export default function HomeScreen({ activeCourses }: Props) {
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: '#f7f8fa' }}
+      style={{ flex: 1, backgroundColor: colors.bgSecondary }}
       contentContainerStyle={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 32 }}
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#111827' }}>Home</Text>
+        <Text style={{ fontSize: 32, fontWeight: 'bold', color: colors.text }}>Home</Text>
         <TouchableOpacity
           onPress={() => setShowSettings(true)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <View style={{
             width: 36, height: 36, borderRadius: 18,
-            backgroundColor: '#e8edf9', alignItems: 'center', justifyContent: 'center',
+            backgroundColor: colors.brandBg, alignItems: 'center', justifyContent: 'center',
           }}>
-            <Ionicons name="person-outline" size={18} color="#4169E1" />
+            <Ionicons name="person-outline" size={18} color={colors.brand} />
           </View>
         </TouchableOpacity>
       </View>
-      <Text style={{ fontSize: 14, color: '#9ca3af', marginTop: 0, marginBottom: 20 }}>
+      <Text style={{ fontSize: 14, color: colors.textTertiary, marginTop: 0, marginBottom: 20 }}>
         {getDateLabel()}
       </Text>
 
-      <SettingsScreen visible={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsScreen visible={showSettings} onClose={() => setShowSettings(false)} onLogout={onLogout} userEmail={userEmail} useCelsius={useCelsius} onUseCelsiusChange={onUseCelsiusChange} themePreference={themePreference} onThemeChange={onThemeChange} />
 
       {/* Your Day card */}
       <View style={{
-        backgroundColor: 'white', borderRadius: 20, padding: 20, marginBottom: 16,
+        backgroundColor: colors.card, borderRadius: 20, padding: 20, marginBottom: 16,
         shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
       }}>
-        <Text style={{ fontSize: 13, color: '#9ca3af', fontWeight: '500', marginBottom: 10 }}>Your Day</Text>
+        <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '500', marginBottom: 10 }}>Your Day</Text>
 
         {/* Class count */}
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 16 }}>
-          <Text style={{ fontSize: 52, fontWeight: 'bold', color: '#111827', lineHeight: 56 }}>
+          <Text style={{ fontSize: 52, fontWeight: 'bold', color: colors.text, lineHeight: 56 }}>
             {todayCourses.length}
           </Text>
-          <Text style={{ fontSize: 18, color: '#374151' }}>classes today</Text>
+          <Text style={{ fontSize: 18, color: colors.textSecondary }}>classes today</Text>
         </View>
 
         {/* Divider */}
-        <View style={{ height: 1, backgroundColor: '#f3f4f6', marginBottom: 16 }} />
+        <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginBottom: 16 }} />
 
         {/* Quote */}
-        <Text style={{ fontSize: 14, color: '#374151', fontStyle: 'italic', lineHeight: 20, marginBottom: 6 }}>
+        <Text style={{ fontSize: 14, color: colors.textSecondary, fontStyle: 'italic', lineHeight: 20, marginBottom: 6 }}>
           "{quote.text}"
         </Text>
-        <Text style={{ fontSize: 13, color: '#9ca3af' }}>— {quote.author}</Text>
+        <Text style={{ fontSize: 13, color: colors.textTertiary }}>— {quote.author}</Text>
 
         {/* Divider */}
-        <View style={{ height: 1, backgroundColor: '#f3f4f6', marginTop: 16, marginBottom: 16 }} />
+        <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 16, marginBottom: 16 }} />
 
         {/* Coming Up */}
-        <Text style={{ fontSize: 13, color: '#9ca3af', fontWeight: '500', marginBottom: 12 }}>Coming Up</Text>
+        <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '500', marginBottom: 12 }}>Coming Up</Text>
         {nextClass ? (
           <View style={{ flexDirection: 'row' }}>
             {/* Left accent bar */}
             <View style={{ width: 3, borderRadius: 2, backgroundColor: '#6366f1', marginRight: 12 }} />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4 }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
                 {nextClass.title || nextClass.code}
               </Text>
-              <Text style={{ fontSize: 13, color: '#6b7280', marginBottom: 2 }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 2 }}>
                 {formatTime(nextClass.time)}
               </Text>
               {nextClass.location && (
-                <Text style={{ fontSize: 13, color: '#9ca3af' }}>{nextClass.location}</Text>
+                <Text style={{ fontSize: 13, color: colors.textTertiary }}>{nextClass.location}</Text>
               )}
             </View>
           </View>
         ) : (
-          <Text style={{ fontSize: 14, color: '#9ca3af' }}>No more classes today</Text>
+          <Text style={{ fontSize: 14, color: colors.textTertiary }}>No more classes today</Text>
         )}
       </View>
 
       {/* Weather card */}
       <View style={{
-        backgroundColor: '#e8edf9', borderRadius: 20, padding: 20, marginBottom: 16,
+        backgroundColor: colors.brandBg, borderRadius: 20, padding: 20, marginBottom: 16,
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <TouchableOpacity
-          onPress={() => setShowTempPicker(v => !v)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{ position: 'absolute', top: 16, right: 16, zIndex: 1 }}
-        >
-          <Ionicons name="settings-outline" size={15} color="#4169E1" style={{ opacity: 0.6 }} />
-        </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 13, color: '#4169E1', fontWeight: '600', opacity: 0.7, marginBottom: 8 }}>Weather</Text>
-          {showTempPicker && (
-            <View style={{
-              flexDirection: 'row', gap: 8, marginBottom: 10,
-            }}>
-              {(['°C', '°F'] as const).map(unit => {
-                const isCel = unit === '°C';
-                const active = useCelsius === isCel;
-                return (
-                  <TouchableOpacity
-                    key={unit}
-                    onPress={() => { setUseCelsius(isCel); setShowTempPicker(false); }}
-                    style={{
-                      paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20,
-                      backgroundColor: active ? '#4169E1' : 'rgba(65,105,225,0.12)',
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: active ? 'white' : '#4169E1' }}>{unit}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-          <Text style={{ fontSize: 42, fontWeight: 'bold', color: '#111827', lineHeight: 46 }}>
-            {useCelsius ? '22°' : '72°'}
+          <Text style={{ fontSize: 13, color: colors.brand, fontWeight: '600', opacity: 0.7, marginBottom: 8 }}>Weather</Text>
+          <Text style={{ fontSize: 42, fontWeight: 'bold', color: colors.text, lineHeight: 46 }}>
+            {tempC === null ? '--°' : useCelsius ? `${Math.round(tempC)}°` : `${Math.round(tempC * 9 / 5 + 32)}°`}
           </Text>
-          <Text style={{ fontSize: 15, color: '#4169E1', marginTop: 4, opacity: 0.8 }}>Partly Cloudy</Text>
+          <Text style={{ fontSize: 15, color: colors.brand, marginTop: 4, opacity: 0.8 }}>
+            {weatherCode === null ? 'Loading…' : (WMO_DESCRIPTIONS[weatherCode]?.label ?? 'Clear Sky')}
+          </Text>
         </View>
-        <Ionicons name="cloud-outline" size={56} color="#4169E1" style={{ opacity: 0.4 }} />
+        <Ionicons
+          name={weatherCode === null ? 'cloud-outline' : (WMO_DESCRIPTIONS[weatherCode]?.icon ?? 'sunny-outline')}
+          size={56}
+          color={colors.brand}
+          style={{ opacity: 0.4 }}
+        />
       </View>
 
       {/* Campus Events card */}
       <View style={{
-        backgroundColor: 'white', borderRadius: 20, padding: 20,
+        backgroundColor: colors.card, borderRadius: 20, padding: 20,
         shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <Ionicons name="calendar-outline" size={16} color="#374151" />
-          <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827' }}>Campus Events</Text>
+          <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Campus Events</Text>
         </View>
 
         {sportsEvents.length === 0 ? (
-          <Text style={{ fontSize: 14, color: '#9ca3af' }}>Loading upcoming games…</Text>
+          <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading upcoming games…</Text>
         ) : sportsEvents.map((event, index) => (
           <View key={event.id}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -357,15 +377,15 @@ export default function HomeScreen({ activeCourses }: Props) {
                 <Ionicons name={event.icon} size={20} color={event.color} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 2 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
                   {event.title}
                 </Text>
-                <Text style={{ fontSize: 13, color: '#6b7280' }}>{event.time}</Text>
-                <Text style={{ fontSize: 13, color: '#9ca3af' }}>{event.location}</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary }}>{event.time}</Text>
+                <Text style={{ fontSize: 13, color: colors.textTertiary }}>{event.location}</Text>
               </View>
             </View>
             {index < sportsEvents.length - 1 && (
-              <View style={{ height: 1, backgroundColor: '#f3f4f6', marginVertical: 14 }} />
+              <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginVertical: 14 }} />
             )}
           </View>
         ))}

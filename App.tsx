@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, View, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { ThemeProvider, ThemePreference, useTheme } from './src/context/ThemeContext';
 import HomeScreen from './src/screens/HomeScreen';
 import TimetableScreen from './src/screens/TimetableScreen';
 import GradesScreen from './src/screens/GradesScreen';
@@ -19,8 +20,13 @@ import type { University } from './src/screens/UniversitySelectionScreen';
 
 type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
 
-export default function App() {
+type AppContentProps = { themePreference: ThemePreference; onThemeChange: (v: ThemePreference) => void };
+
+function AppContent({ themePreference, onThemeChange }: AppContentProps) {
+  const { colors, isDark } = useTheme();
   const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [useCelsius, setUseCelsius] = useState(true);
   const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
   const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'board' | 'friends'>('home');
@@ -250,6 +256,13 @@ export default function App() {
     });
   }, [pickerTranslateY, showCoursePicker]);
 
+  const handleLogout = () => {
+    setUserId(null);
+    setTimetables([]);
+    setSelectedTimetableId(null);
+    setAuthScreen('welcome');
+  };
+
   // ── auth screens ─────────────────────────────────────────────────────────────
 
   if (!userId) {
@@ -282,7 +295,7 @@ export default function App() {
       <SignInScreen
         university={selectedUniversity ?? { id: '1', name: 'UC Irvine', domain: '@uci.edu', location: 'Irvine, CA', logo: 'UCI' }}
         onBack={() => setAuthScreen('university')}
-        onSignedIn={(id) => setUserId(id)}
+        onSignedIn={(id, email) => { setUserId(id); setUserEmail(email); }}
         onGoToSignUp={() => setAuthScreen('signup')}
         onGuest={(id) => setUserId(id)}
       />
@@ -299,11 +312,17 @@ export default function App() {
         activeCourses={activeCourses}
         onGoToTimetable={() => setCurrentTab('timetable')}
         onGoToGrades={() => setCurrentTab('grades')}
+        onLogout={handleLogout}
+        userEmail={userEmail}
+        useCelsius={useCelsius}
+        onUseCelsiusChange={setUseCelsius}
+        themePreference={themePreference}
+        onThemeChange={onThemeChange}
       />
     );
   } else if (currentTab === 'timetable') {
     content = (
-      <View style={{ flex: 1, paddingTop: 60, backgroundColor: timetableSettings.theme === 'dark' ? '#0f172a' : '#fff' }}>
+      <View style={{ flex: 1, paddingTop: 60, backgroundColor: colors.bg }}>
         <TimetableScreen
           activeCourses={activeCourses}
           selectedQuarter={selectedQuarter}
@@ -313,6 +332,7 @@ export default function App() {
           onOpenCoursePicker={() => setShowCoursePicker(true)}
           onRemoveCourse={handleToggleCourse}
           school={selectedUniversity?.name ?? 'UC Irvine'}
+          userId={USER_ID}
           timetables={timetables}
           quarterTimetables={quarterTimetables}
           activeTimetableId={activeTimetable?.id ?? null}
@@ -329,10 +349,10 @@ export default function App() {
   } else if (currentTab === 'grades') {
     content = <GradesScreen timetables={timetables} userId={USER_ID} />;
   } else if (currentTab === 'board') {
-    content = <BoardScreen onOpenMessages={handleOpenMessages} />;
+    content = <BoardScreen onOpenMessages={handleOpenMessages} school={selectedUniversity?.name ?? 'UC Irvine'} userId={USER_ID} />;
   } else if (currentTab === 'friends') {
     content = (
-      <View style={{ flex: 1, paddingTop: 60, backgroundColor: '#f7f8fa' }}>
+      <View style={{ flex: 1, paddingTop: 60, backgroundColor: colors.bgSecondary }}>
         <FriendsScreen onOpenMessages={handleOpenMessages} />
       </View>
     );
@@ -353,12 +373,12 @@ export default function App() {
       style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
       onPress={onPress}
     >
-      <Ionicons name={icon} size={22} color={active ? '#4169E1' : '#9ca3af'} />
+      <Ionicons name={icon} size={22} color={active ? colors.brand : colors.textTertiary} />
       <Text
         style={{
           marginTop: 4,
           fontSize: 12,
-          color: active ? '#4169E1' : '#9ca3af',
+          color: active ? colors.brand : colors.textTertiary,
           fontWeight: active ? '600' : '400',
         }}
       >
@@ -369,17 +389,17 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-    <View style={{ flex: 1, backgroundColor: '#f7f8fa' }}>
+    <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
       {content}
 
       <View
         style={{
           flexDirection: 'row',
           borderTopWidth: 1,
-          borderTopColor: '#e5e7eb',
+          borderTopColor: colors.border,
           paddingTop: 10,
           paddingBottom: 14,
-          backgroundColor: 'white',
+          backgroundColor: colors.card,
         }}
       >
         <TabItem label="Home" icon="home-outline" active={currentTab === 'home'} onPress={() => setCurrentTab('home')} />
@@ -425,5 +445,14 @@ export default function App() {
       )}
     </View>
     </SafeAreaProvider>
+  );
+}
+
+export default function App() {
+  const [themePreference, setThemePreference] = useState<ThemePreference>('auto');
+  return (
+    <ThemeProvider preference={themePreference}>
+      <AppContent themePreference={themePreference} onThemeChange={setThemePreference} />
+    </ThemeProvider>
   );
 }

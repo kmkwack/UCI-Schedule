@@ -570,8 +570,8 @@ function NotificationsScreen({
   const [s, setS] = useState<NotificationPreferences>(initialSettings);
   const [permissionStatus, setPermissionStatus] = useState<PushPermissionStatus>(initialPermissionStatus);
   const toggleableKeys: Array<
-    'pushNotifications' | 'emailNotifications' | 'dailyScheduleSummary' | 'classReminders' | 'sportsGameReminders' | 'friendRequests' | 'comments' | 'likes' | 'messages'
-  > = ['pushNotifications', 'emailNotifications', 'dailyScheduleSummary', 'classReminders', 'sportsGameReminders', 'friendRequests', 'comments', 'likes', 'messages'];
+    'pushNotifications' | 'dailyScheduleSummary' | 'classReminders' | 'sportsGameReminders' | 'friendRequests' | 'comments' | 'likes' | 'messages'
+  > = ['pushNotifications', 'dailyScheduleSummary', 'classReminders', 'sportsGameReminders', 'friendRequests', 'comments', 'likes', 'messages'];
 
   useEffect(() => {
     setS(initialSettings);
@@ -589,6 +589,7 @@ function NotificationsScreen({
     undetermined: 'Push permission has not been requested yet.',
     unavailable: 'Push permission is unavailable on this device or simulator.',
   };
+  const appNotificationStatus = s.pushNotifications ? 'On' : 'Off';
   const reminderMinuteOptions = [5, 10, 15, 30, 60];
   const row = (key: (typeof toggleableKeys)[number], label: string, subLabel?: string, last = false) => (
     <View key={key}>
@@ -638,8 +639,24 @@ function NotificationsScreen({
           <Text style={{ fontSize: 13, lineHeight: 20, color: colors.textSecondary }}>
             {permissionCopy[permissionStatus]}
           </Text>
+          <View style={{ marginTop: 10, gap: 4 }}>
+            <Text style={{ fontSize: 12, color: colors.textTertiary }}>
+              Permission: <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>
+                {permissionStatus === 'granted'
+                  ? 'Allowed'
+                  : permissionStatus === 'denied'
+                    ? 'Blocked'
+                    : permissionStatus === 'unavailable'
+                      ? 'Unavailable'
+                      : 'Not requested'}
+              </Text>
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.textTertiary }}>
+              App notifications: <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>{appNotificationStatus}</Text>
+            </Text>
+          </View>
           <Text style={{ fontSize: 12, lineHeight: 18, color: colors.textTertiary, marginTop: 8 }}>
-            When enabled, ClassMate can deliver social alerts on-device and through the backend notification pipeline.
+            When enabled, ClassMate can deliver social alerts on your device and schedule reminder notifications ahead of time.
           </Text>
           {permissionStatus === 'denied' && (
             <TouchableOpacity
@@ -653,8 +670,7 @@ function NotificationsScreen({
           )}
         </View>
         {section('GENERAL', <>
-          {row('pushNotifications', 'Push Notifications', 'Receive notifications on your device')}
-          {row('emailNotifications', 'Email Notifications', 'Receive email updates for social activity', true)}
+          {row('pushNotifications', 'Push Notifications', 'Receive notifications on your device', true)}
         </>)}
         {section('ACADEMIC', <>
           {row('dailyScheduleSummary', "Today's Classes", 'Send a morning summary at 8:00 AM')}

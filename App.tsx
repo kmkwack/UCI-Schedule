@@ -955,14 +955,17 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const registerExpoPushToken = async (): Promise<string | null> => {
     try {
       const projectId = resolveExpoProjectId();
-      const tokenResponse = projectId
-        ? await Notifications.getExpoPushTokenAsync({ projectId })
-        : await Notifications.getExpoPushTokenAsync();
+      if (!projectId) {
+        console.warn('Expo push registration skipped: no EAS projectId configured.');
+        return null;
+      }
+
+      const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
       const token = tokenResponse.data;
       setExpoPushToken(token);
       return token;
     } catch (error) {
-      console.error('Failed to register Expo push token:', error);
+      console.warn('Failed to register Expo push token:', error);
       return null;
     }
   };

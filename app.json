@@ -2,6 +2,7 @@
   "expo": {
     "name": "uci-app",
     "slug": "uci-app",
+    "owner": "parksihyvn",
     "scheme": "com.classmate.app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -31,6 +32,11 @@
     "plugins": [
       "expo-sharing",
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7457ef6e-b024-4412-affe-805b27c53534"
+      }
+    }
   }
 }

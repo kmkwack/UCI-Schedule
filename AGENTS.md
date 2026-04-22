@@ -399,6 +399,12 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64cd (Tighten notification lead-time chips)
 - **`src/screens/SettingsScreen.tsx`** — Reduced the reminder timing chip padding and text size so the `5 / 10 / 15 / 30 / 60 min` options fit cleanly on one line without the `60 min` chip dropping below.
 
+### Session 64ce (Remove email notifications toggle)
+- **`src/screens/SettingsScreen.tsx`** — Removed the visible `Email Notifications` toggle from the notifications screen and updated the helper copy so the UI now only advertises the notification features the app actually intends to support.
+
+### Session 64cf (Gracefully skip push token registration without EAS project id)
+- **`App.tsx`** — Changed Expo push token registration to bail out cleanly when no `projectId` is configured instead of calling `getExpoPushTokenAsync()` without one and throwing a redbox. Registration failures now log as warnings so the app stays usable until EAS push is configured.
+
 ### Session 50 (Read-only friend timetable + email search)
 - **`src/screens/FriendsScreen.tsx`** — Removed the friend timetable `+ Add` action and the course-picker editing path so friend schedules are clearly read-only. Added a read-only notice banner in the friend timetable header.
 - **`src/screens/FriendsScreen.tsx`** — Replaced the add-friend modal fields (`name`, `major`, `year`) with an email search flow. Users are now found by university email, shown as search results, and can be added directly from the result list. Friend list and request rows now also show email addresses.
@@ -850,3 +856,13 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64bz (Clean up remote notification setup docs)
 - **`supabase/sql/remote_notifications.sql`** — Removed the mistaken `user_settings` support-access policies so the file now does only what it is supposed to do: add the remote-notification columns (`expo_push_token`, `last_remote_notification_at`).
 - **`supabase/functions/social-notifier/README.md`** — Corrected the setup instructions to stop telling developers to set `SUPABASE_SERVICE_ROLE_KEY` manually. The README now explains that the service-role key is automatically available inside Supabase Edge Functions and clarifies that the SQL step is just the two `user_settings` columns.
+
+### Session 64cg (Prepare Expo config for real push setup)
+- **`app.json`** — Added Expo `owner` and the `extra.eas.projectId` slot so the app config is ready for a real EAS push project id instead of relying on implicit inference.
+- **`eas.json`** — Added a baseline EAS configuration file so the project is ready for development, preview, and production EAS workflows needed for real push-notification builds.
+
+### Session 64ch (Fix Expo owner for EAS project setup)
+- **`app.json`** — Corrected the Expo `owner` from `parksihyun` to the actual Expo account `parksihyvn` so `eas project:init` can create or link the project under the right account.
+
+### Session 64ci (Clarify push permission vs app toggle)
+- **`src/screens/SettingsScreen.tsx`** — Split the notification status card into two explicit lines: `Permission` for the system-level iOS state and `App notifications` for the in-app toggle state, so `granted + off` no longer looks contradictory.

@@ -21,6 +21,7 @@ export type NotificationPreferences = {
   sportsGameReminderMinutes: number;
   friendRequests: boolean;
   comments: boolean;
+  likes: boolean;
   messages: boolean;
 };
 
@@ -42,6 +43,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   sportsGameReminderMinutes: 30,
   friendRequests: true,
   comments: true,
+  likes: true,
   messages: true,
 };
 

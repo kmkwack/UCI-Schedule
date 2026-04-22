@@ -32,6 +32,43 @@ import { supabase } from './src/lib/supabase';
 import type { University } from './src/screens/UniversitySelectionScreen';
 import type { EditableProfile, NotificationPreferences, PushPermissionStatus, TimetableVisibility, UserSettingsState } from './src/data/userPreferences';
 
+type DirectMessageNotificationRow = {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  created_at: string;
+};
+
+type FriendRequestNotificationRow = {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  status: string;
+  created_at: string;
+};
+
+type CommentNotificationRow = {
+  id: string;
+  post_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+};
+
+type LikeNotificationRow = {
+  post_id: string;
+  user_id: string;
+};
+
+type SocialNotificationSnapshot = {
+  friendRequests: FriendRequestNotificationRow[];
+  messages: DirectMessageNotificationRow[];
+  comments: CommentNotificationRow[];
+  likes: LikeNotificationRow[];
+  postTitlesById: Record<string, string>;
+};
+
 type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
 
 type AppContentProps = { themePreference: ThemePreference; onThemeChange: (v: ThemePreference) => void };
@@ -77,6 +114,11 @@ function parseTimeStart(timeRange: string) {
 function weekdayIndex(day: string) {
   const map: Record<string, number> = { Su: 0, M: 1, T: 2, W: 3, Th: 4, F: 5, Sa: 6 };
   return map[day] ?? -1;
+}
+
+function truncateNotificationText(value: string, maxLength = 64) {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1)}…`;
 }
 
 function buildUpcomingClassReminderDates(courses: Course[], reminderMinutes: number, daysAhead = 14) {
@@ -137,6 +179,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [messagesOpenWith, setMessagesOpenWith] = useState<ChatTarget | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const pickerTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
+  const seenFriendRequestIdsRef = useRef<Set<string>>(new Set());
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
+  const seenCommentIdsRef = useRef<Set<string>>(new Set());
+  const seenLikeKeysRef = useRef<Set<string>>(new Set());
 
   const activeKey = quarterKey(selectedQuarter);
   const quarterTimetables = timetables.filter((t) => t.quarterKey === activeKey);
@@ -238,6 +284,191 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       active = false;
     };
   }, [userEmail, userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const buildLikeKey = (like: LikeNotificationRow) => `${like.post_id}:${like.user_id}`;
+    const notificationEnabled =
+      userSettings.notifications.pushNotifications && userSettings.pushPermissionStatus === 'granted';
+
+    async function presentInAppNotification(title: string, body: string, data: Record<string, string>) {
+      if (!notificationEnabled) return;
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title,
+            body,
+            data,
+            sound: true,
+            ...(Platform.OS === 'android' ? { channelId: 'reminders' } : {}),
+          },
+          trigger: null,
+        });
+      } catch (error) {
+        console.error('Failed to present in-app notification:', error);
+      }
+    }
+
+    async function loadSocialNotificationSnapshot(): Promise<SocialNotificationSnapshot> {
+      const [{ data: friendRequestData, error: friendRequestError }, { data: messageData, error: messageError }, { data: myPosts, error: postsError }] = await Promise.all([
+        supabase
+          .from('friend_requests')
+          .select('id, sender_id, receiver_id, status, created_at')
+          .eq('receiver_id', userId)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('direct_messages')
+          .select('id, sender_id, receiver_id, content, created_at')
+          .eq('receiver_id', userId)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('posts')
+          .select('id, title')
+          .eq('user_id', userId)
+          .eq('school', currentSchool),
+      ]);
+
+      if (friendRequestError) console.error('Failed to load friend request notifications:', friendRequestError);
+      if (messageError) console.error('Failed to load direct message notifications:', messageError);
+      if (postsError) console.error('Failed to load post ids for notifications:', postsError);
+
+      const postRows = (myPosts ?? []) as Array<{ id: string; title: string }>;
+      const postIds = postRows.map((post) => post.id);
+      const postTitlesById = Object.fromEntries(postRows.map((post) => [post.id, post.title]));
+
+      if (postIds.length === 0) {
+        return {
+          friendRequests: (friendRequestData ?? []) as FriendRequestNotificationRow[],
+          messages: (messageData ?? []) as DirectMessageNotificationRow[],
+          comments: [],
+          likes: [],
+          postTitlesById,
+        };
+      }
+
+      const [{ data: commentData, error: commentError }, { data: likeData, error: likeError }] = await Promise.all([
+        supabase
+          .from('post_comments')
+          .select('id, post_id, user_id, content, created_at')
+          .in('post_id', postIds)
+          .neq('user_id', userId)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('post_votes')
+          .select('post_id, user_id')
+          .in('post_id', postIds)
+          .neq('user_id', userId),
+      ]);
+
+      if (commentError) console.error('Failed to load comment notifications:', commentError);
+      if (likeError) console.error('Failed to load like notifications:', likeError);
+
+      return {
+        friendRequests: (friendRequestData ?? []) as FriendRequestNotificationRow[],
+        messages: (messageData ?? []) as DirectMessageNotificationRow[],
+        comments: (commentData ?? []) as CommentNotificationRow[],
+        likes: (likeData ?? []) as LikeNotificationRow[],
+        postTitlesById,
+      };
+    }
+
+    async function bootstrapSocialNotificationState() {
+      const snapshot = await loadSocialNotificationSnapshot();
+      if (cancelled) return;
+
+      seenFriendRequestIdsRef.current = new Set(snapshot.friendRequests.map((request) => request.id));
+      seenMessageIdsRef.current = new Set(snapshot.messages.map((message) => message.id));
+      seenCommentIdsRef.current = new Set(snapshot.comments.map((comment) => comment.id));
+      seenLikeKeysRef.current = new Set(snapshot.likes.map(buildLikeKey));
+    }
+
+    async function pollSocialNotifications() {
+      const snapshot = await loadSocialNotificationSnapshot();
+      if (cancelled) return;
+
+      const previousFriendRequestIds = seenFriendRequestIdsRef.current;
+      const previousMessageIds = seenMessageIdsRef.current;
+      const previousCommentIds = seenCommentIdsRef.current;
+      const previousLikeKeys = seenLikeKeysRef.current;
+
+      if (userSettings.notifications.friendRequests) {
+        for (const request of snapshot.friendRequests) {
+          if (!previousFriendRequestIds.has(request.id)) {
+            await presentInAppNotification(
+              'New friend request',
+              'Someone wants to connect with you on ClassMate.',
+              { type: 'friend-request', requestId: request.id }
+            );
+          }
+        }
+      }
+
+      if (userSettings.notifications.messages) {
+        for (const message of snapshot.messages) {
+          if (!previousMessageIds.has(message.id)) {
+            await presentInAppNotification(
+              'New message',
+              truncateNotificationText(message.content || 'Open Messages to read it.'),
+              { type: 'direct-message', messageId: message.id, senderId: message.sender_id }
+            );
+          }
+        }
+      }
+
+      if (userSettings.notifications.comments) {
+        for (const comment of snapshot.comments) {
+          if (!previousCommentIds.has(comment.id)) {
+            const postTitle = snapshot.postTitlesById[comment.post_id];
+            await presentInAppNotification(
+              'New comment on your post',
+              postTitle
+                ? `Someone commented on "${truncateNotificationText(postTitle, 40)}".`
+                : 'Someone commented on your board post.',
+              { type: 'post-comment', commentId: comment.id, postId: comment.post_id }
+            );
+          }
+        }
+      }
+
+      if (userSettings.notifications.likes) {
+        for (const like of snapshot.likes) {
+          const likeKey = buildLikeKey(like);
+          if (!previousLikeKeys.has(likeKey)) {
+            const postTitle = snapshot.postTitlesById[like.post_id];
+            await presentInAppNotification(
+              'New like on your post',
+              postTitle
+                ? `Someone liked "${truncateNotificationText(postTitle, 40)}".`
+                : 'Someone liked your board post.',
+              { type: 'post-like', postId: like.post_id, actorId: like.user_id }
+            );
+          }
+        }
+      }
+
+      seenFriendRequestIdsRef.current = new Set(snapshot.friendRequests.map((request) => request.id));
+      seenMessageIdsRef.current = new Set(snapshot.messages.map((message) => message.id));
+      seenCommentIdsRef.current = new Set(snapshot.comments.map((comment) => comment.id));
+      seenLikeKeysRef.current = new Set(snapshot.likes.map(buildLikeKey));
+    }
+
+    void bootstrapSocialNotificationState().then(() => {
+      if (cancelled || !notificationEnabled) return;
+      intervalId = setInterval(() => {
+        void pollSocialNotifications();
+      }, 15000);
+    });
+
+    return () => {
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [currentSchool, userId, userSettings.notifications, userSettings.pushPermissionStatus]);
 
   useEffect(() => {
     if (!userId) return;

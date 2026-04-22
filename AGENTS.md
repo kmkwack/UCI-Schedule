@@ -780,3 +780,24 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64bm (Make custom blocks look like normal schedule items)
 - **`src/screens/CoursePickerScreen.tsx`** — Stopped custom blocks from injecting placeholder `Custom` metadata. They now leave `sectionLabel` empty and keep `professor` blank unless the user actually enters one, which removes the extra `Custom` text and prevents the RMP button from appearing for custom schedule blocks.
+
+### Session 64bn (Allow midnight custom blocks and wire up social notifications)
+- **`src/screens/CoursePickerScreen.tsx`** — Updated custom-block time validation so `24:00` is accepted as an end time while normal start times still use standard `00:00–23:59` validation. This fixes long evening blocks like `12:00 → 24:00` without introducing a separate late-night cap.
+- **`src/data/userPreferences.ts`** — Added a `likes` notification preference with a default enabled value so post-like alerts can be configured alongside comments and messages.
+- **`src/screens/SettingsScreen.tsx`** — Added a `Likes` toggle to the Social notifications section so users can enable or disable like alerts from the UI.
+- **`App.tsx`** — Added real in-app notification polling for friend requests, board comments, board likes, and direct messages using the existing Supabase tables plus `expo-notifications`. The app now snapshots existing activity first, then only surfaces new events while it is open, preserving board anonymity with generic notification copy instead of exposing hidden profile names.
+
+### Session 64bo (Route support mail to both Sean inboxes)
+- **`src/screens/SettingsScreen.tsx`** — Updated the Help Center support action so `Contact Support` opens a mail draft addressed to both `heyy.seans@gmail.com` and `hii.seans@gmail.com`. The fallback support text now also shows both addresses together.
+
+### Session 64bp (Add threaded comments, comment likes, and reporting tools to Board)
+- **`src/screens/BoardScreen.tsx`** — Expanded board post interactions to support nested replies, per-comment likes, and report actions for both posts and comments. Comments now load as a tree using `parent_comment_id`, the detail view supports replying inline to any comment, each comment has its own like count and reply action, and both posts/comments can open a report modal with preset reasons plus optional details before submitting to a shared `reports` table.
+
+### Session 64bq (Rename anonymous users to Anteater aliases)
+- **`src/data/anonymousAliases.ts`** — Added a shared helper that turns a hidden user id into a stable `Anteater N` alias.
+- **`src/screens/BoardScreen.tsx`** — Replaced `Anonymous` display names with `Anteater N` aliases for hidden-profile posts and comments, including newly created anonymous content.
+- **`src/screens/MessagesScreen.tsx`** — Replaced anonymous DM partner labels with the same `Anteater N` alias pattern so inbox entries stay consistent with board anonymity.
+- **`src/screens/SettingsScreen.tsx`** — Updated the privacy copy to explain that hidden board identities now show up as an Anteater alias instead of the literal word `Anonymous`.
+
+### Session 64br (Use per-post commenter aliases)
+- **`src/screens/BoardScreen.tsx`** — Changed post-detail identity labels to be scoped per post: the post creator now appears as `Author` inside that post, and commenters/repliers are assigned `Anteater 1`, `Anteater 2`, `Anteater 3`, etc. in the order they first appear on that specific post. The numbering resets independently for each different post.

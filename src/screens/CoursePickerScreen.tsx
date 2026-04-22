@@ -148,9 +148,10 @@ function normalizeCustomTimeInput(value: string) {
   return `${digits.slice(0, 2)}:${digits.slice(2)}`;
 }
 
-function isValidTimeInput(value: string) {
+function isValidTimeInput(value: string, allow24Hour = false) {
   if (!/^\d{2}:\d{2}$/.test(value)) return false;
   const [hours, minutes] = value.split(':').map(Number);
+  if (allow24Hour && hours === 24 && minutes === 0) return true;
   return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
 }
 
@@ -504,8 +505,8 @@ export default function CoursePickerScreen({
       Alert.alert('Missing days', 'Choose at least one day for this class.');
       return;
     }
-    if (!isValidTimeInput(customCourseDraft.startTime) || !isValidTimeInput(customCourseDraft.endTime)) {
-      Alert.alert('Invalid time', 'Use 24-hour time in HH:MM format, like 13:30.');
+    if (!isValidTimeInput(customCourseDraft.startTime) || !isValidTimeInput(customCourseDraft.endTime, true)) {
+      Alert.alert('Invalid time', 'Use 24-hour time in HH:MM format. End time can be 24:00.');
       return;
     }
     if (parseHour(customCourseDraft.endTime) <= parseHour(customCourseDraft.startTime)) {

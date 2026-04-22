@@ -16,6 +16,7 @@ import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import type { ChatTarget, DirectMessageRow } from '../data/messages';
 import { formatMessageTime } from '../data/messages';
+import { anteaterAliasForId } from '../data/anonymousAliases';
 
 type ConversationPreview = {
   partnerId: string;
@@ -66,7 +67,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
     if (uniqueIds.length === 0) return {};
 
     const validIds = uniqueIds.filter(isUuid);
-    const invalidNames = Object.fromEntries(uniqueIds.filter((id) => !isUuid(id)).map((id) => [id, 'Anonymous']));
+    const invalidNames = Object.fromEntries(uniqueIds.filter((id) => !isUuid(id)).map((id) => [id, anteaterAliasForId(id)]));
     if (validIds.length === 0) return invalidNames;
 
     const [{ data: profilesData, error: profilesError }, { data: settingsData, error: settingsError }] = await Promise.all([
@@ -94,8 +95,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
       ...Object.fromEntries(
         validIds.map((id) => {
           const profile = profilesById[id];
-          const fallbackName = profile?.name?.trim() || profile?.email?.split('@')[0] || 'Anonymous';
-          return [id, visibleById[id] ? fallbackName : 'Anonymous'];
+          const fallbackName = profile?.name?.trim() || profile?.email?.split('@')[0] || anteaterAliasForId(id);
+          return [id, visibleById[id] ? fallbackName : anteaterAliasForId(id)];
         })
       ),
     };
@@ -134,7 +135,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
       const sortStamp = new Date(row.created_at).getTime();
 
       if (!existing) {
-        const name = namesById[partnerId] ?? 'Anonymous';
+        const name = namesById[partnerId] ?? anteaterAliasForId(partnerId);
         previewsByPartner.set(partnerId, {
           partnerId,
           name,

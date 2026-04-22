@@ -121,12 +121,13 @@ type Props = {
 
 type Screen = 'main' | 'profile' | 'privacy' | 'notifications' | 'appearance' | 'language' | 'help' | 'about';
 
-const SUPPORT_EMAIL = 'support@classmate.app';
+const SUPPORT_EMAILS = ['heyy.seans@gmail.com', 'hii.seans@gmail.com'];
+const SUPPORT_EMAIL_LABEL = SUPPORT_EMAILS.join(', ');
 
 async function openSupportEmail() {
   const subject = encodeURIComponent('ClassMate Support Request');
   const body = encodeURIComponent('Hi ClassMate team,\n\nI need help with:\n');
-  const url = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+  const url = `mailto:${SUPPORT_EMAILS.join(',')}?subject=${subject}&body=${body}`;
 
   try {
     await Linking.openURL(url);
@@ -479,7 +480,7 @@ function PrivacySecurityScreen({
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 15, fontWeight: '500', color: colors.text }}>Show my profile on board posts</Text>
             <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
-              Off by default. When disabled, your posts and comments appear as Anonymous.
+              Off by default. When disabled, your posts and comments appear as an Anteater alias.
             </Text>
           </View>
           <Switch
@@ -541,8 +542,8 @@ function NotificationsScreen({
   const [s, setS] = useState<NotificationPreferences>(initialSettings);
   const [permissionStatus, setPermissionStatus] = useState<PushPermissionStatus>(initialPermissionStatus);
   const toggleableKeys: Array<
-    'pushNotifications' | 'emailNotifications' | 'classReminders' | 'sportsGameReminders' | 'friendRequests' | 'comments' | 'messages'
-  > = ['pushNotifications', 'emailNotifications', 'classReminders', 'sportsGameReminders', 'friendRequests', 'comments', 'messages'];
+    'pushNotifications' | 'emailNotifications' | 'classReminders' | 'sportsGameReminders' | 'friendRequests' | 'comments' | 'likes' | 'messages'
+  > = ['pushNotifications', 'emailNotifications', 'classReminders', 'sportsGameReminders', 'friendRequests', 'comments', 'likes', 'messages'];
 
   useEffect(() => {
     setS(initialSettings);
@@ -687,6 +688,7 @@ function NotificationsScreen({
         {section('SOCIAL', <>
           {row('friendRequests', 'Friend Requests')}
           {row('comments', 'Comments')}
+          {row('likes', 'Likes')}
           {row('messages', 'Messages', undefined, true)}
         </>)}
       </ScrollView>
@@ -996,7 +998,7 @@ function HelpCenterScreen({ onBack }: { onBack: () => void }) {
                 If Mail does not open on this device or simulator, contact support directly at:
               </Text>
               <Text selectable style={{ fontSize: 14, color: colors.brand, fontWeight: '700' }}>
-                {SUPPORT_EMAIL}
+                {SUPPORT_EMAIL_LABEL}
               </Text>
             </View>
           )}

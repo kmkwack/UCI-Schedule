@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Switch, Alert,
+  Animated, PanResponder, Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
@@ -71,9 +72,11 @@ type Props = {
   userId: string;
   boardAuthorName: string;
   boardProfileVisible: boolean;
+  bottomInset?: number;
+  scrollToTopTrigger?: number;
 };
 
-export default function BoardScreen({ onOpenMessages, school, userId, boardAuthorName, boardProfileVisible }: Props) {
+export default function BoardScreen({ onOpenMessages, school, userId, boardAuthorName, boardProfileVisible, bottomInset = 0, scrollToTopTrigger = 0 }: Props) {
   const { colors } = useTheme();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,6 +94,50 @@ export default function BoardScreen({ onOpenMessages, school, userId, boardAutho
   const [submittingPost, setSubmittingPost] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'recent' | 'popular'>('recent');
+
+  const SCREEN_W = Dimensions.get('window').width;
+  const boardSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
+
+  const swipeBoardPan = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gs) => gs.dx > 6 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+    onPanResponderMove: (_, gs) => {
+      if (gs.dx > 0) boardSlideAnim.setValue(gs.dx);
+    },
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dx > SCREEN_W * 0.35 || gs.vx > 0.6) {
+        closeBoard();
+      } else {
+        Animated.spring(boardSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+      }
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(boardSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+    },
+  })).current;
+
+  function openBoard(board: Board) {
+    boardSlideAnim.setValue(SCREEN_W);
+    setSelectedBoard(board);
+    Animated.spring(boardSlideAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 16,
+    }).start();
+  }
+
+  function closeBoard() {
+    Animated.timing(boardSlideAnim, {
+      toValue: SCREEN_W,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(() => {
+      setSelectedBoard(null);
+      setSearch('');
+      setSort('recent');
+      boardSlideAnim.setValue(SCREEN_W);
+    });
+  }
 
   const postsCacheKey = `board_posts_${school}_${userId}`;
 
@@ -273,186 +320,12 @@ export default function BoardScreen({ onOpenMessages, school, userId, boardAutho
   const postCountForBoard = (board: Board) =>
     board.category === null ? posts.length : posts.filter(p => p.category === board.category).length;
 
-  // ── post detail ──────────────────────────────────────────────────────────
-  if (selectedPost) {
-    const post = posts.find(p => p.id === selectedPost.id) ?? selectedPost;
-    return (
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <TouchableOpacity onPress={() => { setSelectedPost(null); setComments([]); setCommentInput(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="chevron-back" size={26} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Post</Text>
-        </View>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
-          <View style={{ paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{post.author_name}</Text>
-              <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
-              <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
-              <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
-              <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
-            </View>
-            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 10 }}>{post.title}</Text>
-            <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 22, marginBottom: 16 }}>{post.body}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-              <TouchableOpacity onPress={() => toggleLike(post.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name={post.liked ? 'thumbs-up' : 'thumbs-up-outline'} size={18} color={post.liked ? colors.brand : colors.textTertiary} />
-                <Text style={{ fontSize: 14, color: post.liked ? colors.brand : colors.textTertiary, fontWeight: '500' }}>{post.likes}</Text>
-              </TouchableOpacity>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name="chatbubble-outline" size={16} color={colors.textTertiary} />
-                <Text style={{ fontSize: 14, color: colors.textTertiary, fontWeight: '500' }}>{comments.length}</Text>
-              </View>
-              {onOpenMessages && post.user_id !== userId && (
-                <TouchableOpacity onPress={() => onOpenMessages?.({ id: post.user_id, name: post.author_name })} style={{ marginLeft: 'auto', width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="send-outline" size={16} color="white" />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-          <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 14 }}>Comments ({comments.length})</Text>
-            {commentsLoading ? (
-              <ActivityIndicator color={colors.brand} style={{ marginVertical: 16 }} />
-            ) : comments.map(comment => (
-              <View key={comment.id} style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: 'white' }}>{(comment.author_name ?? 'S').charAt(0).toUpperCase()}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{comment.author_name ?? 'Student'}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textTertiary }}>{timeAgo(comment.created_at)}</Text>
-                  </View>
-                  <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 20 }}>{comment.content}</Text>
-                </View>
-              </View>
-            ))}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
-              <TextInput
-                value={commentInput} onChangeText={setCommentInput}
-                placeholder="Add a comment..." placeholderTextColor={colors.placeholder}
-                style={{ flex: 1, backgroundColor: colors.inputBg, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, fontSize: 14, color: colors.text }}
-                onSubmitEditing={handleAddComment} returnKeyType="send"
-              />
-              <TouchableOpacity onPress={handleAddComment} disabled={!commentInput.trim()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: commentInput.trim() ? colors.brand : colors.border, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="send" size={16} color="white" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    );
-  }
+  const boardListScrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (scrollToTopTrigger > 0) boardListScrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [scrollToTopTrigger]);
 
-  // ── board detail (post list) ───────────────────────────────────────────────
-  if (selectedBoard) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.bg }}>
-        {/* Header */}
-        <View style={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <TouchableOpacity onPress={() => { setSelectedBoard(null); setSearch(''); setSort('recent'); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="chevron-back" size={26} color={colors.text} />
-            </TouchableOpacity>
-            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: selectedBoard.iconBg, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name={selectedBoard.icon} size={18} color={selectedBoard.color} />
-            </View>
-            <Text style={{ flex: 1, fontSize: 18, fontWeight: '700', color: colors.text }}>{selectedBoard.name}</Text>
-            <TouchableOpacity
-              onPress={() => openNewPost(selectedBoard.id)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.brand, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}
-            >
-              <Ionicons name="add" size={15} color="white" />
-              <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
-            </TouchableOpacity>
-          </View>
-          {/* Search */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, gap: 8 }}>
-            <Ionicons name="search-outline" size={16} color={colors.placeholder} />
-            <TextInput placeholder="Search posts..." placeholderTextColor={colors.placeholder} value={search} onChangeText={setSearch} style={{ flex: 1, fontSize: 14, color: colors.text }} />
-          </View>
-        </View>
-
-        {/* Sort tabs */}
-        <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
-          {(['recent', 'popular'] as const).map(s => (
-            <TouchableOpacity
-              key={s}
-              onPress={() => setSort(s)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: sort === s ? colors.brand : 'transparent' }}
-            >
-              <Ionicons name={s === 'recent' ? 'time-outline' : 'trending-up-outline'} size={14} color={sort === s ? 'white' : colors.textTertiary} />
-              <Text style={{ fontSize: 13, fontWeight: '600', color: sort === s ? 'white' : colors.textTertiary, textTransform: 'capitalize' }}>{s}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {loading ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <ActivityIndicator color={colors.brand} />
-          </View>
-        ) : filteredPosts.length === 0 ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            <Ionicons name="clipboard-outline" size={40} color={colors.border} />
-            <Text style={{ fontSize: 16, color: colors.textTertiary }}>No posts yet</Text>
-            <Text style={{ fontSize: 14, color: colors.border }}>Be the first to post!</Text>
-          </View>
-        ) : (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
-            {filteredPosts.map((post, index) => (
-              <TouchableOpacity key={post.id} onPress={() => openPost(post)} activeOpacity={0.8}>
-                <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6, flexWrap: 'wrap' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{post.author_name}</Text>
-                    <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
-                    <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
-                    <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
-                    <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
-                  </View>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 5 }}>{post.title}</Text>
-                  <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19, marginBottom: 10 }} numberOfLines={2}>{post.body}</Text>
-                  <View style={{ flexDirection: 'row', gap: 16 }}>
-                    <TouchableOpacity onPress={(e) => { e.stopPropagation?.(); toggleLike(post.id); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <Ionicons name={post.liked ? 'thumbs-up' : 'thumbs-up-outline'} size={15} color={post.liked ? colors.brand : colors.textTertiary} />
-                      <Text style={{ fontSize: 13, color: post.liked ? colors.brand : colors.textTertiary, fontWeight: '500' }}>{post.likes}</Text>
-                    </TouchableOpacity>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <Ionicons name="chatbubble-outline" size={14} color={colors.textTertiary} />
-                      <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '500' }}>{post.commentCount}</Text>
-                    </View>
-                  </View>
-                </View>
-                {index < filteredPosts.length - 1 && <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 16 }} />}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-
-        <NewPostModal
-          visible={showNewPost}
-          onClose={() => setShowNewPost(false)}
-          boards={BOARDS}
-          selectedBoardId={newPostBoardId}
-          onSelectBoard={setNewPostBoardId}
-          showBoardPicker={showBoardPicker}
-          onToggleBoardPicker={() => setShowBoardPicker(v => !v)}
-          title={newPostTitle}
-          onTitleChange={setNewPostTitle}
-          body={newPostBody}
-          onBodyChange={setNewPostBody}
-          preventEdit={preventEdit}
-          onPreventEditChange={setPreventEdit}
-          onSubmit={handleCreatePost}
-          submitting={submittingPost}
-          colors={colors}
-        />
-      </View>
-    );
-  }
-
-  // ── board list (landing) ──────────────────────────────────────────────────
+  // ── board list (always rendered as base) + overlay for board/post detail ──
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -488,7 +361,7 @@ export default function BoardScreen({ onOpenMessages, school, userId, boardAutho
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={boardListScrollRef} contentContainerStyle={{ padding: 16, paddingBottom: bottomInset + 70 }} showsVerticalScrollIndicator={false}>
         {loading ? (
           <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
         ) : (
@@ -496,7 +369,7 @@ export default function BoardScreen({ onOpenMessages, school, userId, boardAutho
             {BOARDS.map(board => (
               <TouchableOpacity
                 key={board.id}
-                onPress={() => setSelectedBoard(board)}
+                onPress={() => openBoard(board)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -568,7 +441,168 @@ export default function BoardScreen({ onOpenMessages, school, userId, boardAutho
         )}
       </ScrollView>
 
-      {/* New Post Modal */}
+      {/* Board detail + post detail overlay — slides in over the list */}
+      {selectedBoard && (
+        <Animated.View
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, transform: [{ translateX: boardSlideAnim }] }}
+          {...swipeBoardPan.panHandlers}
+        >
+          {selectedPost ? (
+            // ── post detail ────────────────────────────────────────────────
+            (() => {
+              const post = posts.find(p => p.id === selectedPost.id) ?? selectedPost;
+              return (
+                <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                  <View style={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <TouchableOpacity onPress={() => { setSelectedPost(null); setComments([]); setCommentInput(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="chevron-back" size={26} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Post</Text>
+                  </View>
+                  <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+                    <View style={{ paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{post.author_name}</Text>
+                        <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                        <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
+                        <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                        <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
+                      </View>
+                      <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 10 }}>{post.title}</Text>
+                      <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 22, marginBottom: 16 }}>{post.body}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                        <TouchableOpacity onPress={() => toggleLike(post.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <Ionicons name={post.liked ? 'thumbs-up' : 'thumbs-up-outline'} size={18} color={post.liked ? colors.brand : colors.textTertiary} />
+                          <Text style={{ fontSize: 14, color: post.liked ? colors.brand : colors.textTertiary, fontWeight: '500' }}>{post.likes}</Text>
+                        </TouchableOpacity>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <Ionicons name="chatbubble-outline" size={16} color={colors.textTertiary} />
+                          <Text style={{ fontSize: 14, color: colors.textTertiary, fontWeight: '500' }}>{comments.length}</Text>
+                        </View>
+                        {onOpenMessages && post.user_id !== userId && (
+                          <TouchableOpacity onPress={() => onOpenMessages?.({ id: post.user_id, name: post.author_name })} style={{ marginLeft: 'auto', width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }}>
+                            <Ionicons name="send-outline" size={16} color="white" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                    <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 14 }}>Comments ({comments.length})</Text>
+                      {commentsLoading ? (
+                        <ActivityIndicator color={colors.brand} style={{ marginVertical: 16 }} />
+                      ) : comments.map(comment => (
+                        <View key={comment.id} style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Text style={{ fontSize: 12, fontWeight: '600', color: 'white' }}>{(comment.author_name ?? 'S').charAt(0).toUpperCase()}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{comment.author_name ?? 'Student'}</Text>
+                              <Text style={{ fontSize: 11, color: colors.textTertiary }}>{timeAgo(comment.created_at)}</Text>
+                            </View>
+                            <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 20 }}>{comment.content}</Text>
+                          </View>
+                        </View>
+                      ))}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+                        <TextInput
+                          value={commentInput} onChangeText={setCommentInput}
+                          placeholder="Add a comment..." placeholderTextColor={colors.placeholder}
+                          style={{ flex: 1, backgroundColor: colors.inputBg, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, fontSize: 14, color: colors.text }}
+                          onSubmitEditing={handleAddComment} returnKeyType="send"
+                        />
+                        <TouchableOpacity onPress={handleAddComment} disabled={!commentInput.trim()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: commentInput.trim() ? colors.brand : colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                          <Ionicons name="send" size={16} color="white" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </ScrollView>
+                </KeyboardAvoidingView>
+              );
+            })()
+          ) : (
+            // ── board detail ───────────────────────────────────────────────
+            <View style={{ flex: 1, backgroundColor: colors.bg }}>
+              <View style={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <TouchableOpacity onPress={closeBoard} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="chevron-back" size={26} color={colors.text} />
+                  </TouchableOpacity>
+                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: selectedBoard.iconBg, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name={selectedBoard.icon} size={18} color={selectedBoard.color} />
+                  </View>
+                  <Text style={{ flex: 1, fontSize: 18, fontWeight: '700', color: colors.text }}>{selectedBoard.name}</Text>
+                  <TouchableOpacity
+                    onPress={() => openNewPost(selectedBoard.id)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.brand, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}
+                  >
+                    <Ionicons name="add" size={15} color="white" />
+                    <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, gap: 8 }}>
+                  <Ionicons name="search-outline" size={16} color={colors.placeholder} />
+                  <TextInput placeholder="Search posts..." placeholderTextColor={colors.placeholder} value={search} onChangeText={setSearch} style={{ flex: 1, fontSize: 14, color: colors.text }} />
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
+                {(['recent', 'popular'] as const).map(s => (
+                  <TouchableOpacity
+                    key={s}
+                    onPress={() => setSort(s)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: sort === s ? colors.brand : 'transparent' }}
+                  >
+                    <Ionicons name={s === 'recent' ? 'time-outline' : 'trending-up-outline'} size={14} color={sort === s ? 'white' : colors.textTertiary} />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: sort === s ? 'white' : colors.textTertiary, textTransform: 'capitalize' }}>{s}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {loading ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator color={colors.brand} />
+                </View>
+              ) : filteredPosts.length === 0 ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Ionicons name="clipboard-outline" size={40} color={colors.border} />
+                  <Text style={{ fontSize: 16, color: colors.textTertiary }}>No posts yet</Text>
+                  <Text style={{ fontSize: 14, color: colors.border }}>Be the first to post!</Text>
+                </View>
+              ) : (
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+                  {filteredPosts.map((post, index) => (
+                    <TouchableOpacity key={post.id} onPress={() => openPost(post)} activeOpacity={0.8}>
+                      <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6, flexWrap: 'wrap' }}>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{post.author_name}</Text>
+                          <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                          <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
+                          <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                          <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
+                        </View>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 5 }}>{post.title}</Text>
+                        <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19, marginBottom: 10 }} numberOfLines={2}>{post.body}</Text>
+                        <View style={{ flexDirection: 'row', gap: 16 }}>
+                          <TouchableOpacity onPress={(e) => { e.stopPropagation?.(); toggleLike(post.id); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <Ionicons name={post.liked ? 'thumbs-up' : 'thumbs-up-outline'} size={15} color={post.liked ? colors.brand : colors.textTertiary} />
+                            <Text style={{ fontSize: 13, color: post.liked ? colors.brand : colors.textTertiary, fontWeight: '500' }}>{post.likes}</Text>
+                          </TouchableOpacity>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <Ionicons name="chatbubble-outline" size={14} color={colors.textTertiary} />
+                            <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '500' }}>{post.commentCount}</Text>
+                          </View>
+                        </View>
+                      </View>
+                      {index < filteredPosts.length - 1 && <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 16 }} />}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          )}
+        </Animated.View>
+      )}
+
+      {/* New Post Modal — single instance at root */}
       <NewPostModal
         visible={showNewPost}
         onClose={() => setShowNewPost(false)}

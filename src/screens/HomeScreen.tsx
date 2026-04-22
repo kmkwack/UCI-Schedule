@@ -1,33 +1,18 @@
-import { useState, useEffect, type ComponentProps } from 'react';
+import { useState, useEffect, useRef, type ComponentProps } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, ScrollView, TouchableOpacity, Animated, Easing, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, pastelForCourse, blockColorKey } from '../data/courses';
 import { formatSportsEventTime, parseSportsCalendar, type SportsEvent } from '../data/sportsEvents';
-import SettingsScreen from './SettingsScreen';
-import { useTheme, ThemePreference } from '../context/ThemeContext';
-import type { EditableProfile, NotificationPreferences, PushPermissionStatus, TimetableVisibility, UserSettingsState } from '../data/userPreferences';
+import { useTheme } from '../context/ThemeContext';
 
 type Props = {
   activeCourses: Course[];
   onGoToTimetable: () => void;
   onGoToGrades: () => void;
-  onLogout?: () => void;
-  userName?: string;
-  userEmail?: string;
-  userProfile: EditableProfile;
-  userSettings: UserSettingsState;
-  useCelsius: boolean;
-  onUseCelsiusChange: (v: boolean) => void;
-  themePreference?: ThemePreference;
-  onThemeChange?: (v: ThemePreference) => void;
-  onSaveProfile: (profile: EditableProfile) => Promise<boolean>;
-  onSaveVisibility: (privacy: { timetableVisibility: TimetableVisibility; boardProfileVisible: boolean }) => Promise<boolean>;
-  onSaveNotifications: (notifications: NotificationPreferences, pushPermissionStatus: PushPermissionStatus) => Promise<boolean>;
-  onRequestPushPermissions: () => Promise<PushPermissionStatus>;
-  savingProfile?: boolean;
-  savingVisibility?: boolean;
-  savingNotifications?: boolean;
+  onOpenSettings: () => void;
+  bottomInset?: number;
+  scrollToTopTrigger?: number;
 };
 
 
@@ -156,26 +141,16 @@ const WMO_DESCRIPTIONS: Record<number, { label: string; icon: ComponentProps<typ
 
 export default function HomeScreen({
   activeCourses,
-  onLogout,
-  userName,
-  userEmail,
-  userProfile,
-  userSettings,
-  useCelsius,
-  onUseCelsiusChange,
-  themePreference,
-  onThemeChange,
-  onSaveProfile,
-  onSaveVisibility,
-  onSaveNotifications,
-  onRequestPushPermissions,
-  savingProfile,
-  savingVisibility,
-  savingNotifications,
+  onGoToTimetable,
+  onGoToGrades,
+  onOpenSettings,
+  bottomInset = 0,
+  scrollToTopTrigger = 0,
 }: Props) {
   const { colors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
-  const [showSettings, setShowSettings] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const [useCelsius, setUseCelsius] = useState(true);
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
   const [tempC, setTempC] = useState<number | null>(null);
   const [weatherCode, setWeatherCode] = useState<number | null>(null);
@@ -289,17 +264,22 @@ export default function HomeScreen({
     return () => animation.stop();
   }, [currentClass, currentStopPulse]);
 
+  useEffect(() => {
+    if (scrollToTopTrigger > 0) scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [scrollToTopTrigger]);
+
   return (
     <ScrollView
+      ref={scrollRef}
       style={{ flex: 1, backgroundColor: colors.bgSecondary }}
-        contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: bottomInset + 70 }}
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
         <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>Home</Text>
         <TouchableOpacity
-          onPress={() => setShowSettings(true)}
+          onPress={onOpenSettings}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <View style={{
@@ -313,27 +293,6 @@ export default function HomeScreen({
       <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 0, marginBottom: 16 }}>
         {getDateLabel()}
       </Text>
-
-      <SettingsScreen
-        visible={showSettings}
-        onClose={() => setShowSettings(false)}
-        onLogout={onLogout}
-        userName={userName}
-        userEmail={userEmail}
-        userProfile={userProfile}
-        userSettings={userSettings}
-        useCelsius={useCelsius}
-        onUseCelsiusChange={onUseCelsiusChange}
-        themePreference={themePreference}
-        onThemeChange={onThemeChange}
-        onSaveProfile={onSaveProfile}
-        onSaveVisibility={onSaveVisibility}
-        onSaveNotifications={onSaveNotifications}
-        onRequestPushPermissions={onRequestPushPermissions}
-        savingProfile={savingProfile}
-        savingVisibility={savingVisibility}
-        savingNotifications={savingNotifications}
-      />
 
       {/* Your Day card */}
       <View style={{

@@ -1,4 +1,5 @@
-import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Keyboard, Animated, PanResponder, Dimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const UCI_MAJORS = [
   'Aerospace Engineering',
@@ -138,10 +139,11 @@ async function openSupportEmail() {
 // ─── Sub-screen: Back header ────────────────────────────────────────────────
 function SubHeader({ title, onBack }: { title: string; onBack: () => void }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: 8,
-      paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16,
+      paddingHorizontal: 20, paddingTop: insets.top + 12, paddingBottom: 16,
       borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, backgroundColor: colors.card,
     }}>
       <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -272,7 +274,7 @@ function EditProfileScreen({
     const show = Keyboard.addListener('keyboardDidShow', () => {
       setKeyboardVisible(true);
       if (dobFocused.current) {
-        requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+        requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 400, animated: true }));
       }
     });
     const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardVisible(false));
@@ -1077,6 +1079,47 @@ export default function SettingsScreen({
 }: Props) {
   const { colors } = useTheme();
   const [screen, setScreen] = useState<Screen>('main');
+  const SCREEN_W = Dimensions.get('window').width;
+  const slideAnim = useRef(new Animated.Value(SCREEN_W)).current;
+
+  const navigateTo = (next: Screen) => {
+    slideAnim.setValue(SCREEN_W);
+    setScreen(next);
+    Animated.spring(slideAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 16,
+    }).start();
+  };
+
+  const goBack = () => {
+    Animated.timing(slideAnim, {
+      toValue: SCREEN_W,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(() => {
+      setScreen('main');
+      slideAnim.setValue(SCREEN_W);
+    });
+  };
+
+  const swipePan = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gs) => gs.dx > 6 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+    onPanResponderMove: (_, gs) => {
+      if (gs.dx > 0) slideAnim.setValue(gs.dx);
+    },
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dx > SCREEN_W * 0.35 || gs.vx > 0.6) {
+        goBack();
+      } else {
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+      }
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+    },
+  })).current;
 
   const initials = userName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 
@@ -1090,7 +1133,7 @@ export default function SettingsScreen({
       case 'profile':
         return (
           <EditProfileScreen
-            onBack={() => setScreen('main')}
+            onBack={goBack}
             userEmail={userEmail}
             initialProfile={userProfile}
             onSave={onSaveProfile}
@@ -1100,7 +1143,7 @@ export default function SettingsScreen({
       case 'privacy':
         return (
           <PrivacySecurityScreen
-            onBack={() => setScreen('main')}
+            onBack={goBack}
             initialVisibility={userSettings.timetableVisibility}
             initialBoardProfileVisible={userSettings.boardProfileVisible}
             onSave={onSaveVisibility}
@@ -1110,7 +1153,7 @@ export default function SettingsScreen({
       case 'notifications':
         return (
           <NotificationsScreen
-            onBack={() => setScreen('main')}
+            onBack={goBack}
             initialSettings={userSettings.notifications}
             initialPermissionStatus={userSettings.pushPermissionStatus}
             onSave={onSaveNotifications}
@@ -1118,101 +1161,98 @@ export default function SettingsScreen({
             saving={savingNotifications}
           />
         );
-      case 'appearance': return <AppearanceScreen onBack={() => setScreen('main')} useCelsius={useCelsius} onUseCelsiusChange={onUseCelsiusChange} themePreference={themePreference} onThemeChange={onThemeChange} />;
-      case 'language': return <LanguageRegionScreen onBack={() => setScreen('main')} />;
-      case 'help': return <HelpCenterScreen onBack={() => setScreen('main')} />;
-      case 'about': return <AboutScreen onBack={() => setScreen('main')} />;
+      case 'appearance': return <AppearanceScreen onBack={goBack} useCelsius={useCelsius} onUseCelsiusChange={onUseCelsiusChange} themePreference={themePreference} onThemeChange={onThemeChange} />;
+      case 'language': return <LanguageRegionScreen onBack={goBack} />;
+      case 'help': return <HelpCenterScreen onBack={goBack} />;
+      case 'about': return <AboutScreen onBack={goBack} />;
       default: return null;
     }
   };
 
+  const insets = useSafeAreaInsets();
+
+  if (!visible) return null;
+
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={handleClose}
-    >
-      {screen !== 'main' ? (
-        renderSubScreen()
-      ) : (
-        <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
-          {/* Header */}
+    <View style={{ flex: 1 }}>
+      {/* Main settings — always rendered as background */}
+      <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          paddingHorizontal: 20, paddingTop: insets.top + 12, paddingBottom: 16,
+          backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
+        }}>
+          <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text }}>Settings</Text>
+          <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close" size={24} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
           <View style={{
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-            paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16,
-            backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
+            backgroundColor: colors.card, paddingHorizontal: 20, paddingVertical: 20,
+            flexDirection: 'row', alignItems: 'center', gap: 16,
+            borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, marginBottom: 24,
           }}>
-            <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text }}>Settings</Text>
-            <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={24} color={colors.textSecondary} />
+            <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 24, fontWeight: '700', color: 'white' }}>{initials}</Text>
+            </View>
+            <View>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>{userName}</Text>
+              <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>{userEmail}</Text>
+              <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>
+                {userProfile.major} · {userProfile.year}
+              </Text>
+            </View>
+          </View>
+
+          <SectionGroup
+            title="ACCOUNT"
+            items={[
+              { label: 'Edit Profile', icon: 'person-outline', onPress: () => navigateTo('profile') },
+              { label: 'Privacy & Security', icon: 'shield-outline', onPress: () => navigateTo('privacy') },
+            ]}
+          />
+          <SectionGroup
+            title="PREFERENCES"
+            items={[
+              { label: 'Notifications', icon: 'notifications-outline', onPress: () => navigateTo('notifications') },
+              { label: 'Appearance', icon: 'color-palette-outline', onPress: () => navigateTo('appearance') },
+              { label: 'Language & Region', icon: 'globe-outline', onPress: () => navigateTo('language') },
+            ]}
+          />
+          <SectionGroup
+            title="SUPPORT"
+            items={[
+              { label: 'Help Center', icon: 'help-circle-outline', onPress: () => navigateTo('help') },
+              { label: 'About ClassMate', icon: 'information-circle-outline', onPress: () => navigateTo('about') },
+            ]}
+          />
+
+          <View style={{ marginHorizontal: 0, paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
+            <TouchableOpacity
+              onPress={onLogout}
+              style={{ backgroundColor: colors.destructiveBg, borderRadius: 14, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+            >
+              <Ionicons name="log-out-outline" size={20} color={colors.destructive} />
+              <Text style={{ color: colors.destructive, fontWeight: '700', fontSize: 15 }}>Log Out</Text>
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-            {/* Profile card */}
-            <View style={{
-              backgroundColor: colors.card, paddingHorizontal: 20, paddingVertical: 20,
-              flexDirection: 'row', alignItems: 'center', gap: 16,
-              borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, marginBottom: 24,
-            }}>
-              <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 24, fontWeight: '700', color: 'white' }}>{initials}</Text>
-              </View>
-              <View>
-                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>{userName}</Text>
-                <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>{userEmail}</Text>
-                <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>
-                  {userProfile.major} · {userProfile.year}
-                </Text>
-              </View>
-            </View>
+          <Text style={{ textAlign: 'center', color: colors.textTertiary, fontSize: 13, marginTop: 16 }}>ClassMate v1.0.0</Text>
+        </ScrollView>
+      </View>
 
-            {/* ACCOUNT */}
-            <SectionGroup
-              title="ACCOUNT"
-              items={[
-                { label: 'Edit Profile', icon: 'person-outline', onPress: () => setScreen('profile') },
-                { label: 'Privacy & Security', icon: 'shield-outline', onPress: () => setScreen('privacy') },
-              ]}
-            />
-
-            {/* PREFERENCES */}
-            <SectionGroup
-              title="PREFERENCES"
-              items={[
-                { label: 'Notifications', icon: 'notifications-outline', onPress: () => setScreen('notifications') },
-                { label: 'Appearance', icon: 'color-palette-outline', onPress: () => setScreen('appearance') },
-                { label: 'Language & Region', icon: 'globe-outline', onPress: () => setScreen('language') },
-              ]}
-            />
-
-            {/* SUPPORT */}
-            <SectionGroup
-              title="SUPPORT"
-              items={[
-                { label: 'Help Center', icon: 'help-circle-outline', onPress: () => setScreen('help') },
-                { label: 'About ClassMate', icon: 'information-circle-outline', onPress: () => setScreen('about') },
-              ]}
-            />
-
-            {/* Log Out */}
-            <View style={{ marginHorizontal: 0, paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
-              <TouchableOpacity
-                onPress={onLogout}
-                style={{ backgroundColor: colors.destructiveBg, borderRadius: 14, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-              >
-                <Ionicons name="log-out-outline" size={20} color={colors.destructive} />
-                <Text style={{ color: colors.destructive, fontWeight: '700', fontSize: 15 }}>Log Out</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Footer */}
-            <Text style={{ textAlign: 'center', color: colors.textTertiary, fontSize: 13, marginTop: 16 }}>ClassMate v1.0.0</Text>
-          </ScrollView>
-        </View>
+      {/* Sub-screen overlay — absolutely positioned, slides in over settings */}
+      {screen !== 'main' && (
+        <Animated.View
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, transform: [{ translateX: slideAnim }] }}
+          {...swipePan.panHandlers}
+        >
+          {renderSubScreen()}
+        </Animated.View>
       )}
-    </Modal>
+    </View>
   );
 }
 

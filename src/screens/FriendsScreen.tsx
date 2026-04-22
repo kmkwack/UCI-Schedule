@@ -1,16 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Alert,
   View,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   Modal,
   TextInput,
   ScrollView,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -151,10 +153,20 @@ type Props = {
   userId: string;
   userEmail?: string;
   school: string;
+  bottomInset?: number;
+  scrollToTopTrigger?: number;
 };
 
-export default function FriendsScreen({ userId, userEmail, school }: Props) {
+export default function FriendsScreen({ userId, userEmail, school, bottomInset = 0, scrollToTopTrigger = 0 }: Props) {
   const { colors } = useTheme();
+  const friendsScrollRef = useRef<ScrollView>(null);
+  const requestsScrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (scrollToTopTrigger > 0) {
+      friendsScrollRef.current?.scrollTo({ y: 0, animated: true });
+      requestsScrollRef.current?.scrollTo({ y: 0, animated: true });
+    }
+  }, [scrollToTopTrigger]);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingFriend[]>([]);
   const [sentRequests, setSentRequests] = useState<PendingFriend[]>([]);
@@ -167,6 +179,8 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [friendQuarter, setFriendQuarter] = useState<Quarter>({ year: '2026', quarter: 'Spring' });
   const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
+  const [friendAvailableQuarters, setFriendAvailableQuarters] = useState<string[]>([]);
+  const [fetchingQuarters, setFetchingQuarters] = useState(false);
   const [gridWidth, setGridWidth] = useState(0);
   const [searchResults, setSearchResults] = useState<Friend[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -416,7 +430,31 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
       );
     }
     refreshFriendTimetables();
-  }, [selectedFriendId, showQuarterDropdown]);
+  }, [selectedFriendId]);
+
+  function parseQuarterKey(key: string): Quarter {
+    const idx = key.indexOf('-');
+    return { year: key.slice(0, idx), quarter: key.slice(idx + 1) };
+  }
+
+  const openQuarterDropdown = async () => {
+    setShowQuarterDropdown(true);
+    if (!selectedFriendId) return;
+    setFetchingQuarters(true);
+    const { data, error } = await supabase
+      .from('timetables')
+      .select('quarter_key')
+      .eq('user_id', selectedFriendId);
+    if (!error && data) {
+      const keys = [...new Set((data as { quarter_key: string }[]).map(r => r.quarter_key))];
+      keys.sort((a, b) => b.localeCompare(a));
+      setFriendAvailableQuarters(keys);
+      if (keys.length > 0 && !keys.includes(quarterKey(friendQuarter))) {
+        setFriendQuarter(parseQuarterKey(keys[0]));
+      }
+    }
+    setFetchingQuarters(false);
+  };
 
   const closeAddModal = () => {
     setEmailQuery('');
@@ -555,8 +593,8 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
   }, [activeCourses]);
 
   const totalHours = displayEnd - displayStart;
-  const [gridBodyHeight, setGridBodyHeight] = useState(0);
-  const timetableHeight = gridBodyHeight > 0 ? gridBodyHeight : 400;
+  const [scrollViewHeight, setScrollViewHeight] = useState(0);
+  const timetableHeight = scrollViewHeight > 0 ? scrollViewHeight - 14 : 400;
   const hourPx = timetableHeight / (totalHours + 1);
   const hourLabels = Array.from({ length: totalHours + 1 }, (_, i) => displayStart + i);
   const usableW =
@@ -584,11 +622,20 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
               shadowOpacity: 0.15, shadowRadius: 12, elevation: 8,
               minWidth: 160, overflow: 'hidden',
             }}>
-              {[...QUARTERS].reverse().filter(q => friend.timetables[quarterKey(q)] !== undefined).map((q, i) => {
-                const active = quarterKey(q) === quarterKey(friendQuarter);
+              {fetchingQuarters ? (
+                <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 14 }}>Loading…</Text>
+                </View>
+              ) : friendAvailableQuarters.length === 0 ? (
+                <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 14 }}>No quarters found</Text>
+                </View>
+              ) : friendAvailableQuarters.map((key, i) => {
+                const q = parseQuarterKey(key);
+                const active = key === quarterKey(friendQuarter);
                 return (
                   <TouchableOpacity
-                    key={quarterKey(q)}
+                    key={key}
                     onPress={() => {
                       setFriendQuarter(q);
                       setShowQuarterDropdown(false);
@@ -612,6 +659,7 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
           </TouchableOpacity>
         </Modal>
 
+        {/* Fixed header */}
         <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -633,7 +681,7 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
               </View>
             </View>
             <TouchableOpacity
-              onPress={() => setShowQuarterDropdown(true)}
+              onPress={openQuarterDropdown}
               style={{
                 flexDirection: 'row', alignItems: 'center',
                 backgroundColor: colors.card, borderRadius: 20,
@@ -647,22 +695,12 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
           </View>
         </View>
 
-        <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
-          <View style={{
-            backgroundColor: colors.brandBg,
-            borderRadius: 14,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-          }}>
-            <Ionicons name="lock-closed-outline" size={16} color={colors.brand} />
-            <Text style={{ color: colors.brand, fontSize: 13, fontWeight: '600', flex: 1 }}>
-              Friend timetables are view-only. You can browse this schedule, but only your friend can edit it.
-            </Text>
-          </View>
-        </View>
+        {/* Scrollable grid + banner */}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          onLayout={(e) => setScrollViewHeight(e.nativeEvent.layout.height)}
+        >
 
         {tbaCourses.length > 0 && (
           <View style={{ paddingHorizontal: 12, marginBottom: 8 }}>
@@ -688,11 +726,10 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
         )}
 
         <View
-          style={{ flex: 1, paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10 }}
+          style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10 }}
           onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD - 24)}
         >
           <View style={{
-            flex: 1,
             backgroundColor: gridFrameBg,
             borderRadius: 22,
             borderWidth: 1,
@@ -728,7 +765,7 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
             </View>
 
             {/* Grid body */}
-            <View style={{ flex: 1 }} onLayout={(e) => setGridBodyHeight(e.nativeEvent.layout.height)}>
+            <View>
               <View style={{ backgroundColor: gridFrameBg, height: timetableHeight }}>
                 <View style={{ flexDirection: 'row', paddingLeft: GRID_LEFT_PAD }}>
                   {/* Time labels */}
@@ -812,11 +849,31 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
             </View>
           </View>
         </View>
+
+        <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+          <View style={{
+            backgroundColor: colors.brandBg,
+            borderRadius: 14,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+          }}>
+            <Ionicons name="lock-closed-outline" size={16} color={colors.brand} />
+            <Text style={{ color: colors.brand, fontSize: 13, fontWeight: '600', flex: 1 }}>
+              Friend timetables are view-only. You can browse this schedule, but only your friend can edit it.
+            </Text>
+          </View>
+        </View>
+
+        </ScrollView>
       </View>
     );
   }
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Modal
         transparent
@@ -1066,7 +1123,7 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
             <Text style={{ fontSize: 13, color: colors.border }}>Tap the icon above to search by email and send a request</Text>
           </View>
         ) : (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
+          <ScrollView ref={friendsScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: bottomInset + 70 }}>
             {filteredFriends.map((f, index) => (
               <View key={f.id}>
                 <View style={{
@@ -1154,7 +1211,7 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
           <Text style={{ fontSize: 16, color: colors.textTertiary, fontWeight: '500' }}>No pending requests</Text>
         </View>
       ) : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
+        <ScrollView ref={requestsScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: bottomInset + 70 }}>
           {pendingRequests.length > 0 && (
             <>
               <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
@@ -1231,5 +1288,6 @@ export default function FriendsScreen({ userId, userEmail, school }: Props) {
         </ScrollView>
       )}
     </View>
+    </TouchableWithoutFeedback>
   );
 }

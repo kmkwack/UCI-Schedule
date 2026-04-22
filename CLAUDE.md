@@ -520,3 +520,13 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 55 (FriendsScreen — timetable grid matches TimetableScreen)
 - **`src/screens/FriendsScreen.tsx`** — Rewrote friend timetable grid to exactly match TimetableScreen layout: removed outer card wrapper, changed `TIME_LABEL_WIDTH` 52→44, added `GRID_LEFT_PAD=16`, added `paddingLeft: GRID_LEFT_PAD` to header and grid rows, added `borderBottomWidth:1` to day header, changed time labels to centered-in-slot (`height: hourPx, justifyContent: 'center'`), hour lines now extend from `left: -(TIME_LABEL_WIDTH + GRID_LEFT_PAD)`, grid uses `flex: 1` + `onLayout` for dynamic height instead of fixed height. TBA pills moved outside grid frame.
+
+### Session 56 (Settings — safe area top inset for sub-screens)
+- **`src/screens/SettingsScreen.tsx`** — Added `useSafeAreaInsets` import. Both the main settings header and `SubHeader` now use `insets.top + 12` for `paddingTop` instead of a fixed 20px, so content clears the status bar / dynamic island when Settings is rendered as a full-screen absolute overlay.
+
+### Session 56 (Home — scroll past dock)
+- **`src/screens/HomeScreen.tsx`** — Added `bottomInset` prop. `contentContainerStyle.paddingBottom` set to `bottomInset + 70` so the last card scrolls above the dock.
+- **`App.tsx`** — Passes `bottomInset={insets.bottom}` to `HomeScreen`.
+
+### Session 56 (Settings — slide-in sub-screens + swipe-back)
+- **`src/screens/SettingsScreen.tsx`** — Added `Animated`, `PanResponder`, `Dimensions` to RN imports. Added `slideAnim` Animated.Value (starts at screen width). `navigateTo(screen)` resets slide to off-screen right then spring-animates to 0. `goBack()` timing-animates slide to off-screen right then resets screen to 'main'. `swipePan` PanResponder: activates on horizontal-dominant rightward drag, moves `slideAnim` with finger, on release triggers `goBack()` if dx > 35% screen width or velocity > 0.6, otherwise springs back. Sub-screen wrapped in `Animated.View` with `transform: [{ translateX: slideAnim }]` and `{...swipePan.panHandlers}`. All `setScreen(...)` calls in section items replaced with `navigateTo(...)`. All `onBack={() => setScreen('main')}` in sub-screen props replaced with `onBack={goBack}`.

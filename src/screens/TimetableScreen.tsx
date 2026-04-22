@@ -75,6 +75,8 @@ type Props = {
   onAddQuarter: (q: Quarter) => void;
   settings: TimetableSettings;
   onSettingsApply: (s: TimetableSettings) => void;
+  bottomInset?: number;
+  scrollToTopTrigger?: number;
 };
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
@@ -150,10 +152,19 @@ export default function TimetableScreen({
   onAddQuarter,
   settings,
   onSettingsApply,
+  bottomInset = 0,
+  scrollToTopTrigger = 0,
 }: Props) {
   const { colors, isDark } = useTheme();
   const [gridWidth, setGridWidth] = useState(0);
   const [scrollAreaHeight, setScrollAreaHeight] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
+  const [headerAreaHeight, setHeaderAreaHeight] = useState(0);
+  const gridHeight = containerHeight > 0 && headerAreaHeight > 0 ? containerHeight - headerAreaHeight - 80 : 0;
+  const timetableScrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (scrollToTopTrigger > 0) timetableScrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [scrollToTopTrigger]);
   const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showAddQuarterModal, setShowAddQuarterModal] = useState(false);
@@ -229,8 +240,8 @@ export default function TimetableScreen({
   }, [scheduledCourses]);
 
   const totalHours = displayEndHour - displayStartHour;
-  const timetableHeight = scrollAreaHeight > 0 ? scrollAreaHeight : 72 * (totalHours + 1);
-  const hourHeight = timetableHeight / (totalHours + 1);
+  const timetableHeight = scrollAreaHeight > 0 ? scrollAreaHeight : 72 * totalHours;
+  const hourHeight = timetableHeight / totalHours;
   const hourLabels = Array.from({ length: totalHours }, (_, i) => displayStartHour + i);
   const hourBoundaries = Array.from({ length: totalHours + 1 }, (_, i) => displayStartHour + i);
 
@@ -490,7 +501,7 @@ export default function TimetableScreen({
   const gridLabel = theme === 'dark' ? '#475569' : '#6b7280';
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme === 'dark' ? '#0f172a' : '#fff' }}>
+    <View style={{ flex: 1, backgroundColor: theme === 'dark' ? '#0f172a' : '#fff' }} onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}>
 
       {/* Quarter dropdown modal */}
       <Modal transparent animationType="fade" visible={showQuarterDropdown} onRequestClose={() => setShowQuarterDropdown(false)}>
@@ -1032,6 +1043,8 @@ export default function TimetableScreen({
         />
       )}
 
+      <View onLayout={(e) => setHeaderAreaHeight(e.nativeEvent.layout.height)}>
+
       {/* Header */}
       <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
         {/* Row 1: Title + Quarter picker + three-dots */}
@@ -1134,59 +1147,21 @@ export default function TimetableScreen({
         </View>
       </View>
 
-      {/* TBA / Online courses — above the grid */}
-      {tbaCourses.length > 0 && (
-        <View style={{
-          paddingHorizontal: 16, paddingVertical: 10,
-          borderBottomWidth: 1,
-          borderBottomColor: theme === 'dark' ? '#1e293b' : '#ececec',
-          backgroundColor: theme === 'dark' ? '#0f172a' : '#fff',
-        }}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {tbaCourses.map((course) => {
-              const { bg, text, border } = getBlockColors(course, theme);
-              return (
-                <TouchableOpacity
-                  key={course.id}
-                  activeOpacity={0.85}
-                  onPress={() => setSelectedCourse(course)}
-                  style={{
-                    backgroundColor: bg, borderRadius: 8,
-                    borderWidth: 1, borderColor: border,
-                    paddingHorizontal: 10, paddingVertical: 8,
-                    minWidth: 100, maxWidth: 160,
-                  }}
-                >
-                  {showCode && (
-                    <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1}>
-                      {course.code}
-                    </Text>
-                  )}
-                  {showClassName && (
-                    <Text style={{ color: text, fontWeight: '600', fontSize: 9, lineHeight: 12, opacity: 0.85 }} numberOfLines={2}>
-                      {course.title}
-                    </Text>
-                  )}
-                  {showInstructor && (
-                    <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
-                      {getProfLastName(course.professor)}
-                    </Text>
-                  )}
-                  <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
-                    {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      )}
+      <View style={{ height: 1, backgroundColor: theme === 'dark' ? '#1e293b' : '#ececec' }} />
+      </View>{/* end header area measurement wrapper */}
 
+      <ScrollView
+        ref={timetableScrollRef}
+        style={{ flex: 1 }}
+        scrollEnabled={tbaCourses.length > 0}
+        showsVerticalScrollIndicator={false}
+        bounces={tbaCourses.length > 0}
+      >
       {/* Grid container */}
       <View
         ref={timetableRef}
         collapsable={false}
-        style={{ flex: 1, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10 }}
+        style={{ height: gridHeight > 0 ? gridHeight : undefined, flex: gridHeight > 0 ? undefined : 1, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8 }}
         onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD - 24)}
       >
         <View
@@ -1382,6 +1357,53 @@ export default function TimetableScreen({
               </View>
             </View>
         </View>
+
+      {/* TBA / Online courses — below the grid */}
+      {tbaCourses.length > 0 && (
+        <View style={{
+          paddingHorizontal: 16, paddingTop: 6, paddingBottom: bottomInset + 70,
+          backgroundColor: theme === 'dark' ? '#0f172a' : '#fff',
+        }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {tbaCourses.map((course) => {
+              const { bg, text, border } = getBlockColors(course, theme);
+              return (
+                <TouchableOpacity
+                  key={course.id}
+                  activeOpacity={0.85}
+                  onPress={() => setSelectedCourse(course)}
+                  style={{
+                    backgroundColor: bg, borderRadius: 8,
+                    borderWidth: 1, borderColor: border,
+                    paddingHorizontal: 10, paddingVertical: 8,
+                    minWidth: 100, maxWidth: 160,
+                  }}
+                >
+                  {showCode && (
+                    <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1}>
+                      {course.code}
+                    </Text>
+                  )}
+                  {showClassName && (
+                    <Text style={{ color: text, fontWeight: '600', fontSize: 9, lineHeight: 12, opacity: 0.85 }} numberOfLines={2}>
+                      {course.title}
+                    </Text>
+                  )}
+                  {showInstructor && (
+                    <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
+                      {getProfLastName(course.professor)}
+                    </Text>
+                  )}
+                  <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
+                    {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+      </ScrollView>
     </View>
   );
 }

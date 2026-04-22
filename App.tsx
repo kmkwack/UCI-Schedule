@@ -15,6 +15,7 @@ import UniversitySelectionScreen from './src/screens/UniversitySelectionScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 import MessagesScreen from './src/screens/MessagesScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import type { ChatTarget } from './src/data/messages';
 import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey } from './src/data/courses';
@@ -120,6 +121,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
   const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'board' | 'friends'>('home');
+  const [homeTabTapCount, setHomeTabTapCount] = useState(0);
+  const [timetableTabTapCount, setTimetableTabTapCount] = useState(0);
+  const [gradesTabTapCount, setGradesTabTapCount] = useState(0);
+  const [boardTabTapCount, setBoardTabTapCount] = useState(0);
+  const [friendsTabTapCount, setFriendsTabTapCount] = useState(0);
   const [showCoursePicker, setShowCoursePicker] = useState(false);
   const [renderCoursePicker, setRenderCoursePicker] = useState(false);
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter>({ year: '2026', quarter: 'Spring' });
@@ -129,6 +135,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [timetableSettings, setTimetableSettings] = useState<TimetableSettings>(DEFAULT_TIMETABLE_SETTINGS);
   const [showMessages, setShowMessages] = useState(false);
   const [messagesOpenWith, setMessagesOpenWith] = useState<ChatTarget | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const pickerTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
 
   const activeKey = quarterKey(selectedQuarter);
@@ -703,22 +710,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         activeCourses={currentQuarterCourses}
         onGoToTimetable={() => setCurrentTab('timetable')}
         onGoToGrades={() => setCurrentTab('grades')}
-        onLogout={handleLogout}
-        userName={displayUserName}
-        userEmail={userEmail}
-        userProfile={userProfile}
-        userSettings={userSettings}
-        useCelsius={useCelsius}
-        onUseCelsiusChange={setUseCelsius}
-        themePreference={themePreference}
-        onThemeChange={onThemeChange}
-        onSaveProfile={handleSaveProfile}
-        onSaveVisibility={handleSaveVisibility}
-        onSaveNotifications={handleSaveNotifications}
-        onRequestPushPermissions={handleRequestPushPermissions}
-        savingProfile={savingProfile}
-        savingVisibility={savingVisibility}
-        savingNotifications={savingNotifications}
+        onOpenSettings={() => setShowSettings(true)}
+        bottomInset={insets.bottom}
+        scrollToTopTrigger={homeTabTapCount}
       />
     );
   } else if (currentTab === 'timetable') {
@@ -744,11 +738,13 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           onAddQuarter={handleAddQuarter}
           settings={timetableSettings}
           onSettingsApply={setTimetableSettings}
+          bottomInset={insets.bottom}
+          scrollToTopTrigger={timetableTabTapCount}
         />
       </View>
     );
   } else if (currentTab === 'grades') {
-    content = <GradesScreen timetables={timetables} userId={USER_ID} />;
+    content = <GradesScreen timetables={timetables} userId={USER_ID} bottomInset={insets.bottom} scrollToTopTrigger={gradesTabTapCount} />;
   } else if (currentTab === 'board') {
     content = (
       <BoardScreen
@@ -757,6 +753,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         userId={USER_ID}
         boardAuthorName={displayUserName}
         boardProfileVisible={userSettings.boardProfileVisible}
+        bottomInset={insets.bottom}
+        scrollToTopTrigger={boardTabTapCount}
       />
     );
   } else if (currentTab === 'friends') {
@@ -766,6 +764,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           userId={USER_ID}
           userEmail={userEmail}
           school={selectedUniversity?.name ?? 'UC Irvine'}
+          bottomInset={insets.bottom}
+          scrollToTopTrigger={friendsTabTapCount}
         />
       </View>
     );
@@ -822,7 +822,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           position: 'absolute',
           left: 16,
           right: 16,
-          bottom: Math.max(insets.bottom, 10) + 8,
+          bottom: insets.bottom - 6,
           flexDirection: 'row',
           paddingHorizontal: 10,
           paddingVertical: 5,
@@ -837,11 +837,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           elevation: 12,
         }}
       >
-        <TabItem label="Home" icon="home-outline" active={currentTab === 'home'} onPress={() => setCurrentTab('home')} />
-        <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => setCurrentTab('timetable')} />
-        <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => setCurrentTab('grades')} />
-        <TabItem label="Board" icon="clipboard-outline" active={currentTab === 'board'} onPress={() => setCurrentTab('board')} />
-        <TabItem label="ClassMates" icon="person-add-outline" active={currentTab === 'friends'} onPress={handleOpenFriendsTab} />
+        <TabItem label="Home" icon="home-outline" active={currentTab === 'home'} onPress={() => { if (currentTab === 'home') setHomeTabTapCount(c => c + 1); else setCurrentTab('home'); }} />
+        <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => { if (currentTab === 'timetable') setTimetableTabTapCount(c => c + 1); else setCurrentTab('timetable'); }} />
+        <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => { if (currentTab === 'grades') setGradesTabTapCount(c => c + 1); else setCurrentTab('grades'); }} />
+        <TabItem label="Board" icon="clipboard-outline" active={currentTab === 'board'} onPress={() => { if (currentTab === 'board') setBoardTabTapCount(c => c + 1); else setCurrentTab('board'); }} />
+        <TabItem label="ClassMates" icon="person-add-outline" active={currentTab === 'friends'} onPress={() => { if (currentTab === 'friends') setFriendsTabTapCount(c => c + 1); else handleOpenFriendsTab(); }} />
       </View>
 
       {showMessages && (
@@ -850,6 +850,31 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             onClose={() => { setShowMessages(false); setMessagesOpenWith(null); }}
             openChatWith={messagesOpenWith}
             userId={USER_ID}
+          />
+        </View>
+      )}
+
+      {showSettings && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40, elevation: 40 }}>
+          <SettingsScreen
+            visible={showSettings}
+            onClose={() => setShowSettings(false)}
+            onLogout={handleLogout}
+            userName={displayUserName}
+            userEmail={userEmail}
+            userProfile={userProfile}
+            userSettings={userSettings}
+            useCelsius={useCelsius}
+            onUseCelsiusChange={setUseCelsius}
+            themePreference={themePreference}
+            onThemeChange={onThemeChange}
+            onSaveProfile={handleSaveProfile}
+            onSaveVisibility={handleSaveVisibility}
+            onSaveNotifications={handleSaveNotifications}
+            onRequestPushPermissions={handleRequestPushPermissions}
+            savingProfile={savingProfile}
+            savingVisibility={savingVisibility}
+            savingNotifications={savingNotifications}
           />
         </View>
       )}

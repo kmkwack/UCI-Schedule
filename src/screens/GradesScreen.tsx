@@ -15,7 +15,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-type Props = { timetables: Timetable[]; userId: string };
+type Props = { timetables: Timetable[]; userId: string; bottomInset?: number; scrollToTopTrigger?: number };
 
 // The actual current quarter — never changes based on app navigation
 const CURRENT_QUARTER: Quarter = { year: '2026', quarter: 'Spring' };
@@ -397,7 +397,7 @@ function PastQuarterSection({
 
 // ── main screen ───────────────────────────────────────────────────────────────
 
-export default function GradesScreen({ timetables, userId }: Props) {
+export default function GradesScreen({ timetables, userId, bottomInset = 0, scrollToTopTrigger = 0 }: Props) {
   const { colors } = useTheme();
   const currentTimetable = timetables.find(t => t.quarterKey === CURRENT_QK && t.name === 'My Schedule') ?? null;
   const activeCourses = currentTimetable?.courses ?? [];
@@ -536,8 +536,13 @@ export default function GradesScreen({ timetables, userId }: Props) {
     };
   }, [grades, activeCourses, pastQuarterItems, unitOverrides]);
 
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (scrollToTopTrigger > 0) scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [scrollToTopTrigger]);
+
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bgSecondary }} contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
+    <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.bgSecondary }} contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: bottomInset + 70 }} showsVerticalScrollIndicator={false}>
       <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text, marginBottom: 16 }}>Grades</Text>
 
       {/* Stats row */}

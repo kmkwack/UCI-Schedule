@@ -869,3 +869,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64cj (Trim quarter-progress precision)
 - **`src/screens/HomeScreen.tsx`** — Reduced the `Quarter Progress` percentage display from eight decimal places to six so the number stays more readable while keeping the underlying progress calculation and bar behavior unchanged.
+
+### Session 64ck (Make the welcome screen more cinematic)
+- **`src/screens/WelcomeScreen.tsx`** — Reworked the first login screen from a minimal centered card into a more expressive landing-style hero with layered background shapes, floating status cards, a stronger brand mark, and feature highlights. Kept the legal flow and CTA behavior intact while making the entry experience feel much more polished and memorable.

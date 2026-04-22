@@ -90,6 +90,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import { useTheme, ThemePreference } from '../context/ThemeContext';
 import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
+import { supabase } from '../lib/supabase';
 import type {
   EditableProfile,
   NotificationPreferences,
@@ -119,10 +120,37 @@ type Props = {
   savingNotifications?: boolean;
 };
 
-type Screen = 'main' | 'profile' | 'privacy' | 'notifications' | 'appearance' | 'language' | 'help' | 'about';
+type Screen = 'main' | 'profile' | 'privacy' | 'notifications' | 'appearance' | 'language' | 'help' | 'about' | 'moderation';
 
 const SUPPORT_EMAILS = ['heyy.seans@gmail.com', 'hii.seans@gmail.com'];
 const SUPPORT_EMAIL_LABEL = SUPPORT_EMAILS.join(', ');
+const MODERATOR_EMAILS = ['sihyup2@uci.edu'];
+
+type ReportStatus = 'pending' | 'reviewing' | 'resolved' | 'dismissed';
+
+type ModerationReport = {
+  id: string;
+  reporterId: string;
+  reporterName: string;
+  reporterEmail: string;
+  targetType: 'post' | 'comment';
+  targetId: string;
+  targetLabel: string;
+  targetPreview: string;
+  reason: string;
+  details: string;
+  status: ReportStatus;
+  createdAt: string;
+};
+
+function formatModerationDate(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
 
 async function openSupportEmail() {
   const subject = encodeURIComponent('ClassMate Support Request');
@@ -611,6 +639,9 @@ function NotificationsScreen({
           <Text style={{ fontSize: 13, lineHeight: 20, color: colors.textSecondary }}>
             {permissionCopy[permissionStatus]}
           </Text>
+          <Text style={{ fontSize: 12, lineHeight: 18, color: colors.textTertiary, marginTop: 8 }}>
+            When enabled, ClassMate can deliver social alerts on-device and through the backend notification pipeline.
+          </Text>
           {permissionStatus === 'denied' && (
             <TouchableOpacity
               onPress={() => {
@@ -624,7 +655,7 @@ function NotificationsScreen({
         </View>
         {section('GENERAL', <>
           {row('pushNotifications', 'Push Notifications', 'Receive notifications on your device')}
-          {row('emailNotifications', 'Email Notifications', 'Receive updates via email', true)}
+          {row('emailNotifications', 'Email Notifications', 'Receive email updates for social activity', true)}
         </>)}
         {section('ACADEMIC', <>
           {row('classReminders', 'Class Reminders')}
@@ -1058,6 +1089,280 @@ function AboutScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
+function ModerationScreen({ onBack }: { onBack: () => void }) {
+  const { colors } = useTheme();
+  const [reports, setReports] = useState<ModerationReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | ReportStatus>('pending');
+
+  useEffect(() => {
+    void fetchReports();
+  }, []);
+
+  async function fetchReports() {
+    setLoading(true);
+    const { data: reportRows, error } = await supabase
+      .from('reports')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      setLoading(false);
+      Alert.alert(
+        'Could not load reports',
+        error.code === 'PGRST205' ? 'The reports table is missing in Supabase.' : error.message
+      );
+      return;
+    }
+
+    const rows = (reportRows ?? []) as Array<{
+      id: string;
+      reporter_id: string;
+      target_type: 'post' | 'comment';
+      target_id: string;
+      reason: string;
+      details: string | null;
+      status: ReportStatus;
+      created_at: string;
+    }>;
+
+    const reporterIds = Array.from(new Set(rows.map((row) => row.reporter_id).filter(Boolean)));
+    const postIds = Array.from(new Set(rows.filter((row) => row.target_type === 'post').map((row) => row.target_id)));
+    const commentIds = Array.from(new Set(rows.filter((row) => row.target_type === 'comment').map((row) => row.target_id)));
+
+    const [{ data: profiles }, { data: posts }, { data: comments }] = await Promise.all([
+      reporterIds.length
+        ? supabase.from('profiles').select('id, name, email').in('id', reporterIds)
+        : Promise.resolve({ data: [] as any[] }),
+      postIds.length
+        ? supabase.from('posts').select('id, title, body').in('id', postIds)
+        : Promise.resolve({ data: [] as any[] }),
+      commentIds.length
+        ? supabase.from('post_comments').select('id, content').in('id', commentIds)
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
+
+    const profileById = Object.fromEntries(
+      ((profiles ?? []) as Array<{ id: string; name: string | null; email: string | null }>).map((row) => [row.id, row])
+    );
+    const postsById = Object.fromEntries(
+      ((posts ?? []) as Array<{ id: string; title: string | null; body: string | null }>).map((row) => [row.id, row])
+    );
+    const commentsById = Object.fromEntries(
+      ((comments ?? []) as Array<{ id: string; content: string | null }>).map((row) => [row.id, row])
+    );
+
+    const mapped = rows.map((row) => {
+      const reporter = profileById[row.reporter_id];
+      const targetPost = row.target_type === 'post' ? postsById[row.target_id] : null;
+      const targetComment = row.target_type === 'comment' ? commentsById[row.target_id] : null;
+      return {
+        id: row.id,
+        reporterId: row.reporter_id,
+        reporterName: reporter?.name?.trim() || reporter?.email?.split('@')[0] || 'Unknown reporter',
+        reporterEmail: reporter?.email || 'unknown@uci.edu',
+        targetType: row.target_type,
+        targetId: row.target_id,
+        targetLabel: row.target_type === 'post' ? 'Post' : 'Comment',
+        targetPreview:
+          row.target_type === 'post'
+            ? (targetPost?.title?.trim() || targetPost?.body?.trim() || 'Original post unavailable')
+            : (targetComment?.content?.trim() || 'Original comment unavailable'),
+        reason: row.reason,
+        details: row.details ?? '',
+        status: row.status,
+        createdAt: row.created_at,
+      } satisfies ModerationReport;
+    });
+
+    setReports(mapped);
+    setLoading(false);
+  }
+
+  async function updateReportStatus(reportId: string, status: ReportStatus) {
+    setUpdatingId(reportId);
+    const { error } = await supabase.from('reports').update({ status }).eq('id', reportId);
+    setUpdatingId(null);
+    if (error) {
+      Alert.alert('Could not update report', error.message);
+      return;
+    }
+    setReports((prev) => prev.map((report) => (report.id === reportId ? { ...report, status } : report)));
+  }
+
+  const filteredReports = reports.filter((report) => (filter === 'all' ? true : report.status === filter));
+
+  const statusTone: Record<ReportStatus, { bg: string; fg: string }> = {
+    pending: { bg: '#fff7ed', fg: '#ea580c' },
+    reviewing: { bg: '#eff6ff', fg: '#2563eb' },
+    resolved: { bg: '#ecfdf5', fg: '#059669' },
+    dismissed: { bg: '#f3f4f6', fg: '#6b7280' },
+  };
+
+  const filterOptions: Array<'all' | ReportStatus> = ['all', 'pending', 'reviewing', 'resolved', 'dismissed'];
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
+      <SubHeader title="Reports Inbox" onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        <View
+          style={{
+            backgroundColor: colors.card,
+            borderRadius: 18,
+            padding: 16,
+            marginBottom: 18,
+            borderWidth: 1,
+            borderColor: colors.borderSubtle,
+          }}
+        >
+          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Moderation Queue</Text>
+          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4, lineHeight: 20 }}>
+            Review reported posts and comments, then move each report through pending, reviewing, resolved, or dismissed.
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+            {filterOptions.map((option) => {
+              const active = filter === option;
+              return (
+                <TouchableOpacity
+                  key={option}
+                  onPress={() => setFilter(option)}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 999,
+                    backgroundColor: active ? colors.brandBg : colors.card,
+                    borderWidth: 1,
+                    borderColor: active ? colors.brand : colors.borderSubtle,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: active ? colors.brand : colors.textSecondary }}>
+                    {option === 'all' ? 'All' : option.charAt(0).toUpperCase() + option.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {loading ? (
+          <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />
+        ) : filteredReports.length === 0 ? (
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 18,
+              padding: 18,
+              borderWidth: 1,
+              borderColor: colors.borderSubtle,
+            }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>No reports here</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+              There are no reports matching the current filter.
+            </Text>
+          </View>
+        ) : (
+          filteredReports.map((report) => (
+            <View
+              key={report.id}
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 18,
+                padding: 16,
+                marginBottom: 14,
+                borderWidth: 1,
+                borderColor: colors.borderSubtle,
+                shadowColor: '#0f172a',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.05,
+                shadowRadius: 18,
+                elevation: 3,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
+                    {report.targetLabel} · {report.reason}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 4 }}>
+                    {formatModerationDate(report.createdAt)} · Reported by {report.reporterName}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor: statusTone[report.status].bg,
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: statusTone[report.status].fg }}>
+                    {report.status.toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+
+              <View
+                style={{
+                  marginTop: 14,
+                  backgroundColor: colors.bgTertiary,
+                  borderRadius: 14,
+                  padding: 14,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary, marginBottom: 6 }}>
+                  REPORTED CONTENT
+                </Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
+                  {report.targetPreview}
+                </Text>
+                {report.details ? (
+                  <>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary, marginTop: 12, marginBottom: 6 }}>
+                      REPORTER NOTE
+                    </Text>
+                    <Text style={{ fontSize: 13, lineHeight: 20, color: colors.textSecondary }}>{report.details}</Text>
+                  </>
+                ) : null}
+                <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 12 }}>
+                  Reporter: {report.reporterEmail}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+                {(['pending', 'reviewing', 'resolved', 'dismissed'] as ReportStatus[]).map((status) => {
+                  const active = report.status === status;
+                  return (
+                    <TouchableOpacity
+                      key={`${report.id}-${status}`}
+                      disabled={active || updatingId === report.id}
+                      onPress={() => void updateReportStatus(report.id, status)}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 9,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: active ? colors.brand : colors.borderSubtle,
+                        backgroundColor: active ? colors.brandBg : colors.card,
+                        opacity: updatingId === report.id ? 0.65 : 1,
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: active ? colors.brand : colors.textSecondary }}>
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
 // ─── Main Settings screen ─────────────────────────────────────────────────────
 export default function SettingsScreen({
   visible,
@@ -1083,6 +1388,7 @@ export default function SettingsScreen({
   const [screen, setScreen] = useState<Screen>('main');
   const SCREEN_W = Dimensions.get('window').width;
   const slideAnim = useRef(new Animated.Value(SCREEN_W)).current;
+  const isModerator = MODERATOR_EMAILS.includes(userEmail.toLowerCase());
 
   const navigateTo = (next: Screen) => {
     slideAnim.setValue(SCREEN_W);
@@ -1167,6 +1473,7 @@ export default function SettingsScreen({
       case 'language': return <LanguageRegionScreen onBack={goBack} />;
       case 'help': return <HelpCenterScreen onBack={goBack} />;
       case 'about': return <AboutScreen onBack={goBack} />;
+      case 'moderation': return <ModerationScreen onBack={goBack} />;
       default: return null;
     }
   };
@@ -1228,6 +1535,7 @@ export default function SettingsScreen({
             items={[
               { label: 'Help Center', icon: 'help-circle-outline', onPress: () => navigateTo('help') },
               { label: 'About ClassMate', icon: 'information-circle-outline', onPress: () => navigateTo('about') },
+              ...(isModerator ? [{ label: 'Reports Inbox', icon: 'shield-checkmark-outline' as const, onPress: () => navigateTo('moderation') }] : []),
             ]}
           />
 

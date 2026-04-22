@@ -801,3 +801,33 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64br (Use per-post commenter aliases)
 - **`src/screens/BoardScreen.tsx`** — Changed post-detail identity labels to be scoped per post: the post creator now appears as `Author` inside that post, and commenters/repliers are assigned `Anteater 1`, `Anteater 2`, `Anteater 3`, etc. in the order they first appear on that specific post. The numbering resets independently for each different post.
+
+### Session 64bs (Remove author labels from board list rows)
+- **`src/screens/BoardScreen.tsx`** — Simplified the board post list so the feed rows no longer show the author label. The list now shows only category and time, while identity labels remain available inside the post detail view.
+
+### Session 64bt (Add breathing room above the keyboard in post replies)
+- **`src/screens/BoardScreen.tsx`** — Increased the bottom padding on the post-detail comment composer so when the keyboard slides up, the reply bar no longer feels glued directly to the keyboard edge. This leaves a small visual gap after the keyboard avoidance animation settles.
+
+### Session 64bu (Turn audit gaps into real flows or remove misleading UI)
+- **`src/screens/SignUpScreen.tsx`** — Replaced the fake `onSignedUp('google-user')` shortcut with the real Google OAuth flow used by sign-in. Sign-up now returns a real Supabase auth user id + email, validates the selected school domain, and no longer creates a broken non-UUID session.
+- **`App.tsx`** — Fixed the auth handoff so the sign-up screen stores both `userId` and `userEmail`. Reworked the Home screen source quarter so it prefers the real current academic quarter when present instead of hardcoding `2026-Spring`, and expanded social notification polling to include replies to the user’s comments plus likes on the user’s comments. Like notification keys are now stable across both post-like and comment-like events.
+- **`src/screens/HomeScreen.tsx`** — Removed the hardcoded Spring 2026-only quarter progress logic. The Home screen now accepts the active quarter from `App.tsx`, uses quarter-specific date ranges for the supported school terms, includes Saturday/Sunday in the route-day logic, and shows the correct selected-quarter label in the date header.
+- **`src/screens/SettingsScreen.tsx`** — Removed the misleading `Email Notifications` row from the visible notifications UI and added copy that clearly explains the current behavior: device alerts work on-device while ClassMate is open, while remote push/email delivery are not yet enabled.
+- **`src/screens/BoardScreen.tsx`** — Removed the nonfunctional `Add Images`, `Add Files`, and `Prevent Edit/Delete` controls from the new-post modal so the composer only shows inputs that are actually supported today.
+
+### Session 64bv (Bring post attachments and post locking to life)
+- **`src/screens/BoardScreen.tsx`** — Re-implemented the new-post composer so `Add Images`, `Add Files`, and `Prevent Edit/Delete` are real features instead of placeholder UI. Posts can now collect draft attachments, upload them to Supabase Storage on save, persist attachment metadata in the `posts` row, and show attachments inside the post detail view. Post authors now also get working `Edit Post` and `Delete Post` actions in the detail screen, while locked posts visibly show a `Locked` badge and block future edits/deletes.
+- **`package.json` / `package-lock.json`** — Added the Expo pickers used by the board composer (`expo-image-picker`, `expo-document-picker`) so the attachment buttons can pick real images/files from the device before upload.
+
+### Session 64bw (Add a support-only reports inbox)
+- **`src/screens/SettingsScreen.tsx`** — Added a `Reports Inbox` screen for moderator accounts (`heyy.seans@gmail.com`, `hii.seans@gmail.com`) inside Settings. The screen loads reported posts/comments, shows reporter identity, reported content preview, current moderation status, and lets staff move each report between `pending`, `reviewing`, `resolved`, and `dismissed` directly in-app.
+
+### Session 64bx (Lay down the real remote notification pipeline)
+- **`App.tsx`** — Added Expo push-token registration and persistence so signed-in users with push enabled now save `expo_push_token` into `user_settings`. Notification saves now clear the token when push is disabled and automatically sync a token when push permissions are granted.
+- **`src/screens/SettingsScreen.tsx`** — Re-enabled the visible `Email Notifications` toggle and updated the notifications copy so the settings screen reflects the new backend notification pipeline instead of saying remote delivery is unavailable.
+- **`supabase/functions/social-notifier/index.ts`** — Added a Supabase Edge Function that turns inserts from `friend_requests`, `direct_messages`, `post_comments`, `post_votes`, and `post_comment_votes` into real Expo push notifications and Resend email notifications, respecting each user’s notification preferences.
+- **`supabase/functions/social-notifier/README.md`** — Added deployment/setup instructions for the edge function, required secrets, and the database webhooks it expects.
+- **`supabase/sql/remote_notifications.sql`** — Added the SQL migration that creates `user_settings.expo_push_token` and support-side access needed for the remote notification pipeline.
+
+### Session 64by (Separate moderator access from support inboxes)
+- **`src/screens/SettingsScreen.tsx`** — Split moderation access from support contact addresses. `Contact Support` still emails `heyy.seans@gmail.com` and `hii.seans@gmail.com`, but the in-app `Reports Inbox` now only appears for the moderator account `sihyup2@uci.edu`.

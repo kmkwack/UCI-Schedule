@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, type ComponentProps } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, ScrollView, TouchableOpacity, Animated, Easing, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, pastelForCourse, blockColorKey } from '../data/courses';
+import { Course, Quarter, pastelForCourse, blockColorKey, quarterLabel } from '../data/courses';
 import { formatSportsEventTime, parseSportsCalendar, type SportsEvent } from '../data/sportsEvents';
 import { useTheme } from '../context/ThemeContext';
 
 type Props = {
   activeCourses: Course[];
+  selectedQuarter: Quarter;
   onGoToTimetable: () => void;
   onGoToGrades: () => void;
   onOpenSettings: () => void;
@@ -19,40 +20,55 @@ type Props = {
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-// Approximate Spring 2026 quarter start: March 30, 2026
-const QUARTER_START = new Date('2026-03-30');
-// Approximate end of Spring 2026 finals week
-const QUARTER_END = new Date('2026-06-12T23:59:59');
+const QUARTER_DATES: Record<string, { start: string; end: string }> = {
+  '2024-Fall': { start: '2024-09-26', end: '2024-12-13T23:59:59' },
+  '2025-Winter': { start: '2025-01-06', end: '2025-03-21T23:59:59' },
+  '2025-Spring': { start: '2025-03-31', end: '2025-06-13T23:59:59' },
+  '2025-Fall': { start: '2025-09-25', end: '2025-12-12T23:59:59' },
+  '2026-Winter': { start: '2026-01-05', end: '2026-03-20T23:59:59' },
+  '2026-Spring': { start: '2026-03-30', end: '2026-06-12T23:59:59' },
+  '2026-Fall': { start: '2026-09-24', end: '2026-12-11T23:59:59' },
+};
 
-function getWeekNumber(): number {
-  const now = new Date();
-  const diff = now.getTime() - QUARTER_START.getTime();
+function getQuarterBounds(selectedQuarter: Quarter) {
+  const key = `${selectedQuarter.year}-${selectedQuarter.quarter}`;
+  const range = QUARTER_DATES[key];
+  if (!range) {
+    const fallbackStart = new Date(`${selectedQuarter.year}-01-01`);
+    const fallbackEnd = new Date(`${selectedQuarter.year}-03-31T23:59:59`);
+    return { start: fallbackStart, end: fallbackEnd };
+  }
+  return { start: new Date(range.start), end: new Date(range.end) };
+}
+
+function getWeekNumber(now: Date, quarterStart: Date, quarterEnd: Date): number {
+  const totalWeeks = Math.max(1, Math.ceil((quarterEnd.getTime() - quarterStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+  const diff = now.getTime() - quarterStart.getTime();
   const week = Math.floor(diff / (7 * 24 * 60 * 60 * 1000)) + 1;
-  return Math.max(1, Math.min(week, 10));
+  return Math.max(1, Math.min(week, totalWeeks));
 }
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function getQuarterProgress(now: Date) {
-  const total = QUARTER_END.getTime() - QUARTER_START.getTime();
-  const elapsed = now.getTime() - QUARTER_START.getTime();
+function getQuarterProgress(now: Date, quarterStart: Date, quarterEnd: Date) {
+  const total = quarterEnd.getTime() - quarterStart.getTime();
+  const elapsed = now.getTime() - quarterStart.getTime();
   return clamp(elapsed / Math.max(total, 1), 0, 1);
 }
 
-function getDaysRemainingInQuarter(now: Date) {
-  const diff = QUARTER_END.getTime() - now.getTime();
+function getDaysRemainingInQuarter(now: Date, quarterEnd: Date) {
+  const diff = quarterEnd.getTime() - now.getTime();
   return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
 }
 
-function getDateLabel(): string {
-  const now = new Date();
+function getDateLabel(now: Date, selectedQuarter: Quarter, quarterStart: Date, quarterEnd: Date): string {
   const dayName = DAY_LABELS[now.getDay()];
   const month = MONTH_LABELS[now.getMonth()];
   const date = now.getDate();
-  const week = getWeekNumber();
-  return `${dayName}, ${month} ${date} · Week ${week}`;
+  const week = getWeekNumber(now, quarterStart, quarterEnd);
+  return `${dayName}, ${month} ${date} · ${quarterLabel(selectedQuarter)} · Week ${week}`;
 }
 
 function formatEventDayLabel(date: Date) {
@@ -63,11 +79,13 @@ function formatEventDayLabel(date: Date) {
 
 function getTodayDayCode(): string | null {
   const day = new Date().getDay();
+  if (day === 0) return 'Su';
   if (day === 1) return 'M';
   if (day === 2) return 'T';
   if (day === 3) return 'W';
   if (day === 4) return 'Th';
   if (day === 5) return 'F';
+  if (day === 6) return 'Sa';
   return null;
 }
 
@@ -147,6 +165,7 @@ const WMO_DESCRIPTIONS: Record<number, { label: string; icon: ComponentProps<typ
 
 export default function HomeScreen({
   activeCourses,
+  selectedQuarter,
   onGoToTimetable,
   onGoToGrades,
   onOpenSettings,
@@ -162,6 +181,7 @@ export default function HomeScreen({
   const [weatherCode, setWeatherCode] = useState<number | null>(null);
   const currentStopPulse = useState(() => new Animated.Value(0))[0];
   const [now, setNow] = useState(() => new Date());
+  const { start: quarterStart, end: quarterEnd } = getQuarterBounds(selectedQuarter);
   useEffect(() => {
     async function loadWeather() {
       const cached = await AsyncStorage.getItem('weather_cache');
@@ -217,9 +237,9 @@ export default function HomeScreen({
   const routeProgress = todayCourses.length === 0
     ? 0
     : (completedClasses + (currentClass ? getCourseProgress(nowHour, currentClass.time) : 0)) / todayCourses.length;
-  const quarterProgress = getQuarterProgress(now);
+  const quarterProgress = getQuarterProgress(now, quarterStart, quarterEnd);
   const quarterPercent = quarterProgress * 100;
-  const daysRemaining = getDaysRemainingInQuarter(now);
+  const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
   const groupedSportsEvents = sportsEvents.reduce<Array<{ dayLabel: string; events: SportsEvent[] }>>((groups, event) => {
     const dayLabel = formatEventDayLabel(event.date);
     const lastGroup = groups[groups.length - 1];
@@ -307,7 +327,7 @@ export default function HomeScreen({
         </TouchableOpacity>
       </View>
       <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 0, marginBottom: 16 }}>
-        {getDateLabel()}
+        {getDateLabel(now, selectedQuarter, quarterStart, quarterEnd)}
       </Text>
 
       {/* Your Day card */}

@@ -1,16 +1,21 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import type { University } from './UniversitySelectionScreen';
 import LegalConsentText from '../components/LegalConsentText';
 import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
+import { supabase } from '../lib/supabase';
+
+WebBrowser.maybeCompleteAuthSession();
 
 type Props = {
   university?: University;
   onBack: () => void;
-  onSignedUp: (userId: string) => void;
+  onSignedUp: (userId: string, email: string) => void;
   onGoToSignIn: () => void;
 };
 
@@ -30,6 +35,57 @@ function GoogleIcon() {
 export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSignIn }: Props) {
   const uni = university ?? UCI;
   const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
+  const [loading, setLoading] = useState(false);
+  const hd = uni.domain.replace('@', '');
+
+  const handleGoogleSignUp = async () => {
+    setLoading(true);
+    await supabase.auth.signOut();
+
+    const redirectTo = Linking.createURL('auth/callback');
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo, queryParams: { hd, prompt: 'select_account' }, skipBrowserRedirect: true },
+    });
+
+    if (error || !data.url) {
+      setLoading(false);
+      Alert.alert('Sign-up failed', error?.message ?? 'Could not start sign-up');
+      return;
+    }
+
+    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+    setLoading(false);
+    if (result.type !== 'success') return;
+
+    const url = result.url;
+    const params = new URLSearchParams(url.split('#')[1] ?? url.split('?')[1] ?? '');
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    if (!accessToken) {
+      Alert.alert('Sign-up failed', 'No token returned.');
+      return;
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken ?? '',
+    });
+
+    if (sessionError || !sessionData.user) {
+      Alert.alert('Sign-up failed', sessionError?.message ?? 'Unknown error');
+      return;
+    }
+
+    const email = sessionData.user.email ?? '';
+    if (!email.endsWith(hd)) {
+      await supabase.auth.signOut();
+      Alert.alert('Wrong account', `Please sign in with your ${uni.domain} email.`);
+      return;
+    }
+
+    onSignedUp(sessionData.user.id, email);
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
@@ -94,7 +150,8 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
 
         {/* Continue with Google */}
         <TouchableOpacity
-          onPress={() => onSignedUp('google-user')}
+          onPress={handleGoogleSignUp}
+          disabled={loading}
           style={{
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
             backgroundColor: 'white', borderRadius: 16,
@@ -102,9 +159,10 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
             borderWidth: 1.5, borderColor: '#e5e7eb',
             shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
             shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+            opacity: loading ? 0.6 : 1,
           }}
         >
-          <GoogleIcon />
+          {loading ? <ActivityIndicator size="small" color="#4169E1" /> : <GoogleIcon />}
           <Text style={{ fontSize: 16, fontWeight: '500', color: '#111827' }}>Continue with Google</Text>
         </TouchableOpacity>
 

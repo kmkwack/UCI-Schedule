@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Easing, Platform, View, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { ThemeProvider, ThemePreference, useTheme } from './src/context/ThemeContext';
 import HomeScreen from './src/screens/HomeScreen';
@@ -54,11 +55,15 @@ type CommentNotificationRow = {
   user_id: string;
   content: string;
   created_at: string;
+  parent_comment_id?: string | null;
 };
 
 type LikeNotificationRow = {
-  post_id: string;
+  target_type: 'post' | 'comment';
+  target_id: string;
   user_id: string;
+  post_id?: string;
+  comment_id?: string;
 };
 
 type SocialNotificationSnapshot = {
@@ -67,6 +72,7 @@ type SocialNotificationSnapshot = {
   comments: CommentNotificationRow[];
   likes: LikeNotificationRow[];
   postTitlesById: Record<string, string>;
+  myCommentIds: Set<string>;
 };
 
 type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
@@ -154,6 +160,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const insets = useSafeAreaInsets();
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
+  const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<EditableProfile>(fallbackProfileFromEmail('student@uci.edu'));
   const [userSettings, setUserSettings] = useState<UserSettingsState>(DEFAULT_USER_SETTINGS);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -189,9 +196,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const activeTimetable = quarterTimetables.find((t) => t.id === selectedTimetableId) ?? quarterTimetables[0] ?? null;
   const activeCourses = activeTimetable?.courses ?? [];
 
-  const CURRENT_QUARTER_KEY = '2026-Spring';
-  const currentQuarterCourses = timetables
-    .filter((t) => t.quarterKey === CURRENT_QUARTER_KEY)
+  const academicQuarter = getAcademicQuarterForDate(new Date());
+  const academicQuarterKey = quarterKey(academicQuarter);
+  const homeQuarterKey = timetables.some((t) => t.quarterKey === academicQuarterKey) ? academicQuarterKey : activeKey;
+  const homeQuarterCourses = timetables
+    .filter((t) => t.quarterKey === homeQuarterKey)
     .flatMap((t) => t.courses);
 
   const USER_ID = userId ?? '';
@@ -276,6 +285,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         },
         pushPermissionStatus: ((settingsRow as Record<string, any> | null | undefined)?.push_permission_status as PushPermissionStatus | undefined) ?? DEFAULT_USER_SETTINGS.pushPermissionStatus,
       });
+      setExpoPushToken(((settingsRow as Record<string, any> | null | undefined)?.expo_push_token as string | undefined) ?? null);
     }
 
     loadUserPreferences();
@@ -291,7 +301,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     let cancelled = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
-    const buildLikeKey = (like: LikeNotificationRow) => `${like.post_id}:${like.user_id}`;
+    const buildLikeKey = (like: LikeNotificationRow) => `${like.target_type}:${like.target_id}:${like.user_id}`;
     const notificationEnabled =
       userSettings.notifications.pushNotifications && userSettings.pushPermissionStatus === 'granted';
 
@@ -314,7 +324,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
 
     async function loadSocialNotificationSnapshot(): Promise<SocialNotificationSnapshot> {
-      const [{ data: friendRequestData, error: friendRequestError }, { data: messageData, error: messageError }, { data: myPosts, error: postsError }] = await Promise.all([
+      const [
+        { data: friendRequestData, error: friendRequestError },
+        { data: messageData, error: messageError },
+        { data: myPosts, error: postsError },
+        { data: myComments, error: myCommentsError },
+      ] = await Promise.all([
         supabase
           .from('friend_requests')
           .select('id, sender_id, receiver_id, status, created_at')
@@ -331,49 +346,128 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           .select('id, title')
           .eq('user_id', userId)
           .eq('school', currentSchool),
+        supabase
+          .from('post_comments')
+          .select('id, post_id')
+          .eq('user_id', userId),
       ]);
 
       if (friendRequestError) console.error('Failed to load friend request notifications:', friendRequestError);
       if (messageError) console.error('Failed to load direct message notifications:', messageError);
       if (postsError) console.error('Failed to load post ids for notifications:', postsError);
+      if (myCommentsError) console.error('Failed to load my comment ids for notifications:', myCommentsError);
 
       const postRows = (myPosts ?? []) as Array<{ id: string; title: string }>;
       const postIds = postRows.map((post) => post.id);
       const postTitlesById = Object.fromEntries(postRows.map((post) => [post.id, post.title]));
+      const myCommentRows = (myComments ?? []) as Array<{ id: string; post_id: string }>;
+      const myCommentIds = new Set(myCommentRows.map((comment) => comment.id));
+      const myCommentIdList = Array.from(myCommentIds);
 
-      if (postIds.length === 0) {
+      if (postIds.length === 0 && myCommentIdList.length === 0) {
         return {
           friendRequests: (friendRequestData ?? []) as FriendRequestNotificationRow[],
           messages: (messageData ?? []) as DirectMessageNotificationRow[],
           comments: [],
           likes: [],
           postTitlesById,
+          myCommentIds,
         };
       }
 
-      const [{ data: commentData, error: commentError }, { data: likeData, error: likeError }] = await Promise.all([
-        supabase
-          .from('post_comments')
-          .select('id, post_id, user_id, content, created_at')
-          .in('post_id', postIds)
-          .neq('user_id', userId)
-          .order('created_at', { ascending: true }),
-        supabase
-          .from('post_votes')
-          .select('post_id, user_id')
-          .in('post_id', postIds)
-          .neq('user_id', userId),
-      ]);
+      const commentQueries: any[] = [];
+      if (postIds.length > 0) {
+        commentQueries.push(
+          supabase
+            .from('post_comments')
+            .select('id, post_id, user_id, content, created_at, parent_comment_id')
+            .in('post_id', postIds)
+            .neq('user_id', userId)
+            .order('created_at', { ascending: true })
+        );
+      }
+      if (myCommentIdList.length > 0) {
+        commentQueries.push(
+          supabase
+            .from('post_comments')
+            .select('id, post_id, user_id, content, created_at, parent_comment_id')
+            .in('parent_comment_id', myCommentIdList)
+            .neq('user_id', userId)
+            .order('created_at', { ascending: true })
+        );
+      }
 
-      if (commentError) console.error('Failed to load comment notifications:', commentError);
-      if (likeError) console.error('Failed to load like notifications:', likeError);
+      const commentResults = await Promise.all(commentQueries);
+      const mergedComments = new Map<string, CommentNotificationRow>();
+      commentResults.forEach(({ data, error }) => {
+        if (error) {
+          console.error('Failed to load comment notifications:', error);
+          return;
+        }
+        ((data ?? []) as CommentNotificationRow[]).forEach((row) => mergedComments.set(row.id, row));
+      });
+
+      const likeQueries: any[] = [];
+      if (postIds.length > 0) {
+        likeQueries.push(
+          supabase
+            .from('post_votes')
+            .select('post_id, user_id')
+            .in('post_id', postIds)
+            .neq('user_id', userId)
+        );
+      }
+      if (myCommentIdList.length > 0) {
+        likeQueries.push(
+          supabase
+            .from('post_comment_votes')
+            .select('comment_id, user_id')
+            .in('comment_id', myCommentIdList)
+            .neq('user_id', userId)
+        );
+      }
+
+      const likeResults = await Promise.all(likeQueries);
+      const mergedLikes = new Map<string, LikeNotificationRow>();
+      likeResults.forEach(({ data, error }, index) => {
+        if (error) {
+          console.error('Failed to load like notifications:', error);
+          return;
+        }
+
+        if (index === 0 && postIds.length > 0) {
+          ((data ?? []) as Array<{ post_id: string; user_id: string }>).forEach((row) => {
+            const key = `post:${row.post_id}:${row.user_id}`;
+            mergedLikes.set(key, {
+              target_type: 'post',
+              target_id: row.post_id,
+              post_id: row.post_id,
+              user_id: row.user_id,
+            });
+          });
+          return;
+        }
+
+        ((data ?? []) as Array<{ comment_id: string; user_id: string }>).forEach((row) => {
+          const key = `comment:${row.comment_id}:${row.user_id}`;
+          mergedLikes.set(key, {
+            target_type: 'comment',
+            target_id: row.comment_id,
+            comment_id: row.comment_id,
+            user_id: row.user_id,
+          });
+        });
+      });
 
       return {
         friendRequests: (friendRequestData ?? []) as FriendRequestNotificationRow[],
         messages: (messageData ?? []) as DirectMessageNotificationRow[],
-        comments: (commentData ?? []) as CommentNotificationRow[],
-        likes: (likeData ?? []) as LikeNotificationRow[],
+        comments: Array.from(mergedComments.values()).sort((a, b) => (
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        )),
+        likes: Array.from(mergedLikes.values()),
         postTitlesById,
+        myCommentIds,
       };
     }
 
@@ -425,10 +519,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           if (!previousCommentIds.has(comment.id)) {
             const postTitle = snapshot.postTitlesById[comment.post_id];
             await presentInAppNotification(
-              'New comment on your post',
-              postTitle
-                ? `Someone commented on "${truncateNotificationText(postTitle, 40)}".`
-                : 'Someone commented on your board post.',
+              comment.parent_comment_id && snapshot.myCommentIds.has(comment.parent_comment_id)
+                ? 'New reply to your comment'
+                : 'New comment on your post',
+              comment.parent_comment_id && snapshot.myCommentIds.has(comment.parent_comment_id)
+                ? 'Someone replied to one of your board comments.'
+                : postTitle
+                  ? `Someone commented on "${truncateNotificationText(postTitle, 40)}".`
+                  : 'Someone commented on your board post.',
               { type: 'post-comment', commentId: comment.id, postId: comment.post_id }
             );
           }
@@ -439,13 +537,19 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         for (const like of snapshot.likes) {
           const likeKey = buildLikeKey(like);
           if (!previousLikeKeys.has(likeKey)) {
-            const postTitle = snapshot.postTitlesById[like.post_id];
+            const postTitle = like.post_id ? snapshot.postTitlesById[like.post_id] : null;
             await presentInAppNotification(
-              'New like on your post',
-              postTitle
-                ? `Someone liked "${truncateNotificationText(postTitle, 40)}".`
-                : 'Someone liked your board post.',
-              { type: 'post-like', postId: like.post_id, actorId: like.user_id }
+              like.target_type === 'comment' ? 'New like on your comment' : 'New like on your post',
+              like.target_type === 'comment'
+                ? 'Someone liked one of your board comments.'
+                : postTitle
+                  ? `Someone liked "${truncateNotificationText(postTitle, 40)}".`
+                  : 'Someone liked your board post.',
+              {
+                type: like.target_type === 'comment' ? 'comment-like' : 'post-like',
+                targetId: like.target_id,
+                actorId: like.user_id,
+              }
             );
           }
         }
@@ -752,6 +856,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     void Notifications.cancelAllScheduledNotificationsAsync();
     setUserId(null);
     setUserEmail('');
+    setExpoPushToken(null);
     setUserProfile(fallbackProfileFromEmail('student@uci.edu'));
     setUserSettings(DEFAULT_USER_SETTINGS);
     setTimetables([]);
@@ -761,7 +866,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   const saveUserSettingsRow = async (
     nextSettings: UserSettingsState,
-    nextProfile: EditableProfile = userProfile
+    nextProfile: EditableProfile = userProfile,
+    nextExpoPushToken: string | null = expoPushToken
   ) => {
     if (!userId) throw new Error('missing-user-id');
 
@@ -770,6 +876,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       timetable_visibility: nextSettings.timetableVisibility,
       notification_settings: nextSettings.notifications,
       push_permission_status: nextSettings.pushPermissionStatus,
+      expo_push_token: nextExpoPushToken,
       profile_details: profileDetailsFromProfile(nextProfile, nextSettings.boardProfileVisible),
       updated_at: new Date().toISOString(),
     };
@@ -784,6 +891,29 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           : error.message
       );
       throw error;
+    }
+  };
+
+  const resolveExpoProjectId = () => {
+    return (
+      Constants.easConfig?.projectId ||
+      (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ||
+      undefined
+    );
+  };
+
+  const registerExpoPushToken = async (): Promise<string | null> => {
+    try {
+      const projectId = resolveExpoProjectId();
+      const tokenResponse = projectId
+        ? await Notifications.getExpoPushTokenAsync({ projectId })
+        : await Notifications.getExpoPushTokenAsync();
+      const token = tokenResponse.data;
+      setExpoPushToken(token);
+      return token;
+    } catch (error) {
+      console.error('Failed to register Expo push token:', error);
+      return null;
     }
   };
 
@@ -813,7 +943,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
     const nextSettings = { ...userSettings };
     try {
-      await saveUserSettingsRow(nextSettings, next);
+      await saveUserSettingsRow(nextSettings, next, expoPushToken);
       setUserProfile(next);
       return true;
     } catch {
@@ -879,7 +1009,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       pushPermissionStatus,
     };
     try {
-      await saveUserSettingsRow(nextSettings);
+      let nextToken = expoPushToken;
+      if (notifications.pushNotifications && pushPermissionStatus === 'granted') {
+        nextToken = await registerExpoPushToken();
+      }
+      if (!notifications.pushNotifications) {
+        nextToken = null;
+        setExpoPushToken(null);
+      }
+      await saveUserSettingsRow(nextSettings, userProfile, nextToken);
       setUserSettings(nextSettings);
       return true;
     } catch {
@@ -888,6 +1026,36 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       setSavingNotifications(false);
     }
   };
+
+  useEffect(() => {
+    if (!userId) return;
+    if (!userSettings.notifications.pushNotifications) return;
+    if (userSettings.pushPermissionStatus !== 'granted') return;
+    if (expoPushToken) return;
+
+    let cancelled = false;
+
+    async function syncPushToken() {
+      const token = await registerExpoPushToken();
+      if (cancelled || !token) return;
+      try {
+        await saveUserSettingsRow(userSettings, userProfile, token);
+      } catch {
+        return;
+      }
+    }
+
+    void syncPushToken();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    expoPushToken,
+    userId,
+    userProfile,
+    userSettings,
+  ]);
 
   const handleOpenFriendsTab = () => {
     setCurrentTab('friends');
@@ -916,7 +1084,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         <SignUpScreen
           university={selectedUniversity ?? undefined}
           onBack={() => setAuthScreen('university')}
-          onSignedUp={(id) => setUserId(id)}
+          onSignedUp={(id, email) => { setUserId(id); setUserEmail(email); }}
           onGoToSignIn={() => setAuthScreen('signin')}
         />
       );
@@ -938,7 +1106,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   if (currentTab === 'home') {
     content = (
       <HomeScreen
-        activeCourses={currentQuarterCourses}
+        activeCourses={homeQuarterCourses}
+        selectedQuarter={homeQuarterKey === academicQuarterKey ? academicQuarter : selectedQuarter}
         onGoToTimetable={() => setCurrentTab('timetable')}
         onGoToGrades={() => setCurrentTab('grades')}
         onOpenSettings={() => setShowSettings(true)}

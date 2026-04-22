@@ -10,13 +10,16 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
-  Switch,
   Alert,
   Animated,
   PanResponder,
   Dimensions,
+  Image,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import type { ChatTarget } from '../data/messages';
@@ -61,6 +64,19 @@ type Post = {
   likes: number;
   commentCount: number;
   liked: boolean;
+  attachments: BoardAttachment[];
+  is_locked: boolean;
+};
+
+type BoardAttachment = {
+  id: string;
+  name: string;
+  type: 'image' | 'file';
+  url?: string;
+  path?: string;
+  localUri?: string;
+  mimeType?: string | null;
+  size?: number | null;
 };
 
 type Board = {
@@ -94,6 +110,42 @@ const REPORT_REASONS = [
   'Scam or unsafe transaction',
   'Other',
 ];
+
+const BOARD_ATTACHMENTS_BUCKET = 'board-attachments';
+
+function sanitizeFileName(name: string) {
+  return name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '');
+}
+
+function formatFileSize(size?: number | null) {
+  if (!size || Number.isNaN(size)) return null;
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function normalizeAttachments(value: unknown): BoardAttachment[] {
+  if (!Array.isArray(value)) return [];
+  const normalized: BoardAttachment[] = [];
+  value.forEach((item, index) => {
+    if (!item || typeof item !== 'object') return;
+    const candidate = item as Record<string, unknown>;
+    const type = candidate.type === 'image' ? 'image' : 'file';
+    const name = typeof candidate.name === 'string' && candidate.name.trim() ? candidate.name.trim() : `Attachment ${index + 1}`;
+    const url = typeof candidate.url === 'string' ? candidate.url : undefined;
+    const path = typeof candidate.path === 'string' ? candidate.path : undefined;
+    normalized.push({
+      id: typeof candidate.id === 'string' ? candidate.id : `${type}-${index}-${name}`,
+      name,
+      type,
+      url,
+      path,
+      mimeType: typeof candidate.mimeType === 'string' ? candidate.mimeType : null,
+      size: typeof candidate.size === 'number' ? candidate.size : null,
+    });
+  });
+  return normalized;
+}
 
 function timeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -213,9 +265,12 @@ export default function BoardScreen({
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostBody, setNewPostBody] = useState('');
   const [newPostBoardId, setNewPostBoardId] = useState('general');
-  const [preventEdit, setPreventEdit] = useState(false);
+  const [newPostAttachments, setNewPostAttachments] = useState<BoardAttachment[]>([]);
+  const [newPostLocked, setNewPostLocked] = useState(false);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [showBoardPicker, setShowBoardPicker] = useState(false);
   const [submittingPost, setSubmittingPost] = useState(false);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'recent' | 'popular'>('recent');
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
@@ -254,6 +309,21 @@ export default function BoardScreen({
   useEffect(() => {
     if (scrollToTopTrigger > 0) boardListScrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [scrollToTopTrigger]);
+
+  function resetComposer() {
+    setEditingPostId(null);
+    setShowBoardPicker(false);
+    setNewPostTitle('');
+    setNewPostBody('');
+    setNewPostBoardId(selectedBoard?.id ?? 'general');
+    setNewPostAttachments([]);
+    setNewPostLocked(false);
+  }
+
+  function closeComposer() {
+    setShowNewPost(false);
+    resetComposer();
+  }
 
   async function resolveAuthorNames(userIds: string[]) {
     const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
@@ -294,6 +364,93 @@ export default function BoardScreen({
         })
       ),
     };
+  }
+
+  async function uploadAttachment(attachment: BoardAttachment) {
+    if (attachment.url || !attachment.localUri) return attachment;
+
+    const inferredExtension =
+      attachment.name.split('.').pop() ||
+      attachment.mimeType?.split('/').pop() ||
+      (attachment.type === 'image' ? 'jpg' : 'bin');
+    const fileNameBase = sanitizeFileName(attachment.name.replace(/\.[^.]+$/, '')) || `${attachment.type}-attachment`;
+    const path = `${userId}/${Date.now()}-${attachment.id}-${fileNameBase}.${inferredExtension}`;
+
+    const response = await fetch(attachment.localUri);
+    const blob = await response.blob();
+    const { error } = await supabase.storage.from(BOARD_ATTACHMENTS_BUCKET).upload(path, blob, {
+      contentType: attachment.mimeType ?? undefined,
+      upsert: false,
+    });
+
+    if (error) throw error;
+
+    const { data } = supabase.storage.from(BOARD_ATTACHMENTS_BUCKET).getPublicUrl(path);
+    return {
+      ...attachment,
+      url: data.publicUrl,
+      path,
+      localUri: undefined,
+    };
+  }
+
+  async function removeStoragePaths(paths: string[]) {
+    if (paths.length === 0) return;
+    const { error } = await supabase.storage.from(BOARD_ATTACHMENTS_BUCKET).remove(paths);
+    if (error) console.error('Failed to delete board attachments:', error);
+  }
+
+  async function handlePickImages() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Photos access needed', 'Allow photo library access so you can attach images to your post.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.85,
+      selectionLimit: 8,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const picked = result.assets.map((asset, index) => ({
+      id: `${Date.now()}-image-${index}-${Math.random().toString(36).slice(2, 8)}`,
+      name: asset.fileName || `image-${index + 1}.jpg`,
+      type: 'image' as const,
+      localUri: asset.uri,
+      mimeType: asset.mimeType ?? 'image/jpeg',
+      size: asset.fileSize ?? null,
+    }));
+
+    setNewPostAttachments((prev) => [...prev, ...picked]);
+  }
+
+  async function handlePickFiles() {
+    const result = await DocumentPicker.getDocumentAsync({
+      multiple: true,
+      copyToCacheDirectory: true,
+      type: '*/*',
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const picked = result.assets.map((asset, index) => ({
+      id: `${Date.now()}-file-${index}-${Math.random().toString(36).slice(2, 8)}`,
+      name: asset.name,
+      type: 'file' as const,
+      localUri: asset.uri,
+      mimeType: asset.mimeType ?? 'application/octet-stream',
+      size: asset.size ?? null,
+    }));
+
+    setNewPostAttachments((prev) => [...prev, ...picked]);
+  }
+
+  function removeDraftAttachment(attachmentId: string) {
+    setNewPostAttachments((prev) => prev.filter((attachment) => attachment.id !== attachmentId));
   }
 
   async function fetchPosts() {
@@ -353,6 +510,8 @@ export default function BoardScreen({
       likes: likeCountMap[post.id] ?? 0,
       commentCount: commentCountMap[post.id] ?? 0,
       liked: userLikedSet.has(post.id),
+      attachments: normalizeAttachments(post.attachments),
+      is_locked: !!post.is_locked,
     }));
 
     setPosts(freshPosts);
@@ -486,56 +645,175 @@ export default function BoardScreen({
   async function handleCreatePost() {
     if (!newPostTitle.trim() || submittingPost) return;
     setSubmittingPost(true);
+    setUploadingAttachments(true);
 
     const board = BOARDS.find((entry) => entry.id === newPostBoardId) ?? BOARDS[0];
     const category = board.category ?? 'General';
     const authorName = boardProfileVisible ? boardAuthorName : anteaterAliasForId(userId);
-    const { data, error } = await supabase
-      .from('posts')
-      .insert({
+    try {
+      const attachments = await Promise.all(newPostAttachments.map((attachment) => uploadAttachment(attachment)));
+      const payload = {
         user_id: userId,
         school,
         category,
         title: newPostTitle.trim(),
         body: newPostBody.trim(),
         author_name: authorName,
-      })
-      .select()
-      .single();
+        attachments,
+        is_locked: newPostLocked,
+      };
 
-    setSubmittingPost(false);
-    if (error || !data) {
-      Alert.alert('Post failed', error?.message ?? 'Unknown error');
-      return;
+      if (editingPostId) {
+        const existingPost = posts.find((post) => post.id === editingPostId);
+        const removedPaths = (existingPost?.attachments ?? [])
+          .map((attachment) => attachment.path)
+          .filter((path): path is string => !!path && !attachments.some((next) => next.path === path));
+
+        const { data, error } = await supabase
+          .from('posts')
+          .update(payload)
+          .eq('id', editingPostId)
+          .eq('user_id', userId)
+          .select()
+          .single();
+
+        if (error || !data) {
+          Alert.alert(
+            'Update failed',
+            error?.code === 'PGRST204' || error?.code === '42703'
+              ? 'The posts table is missing the attachments or is_locked columns. Run the SQL update first.'
+              : error?.message ?? 'Unknown error'
+          );
+          return;
+        }
+
+        const updatedPost: Post = {
+          id: data.id,
+          user_id: data.user_id,
+          author_name: authorName,
+          category: data.category ?? 'General',
+          title: data.title,
+          body: data.body ?? '',
+          created_at: data.created_at,
+          likes: existingPost?.likes ?? 0,
+          commentCount: existingPost?.commentCount ?? 0,
+          liked: existingPost?.liked ?? false,
+          attachments: normalizeAttachments(data.attachments),
+          is_locked: !!data.is_locked,
+        };
+
+        setPosts((prev) => prev.map((post) => (post.id === editingPostId ? updatedPost : post)));
+        if (selectedPost?.id === editingPostId) setSelectedPost(updatedPost);
+        await removeStoragePaths(removedPaths);
+      } else {
+        const { data, error } = await supabase.from('posts').insert(payload).select().single();
+
+        if (error || !data) {
+          Alert.alert(
+            'Post failed',
+            error?.code === 'PGRST204' || error?.code === '42703'
+              ? 'The posts table is missing the attachments or is_locked columns. Run the SQL update first.'
+              : error?.message ?? 'Unknown error'
+          );
+          return;
+        }
+
+        const newPost: Post = {
+          id: data.id,
+          user_id: data.user_id,
+          author_name: authorName,
+          category: data.category ?? 'General',
+          title: data.title,
+          body: data.body ?? '',
+          created_at: data.created_at,
+          likes: 0,
+          commentCount: 0,
+          liked: false,
+          attachments: normalizeAttachments(data.attachments),
+          is_locked: !!data.is_locked,
+        };
+
+        setPosts((prev) => [newPost, ...prev]);
+      }
+
+      closeComposer();
+    } catch (error: any) {
+      Alert.alert(
+        'Attachment upload failed',
+        error?.message?.includes('bucket')
+          ? 'The board-attachments storage bucket is missing or unavailable. Run the storage setup first.'
+          : error?.message ?? 'Could not upload one of the attachments.'
+      );
+    } finally {
+      setUploadingAttachments(false);
+      setSubmittingPost(false);
     }
-
-    const newPost: Post = {
-      id: data.id,
-      user_id: data.user_id,
-      author_name: authorName,
-      category: data.category ?? 'General',
-      title: data.title,
-      body: data.body ?? '',
-      created_at: data.created_at,
-      likes: 0,
-      commentCount: 0,
-      liked: false,
-    };
-
-    setPosts((prev) => [newPost, ...prev]);
-    setShowNewPost(false);
-    setNewPostTitle('');
-    setNewPostBody('');
-    setNewPostBoardId('general');
-    setPreventEdit(false);
   }
 
   function openNewPost(boardId?: string) {
+    resetComposer();
     setNewPostBoardId(boardId ?? selectedBoard?.id ?? 'general');
-    setNewPostTitle('');
-    setNewPostBody('');
-    setPreventEdit(false);
     setShowNewPost(true);
+  }
+
+  function openEditPost(post: Post) {
+    if (post.is_locked) {
+      Alert.alert('Locked post', 'This post can no longer be edited or deleted.');
+      return;
+    }
+    setEditingPostId(post.id);
+    setNewPostBoardId(BOARDS.find((board) => (board.category ?? 'General') === post.category)?.id ?? 'general');
+    setNewPostTitle(post.title);
+    setNewPostBody(post.body);
+    setNewPostAttachments(post.attachments);
+    setNewPostLocked(post.is_locked);
+    setShowBoardPicker(false);
+    setShowNewPost(true);
+  }
+
+  async function handleDeletePost(post: Post) {
+    if (post.is_locked) {
+      Alert.alert('Locked post', 'This post can no longer be edited or deleted.');
+      return;
+    }
+
+    Alert.alert('Delete post?', 'This will permanently remove the post and its replies.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            const { data: commentRows } = await supabase.from('post_comments').select('id').eq('post_id', post.id);
+            const commentIds = (commentRows ?? []).map((row: any) => row.id);
+
+            if (commentIds.length > 0) {
+              await supabase.from('post_comment_votes').delete().in('comment_id', commentIds);
+            }
+            await supabase.from('post_comments').delete().eq('post_id', post.id);
+            await supabase.from('post_votes').delete().eq('post_id', post.id);
+
+            const { error } = await supabase.from('posts').delete().eq('id', post.id).eq('user_id', userId);
+            if (error) {
+              Alert.alert('Delete failed', error.message);
+              return;
+            }
+
+            await removeStoragePaths(
+              post.attachments.map((attachment) => attachment.path).filter((path): path is string => !!path)
+            );
+
+            setPosts((prev) => prev.filter((entry) => entry.id !== post.id));
+            if (selectedPost?.id === post.id) {
+              setSelectedPost(null);
+              setComments([]);
+              setCommentInput('');
+              setReplyingToComment(null);
+            }
+          })();
+        },
+      },
+    ]);
   }
 
   function openBoard(board: Board) {
@@ -904,9 +1182,80 @@ export default function BoardScreen({
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
+                        {post.is_locked ? (
+                          <>
+                            <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                            <View
+                              style={{
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                                borderRadius: 999,
+                                backgroundColor: colors.brandBg,
+                                borderWidth: 1,
+                                borderColor: `${colors.brand}20`,
+                              }}
+                            >
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand }}>Locked</Text>
+                            </View>
+                          </>
+                        ) : null}
                       </View>
                       <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 10 }}>{post.title}</Text>
                       <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 22, marginBottom: 16 }}>{post.body}</Text>
+                      {post.attachments.length > 0 ? (
+                        <View style={{ marginBottom: 16, gap: 10 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Attachments</Text>
+                          {post.attachments.map((attachment) => (
+                            <TouchableOpacity
+                              key={attachment.id}
+                              onPress={() => {
+                                if (attachment.url) void Linking.openURL(attachment.url);
+                              }}
+                              activeOpacity={0.82}
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 12,
+                                borderRadius: 14,
+                                padding: 12,
+                                backgroundColor: colors.card,
+                                borderWidth: 1,
+                                borderColor: colors.borderSubtle,
+                              }}
+                            >
+                              {attachment.type === 'image' && attachment.url ? (
+                                <Image
+                                  source={{ uri: attachment.url }}
+                                  style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: colors.bgTertiary }}
+                                />
+                              ) : (
+                                <View
+                                  style={{
+                                    width: 52,
+                                    height: 52,
+                                    borderRadius: 12,
+                                    backgroundColor: colors.brandBg,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  <Ionicons name="document-outline" size={24} color={colors.brand} />
+                                </View>
+                              )}
+                              <View style={{ flex: 1 }}>
+                                <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
+                                  {attachment.name}
+                                </Text>
+                                <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
+                                  {attachment.type === 'image' ? 'Image' : 'File'}
+                                  {formatFileSize(attachment.size) ? ` · ${formatFileSize(attachment.size)}` : ''}
+                                </Text>
+                              </View>
+                              <Ionicons name="open-outline" size={18} color={colors.textTertiary} />
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                         <TouchableOpacity onPress={() => void togglePostLike(post.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                           <Ionicons name={post.liked ? 'thumbs-up' : 'thumbs-up-outline'} size={18} color={post.liked ? colors.brand : colors.textTertiary} />
@@ -940,6 +1289,38 @@ export default function BoardScreen({
                           </TouchableOpacity>
                         ) : null}
                       </View>
+                      {post.user_id === userId ? (
+                        <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                          <TouchableOpacity
+                            disabled={post.is_locked}
+                            onPress={() => openEditPost(post)}
+                            style={{
+                              flex: 1,
+                              borderRadius: 12,
+                              paddingVertical: 11,
+                              alignItems: 'center',
+                              backgroundColor: colors.bgTertiary,
+                              opacity: post.is_locked ? 0.5 : 1,
+                            }}
+                          >
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Edit Post</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            disabled={post.is_locked}
+                            onPress={() => void handleDeletePost(post)}
+                            style={{
+                              flex: 1,
+                              borderRadius: 12,
+                              paddingVertical: 11,
+                              alignItems: 'center',
+                              backgroundColor: '#fee2e2',
+                              opacity: post.is_locked ? 0.5 : 1,
+                            }}
+                          >
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: '#dc2626' }}>Delete Post</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
                     </View>
 
                     <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
@@ -976,7 +1357,17 @@ export default function BoardScreen({
                         </View>
                       ) : null}
 
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 10,
+                          paddingTop: 12,
+                          paddingBottom: Platform.OS === 'ios' ? 14 : 10,
+                          borderTopWidth: 1,
+                          borderTopColor: colors.border,
+                        }}
+                      >
                         <TextInput
                           value={commentInput}
                           onChangeText={setCommentInput}
@@ -1086,8 +1477,6 @@ export default function BoardScreen({
                         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6, flexWrap: 'wrap' }}>
-                              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{post.author_name}</Text>
-                              <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                               <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
                               <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                               <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
@@ -1138,7 +1527,7 @@ export default function BoardScreen({
 
       <NewPostModal
         visible={showNewPost}
-        onClose={() => setShowNewPost(false)}
+        onClose={closeComposer}
         boards={BOARDS}
         selectedBoardId={newPostBoardId}
         onSelectBoard={setNewPostBoardId}
@@ -1148,10 +1537,16 @@ export default function BoardScreen({
         onTitleChange={setNewPostTitle}
         body={newPostBody}
         onBodyChange={setNewPostBody}
-        preventEdit={preventEdit}
-        onPreventEditChange={setPreventEdit}
+        attachments={newPostAttachments}
+        onAddImages={() => void handlePickImages()}
+        onAddFiles={() => void handlePickFiles()}
+        onRemoveAttachment={removeDraftAttachment}
+        isLocked={newPostLocked}
+        onToggleLocked={() => setNewPostLocked((value) => !value)}
+        editing={!!editingPostId}
         onSubmit={handleCreatePost}
         submitting={submittingPost}
+        uploadingAttachments={uploadingAttachments}
         colors={colors}
       />
 
@@ -1326,10 +1721,16 @@ type NewPostModalProps = {
   onTitleChange: (v: string) => void;
   body: string;
   onBodyChange: (v: string) => void;
-  preventEdit: boolean;
-  onPreventEditChange: (v: boolean) => void;
+  attachments: BoardAttachment[];
+  onAddImages: () => void;
+  onAddFiles: () => void;
+  onRemoveAttachment: (attachmentId: string) => void;
+  isLocked: boolean;
+  onToggleLocked: () => void;
+  editing: boolean;
   onSubmit: () => void;
   submitting: boolean;
+  uploadingAttachments: boolean;
   colors: ReturnType<typeof useTheme>['colors'];
 };
 
@@ -1345,10 +1746,16 @@ function NewPostModal({
   onTitleChange,
   body,
   onBodyChange,
-  preventEdit,
-  onPreventEditChange,
+  attachments,
+  onAddImages,
+  onAddFiles,
+  onRemoveAttachment,
+  isLocked,
+  onToggleLocked,
+  editing,
   onSubmit,
   submitting,
+  uploadingAttachments,
   colors,
 }: NewPostModalProps) {
   const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? boards[0];
@@ -1360,7 +1767,9 @@ function NewPostModal({
           <TouchableOpacity onPress={onClose} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="close" size={22} color={colors.text} />
           </TouchableOpacity>
-          <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: colors.text }}>New Post</Text>
+          <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: colors.text }}>
+            {editing ? 'Edit Post' : 'New Post'}
+          </Text>
           <View style={{ width: 36 }} />
         </View>
 
@@ -1420,34 +1829,159 @@ function NewPostModal({
             style={{ backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: colors.text, marginBottom: 20, minHeight: 160, textAlignVertical: 'top' }}
           />
 
-          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 12 }}>Attachments</Text>
-          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
-            <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.border, borderRadius: 12, paddingVertical: 13 }}>
-              <Ionicons name="image-outline" size={18} color={colors.textSecondary} />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary }}>Add Images</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
+            <TouchableOpacity
+              onPress={onAddImages}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                backgroundColor: colors.inputBg,
+                borderRadius: 14,
+                paddingVertical: 14,
+                borderWidth: 1,
+                borderColor: colors.borderSubtle,
+              }}
+            >
+              <Ionicons name="image-outline" size={16} color={colors.brand} />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Add Images</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.border, borderRadius: 12, paddingVertical: 13 }}>
-              <Ionicons name="attach-outline" size={18} color={colors.textSecondary} />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary }}>Add Files</Text>
+            <TouchableOpacity
+              onPress={onAddFiles}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                backgroundColor: colors.inputBg,
+                borderRadius: 14,
+                paddingVertical: 14,
+                borderWidth: 1,
+                borderColor: colors.borderSubtle,
+              }}
+            >
+              <Ionicons name="document-attach-outline" size={16} color={colors.brand} />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Add Files</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 20 }} />
-
-          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 12 }}>Post Options</Text>
-          <View style={{ backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-            <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>Prevent Edit/Delete</Text>
-              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>Lock this post after publishing</Text>
+          {attachments.length > 0 ? (
+            <View style={{ marginBottom: 20, gap: 10 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Attachments</Text>
+              {attachments.map((attachment) => (
+                <View
+                  key={attachment.id}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    backgroundColor: colors.card,
+                    borderWidth: 1,
+                    borderColor: colors.borderSubtle,
+                    borderRadius: 14,
+                    padding: 12,
+                  }}
+                >
+                  {attachment.type === 'image' && (attachment.localUri || attachment.url) ? (
+                    <Image
+                      source={{ uri: attachment.localUri ?? attachment.url }}
+                      style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: colors.bgTertiary }}
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: 12,
+                        backgroundColor: colors.brandBg,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="document-outline" size={22} color={colors.brand} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
+                      {attachment.name}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
+                      {attachment.type === 'image' ? 'Image' : 'File'}
+                      {formatFileSize(attachment.size) ? ` · ${formatFileSize(attachment.size)}` : ''}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => onRemoveAttachment(attachment.id)} style={{ padding: 4 }}>
+                    <Ionicons name="close-circle" size={22} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                </View>
+              ))}
             </View>
-            <Switch
-              value={preventEdit}
-              onValueChange={onPreventEditChange}
-              trackColor={{ false: colors.border, true: colors.brand }}
-              thumbColor="white"
-            />
-          </View>
+          ) : null}
+
+          <TouchableOpacity
+            onPress={onToggleLocked}
+            activeOpacity={0.85}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              borderRadius: 14,
+              padding: 14,
+              backgroundColor: isLocked ? colors.brandBg : colors.inputBg,
+              borderWidth: 1,
+              borderColor: isLocked ? `${colors.brand}28` : colors.borderSubtle,
+              marginBottom: 20,
+            }}
+          >
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 12,
+                backgroundColor: isLocked ? colors.brand : colors.card,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name={isLocked ? 'lock-closed' : 'lock-open-outline'} size={16} color={isLocked ? 'white' : colors.textTertiary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Prevent Edit/Delete</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                Lock this post after publishing so it can no longer be edited or deleted.
+              </Text>
+            </View>
+            <View
+              style={{
+                width: 46,
+                height: 28,
+                borderRadius: 14,
+                backgroundColor: isLocked ? colors.brand : colors.border,
+                justifyContent: 'center',
+                paddingHorizontal: 3,
+              }}
+            >
+              <View
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  backgroundColor: 'white',
+                  alignSelf: isLocked ? 'flex-end' : 'flex-start',
+                }}
+              />
+            </View>
+          </TouchableOpacity>
+
+          {uploadingAttachments ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <ActivityIndicator size="small" color={colors.brand} />
+              <Text style={{ fontSize: 13, color: colors.textSecondary }}>Uploading attachments...</Text>
+            </View>
+          ) : null}
         </ScrollView>
 
         <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16, paddingBottom: Platform.OS === 'ios' ? 32 : 16, borderTopWidth: 1, borderTopColor: colors.border }}>
@@ -1456,10 +1990,14 @@ function NewPostModal({
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onSubmit}
-            disabled={!title.trim() || submitting}
+            disabled={!title.trim() || submitting || uploadingAttachments}
             style={{ flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: title.trim() ? colors.brand : colors.border }}
           >
-            {submitting ? <ActivityIndicator color="white" /> : <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>Post</Text>}
+            {submitting ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>{editing ? 'Save' : 'Post'}</Text>
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

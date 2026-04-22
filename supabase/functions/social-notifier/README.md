@@ -18,10 +18,11 @@ It listens for inserts from:
 Set these in Supabase:
 
 ```bash
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY=...
 supabase secrets set RESEND_API_KEY=...
 supabase secrets set NOTIFICATIONS_FROM_EMAIL="ClassMate <notifications@yourdomain.com>"
 ```
+
+`SUPABASE_SERVICE_ROLE_KEY` is automatically available inside Supabase Edge Functions. Do not try to set it manually with `supabase secrets set`.
 
 Optional:
 
@@ -50,6 +51,16 @@ Use `INSERT` events for these tables:
 - `post_comments`
 - `post_votes`
 - `post_comment_votes`
+
+## SQL
+
+Run the SQL in:
+
+```text
+supabase/sql/remote_notifications.sql
+```
+
+This file should only add the `expo_push_token` and `last_remote_notification_at` columns to `user_settings`.
 
 ## What the app stores
 

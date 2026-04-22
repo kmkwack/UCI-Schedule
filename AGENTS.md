@@ -831,3 +831,7 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64by (Separate moderator access from support inboxes)
 - **`src/screens/SettingsScreen.tsx`** — Split moderation access from support contact addresses. `Contact Support` still emails `heyy.seans@gmail.com` and `hii.seans@gmail.com`, but the in-app `Reports Inbox` now only appears for the moderator account `sihyup2@uci.edu`.
+
+### Session 64bz (Clean up remote notification setup docs)
+- **`supabase/sql/remote_notifications.sql`** — Removed the mistaken `user_settings` support-access policies so the file now does only what it is supposed to do: add the remote-notification columns (`expo_push_token`, `last_remote_notification_at`).
+- **`supabase/functions/social-notifier/README.md`** — Corrected the setup instructions to stop telling developers to set `SUPABASE_SERVICE_ROLE_KEY` manually. The README now explains that the service-role key is automatically available inside Supabase Edge Functions and clarifies that the SQL step is just the two `user_settings` columns.

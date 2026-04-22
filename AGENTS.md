@@ -866,3 +866,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64ci (Clarify push permission vs app toggle)
 - **`src/screens/SettingsScreen.tsx`** — Split the notification status card into two explicit lines: `Permission` for the system-level iOS state and `App notifications` for the in-app toggle state, so `granted + off` no longer looks contradictory.
+
+### Session 64cj (Trim quarter-progress precision)
+- **`src/screens/HomeScreen.tsx`** — Reduced the `Quarter Progress` percentage display from eight decimal places to six so the number stays more readable while keeping the underlying progress calculation and bar behavior unchanged.

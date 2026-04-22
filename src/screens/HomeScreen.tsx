@@ -579,7 +579,7 @@ export default function HomeScreen({
                 fontVariant: ['tabular-nums'],
               }}
             >
-              {quarterPercent.toFixed(8)}%
+              {quarterPercent.toFixed(6)}%
             </Text>
           </View>
           <View style={{ height: 10, borderRadius: 999, backgroundColor: colors.bgTertiary, overflow: 'hidden', marginBottom: 10 }}>

@@ -574,3 +574,29 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`App.tsx`** — Removed guest fallback user handling, guest-only alerts, and the guest sign-in callback. The main app now assumes authenticated users only once past the auth flow.
 - **`src/screens/MessagesScreen.tsx`** — Simplified message gating so it no longer checks for guest ids and instead only guards against missing/invalid user ids.
 - **`src/screens/FriendsScreen.tsx`** — Removed guest-specific friend-search/request branches now that anonymous guest accounts are no longer part of the product.
+
+### Session 64 (Floating island tab bar)
+- **`App.tsx`** — Reworked the bottom navigation into a floating island-style capsule with translucent “liquid glass” styling, rounded active pills, and bottom safe-area spacing. The bar now sits above the screen instead of being attached to the bottom edge, while the main content gets extra bottom padding so nothing hides behind it.
+
+### Session 64b (Tighten vertical spacing for phone layouts)
+- **`App.tsx`** — Reduced the shared top spacing on tab-wrapped screens and slightly lowered the extra bottom padding reserved for the floating tab bar so more content fits on smaller phone screens.
+- **`src/screens/HomeScreen.tsx`** — Compressed the top header area, date spacing, hero card padding, and weather card scale so the home screen feels less stretched vertically on mobile.
+- **`src/screens/BoardScreen.tsx`** — Reduced top header padding and lower list bottom spacing so the board fits more naturally on phone-height viewports.
+- **`src/screens/FriendsScreen.tsx`** — Slightly reduced the main title scale to better match the tighter mobile layout density.
+- **`src/screens/GradesScreen.tsx`** — Reduced the top padding, title size, and first-card spacing to make the grades screen less tall overall.
+
+### Session 64c (Slimmer, more transparent floating tab bar)
+- **`App.tsx`** — Reduced the floating tab bar’s vertical padding and corner radius, softened the active pill, and lowered the background/border opacity so the bottom island reads thinner and more glassy instead of chunky.
+
+### Session 64d (Fit ClassMates label inside slimmer tab bar)
+- **`App.tsx`** — Reduced tab item padding and label size again, enabled single-line auto-fit text on tab labels, and lowered the floating bar height another step so `ClassMates` fits on one line without the island becoming bulky.
+
+### Session 64e (Lower content start on phone screens)
+- **`src/screens/HomeScreen.tsx`** — Increased the Home scroll view’s top content inset so the visible cards and header sit lower on the phone display instead of feeling pinned near the status bar.
+- **`src/screens/GradesScreen.tsx`** — Increased the Grades screen top inset so the title and summary content begin lower on the device.
+- **`src/screens/BoardScreen.tsx`** — Increased the top padding on the board list, post-detail, and inbox/detail headers so board content also starts lower and feels more centered vertically on phones.
+
+### Session 64f (Unify top-screen title typography)
+- **`src/screens/BoardScreen.tsx`** — Updated the main `Board` title to match the same 28pt bold header style used by the other primary tabs.
+- **`src/screens/FriendsScreen.tsx`** — Updated the `ClassMates` title to the shared 28pt bold tab-header style.
+- **`src/screens/MessagesScreen.tsx`** — Updated the inbox header title in both list and empty-state layouts so `Messages` uses the same title weight/scale as the other top-level screens.

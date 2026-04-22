@@ -285,7 +285,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 22, fontWeight: 'bold', color: colors.text }}>Messages</Text>
+          <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>Messages</Text>
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
           <Ionicons name="chatbubbles-outline" size={60} color={colors.border} />
@@ -401,7 +401,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 22, fontWeight: 'bold', color: colors.text }}>Messages</Text>
+          <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>Messages</Text>
         </View>
         <View style={{
           flexDirection: 'row', alignItems: 'center',

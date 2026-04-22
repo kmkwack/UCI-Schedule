@@ -219,12 +219,12 @@ export default function HomeScreen({
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bgSecondary }}
-      contentContainerStyle={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 32 }}
+        contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 24 }}
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <Text style={{ fontSize: 32, fontWeight: 'bold', color: colors.text }}>Home</Text>
+        <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>Home</Text>
         <TouchableOpacity
           onPress={() => setShowSettings(true)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -237,7 +237,7 @@ export default function HomeScreen({
           </View>
         </TouchableOpacity>
       </View>
-      <Text style={{ fontSize: 14, color: colors.textTertiary, marginTop: 0, marginBottom: 20 }}>
+      <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 0, marginBottom: 16 }}>
         {getDateLabel()}
       </Text>
 
@@ -264,7 +264,7 @@ export default function HomeScreen({
 
       {/* Your Day card */}
       <View style={{
-        backgroundColor: colors.card, borderRadius: 20, padding: 20, marginBottom: 16,
+        backgroundColor: colors.card, borderRadius: 20, padding: 16, marginBottom: 14,
         shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
       }}>
@@ -272,10 +272,10 @@ export default function HomeScreen({
 
         {/* Class count */}
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 16 }}>
-          <Text style={{ fontSize: 52, fontWeight: 'bold', color: colors.text, lineHeight: 56 }}>
+          <Text style={{ fontSize: 44, fontWeight: 'bold', color: colors.text, lineHeight: 48 }}>
             {todayCourses.length}
           </Text>
-          <Text style={{ fontSize: 18, color: colors.text }}>classes today</Text>
+          <Text style={{ fontSize: 16, color: colors.text }}>classes today</Text>
         </View>
 
         {/* Divider */}
@@ -322,12 +322,12 @@ export default function HomeScreen({
 
       {/* Weather card */}
       <View style={{
-        backgroundColor: colors.brandBg, borderRadius: 20, padding: 20, marginBottom: 16,
+        backgroundColor: colors.brandBg, borderRadius: 20, padding: 16, marginBottom: 14,
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 13, color: colors.brand, fontWeight: '600', opacity: 0.7, marginBottom: 8 }}>Weather</Text>
-          <Text style={{ fontSize: 42, fontWeight: 'bold', color: colors.text, lineHeight: 46 }}>
+          <Text style={{ fontSize: 36, fontWeight: 'bold', color: colors.text, lineHeight: 40 }}>
             {tempC === null ? '--°' : useCelsius ? `${Math.round(tempC)}°` : `${Math.round(tempC * 9 / 5 + 32)}°`}
           </Text>
           <Text style={{ fontSize: 15, color: colors.brand, marginTop: 4, opacity: 0.8 }}>
@@ -336,7 +336,7 @@ export default function HomeScreen({
         </View>
         <Ionicons
           name={weatherCode === null ? 'cloud-outline' : (WMO_DESCRIPTIONS[weatherCode]?.icon ?? 'sunny-outline')}
-          size={56}
+          size={48}
           color={colors.brand}
           style={{ opacity: 0.4 }}
         />

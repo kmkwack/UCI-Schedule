@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Easing, Platform, View, Text, TouchableOpacity } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { ThemeProvider, ThemePreference, useTheme } from './src/context/ThemeContext';
@@ -107,6 +107,7 @@ function buildUpcomingClassReminderDates(courses: Course[], reminderMinutes: num
 
 function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
   const [userProfile, setUserProfile] = useState<EditableProfile>(fallbackProfileFromEmail('student@uci.edu'));
@@ -721,7 +722,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     );
   } else if (currentTab === 'timetable') {
     content = (
-      <View style={{ flex: 1, paddingTop: 60, backgroundColor: colors.bg }}>
+      <View style={{ flex: 1, paddingTop: 62, backgroundColor: colors.bg }}>
         <TimetableScreen
           activeCourses={activeCourses}
           selectedQuarter={selectedQuarter}
@@ -759,7 +760,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     );
   } else if (currentTab === 'friends') {
     content = (
-      <View style={{ flex: 1, paddingTop: 60, backgroundColor: colors.bg }}>
+      <View style={{ flex: 1, paddingTop: 62, backgroundColor: colors.bg }}>
         <FriendsScreen
           userId={USER_ID}
           userEmail={userEmail}
@@ -781,17 +782,30 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     onPress: () => void;
   }) => (
     <TouchableOpacity
-      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+      style={{
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 4,
+        borderRadius: 18,
+        backgroundColor: active
+          ? (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.58)')
+          : 'transparent',
+      }}
       onPress={onPress}
     >
-      <Ionicons name={icon} size={22} color={active ? colors.brand : colors.textTertiary} />
+      <Ionicons name={icon} size={20} color={active ? colors.brand : colors.textTertiary} />
       <Text
         style={{
-          marginTop: 4,
-          fontSize: 12,
+          marginTop: 2,
+          fontSize: 10,
           color: active ? colors.brand : colors.textTertiary,
           fontWeight: active ? '600' : '400',
         }}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.82}
       >
         {label}
       </Text>
@@ -799,18 +813,27 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   );
 
   return (
-    <SafeAreaProvider>
-    <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
+    <View style={{ flex: 1, backgroundColor: colors.bgSecondary, paddingBottom: 92 }}>
       {content}
 
       <View
         style={{
+          position: 'absolute',
+          left: 16,
+          right: 16,
+          bottom: Math.max(insets.bottom, 10) + 8,
           flexDirection: 'row',
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-          paddingTop: 12,
-          paddingBottom: 28,
-          backgroundColor: colors.card,
+          paddingHorizontal: 10,
+          paddingVertical: 5,
+          borderRadius: 26,
+          borderWidth: 1,
+          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.62)',
+          backgroundColor: isDark ? 'rgba(23,23,28,0.56)' : 'rgba(248,250,255,0.6)',
+          shadowColor: '#0f172a',
+          shadowOffset: { width: 0, height: 14 },
+          shadowOpacity: isDark ? 0.24 : 0.1,
+          shadowRadius: 20,
+          elevation: 12,
         }}
       >
         <TabItem label="Home" icon="home-outline" active={currentTab === 'home'} onPress={() => setCurrentTab('home')} />
@@ -856,15 +879,16 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         </Animated.View>
       )}
     </View>
-    </SafeAreaProvider>
   );
 }
 
 export default function App() {
   const [themePreference, setThemePreference] = useState<ThemePreference>('auto');
   return (
-    <ThemeProvider preference={themePreference}>
-      <AppContent themePreference={themePreference} onThemeChange={setThemePreference} />
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider preference={themePreference}>
+        <AppContent themePreference={themePreference} onThemeChange={setThemePreference} />
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

@@ -504,8 +504,8 @@ export default function GradesScreen({ timetables, userId }: Props) {
   }, [grades, activeCourses, pastQuarterItems, unitOverrides]);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bgSecondary }} contentContainerStyle={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-      <Text style={{ fontSize: 32, fontWeight: 'bold', color: colors.text, marginBottom: 20 }}>Grades</Text>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.bgSecondary }} contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
+      <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text, marginBottom: 16 }}>Grades</Text>
 
       {/* Stats row */}
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
@@ -526,7 +526,7 @@ export default function GradesScreen({ timetables, userId }: Props) {
 
       {/* GPA Trend card */}
       <View style={{
-        backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 24,
+        backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 18,
         shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
       }}>
         <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 14 }}>GPA Trend</Text>

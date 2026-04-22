@@ -278,7 +278,7 @@ export default function BoardScreen({ onOpenMessages, school, userId, boardAutho
     const post = posts.find(p => p.id === selectedPost.id) ?? selectedPost;
     return (
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <TouchableOpacity onPress={() => { setSelectedPost(null); setComments([]); setCommentInput(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
@@ -351,7 +351,7 @@ export default function BoardScreen({ onOpenMessages, school, userId, boardAutho
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         {/* Header */}
-        <View style={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View style={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <TouchableOpacity onPress={() => { setSelectedBoard(null); setSearch(''); setSort('recent'); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="chevron-back" size={26} color={colors.text} />
@@ -455,10 +455,10 @@ export default function BoardScreen({ onOpenMessages, school, userId, boardAutho
   // ── board list (landing) ──────────────────────────────────────────────────
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <View style={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <View>
-          <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text }}>Board</Text>
-          <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>Choose a board to explore</Text>
+          <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>Board</Text>
+          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>Choose a board to explore</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
           {onOpenMessages ? (
@@ -488,7 +488,7 @@ export default function BoardScreen({ onOpenMessages, school, userId, boardAutho
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
         {loading ? (
           <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
         ) : (

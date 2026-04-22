@@ -743,3 +743,40 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64ba (Push the floating tab bar toward liquid-glass styling)
 - **`App.tsx`** — Rebuilt the floating tab bar with layered highlight sheets, translucent inner reflections, brighter glass borders, and a glossier active pill so it feels much closer to a liquid-glass island even without native SwiftUI materials.
+
+### Session 64bb (Add customizable class blocks from Add Course)
+- **`src/screens/CoursePickerScreen.tsx`** — Added a `Customize` button in the top-right header of the Add Course screen. It opens a bottom-sheet form where users can create their own timetable block with name, short label, days, start/end time, location, instructor, and units. Custom entries are converted into the existing `Course` shape, reuse the normal conflict/add flow, and get inserted into the timetable just like standard course sections.
+
+### Session 64bc (Make custom block fields feel like generic schedule items)
+- **`src/screens/CoursePickerScreen.tsx`** — Renamed the primary custom-block field from `Course Name` to `Name`, made the helper copy and placeholders more generic so the feature works for non-class events, and treated `location` as truly optional instead of filling it with a fake default value. The required fields are now just the name and valid time range.
+
+### Session 64bd (Put custom day picker on one row)
+- **`src/screens/CoursePickerScreen.tsx`** — Compressed the custom-block weekday selector into a single horizontal row by shortening the labels (`M`, `T`, `W`, `Th`, `F`, `Sa`, `Su`) and using compact pill sizing so all seven days fit cleanly on one line.
+
+### Session 64be (Let custom blocks choose their own color)
+- **`src/screens/CoursePickerScreen.tsx`** — Added a color picker to the custom-block form so users can choose the block tint while creating a custom schedule item.
+- **`src/data/courses.ts`** — Added optional `customColor` support to `Course` and taught `getBlockColors()` to prioritize a custom color across timetable themes, so the chosen tint shows up consistently in the main timetable and preview timetable.
+
+### Session 64bf (Restore timetable screen scrolling)
+- **`src/screens/TimetableScreen.tsx`** — Removed the accidental condition that only enabled the main timetable screen `ScrollView` when `TBA` courses existed. The outer timetable page now scrolls normally again regardless of whether there are unscheduled courses.
+
+### Session 64bg (Remove fake bounce on timetable page)
+- **`src/screens/TimetableScreen.tsx`** — Disabled vertical bounce on the outer timetable `ScrollView` so the page no longer appears to scroll and then spring back upward when there is no extra content below the grid.
+
+### Session 64bh (Restore real timetable scrolling while keeping bounce restrained)
+- **`src/screens/TimetableScreen.tsx`** — Re-enabled normal vertical scrolling on the outer timetable page, but kept `alwaysBounceVertical={false}` so the page can scroll when there is real overflow without feeling like it rubber-bands on empty space.
+
+### Session 64bi (Remove timetable width jump on first open)
+- **`src/screens/TimetableScreen.tsx`** — Fixed the brief “wide then narrow” animation when opening Timetable from Home by aligning the initial fallback grid width with the measured on-layout width. The timetable columns now render at the correct width on the first frame instead of shrinking after layout measurement.
+
+### Session 64bj (Create real scroll room beneath the timetable)
+- **`src/screens/TimetableScreen.tsx`** — Added bottom padding to the outer timetable `ScrollView` so the page has real vertical overflow instead of only a bounce effect. Also removed duplicate bottom padding from the TBA section so the scroll length stays controlled while the main timetable can actually move downward.
+
+### Session 64bk (Reserve visible space for content below the timetable grid)
+- **`src/screens/TimetableScreen.tsx`** — When unscheduled `TBA` / online blocks exist below the main grid, the grid now gives up some vertical space instead of always filling the viewport. This prevents the lower section from being trapped off-screen behind a fake bounce and makes the page behave like a real vertical layout.
+
+### Session 64bl (Remove viewport-based height cap from timetable page)
+- **`src/screens/TimetableScreen.tsx`** — Removed the extra `containerHeight` / `headerAreaHeight` / `scrollAreaHeight` calculations that were forcing the timetable grid to behave like a viewport-sized panel inside a scroll screen. The grid now uses its natural content height (`72px * totalHours`) so the page can scroll like a normal vertical layout.
+
+### Session 64bm (Make custom blocks look like normal schedule items)
+- **`src/screens/CoursePickerScreen.tsx`** — Stopped custom blocks from injecting placeholder `Custom` metadata. They now leave `sectionLabel` empty and keep `professor` blank unless the user actually enters one, which removes the extra `Custom` text and prevents the RMP button from appearing for custom schedule blocks.

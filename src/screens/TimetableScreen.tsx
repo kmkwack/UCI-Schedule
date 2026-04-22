@@ -85,6 +85,7 @@ const DEFAULT_END_HOUR = 16;
 
 const TIME_LABEL_WIDTH = 44;
 const GRID_LEFT_PAD = 16;
+const GRID_OUTER_HORIZONTAL_PADDING = 24;
 
 const DAY_LABEL: Record<string, string> = {
   M: 'Mon', T: 'Tue', W: 'Wed', Th: 'Thu', F: 'Fri', Sa: 'Sat', Su: 'Sun',
@@ -156,11 +157,9 @@ export default function TimetableScreen({
   scrollToTopTrigger = 0,
 }: Props) {
   const { colors, isDark } = useTheme();
-  const [gridWidth, setGridWidth] = useState(0);
-  const [scrollAreaHeight, setScrollAreaHeight] = useState(0);
-  const [containerHeight, setContainerHeight] = useState(0);
-  const [headerAreaHeight, setHeaderAreaHeight] = useState(0);
-  const gridHeight = containerHeight > 0 && headerAreaHeight > 0 ? containerHeight - headerAreaHeight - 80 : 0;
+  const [gridWidth, setGridWidth] = useState(
+    Math.max(0, Dimensions.get('window').width - GRID_LEFT_PAD - GRID_OUTER_HORIZONTAL_PADDING)
+  );
   const timetableScrollRef = useRef<ScrollView>(null);
   useEffect(() => {
     if (scrollToTopTrigger > 0) timetableScrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -240,7 +239,7 @@ export default function TimetableScreen({
   }, [scheduledCourses]);
 
   const totalHours = displayEndHour - displayStartHour;
-  const timetableHeight = scrollAreaHeight > 0 ? scrollAreaHeight : 72 * totalHours;
+  const timetableHeight = 72 * totalHours;
   const hourHeight = timetableHeight / totalHours;
   const hourLabels = Array.from({ length: totalHours }, (_, i) => displayStartHour + i);
   const hourBoundaries = Array.from({ length: totalHours + 1 }, (_, i) => displayStartHour + i);
@@ -248,7 +247,7 @@ export default function TimetableScreen({
   const usableGridWidth =
     gridWidth > 0
       ? gridWidth - TIME_LABEL_WIDTH
-      : screenWidth - GRID_LEFT_PAD - TIME_LABEL_WIDTH;
+      : screenWidth - GRID_LEFT_PAD - GRID_OUTER_HORIZONTAL_PADDING - TIME_LABEL_WIDTH;
 
   const dayColumnWidth = usableGridWidth / visibleDays.length;
   const compactGrid = visibleDays.length >= 6 || totalHours >= 11;
@@ -501,7 +500,7 @@ export default function TimetableScreen({
   const gridLabel = theme === 'dark' ? '#475569' : '#6b7280';
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme === 'dark' ? '#0f172a' : '#fff' }} onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}>
+    <View style={{ flex: 1, backgroundColor: theme === 'dark' ? '#0f172a' : '#fff' }}>
 
       {/* Quarter dropdown modal */}
       <Modal transparent animationType="fade" visible={showQuarterDropdown} onRequestClose={() => setShowQuarterDropdown(false)}>
@@ -1043,7 +1042,7 @@ export default function TimetableScreen({
         />
       )}
 
-      <View onLayout={(e) => setHeaderAreaHeight(e.nativeEvent.layout.height)}>
+      <View>
 
       {/* Header */}
       <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
@@ -1153,20 +1152,21 @@ export default function TimetableScreen({
       <ScrollView
         ref={timetableScrollRef}
         style={{ flex: 1 }}
-        scrollEnabled={tbaCourses.length > 0}
+        scrollEnabled
         showsVerticalScrollIndicator={false}
-        bounces={tbaCourses.length > 0}
+        bounces
+        alwaysBounceVertical={false}
+        contentContainerStyle={{ paddingBottom: bottomInset + 96 }}
       >
       {/* Grid container */}
       <View
         ref={timetableRef}
         collapsable={false}
-        style={{ height: gridHeight > 0 ? gridHeight : undefined, flex: gridHeight > 0 ? undefined : 1, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8 }}
-        onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD - 24)}
+        style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8 }}
+        onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD - GRID_OUTER_HORIZONTAL_PADDING)}
       >
         <View
           style={{
-            flex: 1,
             backgroundColor: gridFrameBg,
             borderRadius: 22,
             borderWidth: 1,
@@ -1209,11 +1209,7 @@ export default function TimetableScreen({
                 ))}
               </View>
 
-              {/* Scroll area wrapper — measures the true available height for the viewport */}
-              <View
-                style={{ flex: 1 }}
-                onLayout={(e) => setScrollAreaHeight(e.nativeEvent.layout.height)}
-              >
+              <View>
                 <View style={{ backgroundColor: gridFrameBg, height: timetableHeight }}>
                   <View
                     style={{
@@ -1355,13 +1351,13 @@ export default function TimetableScreen({
                   </View>
                 </View>
               </View>
-            </View>
+        </View>
         </View>
 
       {/* TBA / Online courses — below the grid */}
       {tbaCourses.length > 0 && (
         <View style={{
-          paddingHorizontal: 16, paddingTop: 6, paddingBottom: bottomInset + 70,
+          paddingHorizontal: 16, paddingTop: 6, paddingBottom: 0,
           backgroundColor: theme === 'dark' ? '#0f172a' : '#fff',
         }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

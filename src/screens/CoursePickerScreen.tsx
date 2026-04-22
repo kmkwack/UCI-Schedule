@@ -11,6 +11,7 @@ import {
   Modal,
   Keyboard,
   Dimensions,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, UCI_DEPARTMENTS, quarterLabel, quarterKey } from '../data/courses';
@@ -60,6 +61,50 @@ type CatalogCourse = {
   units?: string;
 };
 
+const CUSTOM_DAY_OPTIONS = [
+  { key: 'M', label: 'M' },
+  { key: 'T', label: 'T' },
+  { key: 'W', label: 'W' },
+  { key: 'Th', label: 'Th' },
+  { key: 'F', label: 'F' },
+  { key: 'Sa', label: 'Sa' },
+  { key: 'Su', label: 'Su' },
+];
+
+const CUSTOM_COLOR_OPTIONS = [
+  '#7C9BFF',
+  '#8B5CF6',
+  '#14B8A6',
+  '#22C55E',
+  '#F59E0B',
+  '#F97316',
+  '#F43F5E',
+  '#64748B',
+];
+
+type CustomCourseDraft = {
+  name: string;
+  shortLabel: string;
+  professor: string;
+  location: string;
+  customColor: string;
+  units: string;
+  startTime: string;
+  endTime: string;
+  selectedDays: string[];
+};
+
+const EMPTY_CUSTOM_DRAFT: CustomCourseDraft = {
+  name: '',
+  shortLabel: '',
+  professor: '',
+  location: '',
+  customColor: CUSTOM_COLOR_OPTIONS[0],
+  units: '',
+  startTime: '',
+  endTime: '',
+  selectedDays: ['M', 'W', 'F'],
+};
 
 type SectionEnrollment = {
   status: string;          // "OPEN" | "Waitl" | "FULL" | "NewOnly"
@@ -97,6 +142,45 @@ function parseHour(time: string) {
 function getCourseStartHour(t: string) { return parseHour(t.split(' - ')[0]); }
 function getCourseEndHour(t: string) { return parseHour(t.split(' - ')[1]); }
 
+function normalizeCustomTimeInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
+function isValidTimeInput(value: string) {
+  if (!/^\d{2}:\d{2}$/.test(value)) return false;
+  const [hours, minutes] = value.split(':').map(Number);
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
+}
+
+function buildCustomCourse(draft: CustomCourseDraft): Course {
+  const trimmedName = draft.name.trim();
+  const trimmedShortLabel = draft.shortLabel.trim();
+  const trimmedProfessor = draft.professor.trim();
+  const trimmedLocation = draft.location.trim();
+  const trimmedUnits = draft.units.trim();
+  const time = `${draft.startTime} - ${draft.endTime}`;
+  const days = draft.selectedDays.join('');
+  const shortCode = (trimmedShortLabel || trimmedName).toUpperCase();
+
+  return {
+    id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    code: shortCode,
+    title: trimmedName,
+    professor: trimmedProfessor,
+    days,
+    time,
+    department: 'CUSTOM',
+    addedCount: 0,
+    rating: 0,
+    location: trimmedLocation || undefined,
+    units: trimmedUnits ? Number(trimmedUnits) : undefined,
+    sectionLabel: undefined,
+    customColor: draft.customColor,
+  };
+}
+
 export default function CoursePickerScreen({
   activeCourses,
   onToggleCourse,
@@ -122,6 +206,8 @@ export default function CoursePickerScreen({
   const [enrollmentCache, setEnrollmentCache] = useState<Record<string, SectionEnrollment>>({});
   const [enrollmentLoadingIds, setEnrollmentLoadingIds] = useState<Set<string>>(new Set());
   const [reviewsCourse, setReviewsCourse] = useState<CatalogCourse | null>(null);
+  const [showCustomizeModal, setShowCustomizeModal] = useState(false);
+  const [customCourseDraft, setCustomCourseDraft] = useState<CustomCourseDraft>(EMPTY_CUSTOM_DRAFT);
 
   // Global search state (cross-department, triggers when no dept selected + text >= 2)
   const [globalCatalog, setGlobalCatalog] = useState<CatalogCourse[]>([]);
@@ -385,6 +471,55 @@ export default function CoursePickerScreen({
     setPreviewCourse(course);
   };
 
+  const resetCustomCourseDraft = () => {
+    setCustomCourseDraft(EMPTY_CUSTOM_DRAFT);
+  };
+
+  const openCustomizeModal = () => {
+    resetCustomCourseDraft();
+    setShowCustomizeModal(true);
+  };
+
+  const toggleCustomDay = (dayKey: string) => {
+    setCustomCourseDraft((prev) => {
+      const exists = prev.selectedDays.includes(dayKey);
+      const nextDays = exists
+        ? prev.selectedDays.filter((day) => day !== dayKey)
+        : [...prev.selectedDays, dayKey].sort(
+            (a, b) =>
+              CUSTOM_DAY_OPTIONS.findIndex((option) => option.key === a) -
+              CUSTOM_DAY_OPTIONS.findIndex((option) => option.key === b)
+          );
+      return { ...prev, selectedDays: nextDays };
+    });
+  };
+
+  const handleCreateCustomCourse = () => {
+    const trimmedName = customCourseDraft.name.trim();
+    if (!trimmedName) {
+        Alert.alert('Missing name', 'Add a name for your custom block.');
+      return;
+    }
+    if (customCourseDraft.selectedDays.length === 0) {
+      Alert.alert('Missing days', 'Choose at least one day for this class.');
+      return;
+    }
+    if (!isValidTimeInput(customCourseDraft.startTime) || !isValidTimeInput(customCourseDraft.endTime)) {
+      Alert.alert('Invalid time', 'Use 24-hour time in HH:MM format, like 13:30.');
+      return;
+    }
+    if (parseHour(customCourseDraft.endTime) <= parseHour(customCourseDraft.startTime)) {
+      Alert.alert('Invalid range', 'End time needs to be later than the start time.');
+      return;
+    }
+
+    const customCourse = buildCustomCourse(customCourseDraft);
+    setShowCustomizeModal(false);
+    handleAddToTable(customCourse);
+    setPreviewCourse(customCourse);
+    resetCustomCourseDraft();
+  };
+
   const isGlobalSearch = !selectedDept && !selectedGE && searchText.trim().length >= 2;
 
   const filteredCatalog = useMemo(() => {
@@ -453,7 +588,19 @@ export default function CoursePickerScreen({
           {quarterLabel(selectedQuarter)}
         </Text>
 
-        <View style={{ width: 32 }} />
+        <TouchableOpacity
+          onPress={openCustomizeModal}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 7,
+            borderRadius: 999,
+            backgroundColor: '#eef2ff',
+            borderWidth: 1,
+            borderColor: '#c7d2fe',
+          }}
+        >
+          <Text style={{ color: '#4169E1', fontSize: 12, fontWeight: '700' }}>Customize</Text>
+        </TouchableOpacity>
       </View>
 
       <PreviewTimetable
@@ -849,6 +996,264 @@ export default function CoursePickerScreen({
           semesterLabel={quarterLabel(selectedQuarter)}
         />
       )}
+
+      <Modal
+        visible={showCustomizeModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowCustomizeModal(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.28)', justifyContent: 'flex-end' }}
+          onPress={() => setShowCustomizeModal(false)}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              paddingHorizontal: 18,
+              paddingTop: 18,
+              paddingBottom: 26,
+              maxHeight: Dimensions.get('window').height * 0.82,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <View>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: '#111827' }}>Customize Block</Text>
+                <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                  Add any custom class, event, shift, or study block.
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowCustomizeModal(false)}>
+                <Text style={{ fontSize: 28, color: '#9ca3af' }}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <View style={{ gap: 12 }}>
+                <View>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Name</Text>
+                  <TextInput
+                    value={customCourseDraft.name}
+                    onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, name: value }))}
+                    placeholder="Club Meeting"
+                    placeholderTextColor="#9ca3af"
+                    style={{
+                      backgroundColor: '#f8fafc',
+                      borderWidth: 1,
+                      borderColor: '#e5e7eb',
+                      borderRadius: 14,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      color: '#111827',
+                    }}
+                  />
+                </View>
+
+                <View>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Short Label</Text>
+                  <TextInput
+                    value={customCourseDraft.shortLabel}
+                    onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, shortLabel: value }))}
+                    placeholder="Optional"
+                    placeholderTextColor="#9ca3af"
+                    style={{
+                      backgroundColor: '#f8fafc',
+                      borderWidth: 1,
+                      borderColor: '#e5e7eb',
+                      borderRadius: 14,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      color: '#111827',
+                    }}
+                  />
+                </View>
+
+                <View>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 8 }}>Days</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 6 }}>
+                    {CUSTOM_DAY_OPTIONS.map((option) => {
+                      const isSelected = customCourseDraft.selectedDays.includes(option.key);
+                      return (
+                        <TouchableOpacity
+                          key={option.key}
+                          onPress={() => toggleCustomDay(option.key)}
+                          style={{
+                            minWidth: 40,
+                            paddingHorizontal: 0,
+                            paddingVertical: 9,
+                            borderRadius: 12,
+                            backgroundColor: isSelected ? '#4169E1' : '#f3f4f6',
+                            borderWidth: 1,
+                            borderColor: isSelected ? '#4169E1' : '#e5e7eb',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 1,
+                          }}
+                        >
+                          <Text style={{ color: isSelected ? 'white' : '#4b5563', fontWeight: '700', fontSize: 11 }}>
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 8 }}>Color</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                    {CUSTOM_COLOR_OPTIONS.map((color) => {
+                      const isSelected = customCourseDraft.customColor === color;
+                      return (
+                        <TouchableOpacity
+                          key={color}
+                          onPress={() => setCustomCourseDraft((prev) => ({ ...prev, customColor: color }))}
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: 999,
+                            backgroundColor: color,
+                            borderWidth: isSelected ? 3 : 1.5,
+                            borderColor: isSelected ? '#111827' : 'rgba(255,255,255,0.9)',
+                            shadowColor: color,
+                            shadowOpacity: isSelected ? 0.28 : 0.14,
+                            shadowRadius: isSelected ? 8 : 5,
+                            shadowOffset: { width: 0, height: 3 },
+                            elevation: isSelected ? 4 : 2,
+                          }}
+                        />
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Start Time</Text>
+                    <TextInput
+                      value={customCourseDraft.startTime}
+                      onChangeText={(value) =>
+                        setCustomCourseDraft((prev) => ({ ...prev, startTime: normalizeCustomTimeInput(value) }))
+                      }
+                      placeholder="13:00"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="number-pad"
+                      maxLength={5}
+                      style={{
+                        backgroundColor: '#f8fafc',
+                        borderWidth: 1,
+                        borderColor: '#e5e7eb',
+                        borderRadius: 14,
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        color: '#111827',
+                      }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>End Time</Text>
+                    <TextInput
+                      value={customCourseDraft.endTime}
+                      onChangeText={(value) =>
+                        setCustomCourseDraft((prev) => ({ ...prev, endTime: normalizeCustomTimeInput(value) }))
+                      }
+                      placeholder="14:20"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="number-pad"
+                      maxLength={5}
+                      style={{
+                        backgroundColor: '#f8fafc',
+                        borderWidth: 1,
+                        borderColor: '#e5e7eb',
+                        borderRadius: 14,
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        color: '#111827',
+                      }}
+                    />
+                  </View>
+                </View>
+
+                <View>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Location</Text>
+                  <TextInput
+                    value={customCourseDraft.location}
+                    onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, location: value }))}
+                    placeholder="Optional"
+                    placeholderTextColor="#9ca3af"
+                    style={{
+                      backgroundColor: '#f8fafc',
+                      borderWidth: 1,
+                      borderColor: '#e5e7eb',
+                      borderRadius: 14,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      color: '#111827',
+                    }}
+                  />
+                </View>
+
+                <View>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Instructor</Text>
+                  <TextInput
+                    value={customCourseDraft.professor}
+                    onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, professor: value }))}
+                    placeholder="Optional"
+                    placeholderTextColor="#9ca3af"
+                    style={{
+                      backgroundColor: '#f8fafc',
+                      borderWidth: 1,
+                      borderColor: '#e5e7eb',
+                      borderRadius: 14,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      color: '#111827',
+                    }}
+                  />
+                </View>
+
+                <View>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Units</Text>
+                  <TextInput
+                    value={customCourseDraft.units}
+                    onChangeText={(value) =>
+                      setCustomCourseDraft((prev) => ({ ...prev, units: value.replace(/[^0-9.]/g, '').slice(0, 4) }))
+                    }
+                    placeholder="Optional"
+                    placeholderTextColor="#9ca3af"
+                    keyboardType="decimal-pad"
+                    style={{
+                      backgroundColor: '#f8fafc',
+                      borderWidth: 1,
+                      borderColor: '#e5e7eb',
+                      borderRadius: 14,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      color: '#111827',
+                    }}
+                  />
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={handleCreateCustomCourse}
+                style={{
+                  marginTop: 18,
+                  backgroundColor: '#4169E1',
+                  borderRadius: 16,
+                  paddingVertical: 14,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: 'white', fontSize: 15, fontWeight: '800' }}>Add Custom Block</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

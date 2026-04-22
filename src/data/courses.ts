@@ -39,6 +39,7 @@ export type Course = {
   location?: string;
   units?: number;
   sectionLabel?: string;  // e.g. "Lec A", "Dis A1"
+  customColor?: string;
 };
 
 export type Quarter = { year: string; quarter: string };
@@ -133,6 +134,82 @@ export const PASTEL_PALETTES: { bg: string; text: string; border: string }[] = [
   { bg: '#F8FAFC', text: '#334155', border: '#CBD5E1' },
 ];
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function hexToRgb(hex: string) {
+  const normalized = hex.replace('#', '');
+  const expanded = normalized.length === 3
+    ? normalized.split('').map((char) => `${char}${char}`).join('')
+    : normalized;
+  const int = parseInt(expanded, 16);
+  return {
+    r: (int >> 16) & 255,
+    g: (int >> 8) & 255,
+    b: int & 255,
+  };
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  return `#${[r, g, b]
+    .map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+function mixHex(colorA: string, colorB: string, ratio: number) {
+  const a = hexToRgb(colorA);
+  const b = hexToRgb(colorB);
+  return rgbToHex(
+    a.r + (b.r - a.r) * ratio,
+    a.g + (b.g - a.g) * ratio,
+    a.b + (b.b - a.b) * ratio
+  );
+}
+
+function relativeLuminance(hex: string) {
+  const { r, g, b } = hexToRgb(hex);
+  const channel = (value: number) => {
+    const normalized = value / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+function customBlockColors(color: string, theme: TimetableTheme) {
+  if (theme === 'colorful') {
+    return {
+      bg: color,
+      text: relativeLuminance(color) > 0.55 ? '#111827' : '#ffffff',
+      border: mixHex(color, '#000000', 0.08),
+    };
+  }
+
+  if (theme === 'dark') {
+    return {
+      bg: mixHex(color, '#0f172a', 0.78),
+      text: '#f8fafc',
+      border: mixHex(color, '#ffffff', 0.2),
+    };
+  }
+
+  if (theme === 'minimal') {
+    return {
+      bg: mixHex(color, '#ffffff', 0.9),
+      text: mixHex(color, '#111827', 0.5),
+      border: mixHex(color, '#ffffff', 0.55),
+    };
+  }
+
+  return {
+    bg: mixHex(color, '#ffffff', 0.84),
+    text: mixHex(color, '#111827', 0.42),
+    border: mixHex(color, '#ffffff', 0.45),
+  };
+}
+
 /** Returns a consistent pastel color set for a given course code (e.g. "ECON 100A"). */
 export function pastelForCourse(courseCode: string): { bg: string; text: string; border: string } {
   return PASTEL_PALETTES[Math.abs(hashStr(courseCode)) % PASTEL_PALETTES.length];
@@ -151,6 +228,10 @@ export function blockColorKey(course: Course): string {
 
 /** Returns block bg/text/border for a given course and theme. */
 export function getBlockColors(course: Course, theme: TimetableTheme): { bg: string; text: string; border: string } {
+  if (course.customColor) {
+    return customBlockColors(course.customColor, theme);
+  }
+
   switch (theme) {
     case 'minimal':
       return { bg: '#f5f6f8', text: '#4b5563', border: '#d1d5db' };

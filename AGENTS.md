@@ -600,3 +600,113 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/screens/BoardScreen.tsx`** — Updated the main `Board` title to match the same 28pt bold header style used by the other primary tabs.
 - **`src/screens/FriendsScreen.tsx`** — Updated the `ClassMates` title to the shared 28pt bold tab-header style.
 - **`src/screens/MessagesScreen.tsx`** — Updated the inbox header title in both list and empty-state layouts so `Messages` uses the same title weight/scale as the other top-level screens.
+
+### Session 64g (Increase floating tab bar translucency)
+- **`App.tsx`** — Lowered the floating tab bar background, border, shadow, and active-pill opacity so the island feels more transparently layered over the Home screen instead of looking opaque.
+
+### Session 64h (Replace quote with class-route progress card)
+- **`src/screens/HomeScreen.tsx`** — Removed the daily quote fetch/cache block and replaced the middle of the `Your Day` card with a route-map style view of today’s classes. Each course now appears as a stop on a connected line, with status chips (`Done`, `Now`, `Up Next`), a top-level day progress bar, and per-class progress bars that fill based on the current time.
+
+### Session 64i (Add quarter progress bar to Home)
+- **`src/screens/HomeScreen.tsx`** — Added a quarter-progress section below the daily class route. It now measures Spring 2026 progress from quarter start through finals end, shows the current percent complete, and displays the remaining days until finals end with a filled progress bar.
+
+### Session 64j (Make floating tab bar nearly transparent)
+- **`App.tsx`** — Reduced the floating tab bar and active-pill opacity again so the bottom island becomes much more see-through, letting the content behind it remain faintly visible while preserving active-tab readability.
+
+### Session 64k (Add Apple-like depth to Home cards)
+- **`src/screens/HomeScreen.tsx`** — Restyled the Home screen cards with stronger rounded surfaces, brighter edge borders, softer long shadows, and slightly raised inner sub-cards so the dashboard reads with more Apple-style depth instead of flat boxes.
+
+### Session 64l (Convert daily route to horizontal transit line)
+- **`src/screens/HomeScreen.tsx`** — Reworked the daily class route from a vertical stack into a horizontal transit-line layout. Stops now sit on a left-to-right line with small course labels underneath each dot, while a compact detail card below highlights the current or next class.
+
+### Session 64m (Let content extend behind floating tab bar)
+- **`App.tsx`** — Removed the root-level bottom padding that had been reserving space for the floating tab bar. Screen content now continues beneath the island so the tab bar feels visually suspended over the app instead of sitting above a cut-off lower edge.
+
+### Session 64n (Simplify route map to whole-day fill only)
+- **`src/screens/HomeScreen.tsx`** — Removed the per-class progress/detail treatment from the horizontal class route. The line now behaves more like a true transit map: the stops remain labeled underneath, while the route itself fills across the day as time passes.
+
+### Session 64o (Use one continuous subway-style route fill)
+- **`src/screens/HomeScreen.tsx`** — Rebuilt `Today's Route` so the stops sit on top of one continuous gray baseline with a single blue progress fill layered underneath. As the day advances, the filled portion now grows across the shared route like a subway line passing each station, instead of coloring each segment independently.
+
+### Session 64q (Pulse the current stop on the route map)
+- **`src/screens/HomeScreen.tsx`** — Added a soft looping pulse animation behind the currently active class stop so the route map shows the user’s live position more clearly without changing the overall subway-style layout.
+
+### Session 64r (Increase tab bar opacity again)
+- **`App.tsx`** — Raised the floating tab bar background, border, shadow, and active-pill opacity so the island reads more solid over content while still preserving the floating glass treatment.
+
+### Session 64s (Embed route stops directly into the Today bar)
+- **`src/screens/HomeScreen.tsx`** — Reworked `Today's Route` so the percent/progress bar itself is now the subway line. The stations sit directly on top of that single bar, with course labels beneath it, and the old separate second route strip below the bar was removed.
+
+### Session 64t (Raise tab bar opacity for readability)
+- **`App.tsx`** — Increased the floating tab bar and active-pill opacity again so the controls read clearly over the Home screen and the navigation buttons no longer disappear into the content behind them.
+
+### Session 64p (Restore a bit more tab bar presence)
+- **`App.tsx`** — Raised the floating tab bar opacity slightly after the previous pass made it too transparent. The island still reads as glassy, but its body, border, shadow, and active pill now stand out enough to feel intentional.
+
+### Session 64u (Increase global text contrast)
+- **`src/context/ThemeContext.tsx`** — Strengthened the shared `textSecondary`, `textTertiary`, and `placeholder` colors in both light and dark themes so the app no longer looks washed out by overly gray typography. This makes primary supporting labels read more clearly across all screens without changing layout.
+
+### Session 64v (Add depth and stronger selection states to cards)
+- **`src/screens/BoardScreen.tsx`** — Restyled board selection cards with stronger rounding, long soft shadows, tinted borders, and a colored chevron capsule so each board tile feels raised instead of flat.
+- **`src/screens/TimetableScreen.tsx`** — Added more depth to timetable pills and strengthened the selected pill state with richer shadow/elevation so the active timetable reads as intentionally chosen rather than merely color-filled.
+
+### Session 64w (Remove extra selected-state emphasis from timetable pills)
+- **`src/screens/TimetableScreen.tsx`** — Dialed timetable pills back to a shared subtle depth treatment so they still feel tactile, but no longer add an extra shadow/elevation boost specifically for the active selection state.
+
+### Session 64x (Widen the horizontal route map)
+- **`src/screens/HomeScreen.tsx`** — Increased the stop width and gap spacing in `Today's Route` so the horizontal subway line stretches farther across the card and feels more open instead of cramped.
+
+### Session 64y (Keep route length fixed as stops increase)
+- **`src/screens/HomeScreen.tsx`** — Changed `Today's Route` from an expanding layout to a fixed-width route where stops are distributed evenly across the same line. Adding more classes now inserts more stations into the existing route instead of making the whole track longer.
+
+### Session 64z (Float route stops above the line)
+- **`src/screens/HomeScreen.tsx`** — Lowered and thinned the route bar while giving each station dot its own elevated white surface and pulse halo. The stops now read as floating markers above the line instead of appearing fused directly into it.
+
+### Session 64aa (Constrain route width to the card)
+- **`src/screens/HomeScreen.tsx`** — Replaced the hardcoded route width with a width derived from the current device size so adding more classes no longer pushes `Today's Route` outside the card. Stations are now redistributed across the fixed in-card width instead of extending off-screen.
+
+### Session 64ab (Desaturate board-list cards)
+- **`src/screens/BoardScreen.tsx`** — Removed the rainbow treatment from board-list icons and chevrons in the main board selection screen. The list now uses neutral gray icon surfaces and muted accents so the page feels calmer, with color reserved for higher-priority actions instead of every board tile.
+
+### Session 64ac (Add friendly global error fallback)
+- **`src/components/AppErrorBoundary.tsx`** — Added a global error boundary with a user-facing fallback screen that says the feature is still in progress instead of dumping raw runtime details into the main app experience.
+- **`App.tsx`** — Wrapped the app content in the new global error boundary so unexpected render-time failures show the friendly recovery screen first.
+
+### Session 64ad (Simplify the top of the daily route card)
+- **`src/screens/HomeScreen.tsx`** — Removed the divider between the headline count and the route section, dropped the explicit `Today’s Route` label, and changed the top summary to focus on how many classes are left today while keeping the route itself as the main visual.
+
+### Session 64ae (Fix Home route JSX syntax regression)
+- **`src/screens/HomeScreen.tsx`** — Repaired a broken conditional JSX wrapper inside the `Today's Route` section that caused the app to fail parsing with an unexpected token error. The route block now renders correctly again instead of crashing the screen at load time.
+
+### Session 64af (Align route line with station centers)
+- **`src/screens/HomeScreen.tsx`** — Nudged the `Today's Route` line upward so it passes through the visual center of each station dot, and widened the in-card route width slightly so the horizontal map has a bit more breathing room.
+
+### Session 64ag (Show quarter progress with finer precision)
+- **`src/screens/HomeScreen.tsx`** — Changed `Quarter Progress` from a rounded integer percent to a two-decimal display so the number visibly increments as time passes instead of feeling static for long stretches.
+
+### Session 64ah (Tighten route-to-quarter spacing)
+- **`src/screens/HomeScreen.tsx`** — Reduced the vertical spacing between the daily route section and `Quarter Progress` so the two progress blocks feel more closely grouped within the same card.
+
+### Session 64ai (Update quarter progress every second)
+- **`src/screens/HomeScreen.tsx`** — Added a 1-second timer to refresh the Home screen clock-dependent metrics and increased `Quarter Progress` precision to four decimal places so the percentage visibly ticks upward in real time.
+
+### Session 64aj (Tighten route label spacing)
+- **`src/screens/HomeScreen.tsx`** — Reduced the label-row height and the gap under the route markers so the daily route no longer leaves an oversized empty band beneath the station labels.
+
+### Session 64ak (Add depth to the Grades screen)
+- **`src/screens/GradesScreen.tsx`** — Restyled the stats cards, GPA trend card, and quarter sections with brighter surface edges, deeper soft shadows, and slightly raised inner course rows so the grades screen matches the more dimensional card treatment used elsewhere in the app.
+
+### Session 64al (Increase quarter-progress precision again)
+- **`src/screens/HomeScreen.tsx`** — Raised `Quarter Progress` precision from four to six decimal places so the percent visibly changes on a near-second cadence across a full academic quarter.
+
+### Session 64am (Center the route map within the card)
+- **`src/screens/HomeScreen.tsx`** — Rebalanced `Today's Route` so the route width is derived from the card’s usable space instead of overshooting it, and centered the whole route block horizontally. This prevents the map from drifting to the right while still keeping it visually long.
+
+### Session 64an (Pull the route block closer to the divider)
+- **`src/screens/HomeScreen.tsx`** — Reduced the station-label row height and tightened the margin below the route map so the next section starts much closer underneath it, removing the excess blank space.
+
+### Session 64ao (Restore soft royal-blue board icons)
+- **`src/screens/BoardScreen.tsx`** — Brought the board-list icons and chevron capsules back to a light royal-blue treatment using the shared brand tint so the list stays restrained but remains easier to scan than the fully gray version.
+
+### Session 64ap (Add more depth to quarter cards in Grades)
+- **`src/screens/GradesScreen.tsx`** — Enhanced the expandable quarter cards beneath the GPA chart with a slightly richer header treatment and a raised chevron capsule so the quarter-selection sections feel more dimensional and consistent with the other elevated cards in the app.

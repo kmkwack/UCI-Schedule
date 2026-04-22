@@ -327,27 +327,60 @@ function PastQuarterSection({
 
   return (
     <View style={{
-      backgroundColor: colors.card, borderRadius: 16, marginBottom: 12, overflow: 'hidden',
-      shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      marginBottom: 14,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.72)',
+      shadowColor: '#0f172a',
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.08,
+      shadowRadius: 20,
+      elevation: 5,
     }}>
       <TouchableOpacity onPress={toggle} style={{
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        padding: 16,
+        paddingHorizontal: 16,
+        paddingVertical: 17,
       }}>
         <View>
           <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>{label}</Text>
           <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{courses.length} course{courses.length !== 1 ? 's' : ''}</Text>
         </View>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textTertiary} />
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: colors.bgTertiary,
+            borderWidth: 1,
+            borderColor: colors.borderSubtle,
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#0f172a',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.06,
+            shadowRadius: 8,
+            elevation: 2,
+          }}
+        >
+          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} />
+        </View>
       </TouchableOpacity>
 
       {expanded && (
         <View style={{ paddingHorizontal: 12, paddingBottom: 12, gap: 8 }}>
           {courses.map(c => (
             <View key={c.id} style={{
-              backgroundColor: colors.card, borderRadius: 12, padding: 14,
+              backgroundColor: colors.bg, borderRadius: 14, padding: 14,
               flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
               borderWidth: 1, borderColor: colors.borderSubtle,
+              shadowColor: '#0f172a',
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.05,
+              shadowRadius: 12,
+              elevation: 2,
             }}>
               <View style={{ flex: 1, marginRight: 12 }}>
                 <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{c.title || c.code}</Text>
@@ -515,8 +548,17 @@ export default function GradesScreen({ timetables, userId }: Props) {
           { label: 'Courses', value: String(courseCount) },
         ].map(stat => (
           <View key={stat.label} style={{
-            flex: 1, backgroundColor: colors.card, borderRadius: 16, padding: 14,
-            shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+            flex: 1,
+            backgroundColor: colors.card,
+            borderRadius: 18,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.72)',
+            shadowColor: '#0f172a',
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: 0.08,
+            shadowRadius: 18,
+            elevation: 4,
           }}>
             <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '500' }}>{stat.label}</Text>
             <Text style={{ fontSize: 26, fontWeight: 'bold', color: colors.text, marginTop: 4 }}>{stat.value}</Text>
@@ -526,8 +568,17 @@ export default function GradesScreen({ timetables, userId }: Props) {
 
       {/* GPA Trend card */}
       <View style={{
-        backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 18,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+        backgroundColor: colors.card,
+        borderRadius: 20,
+        padding: 18,
+        marginBottom: 18,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.72)',
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.08,
+        shadowRadius: 20,
+        elevation: 5,
       }}>
         <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 14 }}>GPA Trend</Text>
         <GpaChart history={gpaHistory} />

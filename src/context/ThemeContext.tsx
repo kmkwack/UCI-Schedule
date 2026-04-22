@@ -28,8 +28,8 @@ const LIGHT: Colors = {
   bgTertiary: '#f3f4f6',
   card: '#ffffff',
   text: '#111827',
-  textSecondary: '#6b7280',
-  textTertiary: '#9ca3af',
+  textSecondary: '#4b5563',
+  textTertiary: '#6b7280',
   border: '#e5e7eb',
   borderSubtle: '#f3f4f6',
   brand: '#4169E1',
@@ -37,7 +37,7 @@ const LIGHT: Colors = {
   destructive: '#ef4444',
   destructiveBg: '#fff1f2',
   inputBg: '#f3f4f6',
-  placeholder: '#9ca3af',
+  placeholder: '#94a3b8',
   sectionHeaderBg: '#f7f8fa',
 };
 
@@ -47,8 +47,8 @@ const DARK: Colors = {
   bgTertiary: '#2c2c2e',
   card: '#1c1c1e',
   text: '#ffffff',
-  textSecondary: '#8e8e93',
-  textTertiary: '#636366',
+  textSecondary: '#b3b3ba',
+  textTertiary: '#8e8e93',
   border: '#38383a',
   borderSubtle: '#2c2c2e',
   brand: '#4169E1',
@@ -56,7 +56,7 @@ const DARK: Colors = {
   destructive: '#ff453a',
   destructiveBg: '#2d1515',
   inputBg: '#2c2c2e',
-  placeholder: '#636366',
+  placeholder: '#8e8e93',
   sectionHeaderBg: '#000000',
 };
 

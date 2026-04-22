@@ -15,6 +15,7 @@ import UniversitySelectionScreen from './src/screens/UniversitySelectionScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 import MessagesScreen from './src/screens/MessagesScreen';
+import AppErrorBoundary from './src/components/AppErrorBoundary';
 import type { ChatTarget } from './src/data/messages';
 import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey } from './src/data/courses';
 import {
@@ -790,7 +791,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         paddingHorizontal: 4,
         borderRadius: 18,
         backgroundColor: active
-          ? (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.58)')
+          ? (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.68)')
           : 'transparent',
       }}
       onPress={onPress}
@@ -813,7 +814,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bgSecondary, paddingBottom: 92 }}>
+    <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
       {content}
 
       <View
@@ -827,11 +828,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           paddingVertical: 5,
           borderRadius: 26,
           borderWidth: 1,
-          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.62)',
-          backgroundColor: isDark ? 'rgba(23,23,28,0.56)' : 'rgba(248,250,255,0.6)',
+          borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.74)',
+          backgroundColor: isDark ? 'rgba(23,23,28,0.66)' : 'rgba(248,250,255,0.74)',
           shadowColor: '#0f172a',
           shadowOffset: { width: 0, height: 14 },
-          shadowOpacity: isDark ? 0.24 : 0.1,
+          shadowOpacity: isDark ? 0.24 : 0.12,
           shadowRadius: 20,
           elevation: 12,
         }}
@@ -887,7 +888,9 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider preference={themePreference}>
-        <AppContent themePreference={themePreference} onThemeChange={setThemePreference} />
+        <AppErrorBoundary>
+          <AppContent themePreference={themePreference} onThemeChange={setThemePreference} />
+        </AppErrorBoundary>
       </ThemeProvider>
     </SafeAreaProvider>
   );

@@ -497,17 +497,56 @@ export default function BoardScreen({ onOpenMessages, school, userId, boardAutho
               <TouchableOpacity
                 key={board.id}
                 onPress={() => setSelectedBoard(board)}
-                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.borderSubtle }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: colors.card,
+                  borderRadius: 18,
+                  padding: 16,
+                  marginBottom: 12,
+                  borderWidth: 1.5,
+                  borderColor: colors.borderSubtle,
+                  shadowColor: '#0f172a',
+                  shadowOffset: { width: 0, height: 10 },
+                  shadowOpacity: 0.07,
+                  shadowRadius: 18,
+                  elevation: 4,
+                }}
                 activeOpacity={0.7}
               >
-                <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: board.iconBg, alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
-                  <Ionicons name={board.icon} size={22} color={board.color} />
+                <View
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 14,
+                    backgroundColor: colors.brandBg,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 14,
+                    borderWidth: 1,
+                    borderColor: `${colors.brand}18`,
+                  }}
+                >
+                  <Ionicons name={board.icon} size={22} color={colors.brand} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{board.name}</Text>
                   <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{postCountForBoard(board)} posts</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                <View
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: colors.brandBg,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: `${colors.brand}18`,
+                  }}
+                >
+                  <Ionicons name="chevron-forward" size={16} color={colors.brand} />
+                </View>
               </TouchableOpacity>
             ))}
 

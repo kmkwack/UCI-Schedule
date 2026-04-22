@@ -1108,11 +1108,16 @@ export default function TimetableScreen({
                     activeOpacity={0.8}
                     style={{
                       paddingHorizontal: 16,
-                      paddingVertical: 7,
+                      paddingVertical: 8,
                       borderRadius: 20,
                       backgroundColor: isActive ? colors.brand : colors.card,
                       borderWidth: 1.5,
-                      borderColor: isActive ? colors.brand : colors.border,
+                      borderColor: isActive ? colors.brand : `${colors.border}`,
+                      shadowColor: '#0f172a',
+                      shadowOffset: { width: 0, height: 6 },
+                      shadowOpacity: 0.08,
+                      shadowRadius: 10,
+                      elevation: 3,
                     }}
                   >
                     <Text style={{ fontSize: 13, fontWeight: '600', color: isActive ? 'white' : colors.textSecondary }}>

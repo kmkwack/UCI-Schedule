@@ -872,3 +872,11 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64ck (Make the welcome screen more cinematic)
 - **`src/screens/WelcomeScreen.tsx`** — Reworked the first login screen from a minimal centered card into a more expressive landing-style hero with layered background shapes, floating status cards, a stronger brand mark, and feature highlights. Kept the legal flow and CTA behavior intact while making the entry experience feel much more polished and memorable.
+
+### Session 64cl (Tone down welcome hero badges)
+- **`src/screens/WelcomeScreen.tsx`** — Reduced the size of the floating `Today at a glance` and `Quarter in motion` badges and pulled them slightly away from the center mark so they only lightly overlap the logo instead of covering as much of it.
+
+### Session 64cm (Swap in the new ClassMate logo mark)
+- **`assets/classmate-logo-full.png` / `assets/classmate-logo-mark.png`** — Added the newly generated ClassMate speech-bubble timetable logo and a cropped mark-only version for in-app branding use.
+- **`src/screens/WelcomeScreen.tsx`** — Reverted the temporary badge-size tweak and replaced the old `CM` block with the new ClassMate logo mark while keeping the cinematic hero layout intact.
+- **`src/screens/SettingsScreen.tsx`** — Updated the About screen branding from the old `CM` text tile to the new ClassMate logo mark for consistency with the welcome experience.

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import LegalConsentText from '../components/LegalConsentText';
@@ -99,10 +99,8 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
 
               <View
                 style={{
-                  width: 118,
-                  height: 118,
-                  borderRadius: 36,
-                  backgroundColor: '#4169E1',
+                  width: 132,
+                  height: 110,
                   alignItems: 'center',
                   justifyContent: 'center',
                   shadowColor: '#4169E1',
@@ -112,7 +110,11 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
                   elevation: 12,
                 }}
               >
-                <Text style={{ fontSize: 40, fontWeight: '900', color: 'white', letterSpacing: 1 }}>CM</Text>
+                <Image
+                  source={require('../../assets/classmate-logo-mark.png')}
+                  style={{ width: 132, height: 110 }}
+                  resizeMode="contain"
+                />
               </View>
 
               <View

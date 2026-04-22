@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Keyboard, Animated, PanResponder, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Keyboard, Animated, PanResponder, Dimensions, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const UCI_MAJORS = [
@@ -1070,8 +1070,12 @@ function AboutScreen({ onBack }: { onBack: () => void }) {
       <SubHeader title="About ClassMate" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         <View style={{ alignItems: 'center', paddingVertical: 32 }}>
-          <View style={{ width: 96, height: 96, borderRadius: 28, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginBottom: 16, shadowColor: colors.brand, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }}>
-            <Text style={{ fontSize: 36, fontWeight: '800', color: 'white' }}>CM</Text>
+          <View style={{ width: 116, height: 94, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <Image
+              source={require('../../assets/classmate-logo-mark.png')}
+              style={{ width: 116, height: 94 }}
+              resizeMode="contain"
+            />
           </View>
           <Text style={{ fontSize: 26, fontWeight: '800', color: colors.text }}>ClassMate</Text>
           <Text style={{ fontSize: 14, color: colors.textTertiary, marginTop: 4 }}>Version 1.0.0</Text>

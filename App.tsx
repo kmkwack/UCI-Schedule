@@ -808,8 +808,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           flexDirection: 'row',
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          paddingTop: 10,
-          paddingBottom: 14,
+          paddingTop: 12,
+          paddingBottom: 28,
           backgroundColor: colors.card,
         }}
       >

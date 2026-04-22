@@ -275,7 +275,7 @@ export default function HomeScreen({
           <Text style={{ fontSize: 52, fontWeight: 'bold', color: colors.text, lineHeight: 56 }}>
             {todayCourses.length}
           </Text>
-          <Text style={{ fontSize: 18, color: colors.textSecondary }}>classes today</Text>
+          <Text style={{ fontSize: 18, color: colors.text }}>classes today</Text>
         </View>
 
         {/* Divider */}

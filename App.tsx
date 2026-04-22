@@ -251,6 +251,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const insets = useSafeAreaInsets();
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
+
+  // Clear any stale/invalid persisted session on startup so the refresh-token
+  // error doesn't surface to the user. Supabase will emit SIGNED_OUT internally
+  // if the stored token is no longer valid — we just make sure AsyncStorage is clean.
+  useEffect(() => {
+    supabase.auth.getSession().then(({ error }) => {
+      if (error) void supabase.auth.signOut();
+    });
+  }, []);
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<EditableProfile>(fallbackProfileFromEmail('student@uci.edu'));
   const [userSettings, setUserSettings] = useState<UserSettingsState>(DEFAULT_USER_SETTINGS);
@@ -974,6 +983,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   }, [pickerTranslateY, showCoursePicker]);
 
   const handleLogout = () => {
+    void supabase.auth.signOut();
     void Notifications.cancelAllScheduledNotificationsAsync();
     setUserId(null);
     setUserEmail('');

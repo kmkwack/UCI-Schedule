@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Alert,
+  Animated,
+  Easing,
   View,
   Text,
   TouchableOpacity,
@@ -181,6 +183,8 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
   const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
   const [friendAvailableQuarters, setFriendAvailableQuarters] = useState<string[]>([]);
   const [fetchingQuarters, setFetchingQuarters] = useState(false);
+  const quarterDropdownAnim = useRef(new Animated.Value(0)).current;
+  const quarterItemAnims = useRef<Animated.Value[]>([]);
   const [gridWidth, setGridWidth] = useState(0);
   const [searchResults, setSearchResults] = useState<Friend[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -437,7 +441,14 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
     return { year: key.slice(0, idx), quarter: key.slice(idx + 1) };
   }
 
+  function closeQuarterDropdown() {
+    Animated.timing(quarterDropdownAnim, { toValue: 0, duration: 150, easing: Easing.in(Easing.ease), useNativeDriver: true })
+      .start(() => setShowQuarterDropdown(false));
+  }
+
   const openQuarterDropdown = async () => {
+    quarterDropdownAnim.setValue(1);
+    quarterItemAnims.current.forEach((v) => v.setValue(0));
     setShowQuarterDropdown(true);
     if (!selectedFriendId) return;
     setFetchingQuarters(true);
@@ -448,10 +459,18 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
     if (!error && data) {
       const keys = [...new Set((data as { quarter_key: string }[]).map(r => r.quarter_key))];
       keys.sort((a, b) => b.localeCompare(a));
+      // Ensure enough anim values
+      while (quarterItemAnims.current.length < keys.length) {
+        quarterItemAnims.current.push(new Animated.Value(0));
+      }
+      quarterItemAnims.current.forEach((v) => v.setValue(0));
       setFriendAvailableQuarters(keys);
       if (keys.length > 0 && !keys.includes(quarterKey(friendQuarter))) {
         setFriendQuarter(parseQuarterKey(keys[0]));
       }
+      Animated.stagger(45, keys.map((_, i) =>
+        Animated.spring(quarterItemAnims.current[i], { toValue: 1, useNativeDriver: true, tension: 260, friction: 22 })
+      )).start();
     }
     setFetchingQuarters(false);
   };
@@ -613,16 +632,17 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
     const gridLabel = colors.textTertiary;
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
-        <Modal transparent animationType="fade" visible={showQuarterDropdown} onRequestClose={() => setShowQuarterDropdown(false)}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowQuarterDropdown(false)}>
-            <View style={{
+        <Modal transparent visible={showQuarterDropdown} onRequestClose={closeQuarterDropdown}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeQuarterDropdown}>
+            <Animated.View style={{
               position: 'absolute', top: 90, right: 16,
               backgroundColor: colors.card, borderRadius: 12,
               shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
               shadowOpacity: 0.15, shadowRadius: 12, elevation: 8,
               minWidth: 160, overflow: 'hidden',
+              opacity: quarterDropdownAnim,
             }}>
-              {fetchingQuarters ? (
+              {fetchingQuarters && friendAvailableQuarters.length === 0 ? (
                 <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
                   <Text style={{ color: colors.textSecondary, fontSize: 14 }}>Loading…</Text>
                 </View>
@@ -633,29 +653,34 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
               ) : friendAvailableQuarters.map((key, i) => {
                 const q = parseQuarterKey(key);
                 const active = key === quarterKey(friendQuarter);
+                const anim = quarterItemAnims.current[i];
                 return (
-                  <TouchableOpacity
+                  <Animated.View
                     key={key}
-                    onPress={() => {
-                      setFriendQuarter(q);
-                      setShowQuarterDropdown(false);
-                    }}
                     style={{
-                      paddingHorizontal: 16, paddingVertical: 12,
-                      backgroundColor: active ? colors.brandBg : colors.card,
-                      borderTopWidth: i === 0 ? 0 : 1,
-                      borderTopColor: colors.borderSubtle,
-                      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                      opacity: anim,
+                      transform: [{ translateY: anim ? anim.interpolate({ inputRange: [0, 1], outputRange: [-14, 0] }) : 0 }],
                     }}
                   >
-                    <Text style={{ color: active ? colors.brand : colors.text, fontWeight: active ? '700' : '400', fontSize: 14 }}>
-                      {quarterLabel(q)}
-                    </Text>
-                    {active && <Ionicons name="checkmark" size={16} color={colors.brand} />}
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => { setFriendQuarter(q); closeQuarterDropdown(); }}
+                      style={{
+                        paddingHorizontal: 16, paddingVertical: 12,
+                        backgroundColor: active ? colors.brandBg : colors.card,
+                        borderTopWidth: i === 0 ? 0 : 1,
+                        borderTopColor: colors.borderSubtle,
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                      }}
+                    >
+                      <Text style={{ color: active ? colors.brand : colors.text, fontWeight: active ? '700' : '400', fontSize: 14 }}>
+                        {quarterLabel(q)}
+                      </Text>
+                      {active && <Ionicons name="checkmark" size={16} color={colors.brand} />}
+                    </TouchableOpacity>
+                  </Animated.View>
                 );
               })}
-            </View>
+            </Animated.View>
           </TouchableOpacity>
         </Modal>
 

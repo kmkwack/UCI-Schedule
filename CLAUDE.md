@@ -528,5 +528,35 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/screens/HomeScreen.tsx`** — Added `bottomInset` prop. `contentContainerStyle.paddingBottom` set to `bottomInset + 70` so the last card scrolls above the dock.
 - **`App.tsx`** — Passes `bottomInset={insets.bottom}` to `HomeScreen`.
 
+### Session 57 (TimetableScreen — Dark theme only darkens the grid, not the screen)
+- **`src/screens/TimetableScreen.tsx`** — Outer wrapper `backgroundColor` changed from `theme === 'dark' ? '#0f172a' : '#fff'` to `colors.bg` so the screen background always follows the app theme. TBA section background changed from dark-conditional to `'transparent'`. The dark color now applies only to `gridFrameBg`/`gridHeaderBg` inside the grid card itself.
+
+### Session 57 (ReviewsModal — native pageSheet)
+- **`src/components/ReviewsModal.tsx`** — Converted from `transparent` + manual dark backdrop to `presentationStyle="pageSheet"`. Removed outer backdrop `View` and `rgba(0,0,0,0.5)` background. Removed top border radius (iOS sheet handles rounded corners natively). iOS now handles background dimming, scaling, and swipe-to-dismiss automatically.
+
+### Session 57 (TimetableScreen — close settings modal on outside tap)
+- **`src/screens/TimetableScreen.tsx`** — Wrapped the settings modal backdrop in a `TouchableOpacity` that calls `setShowSettings(false)`. Inner sheet wrapped in a second `TouchableOpacity` with a no-op `onPress` to stop propagation.
+
+### Session 57 (Select Quarter modal — animated height transition)
+- **`src/screens/TimetableScreen.tsx`** — Added `contentHeightAnim` (`Animated.Value`, `useNativeDriver: false`) and `yearListHeightRef`. Heights pre-calculated as `Math.min(360, count * 53)` (53px/row = paddingVertical:16×2 + lineHeight). `openAddQuarterModal` sets initial height and stores in `yearListHeightRef`. `drillIntoYear` springs both `addYearSlideAnim` and `contentHeightAnim` in parallel. `drillBackToYears` springs both back simultaneously. Quarter list wrapped in `Animated.View` (not `Animated.ScrollView`) so `panHandlers` don't conflict with the inner `ScrollView` touch handling. Container is `Animated.View style={{ height: contentHeightAnim, overflow: 'hidden' }}`.
+
+### Session 57 (Select Quarter modal — swipe-back from quarter list)
+- **`src/screens/TimetableScreen.tsx`** — Added `addQuarterSwipePan` PanResponder (same pattern as SettingsScreen): activates on rightward horizontal-dominant drag, moves `addYearSlideAnim` with the finger, calls `drillBackToYears()` if dx > 35% screen width or vx > 0.6, otherwise springs back to 0. Pan handlers spread onto the `Animated.ScrollView` in the quarter drill-down.
+
+### Session 57 (Select Quarter modal — year groups + drill-down)
+- **`src/screens/TimetableScreen.tsx`** — Redesigned Add Quarter modal to show a year list first. Tapping a year slides in a quarter list from the right (`addYearSlideAnim` Animated.Value, spring in / timing out). Header shows a back chevron + "Years" when drilled in. `drillIntoYear(year)` and `drillBackToYears()` manage the slide animation and `selectedAddYear` state. Year rows show the count of available quarters. Quarter rows show the quarter name + a blue add icon. `closeAddQuarterModal` resets both `selectedAddYear` and the slide anim.
+
+### Session 57 (Select Quarter modal — cache seeded quarters)
+- **`src/screens/TimetableScreen.tsx`** — Added `seededQuartersCache` ref. On first open, fetches which quarters have data in Supabase and caches the result. On subsequent opens, skips the network calls entirely and computes the available list instantly from the cache.
+
+### Session 57 (Select Quarter modal — native slide-up animation)
+- **`src/screens/TimetableScreen.tsx`** — Replaced custom `addQuarterSlideAnim` + `useEffect` + `Animated.View` approach with `animationType="slide"` on the Modal. Removed `addQuarterSlideAnim` ref, the `useEffect` for it, and changed `Animated.View` back to plain `View`. `closeAddQuarterModal` now just calls `setShowAddQuarterModal(false)`. Native iOS slide-up handles the animation reliably.
+
+### Session 57 (ReviewsModal — restrictions decoded + section comment)
+- **`src/components/ReviewsModal.tsx`** — Added `RESTRICTION_LABELS` map and `decodeRestrictions()` helper that splits raw letter codes (e.g. `"EG"`) into human-readable labels (e.g. "Engineering, Graduate students only"). Added `sectionComment` to `CourseInfo` type; `fetchCourseInfo` now also selects `section_comment`. Info section order: Restrictions → Final Exam → Prerequisites → Note (section_comment, shown only when non-empty).
+
+### Session 57 (ReviewsModal — finals, restrictions, prerequisites)
+- **`src/components/ReviewsModal.tsx`** — Added `CourseInfo` type and `courseInfo` state. Added `fetchCourseInfo()`: queries Supabase `sections` table for `final_exam`, `restrictions`, `prerequisite_link` by `code = courseCode`. Called on modal open. Renders a new section in the ScrollView between the header and grade distribution: final exam (calendar icon), restrictions (lock icon), prerequisites (link icon, tappable — opens URL in browser via `Linking.openURL`). Section hidden entirely when all three fields are null/empty.
+
 ### Session 56 (Settings — slide-in sub-screens + swipe-back)
 - **`src/screens/SettingsScreen.tsx`** — Added `Animated`, `PanResponder`, `Dimensions` to RN imports. Added `slideAnim` Animated.Value (starts at screen width). `navigateTo(screen)` resets slide to off-screen right then spring-animates to 0. `goBack()` timing-animates slide to off-screen right then resets screen to 'main'. `swipePan` PanResponder: activates on horizontal-dominant rightward drag, moves `slideAnim` with finger, on release triggers `goBack()` if dx > 35% screen width or velocity > 0.6, otherwise springs back. Sub-screen wrapped in `Animated.View` with `transform: [{ translateX: slideAnim }]` and `{...swipePan.panHandlers}`. All `setScreen(...)` calls in section items replaced with `navigateTo(...)`. All `onBack={() => setScreen('main')}` in sub-screen props replaced with `onBack={goBack}`.

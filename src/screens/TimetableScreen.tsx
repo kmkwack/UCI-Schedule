@@ -6,6 +6,7 @@ import { getUciMapLocation, type UciMapLocation } from '../data/uciLocations';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import ReviewsModal from '../components/ReviewsModal';
+import ErrorScreen from '../components/ErrorScreen';
 import { captureRef } from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
@@ -78,6 +79,8 @@ type Props = {
   bottomInset?: number;
   scrollToTopTrigger?: number;
 };
+
+let seededQuartersCache: Set<string> | null = null;
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
 const DEFAULT_START_HOUR = 8;
@@ -165,11 +168,129 @@ export default function TimetableScreen({
     if (scrollToTopTrigger > 0) timetableScrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [scrollToTopTrigger]);
   const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
+  const quarterDropdownAnim = useRef(new Animated.Value(0)).current;
+  const quarterItemAnims = useRef<Animated.Value[]>([]);
+
+  const sortedQuarterKeys = useMemo(() => {
+    const QORDER: Record<string, number> = { Winter: 0, Spring: 1, Fall: 2 };
+    return Array.from(new Set([quarterKey(selectedQuarter), ...timetables.map((t) => t.quarterKey)]))
+      .sort((a, b) => {
+        const [aYear, aQ] = a.split('-');
+        const [bYear, bQ] = b.split('-');
+        if (bYear !== aYear) return Number(bYear) - Number(aYear);
+        return QORDER[bQ] - QORDER[aQ];
+      });
+  }, [selectedQuarter, timetables]);
+
+  // Keep item anim array in sync with quarter count
+  while (quarterItemAnims.current.length < sortedQuarterKeys.length) {
+    quarterItemAnims.current.push(new Animated.Value(0));
+  }
+
+  function openQuarterDropdown() {
+    setShowQuarterDropdown(true);
+    quarterDropdownAnim.setValue(1);
+    quarterItemAnims.current.forEach((v) => v.setValue(0));
+    Animated.stagger(45, sortedQuarterKeys.map((_, i) =>
+      Animated.spring(quarterItemAnims.current[i], { toValue: 1, useNativeDriver: true, tension: 260, friction: 22 })
+    )).start();
+  }
+
+  function closeQuarterDropdown() {
+    Animated.timing(quarterDropdownAnim, { toValue: 0, duration: 150, easing: Easing.in(Easing.ease), useNativeDriver: true }).start(() => {
+      setShowQuarterDropdown(false);
+    });
+  }
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const addMenuAnim = useRef(new Animated.Value(0)).current;
+  const addMenuItemAnims = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
+
+  function openAddMenu() {
+    setShowAddMenu(true);
+    addMenuAnim.setValue(0);
+    addMenuItemAnims.forEach((v) => v.setValue(0));
+    Animated.stagger(45, addMenuItemAnims.map((v) =>
+      Animated.spring(v, { toValue: 1, useNativeDriver: true, tension: 260, friction: 22 })
+    )).start();
+    Animated.timing(addMenuAnim, { toValue: 1, duration: 120, useNativeDriver: true }).start();
+  }
+
+  function closeAddMenu() {
+    Animated.timing(addMenuAnim, { toValue: 0, duration: 150, easing: Easing.in(Easing.ease), useNativeDriver: true })
+      .start(() => setShowAddMenu(false));
+  }
+
   const [showAddQuarterModal, setShowAddQuarterModal] = useState(false);
   const [addableQuarters, setAddableQuarters] = useState<Quarter[]>([]);
   const [loadingAddableQuarters, setLoadingAddableQuarters] = useState(false);
+  const [selectedAddYear, setSelectedAddYear] = useState<string | null>(null); // drives header
+  const [mountedYear, setMountedYear] = useState<string | null>(null); // keeps quarter list alive during slide-out
+  const addYearSlideAnim = useRef(new Animated.Value(Dimensions.get('window').width)).current;
+  const addSheetSlideAnim = useRef(new Animated.Value(600)).current;
+  const addBackdropAnim = useRef(new Animated.Value(0)).current;
+  const contentHeightAnim = useRef(new Animated.Value(260)).current;
+  const yearListHeightRef = useRef(0);
+  const QUARTER_ROW_H = 53;
+
+  function calcListHeight(count: number) {
+    return Math.min(360, count * QUARTER_ROW_H);
+  }
+
+  function closeAddQuarterModal() {
+    Animated.parallel([
+      Animated.timing(addSheetSlideAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(addBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start(() => {
+      setSelectedAddYear(null);
+      addYearSlideAnim.setValue(Dimensions.get('window').width);
+      setMountedYear(null);
+      setShowAddQuarterModal(false);
+    });
+  }
+
+  function drillIntoYear(year: string) {
+    const count = addableQuarters.filter((q) => q.year === year).length;
+    const targetH = calcListHeight(count);
+    setSelectedAddYear(year);
+    setMountedYear(year);
+    addYearSlideAnim.setValue(Dimensions.get('window').width);
+    Animated.parallel([
+      Animated.spring(addYearSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.spring(contentHeightAnim, { toValue: targetH, useNativeDriver: false, tension: 100, friction: 16 }),
+    ]).start();
+  }
+
+  function drillBackToYears() {
+    setSelectedAddYear(null); // header switches to "Select Year" immediately
+    Animated.parallel([
+      Animated.timing(addYearSlideAnim, { toValue: Dimensions.get('window').width, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.spring(contentHeightAnim, { toValue: yearListHeightRef.current, useNativeDriver: false, tension: 100, friction: 16 }),
+    ]).start(() => setMountedYear(null)); // quarter list unmounts only after slide-out finishes
+  }
+
+  const drillBackRef = useRef(drillBackToYears);
+  drillBackRef.current = drillBackToYears;
+
+  const addQuarterSwipePan = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gs) => gs.dx > 6 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+    onPanResponderMove: (_, gs) => {
+      if (gs.dx > 0) addYearSlideAnim.setValue(gs.dx);
+    },
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dx > Dimensions.get('window').width * 0.35 || gs.vx > 0.6) {
+        drillBackRef.current();
+      } else {
+        Animated.spring(addYearSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+      }
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(addYearSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+    },
+  })).current;
+
   const [showSettings, setShowSettings] = useState(false);
+  const [showError, setShowError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Course detail sheet
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
@@ -354,10 +475,16 @@ export default function TimetableScreen({
     Animated.spring(dragScaleAnim, { toValue: 1.1, friction: 6, tension: 200, useNativeDriver: true }).start();
   }
 
-  async function openAddQuarterModal() {
-    setLoadingAddableQuarters(true);
-    setShowAddQuarterModal(true);
+  function triggerAddSheetAnim() {
+    addSheetSlideAnim.setValue(600);
+    addBackdropAnim.setValue(0);
+    Animated.parallel([
+      Animated.spring(addSheetSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.timing(addBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }
 
+  async function openAddQuarterModal() {
     const existingQks = new Set(timetables.map((t) => t.quarterKey));
 
     // Build the full candidate list matching the seeder range (2020–2026)
@@ -366,9 +493,31 @@ export default function TimetableScreen({
       allCandidates.push(
         { year: String(year), quarter: 'Winter' },
         { year: String(year), quarter: 'Spring' },
+        { year: String(year), quarter: 'Summer1' },
+        { year: String(year), quarter: 'Summer10wk' },
+        { year: String(year), quarter: 'Summer2' },
         { year: String(year), quarter: 'Fall' },
       );
     }
+
+    // If we already know which quarters are seeded, skip the network call
+    if (seededQuartersCache) {
+      const available = allCandidates
+        .filter((q) => !existingQks.has(quarterKey(q)) && seededQuartersCache!.has(quarterKey(q)))
+        .reverse();
+      const uniqueYears = [...new Set(available.map((q) => q.year))].length;
+      const h = Math.min(360, uniqueYears * 53);
+      contentHeightAnim.setValue(h);
+      yearListHeightRef.current = h;
+      setAddableQuarters(available);
+      triggerAddSheetAnim();
+      setShowAddQuarterModal(true);
+      return;
+    }
+
+    setLoadingAddableQuarters(true);
+    triggerAddSheetAnim();
+    setShowAddQuarterModal(true);
 
     // Filter out quarters the user already has, then check Supabase in parallel
     const unclaimed = allCandidates.filter((q) => !existingQks.has(quarterKey(q)));
@@ -383,8 +532,16 @@ export default function TimetableScreen({
       })
     );
 
+    const seeded = results.filter((q): q is Quarter => q !== null);
+    seededQuartersCache = new Set(seeded.map((q) => quarterKey(q)));
+
+    const uniqueYears = [...new Set(seeded.map((q) => q.year))].length;
+    const h = Math.min(360, uniqueYears * 53);
+    contentHeightAnim.setValue(h);
+    yearListHeightRef.current = h;
+
     // Show most recent first
-    setAddableQuarters(results.filter((q): q is Quarter => q !== null).reverse());
+    setAddableQuarters(seeded.reverse());
     setLoadingAddableQuarters(false);
   }
 
@@ -472,17 +629,8 @@ export default function TimetableScreen({
   async function shareSchedule() {
     setShowSettings(false);
     await new Promise((r) => setTimeout(r, 350));
-    try {
-      const uri = await captureRef(timetableRef, { format: 'png', quality: 1 });
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        Alert.alert('Sharing not available', 'Sharing is not supported on this device.');
-        return;
-      }
-      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share My Schedule' });
-    } catch {
-      Alert.alert('Error', 'Could not share the schedule. Please try again.');
-    }
+    setErrorMessage('Sharing is not available yet. Stay tuned!');
+    setShowError(true);
   }
 
   function toggleDisplay(key: string) {
@@ -500,12 +648,12 @@ export default function TimetableScreen({
   const gridLabel = theme === 'dark' ? '#475569' : '#6b7280';
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme === 'dark' ? '#0f172a' : '#fff' }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
 
-      {/* Quarter dropdown modal */}
-      <Modal transparent animationType="fade" visible={showQuarterDropdown} onRequestClose={() => setShowQuarterDropdown(false)}>
-        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowQuarterDropdown(false)}>
-          <View
+      {/* Quarter dropdown */}
+      <Modal transparent visible={showQuarterDropdown} onRequestClose={closeQuarterDropdown}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeQuarterDropdown}>
+          <Animated.View
             style={{
               position: 'absolute',
               top: 96,
@@ -519,57 +667,58 @@ export default function TimetableScreen({
               elevation: 8,
               minWidth: 160,
               overflow: 'hidden',
+              opacity: quarterDropdownAnim,
             }}
           >
             {(() => {
               const academicYear = (qk: string) => {
-                const [year, quarter] = qk.split('-');
-                return quarter === 'Fall' ? Number(year) : Number(year) - 1;
+                const [yr, qt] = qk.split('-');
+                return qt === 'Fall' ? Number(yr) : Number(yr) - 1;
               };
-              const sorted = Array.from(new Set([quarterKey(selectedQuarter), ...timetables.map((t) => t.quarterKey)]))
-                .sort((a, b) => {
-                  const QORDER: Record<string, number> = { Winter: 0, Spring: 1, Fall: 2 };
-                  const [aYear, aQ] = a.split('-');
-                  const [bYear, bQ] = b.split('-');
-                  if (bYear !== aYear) return Number(bYear) - Number(aYear);
-                  return QORDER[bQ] - QORDER[aQ];
-                });
-              return sorted.map((qk, index) => {
+              return sortedQuarterKeys.map((qk, index) => {
                 const [year, quarter] = qk.split('-');
                 const q: Quarter = { year, quarter };
                 const isActive = qk === quarterKey(selectedQuarter);
-                const isNewGroup = index > 0 && academicYear(qk) !== academicYear(sorted[index - 1]);
+                const isNewGroup = index > 0 && academicYear(qk) !== academicYear(sortedQuarterKeys[index - 1]);
+                const anim = quarterItemAnims.current[index];
                 return (
-                  <TouchableOpacity
+                  <Animated.View
                     key={qk}
-                    onPress={() => { onChangeQuarter(q); setShowQuarterDropdown(false); }}
                     style={{
-                      paddingHorizontal: 16,
-                      paddingVertical: 12,
-                      backgroundColor: isActive ? colors.brandBg : colors.card,
-                      borderTopWidth: index === 0 ? 0 : isNewGroup ? 2 : 1,
-                      borderTopColor: isNewGroup ? colors.border : colors.borderSubtle,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
+                      opacity: anim,
+                      transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-14, 0] }) }],
                     }}
                   >
-                    <Text style={{ color: isActive ? colors.brand : colors.textSecondary, fontWeight: isActive ? '700' : '400', fontSize: 14 }}>
-                      {quarterLabel(q)}
-                    </Text>
-                    {isActive && <Ionicons name="checkmark" size={16} color={colors.brand} />}
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => { onChangeQuarter(q); closeQuarterDropdown(); }}
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        backgroundColor: isActive ? colors.brandBg : colors.card,
+                        borderTopWidth: index === 0 ? 0 : isNewGroup ? 2 : 1,
+                        borderTopColor: isNewGroup ? colors.border : colors.borderSubtle,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <Text style={{ color: isActive ? colors.brand : colors.textSecondary, fontWeight: isActive ? '700' : '400', fontSize: 14 }}>
+                        {quarterLabel(q)}
+                      </Text>
+                      {isActive && <Ionicons name="checkmark" size={16} color={colors.brand} />}
+                    </TouchableOpacity>
+                  </Animated.View>
                 );
               });
             })()}
-          </View>
+          </Animated.View>
         </TouchableOpacity>
       </Modal>
 
       {/* Add menu modal (+ Add button) */}
-      <Modal transparent animationType="fade" visible={showAddMenu} onRequestClose={() => setShowAddMenu(false)}>
-        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowAddMenu(false)}>
-          <View
+      <Modal transparent animationType="none" visible={showAddMenu} onRequestClose={closeAddMenu}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeAddMenu}>
+          <Animated.View
             style={{
               position: 'absolute',
               top: 96,
@@ -583,47 +732,57 @@ export default function TimetableScreen({
               elevation: 10,
               minWidth: 180,
               overflow: 'hidden',
+              opacity: addMenuAnim,
             }}
           >
-            <TouchableOpacity
-              onPress={() => { if (timetables.length > 0) { setShowAddMenu(false); onOpenCoursePicker(); } }}
-              disabled={timetables.length === 0}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 15, opacity: timetables.length === 0 ? 0.35 : 1 }}
-            >
-              <Ionicons name="add" size={19} color={colors.textSecondary} />
-              <Text style={{ fontSize: 15, color: colors.text, fontWeight: '500' }}>Add Course</Text>
-            </TouchableOpacity>
-            <View style={{ height: 1, backgroundColor: colors.borderSubtle }} />
-            <TouchableOpacity
-              onPress={() => { setShowAddMenu(false); onCreateTimetable(); }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 15 }}
-            >
-              <Ionicons name="calendar-outline" size={19} color={colors.textSecondary} />
-              <Text style={{ fontSize: 15, color: colors.text, fontWeight: '500' }}>Add Timetable</Text>
-            </TouchableOpacity>
-            <View style={{ height: 1, backgroundColor: colors.borderSubtle }} />
-            <TouchableOpacity
-              onPress={() => { setShowAddMenu(false); openAddQuarterModal(); }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 15 }}
-            >
-              <Ionicons name="earth-outline" size={19} color={colors.textSecondary} />
-              <Text style={{ fontSize: 15, color: colors.text, fontWeight: '500' }}>Add Quarter</Text>
-            </TouchableOpacity>
-          </View>
+            {[
+              { icon: 'add', label: 'Add Course', onPress: () => { if (timetables.length > 0) { closeAddMenu(); onOpenCoursePicker(); } }, disabled: timetables.length === 0 },
+              { icon: 'calendar-outline', label: 'Add Timetable', onPress: () => { closeAddMenu(); onCreateTimetable(); }, disabled: false },
+              { icon: 'earth-outline', label: 'Add Quarter', onPress: () => { closeAddMenu(); setTimeout(() => openAddQuarterModal(), 200); }, disabled: false },
+            ].map((item, i) => (
+              <Animated.View
+                key={item.label}
+                style={{
+                  opacity: addMenuItemAnims[i],
+                  transform: [{ translateY: addMenuItemAnims[i].interpolate({ inputRange: [0, 1], outputRange: [-14, 0] }) }],
+                }}
+              >
+                {i > 0 && <View style={{ height: 1, backgroundColor: colors.borderSubtle }} />}
+                <TouchableOpacity
+                  onPress={item.onPress}
+                  disabled={item.disabled}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 15, opacity: item.disabled ? 0.35 : 1 }}
+                >
+                  <Ionicons name={item.icon as any} size={19} color={colors.textSecondary} />
+                  <Text style={{ fontSize: 15, color: colors.text, fontWeight: '500' }}>{item.label}</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            ))}
+          </Animated.View>
         </TouchableOpacity>
       </Modal>
 
       {/* Add Quarter modal */}
-      <Modal transparent animationType="fade" visible={showAddQuarterModal} onRequestClose={() => setShowAddQuarterModal(false)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }} activeOpacity={1} onPress={() => setShowAddQuarterModal(false)}>
-          <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
-            <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 }}>
+      <Modal transparent animationType="none" visible={showAddQuarterModal} onRequestClose={closeAddQuarterModal}>
+        <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: addBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }) }}>
+        <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={closeAddQuarterModal} />
+        <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
+            <Animated.View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40, overflow: 'hidden', transform: [{ translateY: addSheetSlideAnim }] }}>
+              {/* Header */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
-                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>Select Quarter</Text>
-                <TouchableOpacity onPress={() => setShowAddQuarterModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                {selectedAddYear ? (
+                  <TouchableOpacity onPress={drillBackToYears} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="chevron-back" size={24} color={colors.brand} />
+                    <Text style={{ fontSize: 20, fontWeight: '700', color: colors.brand }}>{selectedAddYear}</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>Select Year</Text>
+                )}
+                <TouchableOpacity onPress={closeAddQuarterModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Ionicons name="close" size={24} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
+
               {loadingAddableQuarters ? (
                 <View style={{ paddingVertical: 32, alignItems: 'center' }}>
                   <Text style={{ color: colors.textTertiary, fontSize: 14 }}>Loading quarters…</Text>
@@ -633,37 +792,75 @@ export default function TimetableScreen({
                   <Text style={{ color: colors.textTertiary, fontSize: 14 }}>No new quarters available</Text>
                 </View>
               ) : (
-                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 360 }}>
-                  {addableQuarters.map((q, index) => (
-                    <TouchableOpacity
-                      key={quarterKey(q)}
-                      onPress={() => { setShowAddQuarterModal(false); onAddQuarter(q); }}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                        paddingHorizontal: 24, paddingVertical: 16,
-                        borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.borderSubtle,
-                      }}
+                <Animated.View style={{ height: contentHeightAnim, overflow: 'hidden' }}>
+                  {/* Year list — always rendered so it's ready when sliding back */}
+                  {(() => {
+                    const years = [...new Set(addableQuarters.map((q) => q.year))].sort((a, b) => Number(b) - Number(a));
+                    return (
+                      <ScrollView showsVerticalScrollIndicator={false}>
+                        {years.map((year, index) => {
+                          const count = addableQuarters.filter((q) => q.year === year).length;
+                          return (
+                            <TouchableOpacity
+                              key={year}
+                              onPress={() => drillIntoYear(year)}
+                              style={{
+                                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                                paddingHorizontal: 24, paddingVertical: 16,
+                                borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.borderSubtle,
+                              }}
+                            >
+                              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>{year}</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Text style={{ fontSize: 14, color: colors.textTertiary }}>{count} quarter{count !== 1 ? 's' : ''}</Text>
+                                <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    );
+                  })()}
+
+                  {/* Quarter drill-down — absolutely overlays the year list, slides in from right */}
+                  {mountedYear && (
+                    <Animated.View
+                      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.card, transform: [{ translateX: addYearSlideAnim }] }}
+                      {...addQuarterSwipePan.panHandlers}
                     >
-                      <Text style={{ fontSize: 16, color: colors.text }}>{quarterLabel(q)}</Text>
-                      <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                      <ScrollView showsVerticalScrollIndicator={false}>
+                        {addableQuarters
+                          .filter((q) => q.year === mountedYear)
+                          .map((q, index) => (
+                            <TouchableOpacity
+                              key={quarterKey(q)}
+                              onPress={() => { closeAddQuarterModal(); onAddQuarter(q); }}
+                              style={{
+                                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                                paddingHorizontal: 24, paddingVertical: 16,
+                                borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.borderSubtle,
+                              }}
+                            >
+                              <Text style={{ fontSize: 16, color: colors.text }}>{q.quarter}</Text>
+                              <Ionicons name="add-circle-outline" size={20} color={colors.brand} />
+                            </TouchableOpacity>
+                          ))}
+                      </ScrollView>
+                    </Animated.View>
+                  )}
+                </Animated.View>
               )}
-            </View>
-          </TouchableOpacity>
+            </Animated.View>
         </TouchableOpacity>
+        </Animated.View>
       </Modal>
 
       {/* Settings bottom sheet */}
-      <Modal transparent animationType="slide" visible={showSettings} onRequestClose={() => setShowSettings(false)}>
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+      <Modal animationType="slide" presentationStyle="pageSheet" visible={showSettings} onRequestClose={() => setShowSettings(false)}>
           <View
             style={{
+              flex: 1,
               backgroundColor: colors.card,
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              maxHeight: screenHeight * 0.92,
             }}
           >
             {/* Header */}
@@ -853,18 +1050,15 @@ export default function TimetableScreen({
               </View>
             </ScrollView>
           </View>
-        </View>
       </Modal>
 
       {/* ── Course detail bottom sheet ── */}
       <Modal
         visible={!!selectedCourse}
-        transparent
-        animationType={skipDetailAnimRef.current ? 'none' : 'slide'}
+        animationType="slide"
+        presentationStyle="pageSheet"
         onRequestClose={() => setSelectedCourse(null)}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
-
           {/* Detail sheet */}
           {selectedCourse && (() => {
             const professor = selectedCourse.professor;
@@ -879,7 +1073,7 @@ export default function TimetableScreen({
             const mapQuery = mappedLocation?.name ?? rawLocation;
             const courseMapUrl = hasMapLocation ? appleMapsUrl(mapQuery, school) : null;
             return (
-              <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
+              <View style={{ flex: 1, backgroundColor: colors.card }}>
                 <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <View style={{ flex: 1, paddingRight: 12 }}>
@@ -989,10 +1183,7 @@ export default function TimetableScreen({
                   {['Lec', 'Lab', 'Sem'].some(t => selectedCourse.sectionLabel?.startsWith(t)) && (
                     <TouchableOpacity
                       onPress={() => {
-                        skipDetailAnimRef.current = true;
                         setReviewsCourse(selectedCourse);
-                        setSelectedCourse(null);
-                        setTimeout(() => { skipDetailAnimRef.current = false; }, 500);
                       }}
                       style={{ backgroundColor: colors.brand, borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                     >
@@ -1020,27 +1211,24 @@ export default function TimetableScreen({
               </View>
             );
           })()}
-
-        </View>
+          {reviewsCourse && (
+            <ReviewsModal
+              visible={!!reviewsCourse}
+              onClose={() => setReviewsCourse(null)}
+              courseCode={reviewsCourse.code}
+              department={reviewsCourse.department}
+              courseNumber={reviewsCourse.code.slice(reviewsCourse.department.length).trim()}
+              title={reviewsCourse.title}
+              professors={
+                reviewsCourse.professor && !reviewsCourse.professor.includes('STAFF')
+                  ? [reviewsCourse.professor] : []
+              }
+              school={school}
+              userId={userId}
+              semesterLabel={quarterLabel(selectedQuarter)}
+            />
+          )}
       </Modal>
-
-      {reviewsCourse && (
-        <ReviewsModal
-          visible={!!reviewsCourse}
-          onClose={() => setReviewsCourse(null)}
-          courseCode={reviewsCourse.code}
-          department={reviewsCourse.department}
-          courseNumber={reviewsCourse.code.slice(reviewsCourse.department.length).trim()}
-          title={reviewsCourse.title}
-          professors={
-            reviewsCourse.professor && !reviewsCourse.professor.includes('STAFF')
-              ? [reviewsCourse.professor] : []
-          }
-          school={school}
-          userId={userId}
-          semesterLabel={quarterLabel(selectedQuarter)}
-        />
-      )}
 
       <View>
 
@@ -1053,7 +1241,7 @@ export default function TimetableScreen({
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <TouchableOpacity
-              onPress={() => setShowQuarterDropdown(true)}
+              onPress={openQuarterDropdown}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -1140,13 +1328,13 @@ export default function TimetableScreen({
               );
             })}
           </ScrollView>
-          <TouchableOpacity onPress={() => setShowAddMenu(true)} style={{ paddingVertical: 7, paddingLeft: 8 }}>
+          <TouchableOpacity onPress={openAddMenu} style={{ paddingVertical: 7, paddingLeft: 8 }}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: colors.brand }}>+ Add</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <View style={{ height: 1, backgroundColor: theme === 'dark' ? '#1e293b' : '#ececec' }} />
+      <View style={{ height: 1, backgroundColor: colors.borderSubtle }} />
       </View>{/* end header area measurement wrapper */}
 
       <ScrollView
@@ -1358,7 +1546,7 @@ export default function TimetableScreen({
       {tbaCourses.length > 0 && (
         <View style={{
           paddingHorizontal: 16, paddingTop: 6, paddingBottom: 0,
-          backgroundColor: theme === 'dark' ? '#0f172a' : '#fff',
+          backgroundColor: 'transparent',
         }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {tbaCourses.map((course) => {
@@ -1400,6 +1588,12 @@ export default function TimetableScreen({
         </View>
       )}
       </ScrollView>
+
+      <ErrorScreen
+        visible={showError}
+        message={errorMessage}
+        onDismiss={() => setShowError(false)}
+      />
     </View>
   );
 }

@@ -23,7 +23,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import type { ChatTarget } from '../data/messages';
-import { anteaterAliasForId } from '../data/anonymousAliases';
+import { anteaterAliasForId, randomAnteaterAlias } from '../data/anonymousAliases';
 
 type CommentRow = {
   id: string;
@@ -360,7 +360,7 @@ export default function BoardScreen({
         validIds.map((id) => {
           const profile = profilesById[id];
           const fallbackName = profile?.name?.trim() || profile?.email?.split('@')[0] || anteaterAliasForId(id);
-          return [id, visibleById[id] ? fallbackName : anteaterAliasForId(id)];
+          return [id, visibleById[id] ? fallbackName : undefined];
         })
       ),
     };
@@ -613,7 +613,7 @@ export default function BoardScreen({
   async function handleAddComment() {
     if (!commentInput.trim() || !selectedPost) return;
 
-    const authorName = boardProfileVisible ? boardAuthorName : anteaterAliasForId(userId);
+    const authorName = boardProfileVisible ? boardAuthorName : randomAnteaterAlias();
     const { error } = await supabase.from('post_comments').insert({
       post_id: selectedPost.id,
       user_id: userId,
@@ -649,7 +649,7 @@ export default function BoardScreen({
 
     const board = BOARDS.find((entry) => entry.id === newPostBoardId) ?? BOARDS[0];
     const category = board.category ?? 'General';
-    const authorName = boardProfileVisible ? boardAuthorName : anteaterAliasForId(userId);
+    const authorName = boardProfileVisible ? boardAuthorName : randomAnteaterAlias();
     try {
       const attachments = await Promise.all(newPostAttachments.map((attachment) => uploadAttachment(attachment)));
       const payload = {
@@ -1177,7 +1177,7 @@ export default function BoardScreen({
                   <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
                     <View style={{ paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>Author</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{post.author_name}</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>

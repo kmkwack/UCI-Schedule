@@ -56,6 +56,9 @@ export const QUARTERS: Quarter[] = [
   { year: '2025', quarter: 'Fall' },
   { year: '2026', quarter: 'Winter' },
   { year: '2026', quarter: 'Spring' },
+  { year: '2026', quarter: 'Summer1' },
+  { year: '2026', quarter: 'Summer10wk' },
+  { year: '2026', quarter: 'Summer2' },
   { year: '2026', quarter: 'Fall' },
 ];
 

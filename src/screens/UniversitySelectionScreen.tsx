@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Animated } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Animated, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -89,10 +89,18 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
                 {/* Logo */}
                 <View style={{
                   width: 56, height: 56, borderRadius: 14,
-                  backgroundColor: '#4169E1', alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: 'white', alignItems: 'center', justifyContent: 'center',
                   marginRight: 14,
                 }}>
-                  <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 13 }}>{uni.logo}</Text>
+                  {uni.id === '1' ? (
+                    <Image
+                      source={require('../../assets/ucirvine-monogram.png')}
+                      style={{ width: 40, height: 26 }}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 13 }}>{uni.logo}</Text>
+                  )}
                 </View>
 
                 {/* Info */}

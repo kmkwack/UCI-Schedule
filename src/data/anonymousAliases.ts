@@ -5,3 +5,7 @@ export function anteaterAliasForId(id: string) {
   const suffix = Number.isFinite(value) ? (value % 9999) + 1 : 1;
   return `Anteater ${suffix}`;
 }
+
+export function randomAnteaterAlias() {
+  return `Anteater ${Math.floor(Math.random() * 9999) + 1}`;
+}

@@ -1,12 +1,72 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
+  Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import { QUARTERS, quarterLabel } from '../data/courses';
+
+type FinalExam = {
+  day?: number; month?: number; bldg?: string;
+  dayOfWeek?: string; examStatus?: string;
+  startTime?: { hour: number; minute: number };
+  endTime?: { hour: number; minute: number };
+};
+
+type CourseInfo = {
+  finalExam: FinalExam | string | null;
+  restrictions: string | null;
+  prerequisiteLink: string | null;
+  sectionComment: string | null;
+};
+
+const RESTRICTION_LABELS: Record<string, string> = {
+  A: 'Prerequisite required',
+  B: 'Authorization code required',
+  C: 'Fee required',
+  D: 'Pass/Not Pass only',
+  E: 'Freshmen only',
+  F: 'Sophomores only',
+  G: 'Lower-division only',
+  H: 'Juniors only',
+  I: 'Seniors only',
+  J: 'Upper-division only',
+  K: 'Graduate students only',
+  L: 'Majors only',
+  M: 'Non-majors only',
+  N: 'School majors only',
+  O: 'Non-school majors only',
+  R: 'Biomedical Pass/Fail',
+  S: 'Satisfactory/Unsatisfactory only',
+  X: 'Separate authorization codes required',
+};
+
+function decodeRestrictions(raw: string | null): string | null {
+  if (!raw) return null;
+  const labels = raw.toUpperCase().split('').map(c => RESTRICTION_LABELS[c] ?? c).filter(Boolean);
+  return labels.length ? labels.join(' · ') : null;
+}
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function formatFinalExam(fe: FinalExam | string | null): string | null {
+  if (!fe) return null;
+  if (typeof fe === 'string') return fe;
+  if (fe.examStatus === 'NO_FINAL' || fe.examStatus === 'TBA') return fe.examStatus === 'NO_FINAL' ? 'No final exam' : 'TBA';
+  const parts: string[] = [];
+  if (fe.dayOfWeek) parts.push(fe.dayOfWeek);
+  if (fe.month != null && fe.day != null) parts.push(`${MONTH_NAMES[fe.month - 1]} ${fe.day}`);
+  const fmt = (t?: { hour: number; minute: number }) =>
+    t ? `${t.hour}:${String(t.minute).padStart(2, '0')}` : null;
+  const start = fmt(fe.startTime), end = fmt(fe.endTime);
+  if (start && end) parts.push(`${start} – ${end}`);
+  if (fe.bldg) parts.push(`@ ${fe.bldg}`);
+  return parts.length ? parts.join(' · ') : null;
+}
+
+const courseInfoCache: Record<string, CourseInfo> = {};
 
 type GradeDistribution = {
   averageGPA: number | null;
@@ -37,6 +97,8 @@ export default function ReviewsModal({
   professors, school, userId, semesterLabel,
 }: Props) {
   const { colors } = useTheme();
+  const [courseInfo, setCourseInfo] = useState<CourseInfo | null>(null);
+  const [courseInfoLoading, setCourseInfoLoading] = useState(false);
   const [instructor, setInstructor] = useState('');
   const [gradesCache, setGradesCache] = useState<Record<string, GradeDistribution | null>>({});
   const [gradeLoading, setGradeLoading] = useState(false);
@@ -59,7 +121,9 @@ export default function ReviewsModal({
       setEditingReviewId(null);
       setRating(5); setDifficulty(3); setWorkload(3); setContent('');
       setQuarterTaken(semesterLabel);
+      setCourseInfo(null);
       fetchReviews();
+      fetchCourseInfo();
     }
   }, [visible, courseCode]);
 
@@ -79,6 +143,31 @@ export default function ReviewsModal({
       .catch(() => setGradesCache((prev) => ({ ...prev, [cacheKey]: null })))
       .finally(() => setGradeLoading(false));
   }, [visible, instructor]);
+
+  async function fetchCourseInfo() {
+    if (courseInfoCache[courseCode]) {
+      setCourseInfo(courseInfoCache[courseCode]);
+      return;
+    }
+    setCourseInfoLoading(true);
+    const { data } = await supabase
+      .from('sections')
+      .select('final_exam, restrictions, prerequisite_link, section_comment')
+      .eq('code', courseCode)
+      .limit(1)
+      .single();
+    if (data) {
+      const info: CourseInfo = {
+        finalExam: data.final_exam ?? null,
+        restrictions: data.restrictions ?? null,
+        prerequisiteLink: data.prerequisite_link ?? null,
+        sectionComment: data.section_comment ?? null,
+      };
+      courseInfoCache[courseCode] = info;
+      setCourseInfo(info);
+    }
+    setCourseInfoLoading(false);
+  }
 
   async function fetchReviews() {
     setReviewsLoading(true);
@@ -159,16 +248,15 @@ export default function ReviewsModal({
   return (
     <Modal
       visible={visible}
-      transparent
       animationType="slide"
+      presentationStyle="pageSheet"
       onRequestClose={() => {
         if (showWriteReview) { setShowWriteReview(false); }
         else { onClose(); }
       }}
     >
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%', flex: 1 }}>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.card }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={{ flex: 1 }}>
 
             {/* ── Reviews list ── */}
             {!showWriteReview && (
@@ -186,6 +274,60 @@ export default function ReviewsModal({
                 </View>
 
                 <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
+                  {/* Course Info — restrictions, finals, prereqs, comment */}
+                  {courseInfoLoading ? (
+                    <View style={{ paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, alignItems: 'center' }}>
+                      <ActivityIndicator size="small" color={colors.brand} />
+                    </View>
+                  ) : courseInfo && (() => {
+                    const finalStr = formatFinalExam(courseInfo.finalExam);
+                    const restrictionStr = decodeRestrictions(courseInfo.restrictions);
+                    const comment = courseInfo.sectionComment?.trim() || null;
+                    if (!restrictionStr && !finalStr && !courseInfo.prerequisiteLink && !comment) return null;
+                    return (
+                      <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, gap: 10 }}>
+                        {restrictionStr ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                            <Ionicons name="lock-closed-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Restrictions</Text>
+                              <Text style={{ fontSize: 13, color: colors.text }}>{restrictionStr}</Text>
+                            </View>
+                          </View>
+                        ) : null}
+                        {courseInfo.prerequisiteLink ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                            <Ionicons name="link-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Prerequisites</Text>
+                              <TouchableOpacity onPress={() => Linking.openURL(courseInfo.prerequisiteLink!)}>
+                                <Text style={{ fontSize: 13, color: colors.brand, textDecorationLine: 'underline' }}>View prerequisites ›</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : null}
+                        {finalStr ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                            <Ionicons name="calendar-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Final Exam</Text>
+                              <Text style={{ fontSize: 13, color: colors.text }}>{finalStr}</Text>
+                            </View>
+                          </View>
+                        ) : null}
+                        {comment ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                            <Ionicons name="information-circle-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Note</Text>
+                              <Text style={{ fontSize: 13, color: colors.text }}>{comment}</Text>
+                            </View>
+                          </View>
+                        ) : null}
+                      </View>
+                    );
+                  })()}
+
                   {/* Grade Distribution */}
                   <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Grade Distribution</Text>
@@ -418,7 +560,6 @@ export default function ReviewsModal({
             )}
 
           </View>
-        </View>
       </KeyboardAvoidingView>
     </Modal>
   );

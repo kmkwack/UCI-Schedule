@@ -169,11 +169,10 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
           </TouchableOpacity>
         </View>
 
-        {/* Terms */}
-        <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 20, marginBottom: 8 }}>
-          <LegalConsentText onOpenDocument={setActiveDocument} color="#9ca3af" linkColor="#4169E1" />
-        </View>
       </ScrollView>
+      <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 14, paddingBottom: 8, paddingHorizontal: 24 }}>
+        <LegalConsentText onOpenDocument={setActiveDocument} color="#9ca3af" linkColor="#4169E1" />
+      </View>
       <LegalDocumentModal
         visible={!!activeDocument}
         document={activeDocument ?? 'terms'}

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Easing, Platform, View, Text, TouchableOpacity } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Animated, Dimensions, Easing, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -178,6 +178,74 @@ function buildDailyScheduleSummaryDates(courses: Course[], daysAhead = 14, summa
   return dates;
 }
 
+const AUTH_SCREEN_W = Dimensions.get('window').width;
+
+function AuthNavigator({
+  stack,
+  onPop,
+  renderScreen,
+}: {
+  stack: AuthScreen[];
+  onPop: () => void;
+  renderScreen: (s: AuthScreen) => React.ReactNode;
+}) {
+  const W = AUTH_SCREEN_W;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const prevLen = useRef(stack.length);
+
+  useEffect(() => {
+    const prev = prevLen.current;
+    prevLen.current = stack.length;
+    if (stack.length > prev) {
+      slideAnim.setValue(W);
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+    }
+  }, [stack.length]);
+
+  const goBack = () => {
+    Animated.timing(slideAnim, { toValue: W, duration: 260, useNativeDriver: true }).start(() => {
+      slideAnim.setValue(0);
+      onPop();
+    });
+  };
+
+  const swipePan = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gs) => gs.dx > 6 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+    onPanResponderMove: (_, gs) => { if (gs.dx > 0) slideAnim.setValue(gs.dx); },
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dx > W * 0.35 || gs.vx > 0.6) {
+        goBack();
+      } else {
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+      }
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+    },
+  })).current;
+
+  const current = stack[stack.length - 1];
+  const previous = stack.length > 1 ? stack[stack.length - 2] : null;
+
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      {/* Previous screen sits underneath */}
+      {previous && (
+        <View style={StyleSheet.absoluteFill}>
+          {renderScreen(previous)}
+        </View>
+      )}
+      {/* Current screen slides in from right, pan attached here */}
+      <Animated.View
+        style={[StyleSheet.absoluteFill, { transform: [{ translateX: slideAnim }] }]}
+        {...(stack.length > 1 ? swipePan.panHandlers : {})}
+      >
+        {renderScreen(current)}
+      </Animated.View>
+    </View>
+  );
+}
+
 function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -190,7 +258,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [savingVisibility, setSavingVisibility] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [useCelsius, setUseCelsius] = useState(true);
-  const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
+  const [authStack, setAuthStack] = useState<AuthScreen[]>(['welcome']);
+  const authScreen = authStack[authStack.length - 1];
+  const pushAuth = (s: AuthScreen) => setAuthStack((prev) => [...prev, s]);
+  const popAuth = () => setAuthStack((prev) => prev.length > 1 ? prev.slice(0, -1) : prev);
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
   const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'board' | 'friends'>('home');
   const [homeTabTapCount, setHomeTabTapCount] = useState(0);
@@ -801,7 +872,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const handleCreateTimetable = async () => {
     if (quarterTimetables.length === 0) { await createTimetable(activeKey, 'My Schedule'); return; }
     const usedNames = new Set(quarterTimetables.map((t) => t.name));
-    let code = 65; // 'A'
+    let code = 66; // 'B'
     while (usedNames.has(`Plan ${String.fromCharCode(code)}`)) code++;
     await createTimetable(activeKey, `Plan ${String.fromCharCode(code)}`);
   };
@@ -911,7 +982,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setUserSettings(DEFAULT_USER_SETTINGS);
     setTimetables([]);
     setSelectedTimetableId(null);
-    setAuthScreen('welcome');
+    setAuthStack(['welcome']);
   };
 
   const saveUserSettingsRow = async (
@@ -1117,39 +1188,39 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   // ── auth screens ─────────────────────────────────────────────────────────────
 
   if (!userId) {
-    if (authScreen === 'welcome') {
+    const renderAuthScreen = (name: AuthScreen) => {
+      if (name === 'welcome') {
+        return <WelcomeScreen onGetStarted={() => pushAuth('university')} />;
+      }
+      if (name === 'university') {
+        return (
+          <UniversitySelectionScreen
+            onBack={popAuth}
+            onContinue={(uni) => { setSelectedUniversity(uni); pushAuth('signin'); }}
+          />
+        );
+      }
+      if (name === 'signup') {
+        return (
+          <SignUpScreen
+            university={selectedUniversity ?? undefined}
+            onBack={popAuth}
+            onSignedUp={(id, email) => { setUserId(id); setUserEmail(email); }}
+            onGoToSignIn={() => { popAuth(); pushAuth('signin'); }}
+          />
+        );
+      }
       return (
-        <WelcomeScreen
-          onGetStarted={() => setAuthScreen('university')}
+        <SignInScreen
+          university={selectedUniversity ?? { id: '1', name: 'UC Irvine', domain: '@uci.edu', location: 'Irvine, CA', logo: 'UCI' }}
+          onBack={popAuth}
+          onSignedIn={(id, email) => { setUserId(id); setUserEmail(email); }}
+          onGoToSignUp={() => pushAuth('signup')}
         />
       );
-    }
-    if (authScreen === 'university') {
-      return (
-        <UniversitySelectionScreen
-          onBack={() => setAuthScreen('welcome')}
-          onContinue={(uni) => { setSelectedUniversity(uni); setAuthScreen('signin'); }}
-        />
-      );
-    }
-    if (authScreen === 'signup') {
-      return (
-        <SignUpScreen
-          university={selectedUniversity ?? undefined}
-          onBack={() => setAuthScreen('university')}
-          onSignedUp={(id, email) => { setUserId(id); setUserEmail(email); }}
-          onGoToSignIn={() => setAuthScreen('signin')}
-        />
-      );
-    }
-    return (
-      <SignInScreen
-        university={selectedUniversity ?? { id: '1', name: 'UC Irvine', domain: '@uci.edu', location: 'Irvine, CA', logo: 'UCI' }}
-        onBack={() => setAuthScreen('university')}
-        onSignedIn={(id, email) => { setUserId(id); setUserEmail(email); }}
-        onGoToSignUp={() => setAuthScreen('signup')}
-      />
-    );
+    };
+
+    return <AuthNavigator stack={authStack} onPop={popAuth} renderScreen={renderAuthScreen} />;
   }
 
   // ── main app ──────────────────────────────────────────────────────────────────
@@ -1204,7 +1275,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         onOpenMessages={handleOpenMessages}
         school={selectedUniversity?.name ?? 'UC Irvine'}
         userId={USER_ID}
-        boardAuthorName={displayUserName}
+        boardAuthorName={userProfile.nickname.trim() || displayUserName}
         boardProfileVisible={userSettings.boardProfileVisible}
         bottomInset={insets.bottom}
         scrollToTopTrigger={boardTabTapCount}

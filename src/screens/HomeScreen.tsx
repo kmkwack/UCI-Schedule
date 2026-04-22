@@ -55,6 +55,12 @@ function getDateLabel(): string {
   return `${dayName}, ${month} ${date} · Week ${week}`;
 }
 
+function formatEventDayLabel(date: Date) {
+  const dayName = DAY_LABELS[date.getDay()];
+  const month = MONTH_LABELS[date.getMonth()];
+  return `${dayName}, ${month} ${date.getDate()}`;
+}
+
 function getTodayDayCode(): string | null {
   const day = new Date().getDay();
   if (day === 1) return 'M';
@@ -193,7 +199,7 @@ export default function HomeScreen({
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 1000);
+    const interval = setInterval(() => setNow(new Date()), 16);
     return () => clearInterval(interval);
   }, []);
 
@@ -214,6 +220,16 @@ export default function HomeScreen({
   const quarterProgress = getQuarterProgress(now);
   const quarterPercent = quarterProgress * 100;
   const daysRemaining = getDaysRemainingInQuarter(now);
+  const groupedSportsEvents = sportsEvents.reduce<Array<{ dayLabel: string; events: SportsEvent[] }>>((groups, event) => {
+    const dayLabel = formatEventDayLabel(event.date);
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup.dayLabel === dayLabel) {
+      lastGroup.events.push(event);
+    } else {
+      groups.push({ dayLabel, events: [event] });
+    }
+    return groups;
+  }, []);
   const raisedCardStyle = {
     borderRadius: 24,
     borderWidth: 1,
@@ -495,39 +511,6 @@ export default function HomeScreen({
 
         <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 2, marginBottom: 10 }} />
 
-        <View style={{ marginBottom: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 10 }}>
-            <View>
-              <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '500', marginBottom: 4 }}>
-                Quarter Progress
-              </Text>
-              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
-                {daysRemaining} days until finals end
-              </Text>
-            </View>
-            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.brand }}>
-              {quarterPercent.toFixed(6)}%
-            </Text>
-          </View>
-          <View style={{ height: 10, borderRadius: 999, backgroundColor: colors.bgTertiary, overflow: 'hidden', marginBottom: 10 }}>
-            <View
-              style={{
-                width: `${Math.max(quarterPercent, 6)}%`,
-                height: '100%',
-                borderRadius: 999,
-                backgroundColor: colors.brand,
-              }}
-            />
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 12, color: colors.textTertiary }}>Quarter Start</Text>
-            <Text style={{ fontSize: 12, color: colors.textTertiary }}>Finals End</Text>
-          </View>
-        </View>
-
-        {/* Divider */}
-        <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 16, marginBottom: 16 }} />
-
         {/* Coming Up */}
         <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '500', marginBottom: 12 }}>Coming Up</Text>
         {upcomingClasses.length > 0 ? (
@@ -552,6 +535,48 @@ export default function HomeScreen({
         ) : (
           <Text style={{ fontSize: 14, color: colors.textTertiary }}>No more classes today</Text>
         )}
+
+        {/* Divider */}
+        <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 16, marginBottom: 16 }} />
+
+        <View style={{ marginBottom: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 10 }}>
+            <View>
+              <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '500', marginBottom: 4 }}>
+                Quarter Progress
+              </Text>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
+                {daysRemaining} days until finals end
+              </Text>
+            </View>
+            <Text
+              style={{
+                width: 128,
+                fontSize: 15,
+                fontWeight: '600',
+                color: colors.brand,
+                textAlign: 'right',
+                fontVariant: ['tabular-nums'],
+              }}
+            >
+              {quarterPercent.toFixed(8)}%
+            </Text>
+          </View>
+          <View style={{ height: 10, borderRadius: 999, backgroundColor: colors.bgTertiary, overflow: 'hidden', marginBottom: 10 }}>
+            <View
+              style={{
+                width: `${Math.max(quarterPercent, 6)}%`,
+                height: '100%',
+                borderRadius: 999,
+                backgroundColor: colors.brand,
+              }}
+            />
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: 12, color: colors.textTertiary }}>Quarter Start</Text>
+            <Text style={{ fontSize: 12, color: colors.textTertiary }}>Finals End</Text>
+          </View>
+        </View>
       </View>
 
       {/* Weather card */}
@@ -592,38 +617,38 @@ export default function HomeScreen({
 
         {sportsEvents.length === 0 ? (
           <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading upcoming games…</Text>
-        ) : sportsEvents.map((event, index) => {
-          const next = sportsEvents[index + 1];
-          const isDayChange = next && next.date.toDateString() !== event.date.toDateString();
-          return (
-            <View key={event.id}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{
-                  width: 42, height: 42, borderRadius: 21,
-                  backgroundColor: event.bg, alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Ionicons name={event.icon} size={20} color={event.color} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
-                    {event.title}
-                  </Text>
-                  <Text style={{ fontSize: 13, color: colors.textSecondary }}>{formatSportsEventTime(event.date)}</Text>
-                  <Text style={{ fontSize: 13, color: colors.textTertiary }}>{event.location}</Text>
-                </View>
-              </View>
-              {index < sportsEvents.length - 1 && (
-                isDayChange ? (
-                  <View style={{ marginVertical: 14 }}>
-                    <View style={{ height: 2.5, backgroundColor: colors.border, borderRadius: 2 }} />
+        ) : groupedSportsEvents.map((group, groupIndex) => (
+          <View key={group.dayLabel} style={{ marginBottom: groupIndex === groupedSportsEvents.length - 1 ? 0 : 18 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 12 }}>
+              {group.dayLabel}
+            </Text>
+            {group.events.map((event, index) => (
+              <View key={event.id}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{
+                    width: 42, height: 42, borderRadius: 21,
+                    backgroundColor: event.bg, alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Ionicons name={event.icon} size={20} color={event.color} />
                   </View>
-                ) : (
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
+                      {event.title}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>{formatSportsEventTime(event.date)}</Text>
+                    <Text style={{ fontSize: 13, color: colors.textTertiary }}>{event.location}</Text>
+                  </View>
+                </View>
+                {index < group.events.length - 1 && (
                   <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginVertical: 14 }} />
-                )
-              )}
-            </View>
-          );
-        })}
+                )}
+              </View>
+            ))}
+            {groupIndex < groupedSportsEvents.length - 1 && (
+              <View style={{ height: 1, backgroundColor: colors.border, marginTop: 16 }} />
+            )}
+          </View>
+        ))}
       </View>
     </ScrollView>
   );

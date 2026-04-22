@@ -737,3 +737,9 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64ay (Stabilize quarter-progress number layout)
 - **`src/screens/HomeScreen.tsx`** — Put the quarter-progress percentage inside a fixed-width, right-aligned text block while keeping tabular figures enabled, so the value no longer shifts horizontally as digits change.
+
+### Session 64az (Increase tab bar visibility again)
+- **`App.tsx`** — Raised the floating tab bar and active-pill opacity one more step so the navigation stays readable over busy screens while keeping the translucent glass treatment.
+
+### Session 64ba (Push the floating tab bar toward liquid-glass styling)
+- **`App.tsx`** — Rebuilt the floating tab bar with layered highlight sheets, translucent inner reflections, brighter glass borders, and a glossier active pill so it feels much closer to a liquid-glass island even without native SwiftUI materials.

@@ -787,15 +787,38 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 6,
+        paddingVertical: 7,
         paddingHorizontal: 4,
-        borderRadius: 18,
+        borderRadius: 19,
         backgroundColor: active
-          ? (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.68)')
+          ? (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.78)')
           : 'transparent',
+        borderWidth: active ? 1 : 0,
+        borderColor: active
+          ? (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.95)')
+          : 'transparent',
+        shadowColor: active ? '#ffffff' : '#0f172a',
+        shadowOffset: { width: 0, height: active ? 2 : 0 },
+        shadowOpacity: active ? (isDark ? 0.08 : 0.35) : 0,
+        shadowRadius: active ? 8 : 0,
+        elevation: active ? 3 : 0,
       }}
       onPress={onPress}
     >
+      {active ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 1,
+            left: 1,
+            right: 1,
+            height: '52%',
+            borderRadius: 18,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.52)',
+          }}
+        />
+      ) : null}
       <Ionicons name={icon} size={20} color={active ? colors.brand : colors.textTertiary} />
       <Text
         style={{
@@ -823,25 +846,71 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           left: 16,
           right: 16,
           bottom: insets.bottom - 6,
-          flexDirection: 'row',
-          paddingHorizontal: 10,
-          paddingVertical: 5,
-          borderRadius: 26,
+          padding: 1,
+          borderRadius: 28,
           borderWidth: 1,
-          borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.74)',
-          backgroundColor: isDark ? 'rgba(23,23,28,0.66)' : 'rgba(248,250,255,0.74)',
+          borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.86)',
+          backgroundColor: isDark ? 'rgba(30,30,34,0.72)' : 'rgba(244,247,255,0.78)',
           shadowColor: '#0f172a',
           shadowOffset: { width: 0, height: 14 },
-          shadowOpacity: isDark ? 0.24 : 0.12,
-          shadowRadius: 20,
-          elevation: 12,
+          shadowOpacity: isDark ? 0.28 : 0.16,
+          shadowRadius: 24,
+          elevation: 14,
+          overflow: 'hidden',
         }}
       >
-        <TabItem label="Home" icon="home-outline" active={currentTab === 'home'} onPress={() => { if (currentTab === 'home') setHomeTabTapCount(c => c + 1); else setCurrentTab('home'); }} />
-        <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => { if (currentTab === 'timetable') setTimetableTabTapCount(c => c + 1); else setCurrentTab('timetable'); }} />
-        <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => { if (currentTab === 'grades') setGradesTabTapCount(c => c + 1); else setCurrentTab('grades'); }} />
-        <TabItem label="Board" icon="clipboard-outline" active={currentTab === 'board'} onPress={() => { if (currentTab === 'board') setBoardTabTapCount(c => c + 1); else setCurrentTab('board'); }} />
-        <TabItem label="ClassMates" icon="person-add-outline" active={currentTab === 'friends'} onPress={() => { if (currentTab === 'friends') setFriendsTabTapCount(c => c + 1); else handleOpenFriendsTab(); }} />
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '54%',
+            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.45)',
+          }}
+        />
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 24,
+            width: 108,
+            height: 48,
+            borderRadius: 24,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.36)',
+            transform: [{ rotate: '-14deg' }],
+          }}
+        />
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: -6,
+            right: 42,
+            width: 132,
+            height: 54,
+            borderRadius: 27,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.28)',
+            transform: [{ rotate: '12deg' }],
+          }}
+        />
+        <View
+          style={{
+            flexDirection: 'row',
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 27,
+            backgroundColor: isDark ? 'rgba(20,20,24,0.26)' : 'rgba(255,255,255,0.16)',
+          }}
+        >
+          <TabItem label="Home" icon="home-outline" active={currentTab === 'home'} onPress={() => { if (currentTab === 'home') setHomeTabTapCount(c => c + 1); else setCurrentTab('home'); }} />
+          <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => { if (currentTab === 'timetable') setTimetableTabTapCount(c => c + 1); else setCurrentTab('timetable'); }} />
+          <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => { if (currentTab === 'grades') setGradesTabTapCount(c => c + 1); else setCurrentTab('grades'); }} />
+          <TabItem label="Board" icon="clipboard-outline" active={currentTab === 'board'} onPress={() => { if (currentTab === 'board') setBoardTabTapCount(c => c + 1); else setCurrentTab('board'); }} />
+          <TabItem label="ClassMates" icon="person-add-outline" active={currentTab === 'friends'} onPress={() => { if (currentTab === 'friends') setFriendsTabTapCount(c => c + 1); else handleOpenFriendsTab(); }} />
+        </View>
       </View>
 
       {showMessages && (

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 .DS_Store
 .expo/
 node_modules/
@@ -6,3 +7,7 @@ yarn-debug.log*
 yarn-error.log*
 
 .DS_Store
+=======
+ios/
+android/
+>>>>>>> a09d64c3 (restore)

@@ -384,6 +384,21 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/screens/TimetableScreen.tsx`** — Added `expo-linking` import. Added a small "RMP" pill button inline next to the professor name in the course detail sheet; taps open `https://www.ratemyprofessors.com/search/professors?q=<name>` in the browser. Button is hidden for STAFF/empty professors. Removed `isLec` guard so the Reviews button now shows for all section types (Lec, Lab, Dis, Sem, etc.).
 - **`src/screens/CoursePickerScreen.tsx`** — Added `expo-linking` import. Removed `course.sectionLabel?.startsWith('Lec')` guard so the Reviews button appears on every section type. Added a small "RMP" pill button in the section row's right column for non-STAFF professors.
 
+### Session 64ca (8 AM daily schedule + 1-hour reminder defaults)
+- **`src/data/userPreferences.ts`** — Added `dailyScheduleSummary` notification preference and changed default class/game reminder lead times to 60 minutes.
+- **`src/screens/SettingsScreen.tsx`** — Added a new `Today's Classes` notification toggle, updated class/game reminder copy to reflect the 1-hour reminder behavior, removed the old variable lead-time picker, and force-saved reminder timing to 60 minutes.
+- **`App.tsx`** — Added 8:00 AM daily schedule summary scheduling for days with classes and fixed class/game reminder scheduling to a strict 1 hour before start time.
+
+### Session 64cb (Restore adjustable reminder lead times)
+- **`src/screens/SettingsScreen.tsx`** — Restored the lead-time picker UI for class and sports reminders while keeping the new `Today's Classes` 8:00 AM summary toggle.
+- **`App.tsx`** — Switched class and sports reminder scheduling back to use each user’s saved reminder-minute settings instead of a fixed 60-minute offset.
+
+### Session 64cc (Add second reports moderator account)
+- **`src/screens/SettingsScreen.tsx`** — Expanded the in-app moderator allowlist so `kwackk@uci.edu` sees the same `Reports Inbox` as `sihyup2@uci.edu`, matching the updated reports policy in Supabase.
+
+### Session 64cd (Tighten notification lead-time chips)
+- **`src/screens/SettingsScreen.tsx`** — Reduced the reminder timing chip padding and text size so the `5 / 10 / 15 / 30 / 60 min` options fit cleanly on one line without the `60 min` chip dropping below.
+
 ### Session 50 (Read-only friend timetable + email search)
 - **`src/screens/FriendsScreen.tsx`** — Removed the friend timetable `+ Add` action and the course-picker editing path so friend schedules are clearly read-only. Added a read-only notice banner in the friend timetable header.
 - **`src/screens/FriendsScreen.tsx`** — Replaced the add-friend modal fields (`name`, `major`, `year`) with an email search flow. Users are now found by university email, shown as search results, and can be added directly from the result list. Friend list and request rows now also show email addresses.

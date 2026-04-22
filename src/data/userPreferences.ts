@@ -15,6 +15,7 @@ export type TimetableVisibility = 'friends' | 'private' | 'public';
 export type NotificationPreferences = {
   pushNotifications: boolean;
   emailNotifications: boolean;
+  dailyScheduleSummary: boolean;
   classReminders: boolean;
   classReminderMinutes: number;
   sportsGameReminders: boolean;
@@ -37,10 +38,11 @@ export type UserSettingsState = {
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   pushNotifications: false,
   emailNotifications: true,
+  dailyScheduleSummary: true,
   classReminders: true,
-  classReminderMinutes: 10,
+  classReminderMinutes: 60,
   sportsGameReminders: true,
-  sportsGameReminderMinutes: 30,
+  sportsGameReminderMinutes: 60,
   friendRequests: true,
   comments: true,
   likes: true,

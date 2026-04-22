@@ -124,7 +124,7 @@ type Screen = 'main' | 'profile' | 'privacy' | 'notifications' | 'appearance' | 
 
 const SUPPORT_EMAILS = ['heyy.seans@gmail.com', 'hii.seans@gmail.com'];
 const SUPPORT_EMAIL_LABEL = SUPPORT_EMAILS.join(', ');
-const MODERATOR_EMAILS = ['sihyup2@uci.edu'];
+const MODERATOR_EMAILS = ['sihyup2@uci.edu', 'kwackk@uci.edu'];
 
 type ReportStatus = 'pending' | 'reviewing' | 'resolved' | 'dismissed';
 
@@ -570,8 +570,8 @@ function NotificationsScreen({
   const [s, setS] = useState<NotificationPreferences>(initialSettings);
   const [permissionStatus, setPermissionStatus] = useState<PushPermissionStatus>(initialPermissionStatus);
   const toggleableKeys: Array<
-    'pushNotifications' | 'emailNotifications' | 'classReminders' | 'sportsGameReminders' | 'friendRequests' | 'comments' | 'likes' | 'messages'
-  > = ['pushNotifications', 'emailNotifications', 'classReminders', 'sportsGameReminders', 'friendRequests', 'comments', 'likes', 'messages'];
+    'pushNotifications' | 'emailNotifications' | 'dailyScheduleSummary' | 'classReminders' | 'sportsGameReminders' | 'friendRequests' | 'comments' | 'likes' | 'messages'
+  > = ['pushNotifications', 'emailNotifications', 'dailyScheduleSummary', 'classReminders', 'sportsGameReminders', 'friendRequests', 'comments', 'likes', 'messages'];
 
   useEffect(() => {
     setS(initialSettings);
@@ -590,7 +590,6 @@ function NotificationsScreen({
     unavailable: 'Push permission is unavailable on this device or simulator.',
   };
   const reminderMinuteOptions = [5, 10, 15, 30, 60];
-
   const row = (key: (typeof toggleableKeys)[number], label: string, subLabel?: string, last = false) => (
     <View key={key}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 }}>
@@ -658,6 +657,7 @@ function NotificationsScreen({
           {row('emailNotifications', 'Email Notifications', 'Receive email updates for social activity', true)}
         </>)}
         {section('ACADEMIC', <>
+          {row('dailyScheduleSummary', "Today's Classes", 'Send a morning summary at 8:00 AM')}
           {row('classReminders', 'Class Reminders')}
           {row('sportsGameReminders', 'Sports Game Reminders', undefined, true)}
         </>)}
@@ -672,15 +672,15 @@ function NotificationsScreen({
                     key={`class-${minutes}`}
                     onPress={() => setS((prev) => ({ ...prev, classReminderMinutes: minutes }))}
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 7,
                       borderRadius: 18,
                       borderWidth: 1,
                       borderColor: active ? colors.brand : colors.border,
                       backgroundColor: active ? colors.brandBg : colors.card,
                     }}
                   >
-                    <Text style={{ color: active ? colors.brand : colors.textSecondary, fontSize: 13, fontWeight: '600' }}>
+                    <Text style={{ color: active ? colors.brand : colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
                       {minutes} min
                     </Text>
                   </TouchableOpacity>
@@ -699,15 +699,15 @@ function NotificationsScreen({
                     key={`sports-${minutes}`}
                     onPress={() => setS((prev) => ({ ...prev, sportsGameReminderMinutes: minutes }))}
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 7,
                       borderRadius: 18,
                       borderWidth: 1,
                       borderColor: active ? colors.brand : colors.border,
                       backgroundColor: active ? colors.brandBg : colors.card,
                     }}
                   >
-                    <Text style={{ color: active ? colors.brand : colors.textSecondary, fontSize: 13, fontWeight: '600' }}>
+                    <Text style={{ color: active ? colors.brand : colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
                       {minutes} min
                     </Text>
                   </TouchableOpacity>

@@ -155,6 +155,29 @@ function buildUpcomingClassReminderDates(courses: Course[], reminderMinutes: num
   return dates;
 }
 
+function buildDailyScheduleSummaryDates(courses: Course[], daysAhead = 14, summaryHour = 8) {
+  const now = new Date();
+  const end = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+  const dates: Array<{ notifyAt: Date; courses: Course[] }> = [];
+
+  for (let cursor = new Date(now); cursor <= end; cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000)) {
+    const dayCourses = courses.filter((course) => {
+      if (course.time === 'TBA' || course.days === 'TBA') return false;
+      return parseCourseDays(course.days).some((day) => weekdayIndex(day) === cursor.getDay());
+    });
+
+    if (dayCourses.length === 0) continue;
+
+    const notifyAt = new Date(cursor);
+    notifyAt.setHours(summaryHour, 0, 0, 0);
+    if (notifyAt <= now) continue;
+
+    dates.push({ notifyAt, courses: dayCourses });
+  }
+
+  return dates;
+}
+
 function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -588,6 +611,33 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const currentQuarter = getAcademicQuarterForDate(new Date());
       const quarterMatchesCurrent =
         currentQuarter.year === selectedQuarter.year && currentQuarter.quarter === selectedQuarter.quarter;
+
+      if (notifications.dailyScheduleSummary && quarterMatchesCurrent) {
+        const dailySummaries = buildDailyScheduleSummaryDates(activeCourses);
+        for (const summary of dailySummaries) {
+          if (cancelled) return;
+          const firstCourse = summary.courses
+            .slice()
+            .sort((a, b) => a.time.localeCompare(b.time))[0];
+          const classCount = summary.courses.length;
+          const summaryTitle = classCount === 1 ? 'You have 1 class today' : `You have ${classCount} classes today`;
+          const summaryBody = firstCourse
+            ? `First up: ${firstCourse.code} at ${firstCourse.time.split(' - ')[0]}${firstCourse.location ? ` in ${firstCourse.location}` : ''}.`
+            : 'Check ClassMate to see your full schedule for today.';
+
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: summaryTitle,
+              body: summaryBody,
+              data: { type: 'daily-schedule-summary', count: String(classCount) },
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: summary.notifyAt,
+            },
+          });
+        }
+      }
 
       if (notifications.classReminders && quarterMatchesCurrent) {
         const classReminders = buildUpcomingClassReminderDates(activeCourses, notifications.classReminderMinutes);

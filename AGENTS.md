@@ -880,3 +880,9 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`assets/classmate-logo-full.png` / `assets/classmate-logo-mark.png`** — Added the newly generated ClassMate speech-bubble timetable logo and a cropped mark-only version for in-app branding use.
 - **`src/screens/WelcomeScreen.tsx`** — Reverted the temporary badge-size tweak and replaced the old `CM` block with the new ClassMate logo mark while keeping the cinematic hero layout intact.
 - **`src/screens/SettingsScreen.tsx`** — Updated the About screen branding from the old `CM` text tile to the new ClassMate logo mark for consistency with the welcome experience.
+
+### Session 64cn (Expand Terms of Service draft around real app features)
+- **`src/components/LegalDocumentModal.tsx`** — Replaced the short placeholder Terms of Service text with a fuller draft tailored to ClassMate’s actual functionality: university sign-in, timetable planning, grade tracking, reviews, posts, messaging, attachments, moderation, notifications, third-party services, and academic-information disclaimers. Updated the terms date to April 22, 2026 and kept the in-app footer note that the legal text still needs final release review.
+
+### Session 64co (Draft a fuller Privacy Policy without publishing it)
+- **`src/components/LegalDocumentModal.tsx`** — Expanded the in-app Privacy Policy draft to match ClassMate’s real features and data flows, covering collection, use, sharing, visibility, notifications, community content, retention, security, children, and change notices. Updated the privacy date to April 22, 2026 while keeping the footer note that the documents are still development-stage legal drafts pending final review and publication.

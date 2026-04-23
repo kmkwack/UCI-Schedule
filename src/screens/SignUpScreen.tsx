@@ -5,12 +5,25 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import Constants from 'expo-constants';
 import type { University } from './UniversitySelectionScreen';
 import LegalConsentText from '../components/LegalConsentText';
 import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
 import { supabase } from '../lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
+
+const FALLBACK_AUTH_SCHEME = 'com.parksihyun.classmate';
+
+function getOAuthRedirectUrl() {
+  const configuredScheme = Constants.expoConfig?.scheme;
+  const scheme =
+    (Array.isArray(configuredScheme) ? configuredScheme[0] : configuredScheme) ||
+    (Constants.expoConfig?.extra as { expoClient?: { scheme?: string } } | undefined)?.expoClient?.scheme ||
+    FALLBACK_AUTH_SCHEME;
+
+  return Linking.createURL('auth/callback', { scheme });
+}
 
 type Props = {
   university?: University;
@@ -42,7 +55,7 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
     setLoading(true);
     await supabase.auth.signOut();
 
-    const redirectTo = Linking.createURL('auth/callback');
+    const redirectTo = getOAuthRedirectUrl();
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo, queryParams: { hd, prompt: 'select_account' }, skipBrowserRedirect: true },

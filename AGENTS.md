@@ -1013,3 +1013,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`package.json` / `package-lock.json`** — Installed `expo-font` and aligned Expo SDK patch versions (`expo`, `expo-auth-session`, `expo-media-library`, `react-native`) with Expo Doctor’s recommended SDK 55 releases so the app is less likely to hit native dependency issues outside Expo Go.
 - **`.gitignore` / `.expo/`** — Added a new ignore file with `.expo/`, `node_modules/`, and common local log files, then removed the tracked local `.expo` cache/log folder so machine-specific Expo state no longer pollutes project checks.
 - **`.easignore`** — Added a matching EAS ignore file to keep local Expo state and `node_modules` out of future cloud build uploads, which should make rebuilds lighter and cleaner.
+
+### Session 64dx (Use app-scheme OAuth redirects instead of localhost)
+- **`src/screens/SignInScreen.tsx` / `src/screens/SignUpScreen.tsx`** — Replaced the raw `Linking.createURL('auth/callback')` redirect with a scheme-aware helper that prefers the configured Expo app scheme and falls back to `com.parksihyun.classmate`. This avoids Google auth bouncing to `localhost` in simulator/dev-client flows where no local web server is available.

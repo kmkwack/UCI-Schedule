@@ -886,3 +886,30 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64co (Draft a fuller Privacy Policy without publishing it)
 - **`src/components/LegalDocumentModal.tsx`** — Expanded the in-app Privacy Policy draft to match ClassMate’s real features and data flows, covering collection, use, sharing, visibility, notifications, community content, retention, security, children, and change notices. Updated the privacy date to April 22, 2026 while keeping the footer note that the documents are still development-stage legal drafts pending final review and publication.
+
+### Session 64cp (Apply approved logo and promote legal docs to in-app production copy)
+- **`assets/classmate-logo-approved.png`** — Added the selected approved ClassMate logo from the provided file and propagated it into the app-facing icon assets (`icon.png`, `splash-icon.png`, `android-icon-foreground.png`, and `favicon.png`).
+- **`src/screens/WelcomeScreen.tsx` / `src/screens/SettingsScreen.tsx`** — Switched the in-app brand mark references from the previous generated draft to the approved ClassMate logo.
+- **`src/components/LegalDocumentModal.tsx`** — Removed remaining development-only wording from the Terms and Privacy documents so the in-app legal text now reads like app-facing copy rather than an internal placeholder draft.
+
+### Session 64cq (Style the welcome wordmark to match the selected look)
+- **`src/screens/WelcomeScreen.tsx`** — Replaced the plain `Welcome to ClassMate` heading with a more logo-like text treatment: a smaller `Welcome to` line plus a large two-tone `ClassMate` wordmark styled directly in code to resemble the approved reference without using the image itself.
+
+### Session 64cr (Use a transparent cutout of the approved logo in-app)
+- **`assets/classmate-logo-approved-transparent.png`** — Added a background-removed PNG cutout of the approved ClassMate logo so in-app branding can sit cleanly on non-white surfaces without showing the original white square.
+- **`src/screens/WelcomeScreen.tsx` / `src/screens/SettingsScreen.tsx`** — Switched the in-app logo references from the flat white-background file to the transparent cutout version so the welcome hero and About screen display only the logo itself.
+
+### Session 64cs (Lighten the welcome wordmark weight slightly)
+- **`src/screens/WelcomeScreen.tsx`** — Reduced the `ClassMate` wordmark weight from `900` to `800` so the custom text logo keeps its bold feel but reads a little cleaner and less heavy.
+
+### Session 64ct (Hint at upcoming school expansion in university selection)
+- **`src/screens/UniversitySelectionScreen.tsx`** — Updated the subtitle under `Select Your University` to suggest that ClassMate will support more schools over time, while keeping the current selection flow unchanged.
+
+### Session 64cu (Fix sign-up to sign-in auth handoff)
+- **`App.tsx`** — Replaced the `Sign in instead` auth transition from a `pop` + `push` sequence with a top-of-stack `replace` so tapping it from the sign-up screen reliably opens the sign-in screen instead of occasionally bouncing back to the welcome flow.
+
+### Session 64cv (Require initial profile setup after first sign-up)
+- **`App.tsx`** — Added a first-time post-sign-up profile step so new users land on a full profile setup screen instead of going straight to the home tab. The app now tracks whether profile setup is still needed, routes fresh sign-ups into that flow, and marks the setup complete once the profile is saved.
+- **`src/components/ProfileEditorScreen.tsx`** — Extracted the `Edit Profile` form into a reusable full-screen profile editor with the same fields as Settings, including year/major dropdowns, validation, and save CTA text that can be customized for onboarding.
+- **`src/screens/SettingsScreen.tsx`** — Switched the Settings `Edit Profile` screen to use the new shared profile editor so the edit flow and the new sign-up onboarding flow stay in sync.
+- **`src/data/userPreferences.ts`** — Extended saved `profile_details` with a `profileSetupComplete` flag helper so ClassMate can remember whether the initial profile step has already been finished.

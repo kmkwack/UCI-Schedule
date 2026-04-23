@@ -111,7 +111,11 @@ export function emailName(email: string) {
   return (email.split('@')[0] ?? 'student').trim() || 'student';
 }
 
-export function profileDetailsFromProfile(profile: EditableProfile, boardProfileVisible = false) {
+export function profileDetailsFromProfile(
+  profile: EditableProfile,
+  boardProfileVisible = false,
+  profileSetupComplete = false
+) {
   return {
     firstName: profile.firstName,
     middleName: profile.middleName,
@@ -120,7 +124,12 @@ export function profileDetailsFromProfile(profile: EditableProfile, boardProfile
     gender: profile.gender,
     dateOfBirth: profile.dateOfBirth,
     boardProfileVisible,
+    profileSetupComplete,
   };
+}
+
+export function hasCompletedProfileSetup(details?: Record<string, any> | null) {
+  return details?.profileSetupComplete === true;
 }
 
 export function profileFromSources(

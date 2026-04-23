@@ -111,7 +111,7 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
                 }}
               >
                 <Image
-                  source={require('../../assets/classmate-logo-mark.png')}
+                  source={require('../../assets/classmate-logo-approved-transparent.png')}
                   style={{ width: 132, height: 110 }}
                   resizeMode="contain"
                 />
@@ -147,8 +147,30 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
               </View>
             </View>
 
-            <Text style={{ fontSize: 36, fontWeight: '900', color: colors.text, textAlign: 'center', marginBottom: 10 }}>
-              Welcome to{'\n'}ClassMate
+            <Text
+              style={{
+                fontSize: 15,
+                fontWeight: '700',
+                color: colors.textTertiary,
+                textAlign: 'center',
+                marginBottom: 4,
+                letterSpacing: 0.3,
+              }}
+            >
+              Welcome to
+            </Text>
+            <Text
+              style={{
+                fontSize: 50,
+                fontWeight: '800',
+                textAlign: 'center',
+                marginBottom: 12,
+                letterSpacing: -2.2,
+                lineHeight: 52,
+              }}
+            >
+              <Text style={{ color: isDark ? '#eef3ff' : '#16285b' }}>Class</Text>
+              <Text style={{ color: '#3D6CFF' }}>Mate</Text>
             </Text>
             <Text style={{ fontSize: 16, lineHeight: 24, color: colors.textSecondary, textAlign: 'center', maxWidth: 310 }}>
               Build your quarter, track your momentum, and keep your entire campus life beautifully in sync.

@@ -82,7 +82,7 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
       {
         heading: 'Contact',
         body:
-          'For questions about these Terms, account issues, moderation concerns, or legal requests, use the support contact path made available inside the app. Before public release, the team should replace any temporary support destination with a stable production support contact.',
+          'For questions about these Terms, account issues, moderation concerns, or legal requests, contact ClassMate through the support path provided in the app, including the support email route shown in Settings.',
       },
     ],
   },
@@ -103,7 +103,7 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
       {
         heading: 'How We Use Information',
         body:
-          'We use information to operate the app, personalize your experience, sync schedules and settings across sessions, power social and review features, deliver notifications you request, detect abuse, review reports, troubleshoot errors, improve performance, and comply with legal obligations. We do not describe the app as ad-supported, and this draft does not authorize selling your personal information for advertising.',
+          'We use information to operate the app, personalize your experience, sync schedules and settings across sessions, power social and review features, deliver notifications you request, detect abuse, review reports, troubleshoot errors, improve performance, and comply with legal obligations. We do not describe the app as ad-supported, and this policy does not authorize selling your personal information for advertising.',
       },
       {
         heading: 'What Other Users Can See',
@@ -133,7 +133,7 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
       {
         heading: 'Your Choices and Requests',
         body:
-          'You can control some information directly in the app, including profile details, timetable visibility, and notification settings. For account-access issues, privacy questions, or deletion requests, use the support contact provided in the app. Before launch, temporary support destinations should be replaced with a real production support channel and documented request workflow.',
+          'You can control some information directly in the app, including profile details, timetable visibility, and notification settings. For account-access issues, privacy questions, or deletion requests, use the support contact provided in the app.',
       },
       {
         heading: 'Security',
@@ -244,8 +244,8 @@ export default function LegalDocumentModal({
             }}
           >
             <Text style={{ fontSize: 13, lineHeight: 20, color: '#374151' }}>
-              These in-app documents are a starter version for development and testing. Before release, replace them
-              with your finalized legal text and support contact details.
+              These in-app legal documents describe the current ClassMate experience. You should review them
+              periodically because we may update them as the app changes.
             </Text>
           </View>
         </ScrollView>

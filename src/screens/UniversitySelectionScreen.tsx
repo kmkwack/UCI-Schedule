@@ -48,7 +48,7 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
           Select Your University
         </Text>
         <Text style={{ fontSize: 15, color: '#6b7280', marginBottom: 24, lineHeight: 22 }}>
-          Choose your school to get started with ClassMate
+          Choose your school to get started with ClassMate. More universities are on the way.
         </Text>
 
         {/* Search bar */}

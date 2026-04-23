@@ -1,95 +1,10 @@
-import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Keyboard, Animated, PanResponder, Dimensions, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, Platform, Animated, PanResponder, Dimensions, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const UCI_MAJORS = [
-  'Aerospace Engineering',
-  'African American Studies',
-  'Anthropology',
-  'Applied Physics',
-  'Applied and Computational Mathematics',
-  'Art History',
-  'Art',
-  'Asian American Studies',
-  'Biochemistry and Molecular Biology',
-  'Biological Sciences',
-  'Biology/Education',
-  'Biomedical Engineering',
-  'Biomedical Engineering: Premedical',
-  'Business Administration',
-  'Business Economics',
-  'Business Information Management',
-  'Chemical Engineering',
-  'Chemistry',
-  'Chicano/Latino Studies',
-  'Chinese Studies',
-  'Civil Engineering',
-  'Classics',
-  'Cognitive Sciences',
-  'Comparative Literature',
-  'Computer Engineering',
-  'Computer Science and Engineering',
-  'Computer Science',
-  'Criminology, Law and Society',
-  'Dance',
-  'Data Science',
-  'Developmental and Cell Biology',
-  'Drama',
-  'East Asian Cultures',
-  'Ecology and Evolutionary Biology',
-  'Economics',
-  'Education Sciences',
-  'Electrical Engineering',
-  'English',
-  'Environmental Engineering',
-  'Environmental Science and Policy',
-  'Environmental and Earth System Science',
-  'European Studies',
-  'Film and Media Studies',
-  'French',
-  'Game Design and Interactive Media',
-  'Gender and Sexuality Studies',
-  'Genetics',
-  'German Studies',
-  'Global Cultures',
-  'History',
-  'Human Biology',
-  'Informatics',
-  'Information and Computer Science',
-  'International Studies',
-  'Japanese Language and Literature',
-  'Korean Literature and Culture',
-  'Language Science',
-  'Literary Journalism',
-  'Materials Science and Engineering',
-  'Mathematics',
-  'Mechanical Engineering',
-  'Microbiology and Immunology',
-  'Music Theatre',
-  'Music',
-  'Neurobiology',
-  'Nursing Science',
-  'Pharmaceutical Sciences',
-  'Philosophy',
-  'Physics',
-  'Physiology and Exercise Science',
-  'Political Science',
-  'Psychology',
-  'Public Health Policy',
-  'Public Health Science',
-  'Quantitative Economics',
-  'Religious Studies',
-  'Social Ecology',
-  'Social Policy and Public Service',
-  'Sociology',
-  'Software Engineering',
-  'Spanish',
-  'Undergraduate/Undeclared',
-  'Urban Studies',
-];
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import { useTheme, ThemePreference } from '../context/ThemeContext';
 import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
+import ProfileEditorScreen from '../components/ProfileEditorScreen';
 import { supabase } from '../lib/supabase';
 import type {
   EditableProfile,
@@ -199,7 +114,6 @@ function SettingRow({
   );
 }
 
-// ─── Sub-screen: Edit Profile ────────────────────────────────────────────────
 function DropdownPicker({ label, required, value, options, onSelect, searchable }: {
   label: string; required?: boolean; value: string; options: string[]; onSelect: (v: string) => void; searchable?: boolean;
 }) {
@@ -272,159 +186,6 @@ function DropdownPicker({ label, required, value, options, onSelect, searchable 
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
-    </View>
-  );
-}
-
-function EditProfileScreen({
-  onBack,
-  userEmail,
-  initialProfile,
-  onSave,
-  saving,
-}: {
-  onBack: () => void;
-  userEmail?: string;
-  initialProfile: EditableProfile;
-  onSave: (profile: EditableProfile) => Promise<boolean>;
-  saving?: boolean;
-}) {
-  const { colors } = useTheme();
-  const [form, setForm] = useState<EditableProfile>(initialProfile);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
-  const dobFocused = useRef(false);
-
-  useEffect(() => {
-    setForm(initialProfile);
-  }, [initialProfile]);
-
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => {
-      setKeyboardVisible(true);
-      if (dobFocused.current) {
-        requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 400, animated: true }));
-      }
-    });
-    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardVisible(false));
-    return () => { show.remove(); hide.remove(); };
-  }, []);
-
-  const validateDOB = (dob: string): string | null => {
-    if (!dob || dob.length < 10) return null;
-    const [mm, dd, yyyy] = dob.split('/').map(Number);
-    if (mm < 1 || mm > 12) return 'Invalid month (01–12)';
-    if (dd < 1 || dd > 31) return 'Invalid day';
-    if (yyyy < 1900 || yyyy > new Date().getFullYear()) return `Invalid year (1900–${new Date().getFullYear()})`;
-    const daysInMonth = new Date(yyyy, mm, 0).getDate();
-    if (dd > daysInMonth) return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mm-1]} ${yyyy} only has ${daysInMonth} days`;
-    return null;
-  };
-
-  const dobError = validateDOB(form.dateOfBirth ?? '');
-
-  const field = (label: string, key: keyof typeof form, disabled = false, placeholder?: string, inputProps?: object, error?: string | null) => (
-    <View style={{ marginBottom: 18 }}>
-      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>
-        {label.replace(' *', '')}{label.endsWith(' *') && <Text style={{ color: colors.destructive }}> *</Text>}
-      </Text>
-      <View style={{
-        backgroundColor: disabled ? colors.bgTertiary : colors.inputBg,
-        borderWidth: 1, borderColor: error ? colors.destructive : colors.border, borderRadius: 12,
-        paddingHorizontal: 14, paddingVertical: 12,
-      }}>
-        <TextInput
-          value={form[key]}
-          onChangeText={v => setForm(f => ({ ...f, [key]: v }))}
-          editable={!disabled}
-          placeholder={placeholder}
-          placeholderTextColor={colors.placeholder}
-          style={{ fontSize: 14, color: disabled ? colors.textTertiary : colors.text }}
-          {...(inputProps ?? {})}
-        />
-      </View>
-      {disabled && <Text style={{ fontSize: 11, color: colors.textTertiary, marginTop: 4 }}>Email cannot be changed</Text>}
-      {error && <Text style={{ fontSize: 11, color: colors.destructive, marginTop: 4 }}>{error}</Text>}
-    </View>
-  );
-
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.card }}>
-      <SubHeader title="Edit Profile" onBack={onBack} />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 20, paddingBottom: keyboardVisible ? 60 : 8 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {field('First Name *', 'firstName')}
-          {field('Middle Name', 'middleName', false, 'Optional')}
-          {field('Last Name *', 'lastName')}
-          {field('Nickname *', 'nickname', false, undefined, { autoCapitalize: 'none' })}
-          {field('University Email *', 'email', true)}
-          <DropdownPicker
-            label="Year" required value={form.year}
-            options={['Freshman', 'Sophomore', 'Junior', 'Senior', 'Graduate']}
-            onSelect={v => setForm(f => ({ ...f, year: v }))}
-          />
-          <DropdownPicker
-            label="Major" required value={form.major}
-            options={UCI_MAJORS}
-            onSelect={v => setForm(f => ({ ...f, major: v }))}
-            searchable
-          />
-
-          <View style={{ paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.borderSubtle, marginBottom: 4 }}>
-            <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textTertiary, marginBottom: 16 }}>Optional Information</Text>
-            <DropdownPicker
-              label="Gender" value={form.gender}
-              options={['Prefer not to say', 'Male', 'Female', 'Other']}
-              onSelect={v => setForm(f => ({ ...f, gender: v }))}
-            />
-            {field('Date of Birth', 'dateOfBirth', false, 'mm/dd/yyyy', {
-            keyboardType: 'number-pad',
-            onFocus: () => { dobFocused.current = true; },
-            onBlur: () => { dobFocused.current = false; },
-            onChangeText: (text: string) => {
-              const nums = text.replace(/\D/g, '').slice(0, 8);
-              let formatted = nums;
-              if (nums.length > 2) formatted = `${nums.slice(0, 2)}/${nums.slice(2)}`;
-              if (nums.length > 4) formatted = `${nums.slice(0, 2)}/${nums.slice(2, 4)}/${nums.slice(4)}`;
-              setForm(f => ({ ...f, dateOfBirth: formatted }));
-            },
-          }, dobError)}
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-      <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
-        <TouchableOpacity
-          disabled={saving}
-          onPress={async () => {
-            const requiredMissing = !form.firstName.trim() || !form.lastName.trim() || !form.nickname.trim();
-            if (requiredMissing) {
-              Alert.alert('Missing information', 'Please complete your first name, last name, and nickname before saving.');
-              return;
-            }
-            if (dobError) {
-              Alert.alert('Invalid date of birth', dobError);
-              return;
-            }
-            const saved = await onSave({ ...form, email: userEmail ?? form.email });
-            if (saved) onBack();
-          }}
-          style={{
-            backgroundColor: colors.brand,
-            borderRadius: 14,
-            paddingVertical: 15,
-            alignItems: 'center',
-            flexDirection: 'row',
-            justifyContent: 'center',
-            gap: 8,
-            opacity: saving ? 0.7 : 1,
-          }}
-        >
-          {saving ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="save-outline" size={18} color="white" />}
-          <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>
-            {saving ? 'Saving...' : 'Save Changes'}
-          </Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -1072,7 +833,7 @@ function AboutScreen({ onBack }: { onBack: () => void }) {
         <View style={{ alignItems: 'center', paddingVertical: 32 }}>
           <View style={{ width: 116, height: 94, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
             <Image
-              source={require('../../assets/classmate-logo-mark.png')}
+              source={require('../../assets/classmate-logo-approved-transparent.png')}
               style={{ width: 116, height: 94 }}
               resizeMode="contain"
             />
@@ -1640,12 +1401,13 @@ export default function SettingsScreen({
     switch (screen) {
       case 'profile':
         return (
-          <EditProfileScreen
+          <ProfileEditorScreen
             onBack={goBack}
             userEmail={userEmail}
             initialProfile={userProfile}
             onSave={onSaveProfile}
             saving={savingProfile}
+            onSaveSuccess={goBack}
           />
         );
       case 'privacy':

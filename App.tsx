@@ -18,6 +18,7 @@ import SignUpScreen from './src/screens/SignUpScreen';
 import MessagesScreen from './src/screens/MessagesScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
+import ProfileEditorScreen from './src/components/ProfileEditorScreen';
 import type { ChatTarget } from './src/data/messages';
 import { Course, Quarter, QUARTERS, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey, getAcademicQuarterForDate, resolveCurrentQuarter } from './src/data/courses';
 import {
@@ -25,6 +26,7 @@ import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   DEFAULT_USER_SETTINGS,
   fallbackProfileFromEmail,
+  hasCompletedProfileSetup,
   profileDetailsFromProfile,
   profileFromSources,
 } from './src/data/userPreferences';
@@ -263,9 +265,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [useCelsius, setUseCelsius] = useState(true);
   const [authStack, setAuthStack] = useState<AuthScreen[]>(['welcome']);
-  const authScreen = authStack[authStack.length - 1];
+  const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const pushAuth = (s: AuthScreen) => setAuthStack((prev) => prev[prev.length - 1] === s ? prev : [...prev, s]);
   const popAuth = () => setAuthStack((prev) => prev.length > 1 ? prev.slice(0, -1) : prev);
+  const replaceAuth = (s: AuthScreen) =>
+    setAuthStack((prev) => prev.length === 0 ? [s] : [...prev.slice(0, -1), s]);
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
   const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'board' | 'friends'>('home');
   const [homeTabTapCount, setHomeTabTapCount] = useState(0);
@@ -343,6 +347,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
     async function loadUserPreferences() {
       const fallback = fallbackProfileFromEmail(userEmail || 'student@uci.edu');
+      let settingsDetails: Record<string, any> | null | undefined;
 
       const { data: profileRow, error: profileError } = await supabase
         .from('profiles')
@@ -366,17 +371,26 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       if (!active) return;
 
+      settingsDetails =
+        (settingsRow as Record<string, any> | null | undefined)?.profile_details as Record<string, any> | null | undefined;
+
       setUserProfile(
         profileFromSources(
           (profileRow as Record<string, any> | null | undefined) ?? null,
           userEmail || fallback.email,
-          (settingsRow as Record<string, any> | null | undefined)?.profile_details as Record<string, any> | null | undefined
+          settingsDetails
         )
       );
 
+      if (settingsDetails?.profileSetupComplete === false) {
+        setNeedsProfileSetup(true);
+      } else if (hasCompletedProfileSetup(settingsDetails)) {
+        setNeedsProfileSetup(false);
+      }
+
       setUserSettings({
         timetableVisibility: ((settingsRow as Record<string, any> | null | undefined)?.timetable_visibility as TimetableVisibility | undefined) ?? DEFAULT_USER_SETTINGS.timetableVisibility,
-        boardProfileVisible: ((settingsRow as Record<string, any> | null | undefined)?.profile_details as Record<string, any> | undefined)?.boardProfileVisible === true,
+        boardProfileVisible: settingsDetails?.boardProfileVisible === true,
         notifications: {
           ...DEFAULT_NOTIFICATION_PREFERENCES,
           ...(((settingsRow as Record<string, any> | null | undefined)?.notification_settings as NotificationPreferences | undefined) ?? {}),
@@ -995,13 +1009,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setSelectedTimetableId(null);
     setShowSettings(false);
     setCurrentTab('home');
+    setNeedsProfileSetup(false);
     setAuthStack(['welcome']);
   };
 
   const saveUserSettingsRow = async (
     nextSettings: UserSettingsState,
     nextProfile: EditableProfile = userProfile,
-    nextExpoPushToken: string | null = expoPushToken
+    nextExpoPushToken: string | null = expoPushToken,
+    profileSetupComplete = !needsProfileSetup
   ) => {
     if (!userId) throw new Error('missing-user-id');
 
@@ -1011,7 +1027,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       notification_settings: nextSettings.notifications,
       push_permission_status: nextSettings.pushPermissionStatus,
       expo_push_token: nextExpoPushToken,
-      profile_details: profileDetailsFromProfile(nextProfile, nextSettings.boardProfileVisible),
+      profile_details: profileDetailsFromProfile(
+        nextProfile,
+        nextSettings.boardProfileVisible,
+        profileSetupComplete
+      ),
       updated_at: new Date().toISOString(),
     };
 
@@ -1080,8 +1100,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
     const nextSettings = { ...userSettings };
     try {
-      await saveUserSettingsRow(nextSettings, next, expoPushToken);
+      await saveUserSettingsRow(nextSettings, next, expoPushToken, true);
       setUserProfile(next);
+      setNeedsProfileSetup(false);
       return true;
     } catch {
       return false;
@@ -1218,8 +1239,13 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           <SignUpScreen
             university={selectedUniversity ?? undefined}
             onBack={goBack}
-            onSignedUp={(id, email) => { setUserId(id); setUserEmail(email); }}
-            onGoToSignIn={() => { popAuth(); pushAuth('signin'); }}
+            onSignedUp={(id, email) => {
+              setUserId(id);
+              setUserEmail(email);
+              setUserProfile(fallbackProfileFromEmail(email));
+              setNeedsProfileSetup(true);
+            }}
+            onGoToSignIn={() => replaceAuth('signin')}
           />
         );
       }
@@ -1227,13 +1253,33 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         <SignInScreen
           university={selectedUniversity ?? { id: '1', name: 'UC Irvine', domain: '@uci.edu', location: 'Irvine, CA', logo: 'UCI' }}
           onBack={goBack}
-          onSignedIn={(id, email) => { setUserId(id); setUserEmail(email); }}
+          onSignedIn={(id, email) => {
+            setUserId(id);
+            setUserEmail(email);
+            setUserProfile(fallbackProfileFromEmail(email));
+            setNeedsProfileSetup(false);
+          }}
           onGoToSignUp={() => pushAuth('signup')}
         />
       );
     };
 
     return <AuthNavigator stack={authStack} onPop={popAuth} renderScreen={renderAuthScreen} />;
+  }
+
+  if (needsProfileSetup) {
+    return (
+      <ProfileEditorScreen
+        title="Set Up Your Profile"
+        subtitle="Tell ClassMate a little about yourself before you jump into your campus dashboard."
+        showBackButton={false}
+        userEmail={userEmail}
+        initialProfile={userProfile}
+        onSave={handleSaveProfile}
+        saving={savingProfile}
+        saveLabel="Continue to ClassMate"
+      />
+    );
   }
 
   // ── main app ──────────────────────────────────────────────────────────────────

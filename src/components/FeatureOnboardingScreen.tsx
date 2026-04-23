@@ -69,7 +69,7 @@ function HomePreview() {
         </View>
       </View>
 
-      <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 14, borderWidth: 1, borderColor: '#edf1ff' }}>
+      <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 14 }}>
         <Text style={{ fontSize: 12, fontWeight: '800', color: '#16285b', marginBottom: 8 }}>Today&apos;s Classes</Text>
         {[
           ['ICS 33', 'Donald Bren Hall', '10:00 AM - 10:50 AM'],
@@ -108,7 +108,7 @@ function TimetablePreview() {
   ];
 
   return (
-    <View style={{ backgroundColor: '#ffffff', borderRadius: 22, padding: 16, borderWidth: 1, borderColor: '#edf1ff' }}>
+    <View style={{ backgroundColor: '#ffffff', borderRadius: 22, padding: 16 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <View>
           <Text style={{ fontSize: 18, fontWeight: '800', color: '#16285b' }}>Timetable</Text>
@@ -211,7 +211,7 @@ function TimetablePreview() {
 
 function FriendsPreview() {
   return (
-    <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#edf1ff', gap: 12 }}>
+    <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 16, gap: 12 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View>
           <Text style={{ fontSize: 18, fontWeight: '800', color: '#16285b' }}>ClassMates</Text>
@@ -240,14 +240,14 @@ function FriendsPreview() {
         </View>
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1, backgroundColor: '#ffffff', borderRadius: 14, padding: 10, borderWidth: 1, borderColor: '#edf1ff' }}>
+          <View style={{ flex: 1, backgroundColor: '#ffffff', borderRadius: 14, padding: 10 }}>
             <Text style={{ fontSize: 12, fontWeight: '800', color: '#16285b', marginBottom: 8 }}>My Schedule</Text>
             <View style={{ height: 54, borderRadius: 10, backgroundColor: '#eef3ff', justifyContent: 'center', paddingHorizontal: 10 }}>
               <View style={{ width: '100%', height: 12, borderRadius: 8, backgroundColor: '#4169E1', marginBottom: 6 }} />
               <View style={{ width: '65%', height: 10, borderRadius: 8, backgroundColor: '#9db3ff' }} />
             </View>
           </View>
-          <View style={{ flex: 1, backgroundColor: '#ffffff', borderRadius: 14, padding: 10, borderWidth: 1, borderColor: '#edf1ff' }}>
+          <View style={{ flex: 1, backgroundColor: '#ffffff', borderRadius: 14, padding: 10 }}>
             <Text style={{ fontSize: 12, fontWeight: '800', color: '#16285b', marginBottom: 8 }}>Jordan&apos;s Plan</Text>
             <View style={{ height: 54, borderRadius: 10, backgroundColor: '#f3f0ff', justifyContent: 'center', paddingHorizontal: 10 }}>
               <View style={{ width: '84%', height: 12, borderRadius: 8, backgroundColor: '#8B5CF6', marginBottom: 6 }} />
@@ -262,7 +262,7 @@ function FriendsPreview() {
 
 function CommunityPreview() {
   return (
-    <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#ffe5e7', gap: 12 }}>
+    <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 16, gap: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <View>
           <Text style={{ fontSize: 18, fontWeight: '800', color: '#16285b' }}>Boards</Text>
@@ -370,13 +370,11 @@ export default function FeatureOnboardingScreen({ onFinish, finishing = false }:
               backgroundColor: isDark ? '#0f1726' : '#ffffff',
               borderRadius: 30,
               padding: 18,
-              borderWidth: 1,
-              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(61,108,255,0.08)',
               shadowColor: '#0f172a',
               shadowOffset: { width: 0, height: 18 },
-              shadowOpacity: 0.08,
-              shadowRadius: 24,
-              elevation: 8,
+              shadowOpacity: 0.06,
+              shadowRadius: 22,
+              elevation: 6,
               marginBottom: 24,
             }}
           >

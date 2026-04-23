@@ -960,3 +960,10 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64di (Slow down the post-onboarding ClassMate intro)
 - **`src/components/ClassMateIntroScreen.tsx`** — Increased the reveal timings and extended the auto-dismiss delay so the brand intro lingers long enough to actually read before it fades into the app.
+
+### Session 64dj (Remove visible boundary lines from welcome and onboarding)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Removed the thin border treatment from the main onboarding card and its preview cards so the tutorial feels less boxed-in and no longer shows those subtle edge lines.
+- **`src/screens/WelcomeScreen.tsx`** — Removed the remaining subtle border outlines from the welcome pill and icon tiles so the first screen no longer shows extra boundary lines either.
+
+### Session 64di (Slow down the post-onboarding ClassMate intro)
+- **`src/components/ClassMateIntroScreen.tsx`** — Increased the reveal timings and extended the auto-dismiss delay so the brand intro lingers long enough to actually read before it fades into the app.

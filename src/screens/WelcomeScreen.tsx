@@ -74,8 +74,6 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
               paddingVertical: 8,
               borderRadius: 999,
               backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.82)',
-              borderWidth: 1,
-              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(65,105,225,0.10)',
             }}
           >
             <Text style={{ color: '#4169E1', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }}>
@@ -177,8 +175,6 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
                     height: 46,
                     borderRadius: 15,
                     backgroundColor: isDark ? 'rgba(65,105,225,0.16)' : 'rgba(255,255,255,0.62)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(65,105,225,0.08)',
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginRight: 14,

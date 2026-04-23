@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import Svg, { Path, Circle, Line, Defs, ClipPath, G } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, Timetable, quarterKey, quarterLabel } from '../data/courses';
+import { Course, Quarter, Timetable, quarterKey, quarterLabel, resolveCurrentQuarter } from '../data/courses';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 
@@ -16,10 +16,6 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 type Props = { timetables: Timetable[]; userId: string; bottomInset?: number; scrollToTopTrigger?: number };
-
-// The actual current quarter — never changes based on app navigation
-const CURRENT_QUARTER: Quarter = { year: '2026', quarter: 'Spring' };
-const CURRENT_QK = quarterKey(CURRENT_QUARTER);
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -399,6 +395,8 @@ function PastQuarterSection({
 
 export default function GradesScreen({ timetables, userId, bottomInset = 0, scrollToTopTrigger = 0 }: Props) {
   const { colors } = useTheme();
+  const CURRENT_QUARTER: Quarter = resolveCurrentQuarter(timetables);
+  const CURRENT_QK = quarterKey(CURRENT_QUARTER);
   const currentTimetable = timetables.find(t => t.quarterKey === CURRENT_QK && t.name === 'My Schedule') ?? null;
   const activeCourses = currentTimetable?.courses ?? [];
   const [grades, setGrades] = useState<Record<string, string>>({});

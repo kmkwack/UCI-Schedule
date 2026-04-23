@@ -19,7 +19,7 @@ import MessagesScreen from './src/screens/MessagesScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import type { ChatTarget } from './src/data/messages';
-import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey } from './src/data/courses';
+import { Course, Quarter, QUARTERS, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey, getAcademicQuarterForDate, resolveCurrentQuarter } from './src/data/courses';
 import {
   buildDisplayName,
   DEFAULT_NOTIFICATION_PREFERENCES,
@@ -88,12 +88,6 @@ Notifications.setNotificationHandler({
   }),
 });
 
-function getAcademicQuarterForDate(date: Date): Quarter {
-  const month = date.getMonth();
-  if (month <= 2) return { year: String(date.getFullYear()), quarter: 'Winter' };
-  if (month <= 5) return { year: String(date.getFullYear()), quarter: 'Spring' };
-  return { year: String(date.getFullYear()), quarter: 'Fall' };
-}
 
 function parseCourseDays(daysString: string) {
   const result: string[] = [];
@@ -178,6 +172,7 @@ function buildDailyScheduleSummaryDates(courses: Course[], daysAhead = 14, summa
   return dates;
 }
 
+
 const AUTH_SCREEN_W = Dimensions.get('window').width;
 
 function AuthNavigator({
@@ -187,7 +182,7 @@ function AuthNavigator({
 }: {
   stack: AuthScreen[];
   onPop: () => void;
-  renderScreen: (s: AuthScreen) => React.ReactNode;
+  renderScreen: (s: AuthScreen, goBack: () => void) => React.ReactNode;
 }) {
   const W = AUTH_SCREEN_W;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -224,24 +219,24 @@ function AuthNavigator({
     },
   })).current;
 
-  const current = stack[stack.length - 1];
-  const previous = stack.length > 1 ? stack[stack.length - 2] : null;
-
   return (
     <View style={StyleSheet.absoluteFill}>
-      {/* Previous screen sits underneath */}
-      {previous && (
-        <View style={StyleSheet.absoluteFill}>
-          {renderScreen(previous)}
-        </View>
-      )}
-      {/* Current screen slides in from right, pan attached here */}
-      <Animated.View
-        style={[StyleSheet.absoluteFill, { transform: [{ translateX: slideAnim }] }]}
-        {...(stack.length > 1 ? swipePan.panHandlers : {})}
-      >
-        {renderScreen(current)}
-      </Animated.View>
+      {stack.map((screen, index) => {
+        const isTop = index === stack.length - 1;
+        const key = `${index}-${screen}`;
+        return (
+          <Animated.View
+            key={key}
+            style={[
+              StyleSheet.absoluteFill,
+              isTop && stack.length > 1 ? { transform: [{ translateX: slideAnim }] } : undefined,
+            ]}
+            {...(isTop && stack.length > 1 ? swipePan.panHandlers : {})}
+          >
+            {renderScreen(screen, goBack)}
+          </Animated.View>
+        );
+      })}
     </View>
   );
 }
@@ -269,7 +264,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [useCelsius, setUseCelsius] = useState(true);
   const [authStack, setAuthStack] = useState<AuthScreen[]>(['welcome']);
   const authScreen = authStack[authStack.length - 1];
-  const pushAuth = (s: AuthScreen) => setAuthStack((prev) => [...prev, s]);
+  const pushAuth = (s: AuthScreen) => setAuthStack((prev) => prev[prev.length - 1] === s ? prev : [...prev, s]);
   const popAuth = () => setAuthStack((prev) => prev.length > 1 ? prev.slice(0, -1) : prev);
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
   const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'board' | 'friends'>('home');
@@ -280,7 +275,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [friendsTabTapCount, setFriendsTabTapCount] = useState(0);
   const [showCoursePicker, setShowCoursePicker] = useState(false);
   const [renderCoursePicker, setRenderCoursePicker] = useState(false);
-  const [selectedQuarter, setSelectedQuarter] = useState<Quarter>({ year: '2026', quarter: 'Spring' });
+  const [selectedQuarter, setSelectedQuarter] = useState<Quarter>(getAcademicQuarterForDate(new Date()));
   const [timetables, setTimetables] = useState<Timetable[]>([]);
   const [selectedTimetableId, setSelectedTimetableId] = useState<string | null>(null);
   const [focusedCourseId, setFocusedCourseId] = useState<string | null>(null);
@@ -800,8 +795,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         // New user — bootstrap with an empty 'My Schedule' for the current quarter
         await createTimetable(activeKey, 'My Schedule');
       } else {
-        // Auto-select first timetable for the default quarter
-        const forCurrentQuarter = loaded.filter((t) => t.quarterKey === activeKey);
+        let targetKey = activeKey;
+        // During summer there's no summer timetable — fall back to most recent quarter
+        if (selectedQuarter.quarter === 'Summer') {
+          const fallback = resolveCurrentQuarter(loaded);
+          setSelectedQuarter(fallback);
+          targetKey = quarterKey(fallback);
+        }
+        const forCurrentQuarter = loaded.filter((t) => t.quarterKey === targetKey);
         if (forCurrentQuarter.length > 0) {
           setSelectedTimetableId(forCurrentQuarter[0].id);
         }
@@ -898,7 +899,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
   };
 
-  const CURRENT_QUARTER: Quarter = { year: '2026', quarter: 'Spring' };
+  const CURRENT_QUARTER: Quarter = resolveCurrentQuarter(timetables);
 
   const handleDeleteTimetable = async () => {
     if (!activeTimetable) return;
@@ -992,6 +993,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setUserSettings(DEFAULT_USER_SETTINGS);
     setTimetables([]);
     setSelectedTimetableId(null);
+    setShowSettings(false);
+    setCurrentTab('home');
     setAuthStack(['welcome']);
   };
 
@@ -1198,14 +1201,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   // ── auth screens ─────────────────────────────────────────────────────────────
 
   if (!userId) {
-    const renderAuthScreen = (name: AuthScreen) => {
+    const renderAuthScreen = (name: AuthScreen, goBack: () => void) => {
       if (name === 'welcome') {
         return <WelcomeScreen onGetStarted={() => pushAuth('university')} />;
       }
       if (name === 'university') {
         return (
           <UniversitySelectionScreen
-            onBack={popAuth}
+            onBack={goBack}
             onContinue={(uni) => { setSelectedUniversity(uni); pushAuth('signin'); }}
           />
         );
@@ -1214,7 +1217,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         return (
           <SignUpScreen
             university={selectedUniversity ?? undefined}
-            onBack={popAuth}
+            onBack={goBack}
             onSignedUp={(id, email) => { setUserId(id); setUserEmail(email); }}
             onGoToSignIn={() => { popAuth(); pushAuth('signin'); }}
           />
@@ -1223,7 +1226,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       return (
         <SignInScreen
           university={selectedUniversity ?? { id: '1', name: 'UC Irvine', domain: '@uci.edu', location: 'Irvine, CA', logo: 'UCI' }}
-          onBack={popAuth}
+          onBack={goBack}
           onSignedIn={(id, email) => { setUserId(id); setUserEmail(email); }}
           onGoToSignUp={() => pushAuth('signup')}
         />

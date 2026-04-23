@@ -28,6 +28,8 @@ const QUARTER_DATES: Record<string, { start: string; end: string }> = {
   '2026-Winter': { start: '2026-01-05', end: '2026-03-20T23:59:59' },
   '2026-Spring': { start: '2026-03-30', end: '2026-06-12T23:59:59' },
   '2026-Fall': { start: '2026-09-24', end: '2026-12-11T23:59:59' },
+  '2027-Winter': { start: '2027-01-04', end: '2027-03-19T23:59:59' },
+  '2027-Spring': { start: '2027-03-29', end: '2027-06-11T23:59:59' },
 };
 
 function getQuarterBounds(selectedQuarter: Quarter) {

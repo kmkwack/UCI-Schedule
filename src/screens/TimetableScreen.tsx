@@ -84,7 +84,7 @@ let seededQuartersCache: Set<string> | null = null;
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
 const DEFAULT_START_HOUR = 8;
-const DEFAULT_END_HOUR = 16;
+const DEFAULT_END_HOUR = 17;
 
 const TIME_LABEL_WIDTH = 44;
 const GRID_LEFT_PAD = 16;
@@ -228,6 +228,42 @@ export default function TimetableScreen({
   const addYearSlideAnim = useRef(new Animated.Value(Dimensions.get('window').width)).current;
   const addSheetSlideAnim = useRef(new Animated.Value(600)).current;
   const addBackdropAnim = useRef(new Animated.Value(0)).current;
+  const settingsBackdropAnim = useRef(new Animated.Value(0)).current;
+  const settingsSheetAnim = useRef(new Animated.Value(600)).current;
+  const closeAddQuarterModalRef = useRef<(() => void) | null>(null);
+  const addQuarterDragPan = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderMove: (_, gs) => {
+      if (gs.dy > 0) addSheetSlideAnim.setValue(gs.dy);
+    },
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dy > 80 || gs.vy > 0.8) {
+        closeAddQuarterModalRef.current?.();
+      } else {
+        Animated.spring(addSheetSlideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+      }
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(addSheetSlideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+    },
+  })).current;
+  const closeSettingsRef = useRef<(() => void) | null>(null);
+  const settingsDragPan = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderMove: (_, gs) => {
+      if (gs.dy > 0) settingsSheetAnim.setValue(gs.dy);
+    },
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dy > 80 || gs.vy > 0.8) {
+        closeSettingsRef.current?.();
+      } else {
+        Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+      }
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+    },
+  })).current;
   const contentHeightAnim = useRef(new Animated.Value(260)).current;
   const yearListHeightRef = useRef(0);
   const QUARTER_ROW_H = 53;
@@ -247,6 +283,7 @@ export default function TimetableScreen({
       setShowAddQuarterModal(false);
     });
   }
+  closeAddQuarterModalRef.current = closeAddQuarterModal;
 
   function drillIntoYear(year: string) {
     const count = addableQuarters.filter((q) => q.year === year).length;
@@ -360,7 +397,7 @@ export default function TimetableScreen({
   }, [scheduledCourses]);
 
   const totalHours = displayEndHour - displayStartHour;
-  const timetableHeight = 72 * totalHours;
+  const timetableHeight = 64 * totalHours;
   const hourHeight = timetableHeight / totalHours;
   const hourLabels = Array.from({ length: totalHours }, (_, i) => displayStartHour + i);
   const hourBoundaries = Array.from({ length: totalHours + 1 }, (_, i) => displayStartHour + i);
@@ -553,8 +590,25 @@ export default function TimetableScreen({
     setPendingShowRoomNumber(settings.showRoomNumber);
     setPendingShowInstructor(settings.showInstructor);
     setPendingShowTime(settings.showTime);
+    settingsBackdropAnim.setValue(0);
+    settingsSheetAnim.setValue(600);
     setShowSettings(true);
+    Animated.parallel([
+      Animated.timing(settingsBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }),
+    ]).start();
   }
+
+  function closeSettings(callback?: () => void) {
+    Animated.parallel([
+      Animated.timing(settingsBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(settingsSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+    ]).start(() => {
+      setShowSettings(false);
+      callback?.();
+    });
+  }
+  closeSettingsRef.current = closeSettings;
 
   function applySettings() {
     onSettingsApply({
@@ -565,7 +619,7 @@ export default function TimetableScreen({
       showInstructor: pendingShowInstructor,
       showTime: pendingShowTime,
     });
-    setShowSettings(false);
+    closeSettings();
   }
 
   function confirmDelete() {
@@ -578,8 +632,7 @@ export default function TimetableScreen({
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            setShowSettings(false);
-            onDeleteTimetable();
+            closeSettings(onDeleteTimetable);
           },
         },
       ]
@@ -610,7 +663,7 @@ export default function TimetableScreen({
   };
 
   async function saveSchedule() {
-    setShowSettings(false);
+    await new Promise<void>((r) => closeSettings(r));
     await new Promise((r) => setTimeout(r, 350));
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync();
@@ -627,7 +680,7 @@ export default function TimetableScreen({
   }
 
   async function shareSchedule() {
-    setShowSettings(false);
+    await new Promise<void>((r) => closeSettings(r));
     await new Promise((r) => setTimeout(r, 350));
     setErrorMessage('Sharing is not available yet. Stay tuned!');
     setShowError(true);
@@ -768,8 +821,12 @@ export default function TimetableScreen({
         <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={closeAddQuarterModal} />
         <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
             <Animated.View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40, overflow: 'hidden', transform: [{ translateY: addSheetSlideAnim }] }}>
+              {/* Drag handle */}
+              <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 8 }} {...addQuarterDragPan.panHandlers}>
+                <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+              </View>
               {/* Header */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
                 {selectedAddYear ? (
                   <TouchableOpacity onPress={drillBackToYears} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     <Ionicons name="chevron-back" size={24} color={colors.brand} />
@@ -856,13 +913,23 @@ export default function TimetableScreen({
       </Modal>
 
       {/* Settings bottom sheet */}
-      <Modal animationType="slide" presentationStyle="pageSheet" visible={showSettings} onRequestClose={() => setShowSettings(false)}>
-          <View
+      <Modal animationType="none" transparent visible={showSettings} onRequestClose={() => closeSettings()}>
+        <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: settingsBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }) }}>
+          <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={() => closeSettings()} />
+          <Animated.View
             style={{
-              flex: 1,
+              maxHeight: '82%',
               backgroundColor: colors.card,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              transform: [{ translateY: settingsSheetAnim }],
             }}
           >
+            {/* Drag handle */}
+            <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 8 }} {...settingsDragPan.panHandlers}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
+
             {/* Header */}
             <View
               style={{
@@ -870,14 +937,14 @@ export default function TimetableScreen({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 paddingHorizontal: 20,
-                paddingTop: 18,
+                paddingTop: 8,
                 paddingBottom: 12,
                 borderBottomWidth: 1,
                 borderBottomColor: colors.borderSubtle,
               }}
             >
               <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>Timetable Settings</Text>
-              <TouchableOpacity onPress={() => setShowSettings(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={() => closeSettings()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -888,7 +955,7 @@ export default function TimetableScreen({
                 <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Timetable Theme
                 </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                <View style={{ marginTop: 4 }}>
                   {THEMES.map((t) => {
                     const isSelected = pendingTheme === t.key;
                     return (
@@ -898,29 +965,24 @@ export default function TimetableScreen({
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
-                          gap: 6,
-                          paddingVertical: 7,
-                          paddingHorizontal: 12,
-                          borderRadius: 20,
-                          borderWidth: 1.5,
-                          borderColor: isSelected ? colors.brand : colors.border,
-                          backgroundColor: isSelected ? colors.brandBg : colors.card,
+                          gap: 10,
+                          paddingVertical: 10,
                         }}
                       >
                         <View
                           style={{
-                            width: 14,
-                            height: 14,
-                            borderRadius: 7,
+                            width: 20,
+                            height: 20,
+                            borderRadius: 10,
                             borderWidth: 2,
                             borderColor: isSelected ? colors.brand : colors.textTertiary,
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
                         >
-                          {isSelected && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.brand }} />}
+                          {isSelected && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.brand }} />}
                         </View>
-                        <Text style={{ fontSize: 13, color: isSelected ? colors.brand : colors.textSecondary, fontWeight: isSelected ? '600' : '400' }}>{t.label}</Text>
+                        <Text style={{ fontSize: 14, color: isSelected ? colors.text : colors.textSecondary, fontWeight: isSelected ? '500' : '400' }}>{t.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -932,7 +994,7 @@ export default function TimetableScreen({
                 <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Display Information
                 </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                <View style={{ marginTop: 4 }}>
                   {DISPLAY_OPTIONS.map((opt) => {
                     const isChecked = pendingDisplayMap[opt.key];
                     return (
@@ -942,20 +1004,15 @@ export default function TimetableScreen({
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
-                          gap: 6,
-                          paddingVertical: 7,
-                          paddingHorizontal: 12,
-                          borderRadius: 20,
-                          borderWidth: 1.5,
-                          borderColor: isChecked ? colors.brand : colors.border,
-                          backgroundColor: isChecked ? colors.brandBg : colors.card,
+                          gap: 10,
+                          paddingVertical: 10,
                         }}
                       >
                         <View
                           style={{
-                            width: 14,
-                            height: 14,
-                            borderRadius: 3,
+                            width: 20,
+                            height: 20,
+                            borderRadius: 5,
                             backgroundColor: isChecked ? colors.brand : colors.card,
                             borderWidth: 1.5,
                             borderColor: isChecked ? colors.brand : colors.textTertiary,
@@ -963,9 +1020,9 @@ export default function TimetableScreen({
                             justifyContent: 'center',
                           }}
                         >
-                          {isChecked && <Ionicons name="checkmark" size={10} color="white" />}
+                          {isChecked && <Ionicons name="checkmark" size={13} color="white" />}
                         </View>
-                        <Text style={{ fontSize: 13, color: isChecked ? colors.brand : colors.textSecondary, fontWeight: isChecked ? '600' : '400' }}>{opt.label}</Text>
+                        <Text style={{ fontSize: 14, color: isChecked ? colors.text : colors.textSecondary, fontWeight: isChecked ? '500' : '400' }}>{opt.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -1049,7 +1106,8 @@ export default function TimetableScreen({
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </View>
+          </Animated.View>
+        </Animated.View>
       </Modal>
 
       {/* ── Course detail bottom sheet ── */}

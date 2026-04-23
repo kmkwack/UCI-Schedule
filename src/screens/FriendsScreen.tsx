@@ -25,6 +25,7 @@ import {
   getBlockColors,
   quarterKey,
   quarterLabel,
+  getAcademicQuarterForDate,
 } from '../data/courses';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
@@ -77,7 +78,7 @@ type UserSettingsRow = {
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
 const DEFAULT_START_HOUR = 8;
-const DEFAULT_END_HOUR = 16;
+const DEFAULT_END_HOUR = 17;
 const TIME_LABEL_WIDTH = 44;
 const GRID_LEFT_PAD = 16;
 const DAY_LABEL: Record<string, string> = {
@@ -179,7 +180,7 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
   const [debouncedEmailQuery, setDebouncedEmailQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'friends' | 'requests'>('friends');
   const [searchQuery, setSearchQuery] = useState('');
-  const [friendQuarter, setFriendQuarter] = useState<Quarter>({ year: '2026', quarter: 'Spring' });
+  const [friendQuarter, setFriendQuarter] = useState<Quarter>(getAcademicQuarterForDate(new Date()));
   const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
   const [friendAvailableQuarters, setFriendAvailableQuarters] = useState<string[]>([]);
   const [fetchingQuarters, setFetchingQuarters] = useState(false);
@@ -465,7 +466,7 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
       }
       quarterItemAnims.current.forEach((v) => v.setValue(0));
       setFriendAvailableQuarters(keys);
-      if (keys.length > 0 && !keys.includes(quarterKey(friendQuarter))) {
+      if (keys.length > 0) {
         setFriendQuarter(parseQuarterKey(keys[0]));
       }
       Animated.stagger(45, keys.map((_, i) =>
@@ -727,29 +728,6 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
           onLayout={(e) => setScrollViewHeight(e.nativeEvent.layout.height)}
         >
 
-        {tbaCourses.length > 0 && (
-          <View style={{ paddingHorizontal: 12, marginBottom: 8 }}>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {tbaCourses.map((course) => {
-                const { bg, text, border } = getBlockColors(course, timetableTheme);
-                return (
-                  <View key={course.id} style={{
-                    backgroundColor: bg, borderRadius: 8, borderWidth: 1, borderColor: border,
-                    paddingHorizontal: 10, paddingVertical: 8, minWidth: 100, maxWidth: 160,
-                  }}>
-                    <Text style={{ color: text, fontWeight: '800', fontSize: compactGrid ? 9 : 10 }} numberOfLines={1}>{course.code}</Text>
-                    <Text style={{ color: text, fontWeight: '600', fontSize: compactGrid ? 8 : 9, opacity: 0.85 }} numberOfLines={2}>{course.title}</Text>
-                    <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>{getProfLastName(course.professor)}</Text>
-                    <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
-                      {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
         <View
           style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10 }}
           onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD - 24)}
@@ -874,6 +852,29 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
             </View>
           </View>
         </View>
+
+        {tbaCourses.length > 0 && (
+          <View style={{ paddingHorizontal: 12, marginTop: 4, marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {tbaCourses.map((course) => {
+                const { bg, text, border } = getBlockColors(course, timetableTheme);
+                return (
+                  <View key={course.id} style={{
+                    backgroundColor: bg, borderRadius: 8, borderWidth: 1, borderColor: border,
+                    paddingHorizontal: 10, paddingVertical: 8, minWidth: 100, maxWidth: 160,
+                  }}>
+                    <Text style={{ color: text, fontWeight: '800', fontSize: compactGrid ? 9 : 10 }} numberOfLines={1}>{course.code}</Text>
+                    <Text style={{ color: text, fontWeight: '600', fontSize: compactGrid ? 8 : 9, opacity: 0.85 }} numberOfLines={2}>{course.title}</Text>
+                    <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>{getProfLastName(course.professor)}</Text>
+                    <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
+                      {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
           <View style={{

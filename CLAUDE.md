@@ -146,8 +146,6 @@ type Course = {
   days: string;       // "MWF", "TuTh", "Sa", etc.
   time: string;       // normalized 24hr: "10:00 - 10:50"
   department: string; // "ECON"
-  addedCount: number; // always 0 (not from API)
-  rating: number;     // always 0 (not from API)
   location?: string;  // from meetings[0].bldg[0]
   units?: number;
 };
@@ -239,14 +237,7 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ## What Is NOT Implemented Yet
 
-- Persistent storage (courses reset on app reload — no AsyncStorage)
-- User authentication
-- Push notifications / reminders
-- Real GPA data (GPA is hardcoded at 3.72, credits at 64)
-- Professor ratings (always 0, no RateMyProfessor integration)
-- `addedCount` (always 0, no backend tracking)
 - The "Wizard" and "Add manually" buttons in course picker (not wired up)
-- `CoursesScreen.tsx` exists in `src/screens/` but is unused
 
 ## Multi-School Notes
 
@@ -563,3 +554,17 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 56 (Settings — slide-in sub-screens + swipe-back)
 - **`src/screens/SettingsScreen.tsx`** — Added `Animated`, `PanResponder`, `Dimensions` to RN imports. Added `slideAnim` Animated.Value (starts at screen width). `navigateTo(screen)` resets slide to off-screen right then spring-animates to 0. `goBack()` timing-animates slide to off-screen right then resets screen to 'main'. `swipePan` PanResponder: activates on horizontal-dominant rightward drag, moves `slideAnim` with finger, on release triggers `goBack()` if dx > 35% screen width or velocity > 0.6, otherwise springs back. Sub-screen wrapped in `Animated.View` with `transform: [{ translateX: slideAnim }]` and `{...swipePan.panHandlers}`. All `setScreen(...)` calls in section items replaced with `navigateTo(...)`. All `onBack={() => setScreen('main')}` in sub-screen props replaced with `onBack={goBack}`.
+
+### Session 58 (FriendsScreen — TBA block moved below grid)
+- **`src/screens/FriendsScreen.tsx`** — Moved the TBA courses pill row from above the timetable grid to below it, so it renders between the grid card and the view-only banner.
+
+### Session 58 (AuthNavigator — duplicate key fix + pushAuth guard)
+- **`App.tsx`** — Changed `key={screen}` to `key={`${index}-${screen}`}` in `AuthNavigator`'s stack map so duplicate screen names (e.g. double-tapping "Get Started" pushing `'university'` twice) don't cause a React duplicate-key error. Added guard to `pushAuth`: returns existing stack unchanged if the requested screen is already on top, preventing double-pushes.
+
+### Session 58 (AuthNavigator — back-button slide-out)
+- **`App.tsx`** — `renderScreen` signature extended to `(s: AuthScreen, goBack: () => void) => React.ReactNode`. `AuthNavigator` passes its own animated `goBack` as the second arg when calling `renderScreen`, and all auth screen `onBack` props now receive this animated version instead of raw `popAuth`. Fixes the back button on University Selection (and Sign In / Sign Up) not triggering the slide-out animation.
+
+### Session 58 (Board — Request New Board modal + admin inbox)
+- **`src/screens/BoardScreen.tsx`** — Added `showRequestBoard`, `requestBoardName`, `requestBoardDesc`, `submittingBoardRequest` state. Wired "Request New Board" button `onPress`. Added `submitBoardRequest()`: validates name, inserts into Supabase `board_requests` table (`requester_id`, `school`, `name`, `description`). Added `RequestBoardModal` component (bottom-sheet modal with Board Name + Brief Description fields and Cancel/Request buttons).
+- **`src/screens/SettingsScreen.tsx`** — Added `'board_requests'` to `Screen` type. Added `BoardRequestsScreen` component: fetches from `board_requests` table, shows name/description/requester/status, status action buttons. Added moderator-only `ADMIN` section to main Settings with "Reports Inbox" and "Board Requests" items (replaces old inline Reports Inbox entry in SUPPORT). `ModerationScreen` reverted to only query `reports` table. `ModerationReport` type cleaned up (removed `source` field).
+- **Supabase SQL required** — Create `board_requests` table (see session notes for SQL).

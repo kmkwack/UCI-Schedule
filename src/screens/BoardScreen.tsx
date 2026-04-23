@@ -277,6 +277,10 @@ export default function BoardScreen({
   const [reportReason, setReportReason] = useState(REPORT_REASONS[0]);
   const [reportDetails, setReportDetails] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
+  const [showRequestBoard, setShowRequestBoard] = useState(false);
+  const [requestBoardName, setRequestBoardName] = useState('');
+  const [requestBoardDesc, setRequestBoardDesc] = useState('');
+  const [submittingBoardRequest, setSubmittingBoardRequest] = useState(false);
 
   const SCREEN_W = Dimensions.get('window').width;
   const boardSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
@@ -880,6 +884,30 @@ export default function BoardScreen({
     setReportDetails('');
   }
 
+  async function submitBoardRequest() {
+    const name = requestBoardName.trim();
+    if (!name) {
+      Alert.alert('Board name required', 'Please enter a name for the board you are requesting.');
+      return;
+    }
+    setSubmittingBoardRequest(true);
+    const { error } = await supabase.from('board_requests').insert({
+      requester_id: userId,
+      school,
+      name,
+      description: requestBoardDesc.trim() || null,
+    });
+    setSubmittingBoardRequest(false);
+    if (error) {
+      Alert.alert('Could not send request', error.message);
+      return;
+    }
+    Alert.alert('Request sent', 'Thanks! We will review your board request soon.');
+    setShowRequestBoard(false);
+    setRequestBoardName('');
+    setRequestBoardDesc('');
+  }
+
   const boardPosts = useMemo(() => {
     if (!selectedBoard) return [];
     return selectedBoard.category === null ? posts : posts.filter((post) => post.category === selectedBoard.category);
@@ -1107,6 +1135,7 @@ export default function BoardScreen({
                 backgroundColor: `${colors.brand}08`,
               }}
               activeOpacity={0.7}
+              onPress={() => setShowRequestBoard(true)}
             >
               <View
                 style={{
@@ -1562,6 +1591,18 @@ export default function BoardScreen({
         submitting={submittingReport}
         colors={colors}
       />
+
+      <RequestBoardModal
+        visible={showRequestBoard}
+        onClose={() => { setShowRequestBoard(false); setRequestBoardName(''); setRequestBoardDesc(''); }}
+        boardName={requestBoardName}
+        onBoardNameChange={setRequestBoardName}
+        description={requestBoardDesc}
+        onDescriptionChange={setRequestBoardDesc}
+        onSubmit={() => void submitBoardRequest()}
+        submitting={submittingBoardRequest}
+        colors={colors}
+      />
     </View>
   );
 }
@@ -1705,6 +1746,135 @@ function ReportModal({
           </View>
         </View>
       </View>
+    </Modal>
+  );
+}
+
+function RequestBoardModal({
+  visible,
+  onClose,
+  boardName,
+  onBoardNameChange,
+  description,
+  onDescriptionChange,
+  onSubmit,
+  submitting,
+  colors,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  boardName: string;
+  onBoardNameChange: (v: string) => void;
+  description: string;
+  onDescriptionChange: (v: string) => void;
+  onSubmit: () => void;
+  submitting: boolean;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.28)', justifyContent: 'flex-end' }}
+          activeOpacity={1}
+          onPress={onClose}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
+                paddingHorizontal: 20,
+                paddingTop: 18,
+                paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Request New Board</Text>
+                <TouchableOpacity onPress={onClose}>
+                  <Ionicons name="close" size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={{ fontSize: 13, lineHeight: 20, color: colors.textSecondary, marginBottom: 20 }}>
+                Suggest a new community board for ClassMate. Admins will review your request.
+              </Text>
+
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+                Board Name <Text style={{ color: '#ef4444' }}>*</Text>
+              </Text>
+              <TextInput
+                value={boardName}
+                onChangeText={onBoardNameChange}
+                placeholder="e.g. Pre-Med Students, Housing Tips…"
+                placeholderTextColor={colors.placeholder}
+                style={{
+                  backgroundColor: colors.inputBg,
+                  borderRadius: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  fontSize: 15,
+                  color: colors.text,
+                  marginBottom: 18,
+                }}
+              />
+
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+                Brief Description
+              </Text>
+              <TextInput
+                value={description}
+                onChangeText={onDescriptionChange}
+                placeholder="What would this board be used for?"
+                placeholderTextColor={colors.placeholder}
+                multiline
+                style={{
+                  backgroundColor: colors.inputBg,
+                  borderRadius: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  minHeight: 100,
+                  textAlignVertical: 'top',
+                  fontSize: 14,
+                  color: colors.text,
+                  marginBottom: 22,
+                }}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  onPress={onClose}
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.bgTertiary,
+                    borderRadius: 14,
+                    paddingVertical: 15,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={onSubmit}
+                  disabled={submitting}
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.brand,
+                    borderRadius: 14,
+                    paddingVertical: 15,
+                    alignItems: 'center',
+                    opacity: submitting ? 0.72 : 1,
+                  }}
+                >
+                  {submitting
+                    ? <ActivityIndicator color="white" />
+                    : <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>Request</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

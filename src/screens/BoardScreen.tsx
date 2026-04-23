@@ -16,6 +16,7 @@ import {
   Dimensions,
   Image,
   Linking,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -1771,17 +1772,44 @@ function RequestBoardModal({
   submitting: boolean;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const scrollToBottom = () => {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          scrollRef.current?.scrollToEnd({ animated: true });
+        }, 120);
+      });
+    };
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const keyboardShow = Keyboard.addListener(showEvent, scrollToBottom);
+
+    return () => {
+      keyboardShow.remove();
+    };
+  }, [visible]);
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+      >
         <TouchableOpacity
           style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.28)', justifyContent: 'flex-end' }}
           activeOpacity={1}
           onPress={onClose}
         >
           <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-            <View
-              style={{
+            <ScrollView
+              ref={scrollRef}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{
                 backgroundColor: colors.card,
                 borderTopLeftRadius: 28,
                 borderTopRightRadius: 28,
@@ -1825,6 +1853,11 @@ function RequestBoardModal({
               <TextInput
                 value={description}
                 onChangeText={onDescriptionChange}
+                onFocus={() => {
+                  setTimeout(() => {
+                    scrollRef.current?.scrollToEnd({ animated: true });
+                  }, 120);
+                }}
                 placeholder="What would this board be used for?"
                 placeholderTextColor={colors.placeholder}
                 multiline
@@ -1871,7 +1904,7 @@ function RequestBoardModal({
                     : <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>Request</Text>}
                 </TouchableOpacity>
               </View>
-            </View>
+            </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </KeyboardAvoidingView>

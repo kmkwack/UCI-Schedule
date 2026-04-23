@@ -84,6 +84,19 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
       return;
     }
 
+    const { error: metadataError } = await supabase.auth.updateUser({
+      data: {
+        classmate_signup_started: true,
+        classmate_school: uni.name,
+      },
+    });
+
+    if (metadataError) {
+      await supabase.auth.signOut();
+      Alert.alert('Sign-up failed', metadataError.message);
+      return;
+    }
+
     onSignedUp(sessionData.user.id, email);
   };
 
@@ -182,8 +195,14 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
         </View>
 
         {/* Terms */}
-        <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 20 }}>
-          <LegalConsentText onOpenDocument={setActiveDocument} color="#9ca3af" linkColor="#4169E1" />
+        <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 20, paddingHorizontal: 8 }}>
+          <LegalConsentText
+            onOpenDocument={setActiveDocument}
+            color="#9ca3af"
+            linkColor="#4169E1"
+            fontSize={11}
+            lineHeight={16}
+          />
         </View>
       </ScrollView>
       <LegalDocumentModal

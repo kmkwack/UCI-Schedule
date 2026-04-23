@@ -19,6 +19,14 @@ type Props = {
   onGoToSignUp: () => void;
 };
 
+function looksLikeFreshAccount(createdAt?: string | null, lastSignInAt?: string | null) {
+  if (!createdAt || !lastSignInAt) return false;
+  const created = new Date(createdAt).getTime();
+  const signedIn = new Date(lastSignInAt).getTime();
+  if (!Number.isFinite(created) || !Number.isFinite(signedIn)) return false;
+  return Math.abs(signedIn - created) < 90 * 1000;
+}
+
 function GoogleIcon() {
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24">
@@ -72,6 +80,43 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
       Alert.alert('Wrong account', `Please sign in with your ${university.domain} email.`);
       return;
     }
+
+    const hasSignupMarker = sd.user.user_metadata?.classmate_signup_started === true;
+    const { data: existingSettings, error: settingsError } = await supabase
+      .from('user_settings')
+      .select('user_id')
+      .eq('user_id', sd.user.id)
+      .maybeSingle();
+
+    if (settingsError && settingsError.code !== 'PGRST116' && settingsError.code !== 'PGRST205') {
+      await supabase.auth.signOut();
+      Alert.alert('Sign-in failed', 'Could not verify your ClassMate account. Please try again.');
+      return;
+    }
+
+    if (
+      !hasSignupMarker &&
+      !existingSettings &&
+      looksLikeFreshAccount(sd.user.created_at, sd.user.last_sign_in_at ?? null)
+    ) {
+      await supabase.auth.signOut();
+      Alert.alert(
+        'No ClassMate account found',
+        'It looks like this email has not signed up for ClassMate yet. Please create a new account first.',
+        [
+          {
+            text: 'Create account',
+            onPress: onGoToSignUp,
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+      return;
+    }
+
     onSignedIn(sd.user.id, email);
   };
 
@@ -170,8 +215,14 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
         </View>
 
       </ScrollView>
-      <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 14, paddingBottom: 8, paddingHorizontal: 24 }}>
-        <LegalConsentText onOpenDocument={setActiveDocument} color="#9ca3af" linkColor="#4169E1" />
+      <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 14, paddingBottom: 8, paddingHorizontal: 16 }}>
+        <LegalConsentText
+          onOpenDocument={setActiveDocument}
+          color="#9ca3af"
+          linkColor="#4169E1"
+          fontSize={11}
+          lineHeight={16}
+        />
       </View>
       <LegalDocumentModal
         visible={!!activeDocument}

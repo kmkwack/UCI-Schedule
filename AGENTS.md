@@ -913,3 +913,50 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/components/ProfileEditorScreen.tsx`** — Extracted the `Edit Profile` form into a reusable full-screen profile editor with the same fields as Settings, including year/major dropdowns, validation, and save CTA text that can be customized for onboarding.
 - **`src/screens/SettingsScreen.tsx`** — Switched the Settings `Edit Profile` screen to use the new shared profile editor so the edit flow and the new sign-up onboarding flow stay in sync.
 - **`src/data/userPreferences.ts`** — Extended saved `profile_details` with a `profileSetupComplete` flag helper so ClassMate can remember whether the initial profile step has already been finished.
+
+### Session 64cw (Add first-time brand intro and feature onboarding)
+- **`App.tsx`** — Inserted a new first-time user sequence after profile setup: a short brand-entry animation followed by a four-step feature tour, and persisted the onboarding completion state in `user_settings.profile_details` so it only runs for brand-new sign-ups.
+- **`src/components/ClassMateIntroScreen.tsx`** — Added a cinematic transition screen that briefly brings the user “into” ClassMate with an animated logo, wordmark, and floating product chips before handing off to the tutorial.
+- **`src/components/FeatureOnboardingScreen.tsx`** — Added a polished onboarding flow covering the main dashboard, custom timetable blocks, friend timetable sharing, and the community/messages experience with custom preview cards and step-by-step navigation.
+- **`src/data/userPreferences.ts`** — Added an `onboardingComplete` flag helper so the app can distinguish between a finished profile setup and a finished first-run tutorial.
+
+### Session 64cx (Simplify the first welcome screen around the CM monogram)
+- **`src/screens/WelcomeScreen.tsx`** — Reworked the opening welcome screen into a cleaner, calmer layout with a code-built blue `CM` monogram, a simpler hero message, restrained background accents, and more minimal feature rows instead of the busier previous composition.
+
+### Session 64cy (Remove the boxed-in feel from the welcome screen)
+- **`src/screens/WelcomeScreen.tsx`** — Removed the large enclosing hero card so the welcome content now flows directly on the page background. The title, features, and CTA feel more open from top to bottom, while the smaller feature rows remain as separate floating surfaces instead of one big boxed panel.
+
+### Session 64cz (Tighten auth-footer legal copy into one line)
+- **`src/screens/SignInScreen.tsx` / `src/screens/SignUpScreen.tsx`** — Reduced the footer legal-consent text size and adjusted horizontal padding so the `By continuing... Terms of Service and Privacy Policy` line fits more cleanly on one line in the auth screens instead of wrapping awkwardly.
+
+### Session 64dd (Soften the welcome flow and remove feature chips)
+- **`src/screens/WelcomeScreen.tsx`** — Removed the `Timetable / Friends / Community` chips under the CM mark and lightened the feature cards / spacing below the hero so the lower half of the page feels more continuous and less visually segmented.
+
+### Session 64da (Keep the review composer visible above the keyboard)
+- **`src/components/ReviewsModal.tsx`** — Improved the write-review flow so the review text box no longer gets hidden behind the keyboard. Added a dedicated scroll ref plus keyboard/input-focus auto-scroll behavior, and nudged the modal’s keyboard offset/padding so the active review field stays visible while typing.
+
+### Session 64db (Keep request-board inputs visible above the keyboard)
+- **`src/screens/BoardScreen.tsx`** — Updated the `Request New Board` modal to behave like the review composer: it now uses a scroll ref plus keyboard/input-focus auto-scroll so the description field stays visible when the keyboard slides up instead of being covered.
+
+### Session 64dc (Auto-jump into the review text box when writing reviews)
+- **`src/components/ReviewsModal.tsx`** — Strengthened the write-review keyboard behavior so opening the composer now automatically scrolls to the review textarea and focuses it, instead of waiting for the user to manually scroll before typing.
+
+### Session 64de (Align post-signup branding and rebuild onboarding previews)
+- **`src/components/ClassMateMonogram.tsx`** — Extracted the blue `CM` monogram into a shared component so the same logo treatment can be reused across auth and first-run flows.
+- **`src/screens/WelcomeScreen.tsx`** — Swapped the inline welcome logo implementation to the new shared monogram component without changing the existing welcome layout.
+- **`src/components/ClassMateIntroScreen.tsx`** — Replaced the old uploaded logo image with the same shared `CM` monogram used on the first welcome screen so the post-signup intro now matches it exactly.
+- **`src/components/FeatureOnboardingScreen.tsx`** — Rebuilt the four onboarding previews to look much closer to the real app, using actual UI ideas and labels like `Quarter Progress`, `Campus Events`, `My Schedule`, `Add Course`, `ClassMates`, `Friend Requests`, `Request New Board`, and `Write a Review`.
+
+### Session 64df (Remove the boxed lower-half feel from the welcome screen)
+- **`src/screens/WelcomeScreen.tsx`** — Softened the lower background accent, removed the card-like feature row containers, and added more bottom breathing room so the welcome screen reads as one continuous page instead of a top section sitting above a separate boxed panel. Also adjusted the bottom copy spacing so the sign-in helper text is less likely to get visually clipped.
+
+### Session 64dg (Stop sign-in from silently creating brand-new accounts)
+- **`src/screens/SignInScreen.tsx`** — Added a guard so the sign-in flow now checks for an existing ClassMate signup marker or saved user settings before allowing entry. If Google OAuth returns a freshly created account with no ClassMate history, the app now signs back out and sends the user to `Create a new account` instead of dropping them into the home flow.
+- **`src/screens/SignUpScreen.tsx`** — After a real sign-up succeeds, now writes a lightweight `classmate_signup_started` marker into the authenticated user metadata so future sign-ins can distinguish a deliberate ClassMate signup from a mistaken first-time sign-in attempt.
+
+### Session 64dh (Show brand intro after onboarding and simplify timetable tutorial card)
+- **`App.tsx`** — Moved the animated ClassMate intro to the end of the first-run sequence so new users now go `profile setup → feature tutorial → brand intro → app` instead of seeing the intro before the tutorial.
+- **`src/components/FeatureOnboardingScreen.tsx`** — Simplified the timetable tutorial step with a shorter title/body and a cleaner preview card that uses fewer blocks, lighter labels, and less visual clutter.
+
+### Session 64di (Slow down the post-onboarding ClassMate intro)
+- **`src/components/ClassMateIntroScreen.tsx`** — Increased the reveal timings and extended the auto-dismiss delay so the brand intro lingers long enough to actually read before it fades into the app.

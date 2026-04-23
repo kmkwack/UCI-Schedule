@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Linking,
+  Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Linking, Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
@@ -112,6 +112,16 @@ export default function ReviewsModal({
   const [quarterTaken, setQuarterTaken] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+  const writeReviewScrollRef = useRef<ScrollView>(null);
+  const reviewInputRef = useRef<TextInput>(null);
+
+  function scrollToReviewComposer(animated = true) {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        writeReviewScrollRef.current?.scrollToEnd({ animated });
+      }, 140);
+    });
+  }
 
   // Reset state when modal opens
   useEffect(() => {
@@ -126,6 +136,24 @@ export default function ReviewsModal({
       fetchCourseInfo();
     }
   }, [visible, courseCode]);
+
+  useEffect(() => {
+    if (!visible || !showWriteReview) return;
+
+    scrollToReviewComposer(false);
+    const focusTimer = setTimeout(() => {
+      scrollToReviewComposer();
+      reviewInputRef.current?.focus();
+    }, 220);
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const keyboardShow = Keyboard.addListener(showEvent, () => scrollToReviewComposer());
+
+    return () => {
+      clearTimeout(focusTimer);
+      keyboardShow.remove();
+    };
+  }, [showWriteReview, visible]);
 
   // Fetch grade distribution
   useEffect(() => {
@@ -255,7 +283,11 @@ export default function ReviewsModal({
         else { onClose(); }
       }}
     >
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.card }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: colors.card }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+      >
           <View style={{ flex: 1 }}>
 
             {/* ── Reviews list ── */}
@@ -486,7 +518,11 @@ export default function ReviewsModal({
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 20 }} keyboardShouldPersistTaps="handled">
+                <ScrollView
+                  ref={writeReviewScrollRef}
+                  contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 36 }}
+                  keyboardShouldPersistTaps="handled"
+                >
                   <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginBottom: 10 }}>Quarter Taken</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -538,8 +574,10 @@ export default function ReviewsModal({
 
                   <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginBottom: 10 }}>Your Review</Text>
                   <TextInput
+                    ref={reviewInputRef}
                     value={content}
                     onChangeText={setContent}
+                    onFocus={() => scrollToReviewComposer()}
                     placeholder="Share your experience with this course..."
                     placeholderTextColor={colors.placeholder}
                     multiline

@@ -114,7 +114,8 @@ export function emailName(email: string) {
 export function profileDetailsFromProfile(
   profile: EditableProfile,
   boardProfileVisible = false,
-  profileSetupComplete = false
+  profileSetupComplete = false,
+  onboardingComplete = true
 ) {
   return {
     firstName: profile.firstName,
@@ -125,11 +126,16 @@ export function profileDetailsFromProfile(
     dateOfBirth: profile.dateOfBirth,
     boardProfileVisible,
     profileSetupComplete,
+    onboardingComplete,
   };
 }
 
 export function hasCompletedProfileSetup(details?: Record<string, any> | null) {
   return details?.profileSetupComplete === true;
+}
+
+export function needsInitialOnboarding(details?: Record<string, any> | null) {
+  return details?.onboardingComplete === false;
 }
 
 export function profileFromSources(

@@ -18,6 +18,8 @@ import SignUpScreen from './src/screens/SignUpScreen';
 import MessagesScreen from './src/screens/MessagesScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
+import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
+import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import ProfileEditorScreen from './src/components/ProfileEditorScreen';
 import type { ChatTarget } from './src/data/messages';
 import { Course, Quarter, QUARTERS, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey, getAcademicQuarterForDate, resolveCurrentQuarter } from './src/data/courses';
@@ -27,6 +29,7 @@ import {
   DEFAULT_USER_SETTINGS,
   fallbackProfileFromEmail,
   hasCompletedProfileSetup,
+  needsInitialOnboarding,
   profileDetailsFromProfile,
   profileFromSources,
 } from './src/data/userPreferences';
@@ -266,6 +269,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [useCelsius, setUseCelsius] = useState(true);
   const [authStack, setAuthStack] = useState<AuthScreen[]>(['welcome']);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
+  const [needsFeatureOnboarding, setNeedsFeatureOnboarding] = useState(false);
+  const [showBrandIntro, setShowBrandIntro] = useState(false);
+  const [savingOnboarding, setSavingOnboarding] = useState(false);
   const pushAuth = (s: AuthScreen) => setAuthStack((prev) => prev[prev.length - 1] === s ? prev : [...prev, s]);
   const popAuth = () => setAuthStack((prev) => prev.length > 1 ? prev.slice(0, -1) : prev);
   const replaceAuth = (s: AuthScreen) =>
@@ -384,8 +390,17 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       if (settingsDetails?.profileSetupComplete === false) {
         setNeedsProfileSetup(true);
+        setNeedsFeatureOnboarding(false);
+        setShowBrandIntro(false);
       } else if (hasCompletedProfileSetup(settingsDetails)) {
         setNeedsProfileSetup(false);
+        if (needsInitialOnboarding(settingsDetails)) {
+          setNeedsFeatureOnboarding(true);
+          setShowBrandIntro(false);
+        } else {
+          setNeedsFeatureOnboarding(false);
+          setShowBrandIntro(false);
+        }
       }
 
       setUserSettings({
@@ -1010,6 +1025,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setShowSettings(false);
     setCurrentTab('home');
     setNeedsProfileSetup(false);
+    setNeedsFeatureOnboarding(false);
+    setShowBrandIntro(false);
+    setSavingOnboarding(false);
     setAuthStack(['welcome']);
   };
 
@@ -1017,7 +1035,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     nextSettings: UserSettingsState,
     nextProfile: EditableProfile = userProfile,
     nextExpoPushToken: string | null = expoPushToken,
-    profileSetupComplete = !needsProfileSetup
+    profileSetupComplete = !needsProfileSetup,
+    onboardingComplete = !needsFeatureOnboarding
   ) => {
     if (!userId) throw new Error('missing-user-id');
 
@@ -1030,7 +1049,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       profile_details: profileDetailsFromProfile(
         nextProfile,
         nextSettings.boardProfileVisible,
-        profileSetupComplete
+        profileSetupComplete,
+        onboardingComplete
       ),
       updated_at: new Date().toISOString(),
     };
@@ -1078,6 +1098,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     if (!userId) return false;
 
     setSavingProfile(true);
+    const shouldStartOnboarding = needsProfileSetup;
     const safeEmail = userEmail || nextProfile.email;
     const next = { ...nextProfile, email: safeEmail };
     const nextName = buildDisplayName(next);
@@ -1100,14 +1121,31 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
     const nextSettings = { ...userSettings };
     try {
-      await saveUserSettingsRow(nextSettings, next, expoPushToken, true);
+      await saveUserSettingsRow(nextSettings, next, expoPushToken, true, !shouldStartOnboarding);
       setUserProfile(next);
       setNeedsProfileSetup(false);
+      if (shouldStartOnboarding) {
+        setNeedsFeatureOnboarding(true);
+        setShowBrandIntro(false);
+      }
       return true;
     } catch {
       return false;
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handleCompleteFeatureOnboarding = async () => {
+    setSavingOnboarding(true);
+    try {
+      await saveUserSettingsRow(userSettings, userProfile, expoPushToken, true, true);
+      setNeedsFeatureOnboarding(false);
+      setShowBrandIntro(true);
+    } catch {
+      return;
+    } finally {
+      setSavingOnboarding(false);
     }
   };
 
@@ -1244,6 +1282,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               setUserEmail(email);
               setUserProfile(fallbackProfileFromEmail(email));
               setNeedsProfileSetup(true);
+              setNeedsFeatureOnboarding(false);
+              setShowBrandIntro(false);
             }}
             onGoToSignIn={() => replaceAuth('signin')}
           />
@@ -1258,6 +1298,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             setUserEmail(email);
             setUserProfile(fallbackProfileFromEmail(email));
             setNeedsProfileSetup(false);
+            setNeedsFeatureOnboarding(false);
+            setShowBrandIntro(false);
           }}
           onGoToSignUp={() => pushAuth('signup')}
         />
@@ -1280,6 +1322,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         saveLabel="Continue to ClassMate"
       />
     );
+  }
+
+  if (showBrandIntro) {
+    return <ClassMateIntroScreen onComplete={() => setShowBrandIntro(false)} />;
+  }
+
+  if (needsFeatureOnboarding) {
+    return <FeatureOnboardingScreen onFinish={handleCompleteFeatureOnboarding} finishing={savingOnboarding} />;
   }
 
   // ── main app ──────────────────────────────────────────────────────────────────

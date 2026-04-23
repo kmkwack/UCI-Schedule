@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import ClassMateMonogram from '../components/ClassMateMonogram';
 import LegalConsentText from '../components/LegalConsentText';
 import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
 import { useTheme } from '../context/ThemeContext';
@@ -10,150 +11,119 @@ type Props = {
   onGetStarted: () => void;
 };
 
+const FEATURE_ROWS = [
+  {
+    icon: 'calendar-clear-outline' as const,
+    title: 'Build better weeks',
+    copy: 'Plan classes and custom blocks without the clutter.',
+  },
+  {
+    icon: 'people-outline' as const,
+    title: 'Stay synced with friends',
+    copy: 'Compare timetables and keep campus plans easier to coordinate.',
+  },
+  {
+    icon: 'chatbubbles-outline' as const,
+    title: 'One place for campus life',
+    copy: 'Track updates, conversations, and community activity together.',
+  },
+];
+
 export default function WelcomeScreen({ onGetStarted }: Props) {
   const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
   const { colors, isDark } = useTheme();
 
-  const featureCards = [
-    { icon: 'calendar-outline' as const, title: 'Plan smarter', copy: 'Build quarter schedules that actually fit your week.' },
-    { icon: 'stats-chart-outline' as const, title: 'Track progress', copy: 'See grades, reminders, and quarter momentum in one place.' },
-    { icon: 'people-outline' as const, title: 'Stay connected', copy: 'Message friends, compare plans, and keep campus life synced.' },
-  ];
-
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#07111f' : '#f7f8ff' }}>
-      <View style={{ ...{ position: 'absolute', top: -40, right: -30, width: 220, height: 220, borderRadius: 110 }, backgroundColor: isDark ? 'rgba(65,105,225,0.22)' : 'rgba(65,105,225,0.18)' }} />
-      <View style={{ ...{ position: 'absolute', top: 120, left: -70, width: 180, height: 180, borderRadius: 90 }, backgroundColor: isDark ? 'rgba(255,122,145,0.14)' : 'rgba(255,122,145,0.16)' }} />
-      <View style={{ ...{ position: 'absolute', bottom: 180, right: -50, width: 160, height: 160, borderRadius: 80 }, backgroundColor: isDark ? 'rgba(88,208,255,0.14)' : 'rgba(88,208,255,0.16)' }} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff' }}>
+      <View
+        style={{
+          position: 'absolute',
+          top: -50,
+          right: -40,
+          width: 220,
+          height: 220,
+          borderRadius: 110,
+          backgroundColor: 'rgba(65,105,225,0.16)',
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          bottom: -40,
+          left: -90,
+          width: 170,
+          height: 170,
+          borderRadius: 85,
+          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.28)',
+        }}
+      />
 
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 10, paddingBottom: 24 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingHorizontal: 24,
+          paddingTop: 18,
+          paddingBottom: 44,
+        }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ alignItems: 'center', marginTop: 18, marginBottom: 26 }}>
-          <View style={{
-            paddingHorizontal: 14,
-            paddingVertical: 8,
-            borderRadius: 999,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.75)',
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(65,105,225,0.12)',
-          }}>
-            <Text style={{ color: isDark ? '#dbe7ff' : '#4169E1', fontSize: 12, fontWeight: '700', letterSpacing: 0.4 }}>
-              CAMPUS LIFE, REIMAGINED
+        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+          <View
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 999,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.82)',
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(65,105,225,0.10)',
+            }}
+          >
+            <Text style={{ color: '#4169E1', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }}>
+              ORGANIZE CAMPUS LIFE
             </Text>
           </View>
         </View>
 
         <View
           style={{
-            backgroundColor: isDark ? '#101826' : '#ffffff',
-            borderRadius: 32,
-            paddingHorizontal: 22,
-            paddingTop: 24,
-            paddingBottom: 22,
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(65,105,225,0.12)',
-            shadowColor: '#0f172a',
-            shadowOffset: { width: 0, height: 20 },
-            shadowOpacity: isDark ? 0.22 : 0.10,
-            shadowRadius: 30,
-            elevation: 10,
-            marginBottom: 24,
-            overflow: 'hidden',
+            alignItems: 'center',
+            paddingHorizontal: 6,
           }}
         >
-          <View style={{ position: 'absolute', top: -38, right: -32, width: 138, height: 138, borderRadius: 69, backgroundColor: 'rgba(65,105,225,0.14)' }} />
-          <View style={{ position: 'absolute', bottom: -42, left: -20, width: 118, height: 118, borderRadius: 59, backgroundColor: 'rgba(255,122,145,0.10)' }} />
+          <View
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 8,
+              width: 132,
+              height: 132,
+              borderRadius: 66,
+              backgroundColor: isDark ? 'rgba(65,105,225,0.12)' : 'rgba(65,105,225,0.10)',
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 164,
+              left: -22,
+              width: 88,
+              height: 88,
+              borderRadius: 44,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,122,145,0.10)',
+            }}
+          />
 
-          <View style={{ alignItems: 'center', marginBottom: 24 }}>
-            <View style={{ width: 220, height: 180, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-              <View
-                style={{
-                  position: 'absolute',
-                  top: 12,
-                  left: 18,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderRadius: 16,
-                  backgroundColor: isDark ? '#172235' : '#ffffff',
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#edf1ff',
-                  shadowColor: '#0f172a',
-                  shadowOffset: { width: 0, height: 8 },
-                  shadowOpacity: 0.10,
-                  shadowRadius: 16,
-                  elevation: 6,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(65,105,225,0.14)', alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="today-outline" size={15} color="#4169E1" />
-                  </View>
-                  <View>
-                    <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>Today at a glance</Text>
-                    <Text style={{ color: colors.textTertiary, fontSize: 11 }}>3 classes, 1 reminder</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View
-                style={{
-                  width: 132,
-                  height: 110,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  shadowColor: '#4169E1',
-                  shadowOffset: { width: 0, height: 16 },
-                  shadowOpacity: 0.34,
-                  shadowRadius: 26,
-                  elevation: 12,
-                }}
-              >
-                <Image
-                  source={require('../../assets/classmate-logo-approved-transparent.png')}
-                  style={{ width: 132, height: 110 }}
-                  resizeMode="contain"
-                />
-              </View>
-
-              <View
-                style={{
-                  position: 'absolute',
-                  right: 6,
-                  bottom: 22,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderRadius: 16,
-                  backgroundColor: isDark ? '#172235' : '#ffffff',
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#edf1ff',
-                  shadowColor: '#0f172a',
-                  shadowOffset: { width: 0, height: 8 },
-                  shadowOpacity: 0.10,
-                  shadowRadius: 16,
-                  elevation: 6,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,122,145,0.14)', alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="sparkles-outline" size={15} color="#ff5a79" />
-                  </View>
-                  <View>
-                    <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>Quarter in motion</Text>
-                    <Text style={{ color: colors.textTertiary, fontSize: 11 }}>Stay ahead, not behind</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
+          <View style={{ alignItems: 'center', marginBottom: 18 }}>
+            <ClassMateMonogram isDark={isDark} />
 
             <Text
               style={{
-                fontSize: 15,
+                fontSize: 16,
                 fontWeight: '700',
                 color: colors.textTertiary,
                 textAlign: 'center',
-                marginBottom: 4,
+                marginTop: 18,
+                marginBottom: 6,
                 letterSpacing: 0.3,
               }}
             >
@@ -161,52 +131,78 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
             </Text>
             <Text
               style={{
-                fontSize: 50,
+                fontSize: 48,
+                lineHeight: 52,
                 fontWeight: '800',
+                letterSpacing: -2.2,
                 textAlign: 'center',
                 marginBottom: 12,
-                letterSpacing: -2.2,
-                lineHeight: 52,
               }}
             >
-              <Text style={{ color: isDark ? '#eef3ff' : '#16285b' }}>Class</Text>
-              <Text style={{ color: '#3D6CFF' }}>Mate</Text>
+              <Text style={{ color: isDark ? '#edf2ff' : '#16285b' }}>Class</Text>
+              <Text style={{ color: '#4169E1' }}>Mate</Text>
             </Text>
-            <Text style={{ fontSize: 16, lineHeight: 24, color: colors.textSecondary, textAlign: 'center', maxWidth: 310 }}>
-              Build your quarter, track your momentum, and keep your entire campus life beautifully in sync.
+            <Text
+              style={{
+                fontSize: 16,
+                lineHeight: 24,
+                color: colors.textSecondary,
+                textAlign: 'center',
+                maxWidth: 310,
+              }}
+            >
+              Keep your schedule, classmates, and campus conversations together in one calm place.
             </Text>
           </View>
 
-          <View style={{ gap: 12 }}>
-            {featureCards.map((feature) => (
+          <View
+            style={{
+              width: '100%',
+              gap: 12,
+            }}
+          >
+            {FEATURE_ROWS.map((feature) => (
               <View
                 key={feature.title}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  padding: 14,
-                  borderRadius: 20,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#f8faff',
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#edf1ff',
+                  paddingHorizontal: 6,
+                  paddingVertical: 4,
                 }}
               >
-                <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: 'rgba(65,105,225,0.12)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <View
+                  style={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 15,
+                    backgroundColor: isDark ? 'rgba(65,105,225,0.16)' : 'rgba(255,255,255,0.62)',
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(65,105,225,0.08)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 14,
+                  }}
+                >
                   <Ionicons name={feature.icon} size={20} color="#4169E1" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>{feature.title}</Text>
-                  <Text style={{ fontSize: 13, lineHeight: 18, color: colors.textTertiary }}>{feature.copy}</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
+                    {feature.title}
+                  </Text>
+                  <Text style={{ fontSize: 13, lineHeight: 18, color: colors.textTertiary }}>
+                    {feature.copy}
+                  </Text>
                 </View>
               </View>
             ))}
           </View>
         </View>
 
-        <View style={{ marginTop: 'auto' }}>
+        <View style={{ marginTop: 26, paddingTop: 6 }}>
           <TouchableOpacity
             onPress={onGetStarted}
-            activeOpacity={0.9}
+            activeOpacity={0.92}
             style={{
               backgroundColor: '#4169E1',
               borderRadius: 20,
@@ -216,8 +212,8 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
               justifyContent: 'center',
               gap: 8,
               shadowColor: '#4169E1',
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 0.30,
+              shadowOffset: { width: 0, height: 12 },
+              shadowOpacity: 0.28,
               shadowRadius: 18,
               elevation: 8,
             }}
@@ -226,19 +222,38 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
             <Ionicons name="arrow-forward" size={18} color="white" />
           </TouchableOpacity>
 
-          <Text style={{ color: colors.textTertiary, fontSize: 12, textAlign: 'center', marginTop: 12, marginBottom: 16 }}>
+          <Text
+            style={{
+              color: colors.textTertiary,
+              fontSize: 12,
+              lineHeight: 18,
+              textAlign: 'center',
+              marginTop: 12,
+              marginBottom: 18,
+              paddingHorizontal: 14,
+            }}
+          >
             Sign in with your university email to personalize your experience.
           </Text>
 
-          <LegalConsentText
-            onOpenDocument={setActiveDocument}
-            fontSize={10.5}
-            lineHeight={14}
-            color={colors.textTertiary}
-            linkColor="#4169E1"
-          />
+          <View
+            style={{
+              paddingTop: 4,
+              paddingBottom: 14,
+              paddingHorizontal: 8,
+            }}
+          >
+            <LegalConsentText
+              onOpenDocument={setActiveDocument}
+              fontSize={10.5}
+              lineHeight={14}
+              color={colors.textTertiary}
+              linkColor="#4169E1"
+            />
+          </View>
         </View>
       </ScrollView>
+
       <LegalDocumentModal
         visible={!!activeDocument}
         document={activeDocument ?? 'terms'}

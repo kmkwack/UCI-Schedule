@@ -975,3 +975,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64di (Slow down the post-onboarding ClassMate intro)
 - **`src/components/ClassMateIntroScreen.tsx`** — Increased the reveal timings and extended the auto-dismiss delay so the brand intro lingers long enough to actually read before it fades into the app.
+
+### Session 64dm (Restore visible university branding in school selection)
+- **`src/screens/UniversitySelectionScreen.tsx`** — Made the school logo tile more visible again by giving it a soft blue background, slightly enlarging the UCI monogram image, and switching fallback school text to brand blue so the university branding no longer disappears into the white card.

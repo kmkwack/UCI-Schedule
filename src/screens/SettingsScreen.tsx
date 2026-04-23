@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, Platform, Animated, PanResponder, Dimensions, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, Platform, Animated, PanResponder, Dimensions, Image, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
@@ -87,7 +87,7 @@ function SubHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: 8,
-      paddingHorizontal: 20, paddingTop: insets.top + 12, paddingBottom: 16,
+      paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16,
       borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, backgroundColor: colors.card,
     }}>
       <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -120,16 +120,37 @@ function DropdownPicker({ label, required, value, options, onSelect, searchable 
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const backdropAnim = useRef(new Animated.Value(0)).current;
+  const sheetAnim = useRef(new Animated.Value(500)).current;
+
   const filtered = searchable && search
     ? options.filter(o => o.toLowerCase().includes(search.toLowerCase()))
     : options;
+
+  const openPicker = () => {
+    setOpen(true);
+    setSearch('');
+    sheetAnim.setValue(500);
+    Animated.parallel([
+      Animated.timing(backdropAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }),
+    ]).start();
+  };
+
+  const closePicker = () => {
+    Animated.parallel([
+      Animated.timing(backdropAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(sheetAnim, { toValue: 500, duration: 220, useNativeDriver: true }),
+    ]).start(() => setOpen(false));
+  };
+
   return (
     <View style={{ marginBottom: 18 }}>
       <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>
         {label}{required && <Text style={{ color: colors.destructive }}> *</Text>}
       </Text>
       <TouchableOpacity
-        onPress={() => { setOpen(true); setSearch(''); }}
+        onPress={openPicker}
         style={{
           backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 12,
           paddingHorizontal: 14, paddingVertical: 13,
@@ -140,51 +161,61 @@ function DropdownPicker({ label, required, value, options, onSelect, searchable 
         <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }} activeOpacity={1} onPress={() => setOpen(false)}>
-          <TouchableOpacity activeOpacity={1} style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 32, maxHeight: '75%' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
-              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{label}</Text>
-              <TouchableOpacity onPress={() => setOpen(false)}>
-                <Ionicons name="close" size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
+      <Modal visible={open} transparent animationType="none" onRequestClose={closePicker}>
+        {/* Backdrop fades in/out independently of the sheet */}
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropAnim }]}>
+          <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }} activeOpacity={1} onPress={closePicker} />
+        </Animated.View>
+
+        {/* Sheet slides up/down */}
+        <Animated.View style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0,
+          backgroundColor: colors.card,
+          borderTopLeftRadius: 20, borderTopRightRadius: 20,
+          paddingBottom: 32, maxHeight: '75%',
+          transform: [{ translateY: sheetAnim }],
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{label}</Text>
+            <TouchableOpacity onPress={closePicker}>
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          {searchable && (
+            <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder={`Search ${label.toLowerCase()}…`}
+                placeholderTextColor={colors.placeholder}
+                autoFocus
+                style={{
+                  backgroundColor: colors.inputBg, borderRadius: 10,
+                  paddingHorizontal: 12, paddingVertical: 9,
+                  fontSize: 14, color: colors.text,
+                }}
+              />
             </View>
-            {searchable && (
-              <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
-                <TextInput
-                  value={search}
-                  onChangeText={setSearch}
-                  placeholder={`Search ${label.toLowerCase()}…`}
-                  placeholderTextColor={colors.placeholder}
-                  autoFocus
-                  style={{
-                    backgroundColor: colors.inputBg, borderRadius: 10,
-                    paddingHorizontal: 12, paddingVertical: 9,
-                    fontSize: 14, color: colors.text,
-                  }}
-                />
-              </View>
+          )}
+          <FlatList
+            data={filtered}
+            keyExtractor={item => item}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item: opt }) => (
+              <TouchableOpacity
+                onPress={() => { onSelect(opt); closePicker(); }}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                  paddingHorizontal: 20, paddingVertical: 14,
+                  borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
+                }}
+              >
+                <Text style={{ fontSize: 15, color: colors.text, flex: 1 }}>{opt}</Text>
+                {value === opt && <Ionicons name="checkmark" size={18} color={colors.brand} />}
+              </TouchableOpacity>
             )}
-            <FlatList
-              data={filtered}
-              keyExtractor={item => item}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item: opt }) => (
-                <TouchableOpacity
-                  onPress={() => { onSelect(opt); setOpen(false); setSearch(''); }}
-                  style={{
-                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                    paddingHorizontal: 20, paddingVertical: 14,
-                    borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
-                  }}
-                >
-                  <Text style={{ fontSize: 15, color: colors.text, flex: 1 }}>{opt}</Text>
-                  {value === opt && <Ionicons name="checkmark" size={18} color={colors.brand} />}
-                </TouchableOpacity>
-              )}
-            />
-          </TouchableOpacity>
-        </TouchableOpacity>
+          />
+        </Animated.View>
       </Modal>
     </View>
   );
@@ -1408,6 +1439,7 @@ export default function SettingsScreen({
             onSave={onSaveProfile}
             saving={savingProfile}
             onSaveSuccess={goBack}
+            headerPaddingTop={20}
           />
         );
       case 'privacy':
@@ -1451,7 +1483,7 @@ export default function SettingsScreen({
       <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
         <View style={{
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-          paddingHorizontal: 20, paddingTop: insets.top + 12, paddingBottom: 16,
+          paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16,
           backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
         }}>
           <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text }}>Settings</Text>

@@ -2,17 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Dimensions,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -122,10 +127,37 @@ function ProfileDropdownPicker({
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const backdropAnim = useRef(new Animated.Value(0)).current;
+  const sheetAnim = useRef(new Animated.Value(500)).current;
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   const filtered = searchable && search
     ? options.filter((option) => option.toLowerCase().includes(search.toLowerCase()))
     : options;
+
+  const openPicker = () => {
+    setOpen(true);
+    setSearch('');
+    sheetAnim.setValue(500);
+    backdropAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(backdropAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }),
+    ]).start();
+  };
+
+  const closePicker = () => {
+    Animated.parallel([
+      Animated.timing(backdropAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(sheetAnim, { toValue: 500, duration: 220, useNativeDriver: true }),
+    ]).start(() => setOpen(false));
+  };
 
   return (
     <View style={{ marginBottom: 18 }}>
@@ -134,10 +166,7 @@ function ProfileDropdownPicker({
         {required ? <Text style={{ color: colors.destructive }}> *</Text> : null}
       </Text>
       <TouchableOpacity
-        onPress={() => {
-          setOpen(true);
-          setSearch('');
-        }}
+        onPress={openPicker}
         style={{
           backgroundColor: colors.inputBg,
           borderWidth: 1,
@@ -156,20 +185,27 @@ function ProfileDropdownPicker({
         <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
-          activeOpacity={1}
-          onPress={() => setOpen(false)}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
+      <Modal visible={open} transparent animationType="none" onRequestClose={closePicker}>
+        {/* Visual backdrop — purely visual, never intercepts touches */}
+        <Animated.View
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)', opacity: backdropAnim }]}
+          pointerEvents="none"
+        />
+        {/* Full-screen layout container */}
+        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+          {/* Dismiss area above the sheet */}
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closePicker} />
+          <Animated.View
             style={{
               backgroundColor: colors.card,
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
-              paddingBottom: 32,
-              maxHeight: '75%',
+              paddingBottom: keyboardHeight > 0 ? 8 : 32,
+              maxHeight: keyboardHeight > 0
+                ? SCREEN_HEIGHT - keyboardHeight - 60
+                : SCREEN_HEIGHT * 0.75,
+              marginBottom: keyboardHeight,
+              transform: [{ translateY: sheetAnim }],
             }}
           >
             <View
@@ -184,7 +220,7 @@ function ProfileDropdownPicker({
               }}
             >
               <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{label}</Text>
-              <TouchableOpacity onPress={() => setOpen(false)}>
+              <TouchableOpacity onPress={closePicker}>
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -195,7 +231,6 @@ function ProfileDropdownPicker({
                   onChangeText={setSearch}
                   placeholder={`Search ${label.toLowerCase()}...`}
                   placeholderTextColor={colors.placeholder}
-                  autoFocus
                   style={{
                     backgroundColor: colors.inputBg,
                     borderRadius: 10,
@@ -214,9 +249,9 @@ function ProfileDropdownPicker({
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => {
+                    Keyboard.dismiss();
                     onSelect(item);
-                    setOpen(false);
-                    setSearch('');
+                    closePicker();
                   }}
                   style={{
                     flexDirection: 'row',
@@ -233,9 +268,10 @@ function ProfileDropdownPicker({
                 </TouchableOpacity>
               )}
             />
-          </TouchableOpacity>
-        </TouchableOpacity>
+          </Animated.View>
+        </View>
       </Modal>
+
     </View>
   );
 }
@@ -270,6 +306,7 @@ type Props = {
   saving?: boolean;
   saveLabel?: string;
   onSaveSuccess?: () => void;
+  headerPaddingTop?: number;
 };
 
 export default function ProfileEditorScreen({
@@ -283,12 +320,15 @@ export default function ProfileEditorScreen({
   saving,
   saveLabel = 'Save Changes',
   onSaveSuccess,
+  headerPaddingTop,
 }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [form, setForm] = useState<EditableProfile>(initialProfile);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [kbHeight, setKbHeight] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+  const dobRef = useRef<View>(null);
   const dobFocused = useRef(false);
 
   useEffect(() => {
@@ -296,15 +336,23 @@ export default function ProfileEditorScreen({
   }, [initialProfile]);
 
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      const h = e.endCoordinates.height;
+      setKbHeight(h);
       setKeyboardVisible(true);
-      if (dobFocused.current) {
-        requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 400, animated: true }));
+      if (dobFocused.current && dobRef.current && scrollRef.current) {
+        dobRef.current.measureLayout(
+          scrollRef.current as any,
+          (_x, y) => {
+            requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: y - 350, animated: true }));
+          },
+          () => {}
+        );
       }
     });
     const hide = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => setKeyboardVisible(false)
+      () => { setKeyboardVisible(false); setKbHeight(0); }
     );
 
     return () => {
@@ -378,7 +426,7 @@ export default function ProfileEditorScreen({
       <View
         style={{
           paddingHorizontal: 20,
-          paddingTop: insets.top + 12,
+          paddingTop: headerPaddingTop ?? insets.top + 12,
           paddingBottom: 16,
           borderBottomWidth: 1,
           borderBottomColor: colors.borderSubtle,
@@ -449,29 +497,31 @@ export default function ProfileEditorScreen({
               options={['Prefer not to say', 'Male', 'Female', 'Other']}
               onSelect={(value) => setForm((current) => ({ ...current, gender: value }))}
             />
-            {field(
-              'Date of Birth',
-              'dateOfBirth',
-              false,
-              'mm/dd/yyyy',
-              {
-                keyboardType: 'number-pad',
-                onFocus: () => {
-                  dobFocused.current = true;
+            <View ref={dobRef}>
+              {field(
+                'Date of Birth',
+                'dateOfBirth',
+                false,
+                'mm/dd/yyyy',
+                {
+                  keyboardType: 'number-pad',
+                  onFocus: () => {
+                    dobFocused.current = true;
+                  },
+                  onBlur: () => {
+                    dobFocused.current = false;
+                  },
+                  onChangeText: (text: string) => {
+                    const digits = text.replace(/\D/g, '').slice(0, 8);
+                    let formatted = digits;
+                    if (digits.length > 2) formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+                    if (digits.length > 4) formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+                    setForm((current) => ({ ...current, dateOfBirth: formatted }));
+                  },
                 },
-                onBlur: () => {
-                  dobFocused.current = false;
-                },
-                onChangeText: (text: string) => {
-                  const digits = text.replace(/\D/g, '').slice(0, 8);
-                  let formatted = digits;
-                  if (digits.length > 2) formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
-                  if (digits.length > 4) formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-                  setForm((current) => ({ ...current, dateOfBirth: formatted }));
-                },
-              },
-              dobError
-            )}
+                dobError
+              )}
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import ClassMateMonogram from '../components/ClassMateMonogram';
@@ -58,14 +58,13 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
         }}
       />
 
-      <ScrollView
-        contentContainerStyle={{
-          flexGrow: 1,
+      <View
+        style={{
+          flex: 1,
           paddingHorizontal: 24,
           paddingTop: 18,
           paddingBottom: 44,
         }}
-        showsVerticalScrollIndicator={false}
       >
         <View style={{ alignItems: 'center', marginBottom: 20 }}>
           <View
@@ -218,23 +217,9 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
             <Ionicons name="arrow-forward" size={18} color="white" />
           </TouchableOpacity>
 
-          <Text
-            style={{
-              color: colors.textTertiary,
-              fontSize: 12,
-              lineHeight: 18,
-              textAlign: 'center',
-              marginTop: 12,
-              marginBottom: 18,
-              paddingHorizontal: 14,
-            }}
-          >
-            Sign in with your university email to personalize your experience.
-          </Text>
-
           <View
             style={{
-              paddingTop: 4,
+              paddingTop: 12,
               paddingBottom: 14,
               paddingHorizontal: 8,
             }}
@@ -248,7 +233,7 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
             />
           </View>
         </View>
-      </ScrollView>
+      </View>
 
       <LegalDocumentModal
         visible={!!activeDocument}

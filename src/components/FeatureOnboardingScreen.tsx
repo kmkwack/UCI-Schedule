@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -344,10 +344,10 @@ export default function FeatureOnboardingScreen({ onFinish, finishing = false }:
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#08111d' : '#f7f8ff' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#08111d' : '#f7f8ff' }} edges={['top', 'left', 'right', 'bottom']}>
       <View style={{ position: 'absolute', top: -40, right: -30, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(61,108,255,0.16)' }} />
       <View style={{ position: 'absolute', top: 170, left: -60, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,107,107,0.10)' }} />
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 8, paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
+      <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 8, paddingBottom: 28 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <View>
             <Text style={{ fontSize: 12, fontWeight: '800', letterSpacing: 0.8, color: slide.accent }}>
@@ -458,7 +458,7 @@ export default function FeatureOnboardingScreen({ onFinish, finishing = false }:
             </TouchableOpacity>
           </View>
         </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }

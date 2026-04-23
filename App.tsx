@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Easing, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Alert, Animated, Dimensions, Easing, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -93,6 +93,10 @@ Notifications.setNotificationHandler({
   }),
 });
 
+
+// Supabase logs this to console before firing SIGNED_OUT when a stored refresh
+// token is invalid. We handle SIGNED_OUT in onAuthStateChange, so suppress the noise.
+LogBox.ignoreLogs(['Invalid Refresh Token', 'AuthApiError']);
 
 function parseCourseDays(daysString: string) {
   const result: string[] = [];
@@ -192,18 +196,30 @@ function AuthNavigator({
   const W = AUTH_SCREEN_W;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const prevLen = useRef(stack.length);
+  const wasPushRef = useRef(false);
 
-  useEffect(() => {
+  // useLayoutEffect fires before the native layer paints, so setValue(W) takes
+  // effect before the entering screen is drawn — no single-frame flash at x=0.
+  // useNativeDriver:false keeps animation on the JS thread so setValue is always
+  // immediately reflected without bridge/native-driver sync issues.
+  useLayoutEffect(() => {
     const prev = prevLen.current;
     prevLen.current = stack.length;
     if (stack.length > prev) {
+      wasPushRef.current = true;
       slideAnim.setValue(W);
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+    }
+  }, [stack.length]);
+
+  useEffect(() => {
+    if (wasPushRef.current) {
+      wasPushRef.current = false;
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: false, tension: 100, friction: 16 }).start();
     }
   }, [stack.length]);
 
   const goBack = () => {
-    Animated.timing(slideAnim, { toValue: W, duration: 260, useNativeDriver: true }).start(() => {
+    Animated.timing(slideAnim, { toValue: W, duration: 260, useNativeDriver: false }).start(() => {
       slideAnim.setValue(0);
       onPop();
     });
@@ -216,11 +232,11 @@ function AuthNavigator({
       if (gs.dx > W * 0.35 || gs.vx > 0.6) {
         goBack();
       } else {
-        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: false, tension: 100, friction: 16 }).start();
       }
     },
     onPanResponderTerminate: () => {
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: false, tension: 100, friction: 16 }).start();
     },
   })).current;
 
@@ -251,14 +267,35 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const insets = useSafeAreaInsets();
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
+  // Ref so the onAuthStateChange closure (created once) always sees current userId.
+  const userIdRef = useRef<string | null>(null);
+  userIdRef.current = userId;
 
-  // Clear any stale/invalid persisted session on startup so the refresh-token
-  // error doesn't surface to the user. Supabase will emit SIGNED_OUT internally
-  // if the stored token is no longer valid — we just make sure AsyncStorage is clean.
+  // When Supabase internally clears a session (e.g. auto-refresh gets
+  // "Invalid Refresh Token"), it fires SIGNED_OUT. Reset all app state so
+  // the user lands back on the auth flow instead of seeing a broken session.
+  // Guard: only act if the user was actually logged in — the sign-in flow calls
+  // supabase.auth.signOut() before starting OAuth and we must not treat that as logout.
   useEffect(() => {
-    supabase.auth.getSession().then(({ error }) => {
-      if (error) void supabase.auth.signOut();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' && userIdRef.current !== null) {
+        setUserId(null);
+        setUserEmail('');
+        setExpoPushToken(null);
+        setUserProfile(fallbackProfileFromEmail('student@uci.edu'));
+        setUserSettings(DEFAULT_USER_SETTINGS);
+        setTimetables([]);
+        setSelectedTimetableId(null);
+        setShowSettings(false);
+        setCurrentTab('home');
+        setNeedsProfileSetup(false);
+        setNeedsFeatureOnboarding(false);
+        setShowBrandIntro(false);
+        setSavingOnboarding(false);
+        setAuthStack(['welcome']);
+      }
     });
+    return () => subscription.unsubscribe();
   }, []);
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<EditableProfile>(fallbackProfileFromEmail('student@uci.edu'));
@@ -1542,30 +1579,33 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         </View>
       )}
 
-      {showSettings && (
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40, elevation: 40 }}>
-          <SettingsScreen
-            visible={showSettings}
-            onClose={() => setShowSettings(false)}
-            onLogout={handleLogout}
-            userName={displayUserName}
-            userEmail={userEmail}
-            userProfile={userProfile}
-            userSettings={userSettings}
-            useCelsius={useCelsius}
-            onUseCelsiusChange={setUseCelsius}
-            themePreference={themePreference}
-            onThemeChange={onThemeChange}
-            onSaveProfile={handleSaveProfile}
-            onSaveVisibility={handleSaveVisibility}
-            onSaveNotifications={handleSaveNotifications}
-            onRequestPushPermissions={handleRequestPushPermissions}
-            savingProfile={savingProfile}
-            savingVisibility={savingVisibility}
-            savingNotifications={savingNotifications}
-          />
-        </View>
-      )}
+      <Modal
+        visible={showSettings}
+        presentationStyle="pageSheet"
+        animationType="slide"
+        onRequestClose={() => setShowSettings(false)}
+      >
+        <SettingsScreen
+          visible={showSettings}
+          onClose={() => setShowSettings(false)}
+          onLogout={handleLogout}
+          userName={displayUserName}
+          userEmail={userEmail}
+          userProfile={userProfile}
+          userSettings={userSettings}
+          useCelsius={useCelsius}
+          onUseCelsiusChange={setUseCelsius}
+          themePreference={themePreference}
+          onThemeChange={onThemeChange}
+          onSaveProfile={handleSaveProfile}
+          onSaveVisibility={handleSaveVisibility}
+          onSaveNotifications={handleSaveNotifications}
+          onRequestPushPermissions={handleRequestPushPermissions}
+          savingProfile={savingProfile}
+          savingVisibility={savingVisibility}
+          savingNotifications={savingNotifications}
+        />
+      </Modal>
 
       {renderCoursePicker && (
         <Animated.View

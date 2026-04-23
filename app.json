@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "uci-app",
-    "slug": "uci-app",
-    "owner": "parksihyvn",
+    "slug": "classmate",
+    "owner": "seanss-organization",
     "scheme": "com.classmate.app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,7 +15,13 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.classmate.app"
+      "bundleIdentifier": "com.classmate.app",
+      "infoPlist": {
+        "UIApplicationSceneManifest": {
+          "UIApplicationSupportsMultipleScenes": false,
+          "UISceneConfigurations": {}
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -35,7 +41,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "7457ef6e-b024-4412-affe-805b27c53534"
+        "projectId": "b40288cf-e9ba-49ee-8c59-1bef199d37b4"
       }
     }
   }

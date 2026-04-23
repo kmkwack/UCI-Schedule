@@ -78,14 +78,13 @@ export function fallbackProfileFromEmail(email: string): EditableProfile {
     .split(/[._-]+/)
     .filter(Boolean)
     .map(prettifyNamePart);
-  const firstName = nameParts[0] ?? 'Student';
   const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
 
   return {
-    firstName,
+    firstName: '',
     middleName: '',
     lastName,
-    nickname: firstName,
+    nickname: '',
     email,
     year: 'Junior',
     major: 'Undeclared',

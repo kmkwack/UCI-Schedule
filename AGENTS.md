@@ -965,5 +965,13 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/components/FeatureOnboardingScreen.tsx`** — Removed the thin border treatment from the main onboarding card and its preview cards so the tutorial feels less boxed-in and no longer shows those subtle edge lines.
 - **`src/screens/WelcomeScreen.tsx`** — Removed the remaining subtle border outlines from the welcome pill and icon tiles so the first screen no longer shows extra boundary lines either.
 
+### Session 64dk (Require real ClassMate signup state before allowing sign-in)
+- **`src/screens/SignInScreen.tsx`** — Tightened the Google sign-in gate again so `Sign In` now rejects any account that lacks both a saved `user_settings` row and the explicit ClassMate signup metadata marker, instead of relying on a looser “fresh account” timing heuristic.
+- **`App.tsx`** — Added a second safety net so if an authenticated user somehow reaches the app without a `user_settings` row, ClassMate treats them as needing initial profile setup instead of dropping them straight onto the home screen.
+
+### Session 64dl (Make missing profile rows block sign-in)
+- **`src/screens/SignInScreen.tsx`** — Updated the sign-in verification to require a real `profiles` row before a user can enter the app. Accounts without a saved ClassMate profile now get signed back out and redirected toward account creation instead of slipping through login.
+- **`App.tsx`** — Removed the automatic post-login `profiles` upsert so the app no longer silently manufactures profile rows for users who never finished ClassMate signup. The preference loader now only falls back to profile setup when both `profiles` and `user_settings` are absent, preserving the first-time sign-up flow without weakening login checks.
+
 ### Session 64di (Slow down the post-onboarding ClassMate intro)
 - **`src/components/ClassMateIntroScreen.tsx`** — Increased the reveal timings and extended the auto-dismiss delay so the brand intro lingers long enough to actually read before it fades into the app.

@@ -19,14 +19,6 @@ type Props = {
   onGoToSignUp: () => void;
 };
 
-function looksLikeFreshAccount(createdAt?: string | null, lastSignInAt?: string | null) {
-  if (!createdAt || !lastSignInAt) return false;
-  const created = new Date(createdAt).getTime();
-  const signedIn = new Date(lastSignInAt).getTime();
-  if (!Number.isFinite(created) || !Number.isFinite(signedIn)) return false;
-  return Math.abs(signedIn - created) < 90 * 1000;
-}
-
 function GoogleIcon() {
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24">
@@ -82,27 +74,45 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
     }
 
     const hasSignupMarker = sd.user.user_metadata?.classmate_signup_started === true;
-    const { data: existingSettings, error: settingsError } = await supabase
-      .from('user_settings')
-      .select('user_id')
-      .eq('user_id', sd.user.id)
-      .maybeSingle();
+    const [{ data: existingProfile, error: profileError }, { data: existingSettings, error: settingsError }] =
+      await Promise.all([
+        supabase.from('profiles').select('id').eq('id', sd.user.id).maybeSingle(),
+        supabase.from('user_settings').select('user_id').eq('user_id', sd.user.id).maybeSingle(),
+      ]);
 
-    if (settingsError && settingsError.code !== 'PGRST116' && settingsError.code !== 'PGRST205') {
+    if (
+      (profileError && profileError.code !== 'PGRST116' && profileError.code !== 'PGRST205') ||
+      (settingsError && settingsError.code !== 'PGRST116' && settingsError.code !== 'PGRST205')
+    ) {
       await supabase.auth.signOut();
       Alert.alert('Sign-in failed', 'Could not verify your ClassMate account. Please try again.');
       return;
     }
 
-    if (
-      !hasSignupMarker &&
-      !existingSettings &&
-      looksLikeFreshAccount(sd.user.created_at, sd.user.last_sign_in_at ?? null)
-    ) {
+    if (!existingProfile) {
       await supabase.auth.signOut();
       Alert.alert(
         'No ClassMate account found',
         'It looks like this email has not signed up for ClassMate yet. Please create a new account first.',
+        [
+          {
+            text: 'Create account',
+            onPress: onGoToSignUp,
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+      return;
+    }
+
+    if (!hasSignupMarker && !existingSettings) {
+      await supabase.auth.signOut();
+      Alert.alert(
+        'ClassMate setup incomplete',
+        'This account does not have a saved ClassMate setup yet. Please create a new account first.',
         [
           {
             text: 'Create account',

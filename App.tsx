@@ -316,28 +316,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const currentSchool = selectedUniversity?.name ?? 'UC Irvine';
 
   useEffect(() => {
-    if (!userId || !userEmail) return;
-    async function ensureProfile() {
-      const fallbackName = userEmail.split('@')[0]
-        .split(/[._-]+/)
-        .filter(Boolean)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ') || 'Student';
-
-      const { error } = await supabase.from('profiles').upsert({
-        id: userId,
-        email: userEmail,
-        name: fallbackName,
-        school: currentSchool,
-        updated_at: new Date().toISOString(),
-      });
-
-      if (error) console.error('Failed to ensure profile:', error);
-    }
-    ensureProfile();
-  }, [currentSchool, userEmail, userId]);
-
-  useEffect(() => {
     if (Platform.OS === 'android') {
       void Notifications.setNotificationChannelAsync('reminders', {
         name: 'Reminders',
@@ -388,7 +366,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         )
       );
 
-      if (settingsDetails?.profileSetupComplete === false) {
+      if (!profileRow && !settingsRow) {
+        setNeedsProfileSetup(true);
+        setNeedsFeatureOnboarding(false);
+        setShowBrandIntro(false);
+      } else if (!settingsRow) {
+        setNeedsProfileSetup(true);
+        setNeedsFeatureOnboarding(false);
+        setShowBrandIntro(false);
+      } else if (settingsDetails?.profileSetupComplete === false) {
         setNeedsProfileSetup(true);
         setNeedsFeatureOnboarding(false);
         setShowBrandIntro(false);

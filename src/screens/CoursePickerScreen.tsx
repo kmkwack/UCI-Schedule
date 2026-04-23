@@ -320,18 +320,21 @@ export default function CoursePickerScreen({
     setPreviewCourse(null);
 
     const qk = quarterKey(selectedQuarter);
-    supabase
-      .from('sections')
-      .select('*')
-      .eq('department', selectedDept)
-      .eq('quarter_key', qk)
-      .then(({ data, error }) => {
-        if (error) { console.error('Supabase fetch failed:', error); setCatalogLoading(false); return; }
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('sections')
+          .select('*')
+          .eq('department', selectedDept)
+          .eq('quarter_key', qk);
+        if (error) { console.error('Supabase fetch failed:', error); return; }
         const { catalog, sections } = buildCatalogFromRows(data ?? []);
         setCatalogCourses(catalog);
         setSectionsMap(sections);
-      })
-      .finally(() => setCatalogLoading(false));
+      } finally {
+        setCatalogLoading(false);
+      }
+    })();
   }, [selectedDept, selectedQuarter]);
 
   // Fetch GE courses from Supabase when a GE category is selected
@@ -353,18 +356,21 @@ export default function CoursePickerScreen({
     setPreviewCourse(null);
 
     const qk = quarterKey(selectedQuarter);
-    supabase
-      .from('sections')
-      .select('*')
-      .eq('quarter_key', qk)
-      .contains('ge_categories', [selectedGE])
-      .then(({ data, error }) => {
-        if (error) { console.error('GE fetch failed:', error); setCatalogLoading(false); return; }
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('sections')
+          .select('*')
+          .eq('quarter_key', qk)
+          .contains('ge_categories', [selectedGE]);
+        if (error) { console.error('GE fetch failed:', error); return; }
         const { catalog, sections } = buildCatalogFromRows(data ?? []);
         setCatalogCourses(catalog);
         setSectionsMap(sections);
-      })
-      .finally(() => setCatalogLoading(false));
+      } finally {
+        setCatalogLoading(false);
+      }
+    })();
   }, [selectedGE, selectedQuarter]);
 
   const fetchEnrollment = async (course: CatalogCourse) => {

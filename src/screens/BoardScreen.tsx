@@ -365,7 +365,7 @@ export default function BoardScreen({
         validIds.map((id) => {
           const profile = profilesById[id];
           const fallbackName = profile?.name?.trim() || profile?.email?.split('@')[0] || anteaterAliasForId(id);
-          return [id, visibleById[id] ? fallbackName : undefined];
+          return [id, visibleById[id] ? fallbackName : anteaterAliasForId(id)];
         })
       ),
     };

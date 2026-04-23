@@ -345,7 +345,7 @@ export default function TimetableScreen({
   // Destructure applied settings from props
   const { theme, showCode, showClassName, showRoomNumber, showInstructor, showTime } = settings;
 
-  const timetableRef = useRef<View>(null);
+  const exportCaptureRef = useRef<View>(null);
   const screenWidth = Dimensions.get('window').width;
 
   // Drag-to-reorder state for timetable pills
@@ -412,6 +412,19 @@ export default function TimetableScreen({
   const codeFontSize = compactGrid ? 9 : 10;
   const metaFontSize = compactGrid ? 8 : 9;
   const timeFontSize = compactGrid ? 7 : 8;
+  const exportSnapshotWidth = Math.min(screenWidth - 28, 420);
+  const exportCardPadding = 16;
+  const exportGridLeftPad = 10;
+  const exportTimeLabelWidth = 34;
+  const exportUsableGridWidth =
+    exportSnapshotWidth - exportCardPadding * 2 - exportGridLeftPad - exportTimeLabelWidth;
+  const exportDayColumnWidth = exportUsableGridWidth / visibleDays.length;
+  const exportHourHeight = Math.max(22, Math.min(34, (screenHeight * 0.5) / Math.max(totalHours, 1)));
+  const exportTimetableHeight = exportHourHeight * totalHours;
+  const exportCompactGrid = visibleDays.length >= 6 || totalHours >= 9;
+  const exportCodeFontSize = exportCompactGrid ? 8 : 9;
+  const exportMetaFontSize = exportCompactGrid ? 7 : 8;
+  const exportTimeFontSize = exportCompactGrid ? 6 : 7;
 
   // Sync localOrder from props (skip while dragging), always sorted by order field
   useEffect(() => {
@@ -428,6 +441,11 @@ export default function TimetableScreen({
       .map(id => quarterTimetables.find(t => t.id === id))
       .filter((t): t is Timetable => !!t);
   }, [localOrder, quarterTimetables]);
+
+  const activeTimetable = useMemo(
+    () => orderedTimetables.find((t) => t.id === activeTimetableId) ?? orderedTimetables[0] ?? null,
+    [orderedTimetables, activeTimetableId]
+  );
 
   // Compute the flex x-offset of a pill based on widths of preceding pills + gaps
   function computePillFlexX(id: string, order: string[]): number {
@@ -662,6 +680,10 @@ export default function TimetableScreen({
     time:       pendingShowTime,
   };
 
+  async function createScheduleExportImage() {
+    return captureRef(exportCaptureRef, { format: 'png', quality: 1 });
+  }
+
   async function saveSchedule() {
     await new Promise<void>((r) => closeSettings(r));
     await new Promise((r) => setTimeout(r, 350));
@@ -671,7 +693,7 @@ export default function TimetableScreen({
         Alert.alert('Permission required', 'Please allow access to your photo library to save the schedule.');
         return;
       }
-      const uri = await captureRef(timetableRef, { format: 'png', quality: 1 });
+      const uri = await createScheduleExportImage();
       await MediaLibrary.saveToLibraryAsync(uri);
       Alert.alert('Saved!', 'Your schedule has been saved to your photo library.');
     } catch {
@@ -682,8 +704,21 @@ export default function TimetableScreen({
   async function shareSchedule() {
     await new Promise<void>((r) => closeSettings(r));
     await new Promise((r) => setTimeout(r, 350));
-    setErrorMessage('Sharing is not available yet. Stay tuned!');
-    setShowError(true);
+    try {
+      const isSharingAvailable = await Sharing.isAvailableAsync();
+      if (!isSharingAvailable) {
+        Alert.alert('Sharing unavailable', 'Sharing is not available on this device right now.');
+        return;
+      }
+
+      const uri = await createScheduleExportImage();
+      await Sharing.shareAsync(uri, {
+        mimeType: 'image/png',
+        dialogTitle: `${quarterLabel(selectedQuarter)} schedule`,
+      });
+    } catch {
+      Alert.alert('Error', 'Could not share the schedule. Please try again.');
+    }
   }
 
   function toggleDisplay(key: string) {
@@ -1395,36 +1430,35 @@ export default function TimetableScreen({
       <View style={{ height: 1, backgroundColor: colors.borderSubtle }} />
       </View>{/* end header area measurement wrapper */}
 
-      <ScrollView
-        ref={timetableScrollRef}
-        style={{ flex: 1 }}
-        scrollEnabled
-        showsVerticalScrollIndicator={false}
-        bounces
-        alwaysBounceVertical={false}
-        contentContainerStyle={{ paddingBottom: bottomInset + 96 }}
-      >
-      {/* Grid container */}
-      <View
-        ref={timetableRef}
-        collapsable={false}
-        style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8 }}
-        onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD - GRID_OUTER_HORIZONTAL_PADDING)}
-      >
-        <View
-          style={{
-            backgroundColor: gridFrameBg,
-            borderRadius: 22,
-            borderWidth: 1,
-            borderColor: gridFrameBorder,
-            overflow: 'hidden',
-            shadowColor: theme === 'dark' ? '#000' : '#cfd6e4',
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: theme === 'dark' ? 0.18 : 0.18,
-            shadowRadius: 18,
-            elevation: 4,
-          }}
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <ScrollView
+          ref={timetableScrollRef}
+          style={{ flex: 1 }}
+          scrollEnabled
+          showsVerticalScrollIndicator={false}
+          bounces
+          alwaysBounceVertical={false}
+          contentContainerStyle={{ paddingBottom: bottomInset + 96 }}
         >
+        {/* Grid container */}
+        <View
+          style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8 }}
+          onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD - GRID_OUTER_HORIZONTAL_PADDING)}
+        >
+          <View
+            style={{
+              backgroundColor: gridFrameBg,
+              borderRadius: 22,
+              borderWidth: 1,
+              borderColor: gridFrameBorder,
+              overflow: 'hidden',
+              shadowColor: theme === 'dark' ? '#000' : '#cfd6e4',
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: theme === 'dark' ? 0.18 : 0.18,
+              shadowRadius: 18,
+              elevation: 4,
+            }}
+          >
               {/* Day headers row */}
               <View
                 style={{
@@ -1597,61 +1631,323 @@ export default function TimetableScreen({
                   </View>
                 </View>
               </View>
-        </View>
-        </View>
-
-      {/* TBA / Online courses — below the grid */}
-      {tbaCourses.length > 0 && (
-        <View style={{
-          paddingHorizontal: 16, paddingTop: 6, paddingBottom: 0,
-          backgroundColor: 'transparent',
-        }}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {tbaCourses.map((course) => {
-              const { bg, text, border } = getBlockColors(course, theme);
-              return (
-                <TouchableOpacity
-                  key={course.id}
-                  activeOpacity={0.85}
-                  onPress={() => setSelectedCourse(course)}
-                  style={{
-                    backgroundColor: bg, borderRadius: 8,
-                    borderWidth: 1, borderColor: border,
-                    paddingHorizontal: 10, paddingVertical: 8,
-                    minWidth: 100, maxWidth: 160,
-                  }}
-                >
-                  {showCode && (
-                    <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1}>
-                      {course.code}
-                    </Text>
-                  )}
-                  {showClassName && (
-                    <Text style={{ color: text, fontWeight: '600', fontSize: 9, lineHeight: 12, opacity: 0.85 }} numberOfLines={2}>
-                      {course.title}
-                    </Text>
-                  )}
-                  {showInstructor && (
-                    <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
-                      {getProfLastName(course.professor)}
-                    </Text>
-                  )}
-                  <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
-                    {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
           </View>
-        </View>
-      )}
-      </ScrollView>
+          </View>
+
+        {/* TBA / Online courses — below the grid */}
+        {tbaCourses.length > 0 && (
+          <View style={{
+            paddingHorizontal: 16, paddingTop: 6, paddingBottom: 0,
+            backgroundColor: 'transparent',
+          }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {tbaCourses.map((course) => {
+                const { bg, text, border } = getBlockColors(course, theme);
+                return (
+                  <TouchableOpacity
+                    key={course.id}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedCourse(course)}
+                    style={{
+                      backgroundColor: bg, borderRadius: 8,
+                      borderWidth: 1, borderColor: border,
+                      paddingHorizontal: 10, paddingVertical: 8,
+                      minWidth: 100, maxWidth: 160,
+                    }}
+                  >
+                    {showCode && (
+                      <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1}>
+                        {course.code}
+                      </Text>
+                    )}
+                    {showClassName && (
+                      <Text style={{ color: text, fontWeight: '600', fontSize: 9, lineHeight: 12, opacity: 0.85 }} numberOfLines={2}>
+                        {course.title}
+                      </Text>
+                    )}
+                    {showInstructor && (
+                      <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
+                        {getProfLastName(course.professor)}
+                      </Text>
+                    )}
+                    <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
+                      {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+        </ScrollView>
+      </View>
 
       <ErrorScreen
         visible={showError}
         message={errorMessage}
         onDismiss={() => setShowError(false)}
       />
+
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: screenWidth + 40,
+          width: exportSnapshotWidth,
+        }}
+      >
+        <View
+          ref={exportCaptureRef}
+          collapsable={false}
+          style={{
+            width: exportSnapshotWidth,
+            padding: 14,
+            backgroundColor: isDark ? '#0b1220' : '#eef3ff',
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: gridFrameBg,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: gridFrameBorder,
+              padding: exportCardPadding,
+              shadowColor: theme === 'dark' ? '#000' : '#cfd6e4',
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: theme === 'dark' ? 0.16 : 0.16,
+              shadowRadius: 18,
+              elevation: 4,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.brand, letterSpacing: 0.6 }}>
+                  CLASSMATE
+                </Text>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 4 }}>
+                  {quarterLabel(selectedQuarter)}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                  {activeTimetable?.name ?? 'My Schedule'}
+                </Text>
+              </View>
+              <View
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  backgroundColor: colors.brandBg,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand }}>
+                  {scheduledCourses.length} classes
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={{
+                backgroundColor: gridFrameBg,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: gridFrameBorder,
+                overflow: 'hidden',
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  borderBottomWidth: 1,
+                  borderBottomColor: gridLine,
+                  paddingLeft: exportGridLeftPad,
+                  backgroundColor: gridHeaderBg,
+                }}
+              >
+                <View style={{ width: exportTimeLabelWidth }} />
+                {visibleDays.map((day) => (
+                  <View
+                    key={`export-header-${day}`}
+                    style={{
+                      width: exportDayColumnWidth,
+                      alignItems: 'center',
+                      paddingVertical: exportCompactGrid ? 6 : 8,
+                      borderLeftWidth: 1,
+                      borderLeftColor: gridLine,
+                      backgroundColor: gridHeaderBg,
+                    }}
+                  >
+                    <Text style={{ fontSize: exportCompactGrid ? 10 : 11, fontWeight: '700', color: colors.textSecondary }}>
+                      {DAY_LABEL[day]}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              <View style={{ backgroundColor: gridFrameBg, height: exportTimetableHeight }}>
+                <View style={{ flexDirection: 'row', paddingLeft: exportGridLeftPad }}>
+                  <View style={{ width: exportTimeLabelWidth, height: exportTimetableHeight }}>
+                    {hourLabels.map((hour, index) => (
+                      <View
+                        key={`export-hour-${hour}`}
+                        style={{
+                          position: 'absolute',
+                          top: index * exportHourHeight,
+                          height: exportHourHeight,
+                          left: -exportGridLeftPad,
+                          right: 0,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ fontSize: exportCompactGrid ? 9 : 10, fontWeight: '700', color: gridLabel }}>
+                          {formatHourLabel(hour)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <View
+                    style={{
+                      width: exportDayColumnWidth * visibleDays.length,
+                      height: exportTimetableHeight,
+                      position: 'relative',
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', height: exportTimetableHeight }}>
+                      {visibleDays.map((day) => (
+                        <View
+                          key={`export-col-${day}`}
+                          style={{
+                            width: exportDayColumnWidth,
+                            height: exportTimetableHeight,
+                            backgroundColor: gridFrameBg,
+                            borderLeftWidth: 1,
+                            borderLeftColor: gridLine,
+                          }}
+                        />
+                      ))}
+                    </View>
+
+                    {hourBoundaries.map((hour, index) => (
+                      <View
+                        key={`export-boundary-${hour}`}
+                        style={{
+                          position: 'absolute',
+                          top: index * exportHourHeight,
+                          left: -(exportTimeLabelWidth + exportGridLeftPad),
+                          right: 0,
+                          height: 1,
+                          backgroundColor: gridLine,
+                        }}
+                      />
+                    ))}
+
+                    {scheduledCourses.flatMap((course) => {
+                      const courseDays = getDaysArray(course.days);
+                      const startHour = getCourseStartHour(course.time);
+                      const endHour = getCourseEndHour(course.time);
+                      const top = (startHour - displayStartHour) * exportHourHeight;
+                      const height = (endHour - startHour) * exportHourHeight;
+                      const { bg, text, border } = getBlockColors(course, theme);
+
+                      return courseDays.map((day) => {
+                        const dayIndex = visibleDays.indexOf(day);
+                        if (dayIndex === -1) return null;
+                        const canShowSecondary = height >= 28;
+                        const canShowTime = height >= 42;
+
+                        return (
+                          <View
+                            key={`export-${course.id}-${day}`}
+                            style={{
+                              position: 'absolute',
+                              top: top + 1.5,
+                              left: dayIndex * exportDayColumnWidth + 1.5,
+                              width: exportDayColumnWidth - 3,
+                              height: Math.max(height - 3, 16),
+                              backgroundColor: bg,
+                              borderRadius: 7,
+                              borderWidth: 1,
+                              borderColor: border,
+                              paddingHorizontal: 4,
+                              paddingVertical: 3,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {showCode && (
+                              <Text
+                                style={{ color: text, fontWeight: '800', fontSize: exportCodeFontSize, lineHeight: exportCompactGrid ? 10 : 11 }}
+                                numberOfLines={1}
+                              >
+                                {course.code}
+                              </Text>
+                            )}
+                            {showClassName && canShowSecondary && (
+                              <Text
+                                style={{ color: text, fontWeight: '600', fontSize: exportMetaFontSize, lineHeight: exportCompactGrid ? 9 : 10, opacity: 0.88 }}
+                                numberOfLines={1}
+                              >
+                                {course.title}
+                              </Text>
+                            )}
+                            {showTime && canShowTime && (
+                              <Text
+                                style={{ color: text, fontSize: exportTimeFontSize, opacity: 0.68, marginTop: 1 }}
+                                numberOfLines={1}
+                              >
+                                {course.time}
+                              </Text>
+                            )}
+                          </View>
+                        );
+                      });
+                    })}
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {tbaCourses.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, marginBottom: 8 }}>
+                  TBA / Online
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {tbaCourses.map((course) => {
+                    const { bg, text, border } = getBlockColors(course, theme);
+                    return (
+                      <View
+                        key={`export-tba-${course.id}`}
+                        style={{
+                          backgroundColor: bg,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: border,
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          minWidth: 104,
+                          maxWidth: 180,
+                        }}
+                      >
+                        <Text style={{ color: text, fontWeight: '800', fontSize: 10 }} numberOfLines={1}>
+                          {course.code}
+                        </Text>
+                        <Text style={{ color: text, fontSize: 8, opacity: 0.82, marginTop: 2 }} numberOfLines={1}>
+                          {course.title}
+                        </Text>
+                        <Text style={{ color: text, fontSize: 8, opacity: 0.58, marginTop: 2, fontWeight: '600' }}>
+                          {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+      </View>
     </View>
   );
 }

@@ -978,3 +978,30 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64dm (Restore visible university branding in school selection)
 - **`src/screens/UniversitySelectionScreen.tsx`** — Made the school logo tile more visible again by giving it a soft blue background, slightly enlarging the UCI monogram image, and switching fallback school text to brand blue so the university branding no longer disappears into the white card.
+
+### Session 64dn (Set the production app name for TestFlight)
+- **`app.json`** — Changed the Expo app name from `uci-app` to `ClassMate` so the iOS build shows the correct product name in TestFlight and on installed devices.
+
+### Session 64do (Prepare Expo config for TestFlight permissions and submission)
+- **`app.json`** — Added Expo config plugins for `expo-image-picker`, `expo-media-library`, and `expo-notifications` with explicit iOS permission copy so photo attachments, saving schedules, and notifications are configured cleanly before a TestFlight build. Also set `ios.config.usesNonExemptEncryption` to `false` to simplify App Store Connect export-compliance handling.
+
+### Session 64dp (Save timetable as a single-screen image)
+- **`src/screens/TimetableScreen.tsx`** — Changed the save-capture target from the full scroll content to the visible timetable viewport wrapper so `Save Schedule` now exports a one-screen image instead of a long scrolling image.
+
+### Session 64dq (Compress saved timetable into a full overview snapshot)
+- **`src/screens/TimetableScreen.tsx`** — Reworked schedule saving again so it now captures a hidden export-only timetable layout with compressed hour spacing, a summary header, and compact TBA/Online chips. Saving no longer just crops the current viewport; long schedules are scaled down to fit into a single overview image.
+
+### Session 64dr (Implement timetable sharing from the same export image)
+- **`src/screens/TimetableScreen.tsx`** — Wired the `Share` button to generate the same compressed export image used for saving and open the native system share sheet through `expo-sharing`. Added device-availability and failure handling so sharing now works on supported platforms instead of showing a placeholder error.
+
+### Session 64ds (Remove unrelated design/reference folders from the app workspace)
+- **`AntAlmanac-main` / `Figma_design5`** — Deleted the unrelated reference/design folders from the repository root because they were not imported anywhere in the app and were only adding noise during project checks before TestFlight prep.
+
+### Session 64dt (Clean TypeScript/build blockers before TestFlight)
+- **`package.json` / `package-lock.json`** — Added the missing `@expo/vector-icons` dependency through `expo install` so the app’s icon imports resolve consistently in local checks and EAS builds.
+- **`src/screens/BoardScreen.tsx`** — Fixed the author-name map typing so hidden-profile fallbacks always stay strings instead of leaking `undefined` into the comment tree builder.
+- **`src/screens/CoursePickerScreen.tsx`** — Replaced direct `.finally()` calls on Supabase query builders with async IIFEs using `try/finally`, which removes the `PromiseLike` TypeScript errors while preserving the loading-state behavior.
+- **`tsconfig.json`** — Excluded `supabase/functions` from the app TypeScript project so Deno-only edge-function files do not pollute the mobile-app readiness check.
+
+### Session 64du (Adopt EAS remote app-version management)
+- **`eas.json`** — Updated the EAS CLI config to use `appVersionSource: "remote"` when the first production build was started. This lets EAS manage iOS build-number auto-incrementing cleanly for repeated TestFlight uploads.

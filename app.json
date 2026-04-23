@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "uci-app",
+    "name": "ClassMate",
     "slug": "classmate",
     "owner": "seanss-organization",
     "scheme": "com.classmate.app",
@@ -16,6 +16,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.classmate.app",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
         "UIApplicationSceneManifest": {
           "UIApplicationSupportsMultipleScenes": false,
@@ -36,6 +39,27 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ClassMate uses your photo library so you can attach images to community posts.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "ClassMate uses your photo library so you can save schedule snapshots and share campus content.",
+          "savePhotosPermission": "ClassMate saves your schedule snapshots to your photo library when you choose Save Schedule."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "reminders"
+        }
+      ],
       "expo-sharing",
       "expo-web-browser"
     ],

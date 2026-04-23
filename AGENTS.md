@@ -1005,3 +1005,11 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64du (Adopt EAS remote app-version management)
 - **`eas.json`** — Updated the EAS CLI config to use `appVersionSource: "remote"` when the first production build was started. This lets EAS manage iOS build-number auto-incrementing cleanly for repeated TestFlight uploads.
+
+### Session 64dv (Switch to an available iOS bundle identifier)
+- **`app.json`** — Changed the Expo URL scheme and iOS bundle identifier from `com.classmate.app` to `com.parksihyun.classmate` after Apple rejected the original identifier as unavailable for the current individual developer team during TestFlight build setup.
+
+### Session 64dw (Clean Expo readiness issues before submission)
+- **`package.json` / `package-lock.json`** — Installed `expo-font` and aligned Expo SDK patch versions (`expo`, `expo-auth-session`, `expo-media-library`, `react-native`) with Expo Doctor’s recommended SDK 55 releases so the app is less likely to hit native dependency issues outside Expo Go.
+- **`.gitignore` / `.expo/`** — Added a new ignore file with `.expo/`, `node_modules/`, and common local log files, then removed the tracked local `.expo` cache/log folder so machine-specific Expo state no longer pollutes project checks.
+- **`.easignore`** — Added a matching EAS ignore file to keep local Expo state and `node_modules` out of future cloud build uploads, which should make rebuilds lighter and cleaner.

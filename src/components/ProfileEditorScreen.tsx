@@ -327,9 +327,24 @@ export default function ProfileEditorScreen({
   const [form, setForm] = useState<EditableProfile>(initialProfile);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [kbHeight, setKbHeight] = useState(0);
+  const [footerHeight, setFooterHeight] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const dobRef = useRef<View>(null);
   const dobFocused = useRef(false);
+
+  const scrollDOBIntoView = (animated = true) => {
+    if (!dobRef.current || !scrollRef.current) return;
+    dobRef.current.measureLayout(
+      scrollRef.current as any,
+      (_x, y) => {
+        const targetY = Math.max(0, y - 140);
+        requestAnimationFrame(() => {
+          scrollRef.current?.scrollTo({ y: targetY, animated });
+        });
+      },
+      () => {}
+    );
+  };
 
   useEffect(() => {
     setForm(initialProfile);
@@ -340,14 +355,8 @@ export default function ProfileEditorScreen({
       const h = e.endCoordinates.height;
       setKbHeight(h);
       setKeyboardVisible(true);
-      if (dobFocused.current && dobRef.current && scrollRef.current) {
-        dobRef.current.measureLayout(
-          scrollRef.current as any,
-          (_x, y) => {
-            requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: y - 350, animated: true }));
-          },
-          () => {}
-        );
+      if (dobFocused.current) {
+        scrollDOBIntoView();
       }
     });
     const hide = Keyboard.addListener(
@@ -455,9 +464,15 @@ export default function ProfileEditorScreen({
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={{ padding: 20, paddingBottom: keyboardVisible ? 60 : 8 }}
+          contentContainerStyle={{
+            padding: 20,
+            paddingBottom: keyboardVisible
+              ? kbHeight + footerHeight + insets.bottom + 40
+              : Math.max(footerHeight + insets.bottom + 20, 96),
+          }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         >
           {field('First Name *', 'firstName')}
           {field('Middle Name', 'middleName', false, 'Optional')}
@@ -507,6 +522,7 @@ export default function ProfileEditorScreen({
                   keyboardType: 'number-pad',
                   onFocus: () => {
                     dobFocused.current = true;
+                    scrollDOBIntoView();
                   },
                   onBlur: () => {
                     dobFocused.current = false;
@@ -526,7 +542,10 @@ export default function ProfileEditorScreen({
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
+      <View
+        onLayout={(event) => setFooterHeight(event.nativeEvent.layout.height)}
+        style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}
+      >
         <TouchableOpacity
           disabled={saving}
           onPress={() => void handleSubmit()}

@@ -20,6 +20,7 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
+import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
 import ProfileEditorScreen from './src/components/ProfileEditorScreen';
 import type { ChatTarget } from './src/data/messages';
 import { Course, Quarter, QUARTERS, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey, getAcademicQuarterForDate, resolveCurrentQuarter } from './src/data/courses';
@@ -81,6 +82,14 @@ type SocialNotificationSnapshot = {
 };
 
 type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
+
+const DEFAULT_UNIVERSITY: University = {
+  id: '1',
+  name: 'UC Irvine',
+  domain: '@uci.edu',
+  location: 'Irvine, CA',
+  logo: 'UCI',
+};
 
 type AppContentProps = { themePreference: ThemePreference; onThemeChange: (v: ThemePreference) => void };
 
@@ -267,9 +276,48 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const insets = useSafeAreaInsets();
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
+  const [authInitializing, setAuthInitializing] = useState(true);
   // Ref so the onAuthStateChange closure (created once) always sees current userId.
   const userIdRef = useRef<string | null>(null);
   userIdRef.current = userId;
+
+  const hydrateUserFromSession = (sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> }) => {
+    setUserId(sessionUser.id);
+    setUserEmail(sessionUser.email ?? '');
+    const school = typeof sessionUser.user_metadata?.classmate_school === 'string'
+      ? sessionUser.user_metadata.classmate_school
+      : DEFAULT_UNIVERSITY.name;
+    if (school === DEFAULT_UNIVERSITY.name) {
+      setSelectedUniversity(DEFAULT_UNIVERSITY);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+
+    async function restoreSession() {
+      const { data, error } = await supabase.auth.getSession();
+      if (!active) return;
+
+      if (error) {
+        console.error('Failed to restore auth session:', error);
+        setAuthInitializing(false);
+        return;
+      }
+
+      const sessionUser = data.session?.user;
+      if (sessionUser) {
+        hydrateUserFromSession(sessionUser);
+      }
+      setAuthInitializing(false);
+    }
+
+    void restoreSession();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // When Supabase internally clears a session (e.g. auto-refresh gets
   // "Invalid Refresh Token"), it fires SIGNED_OUT. Reset all app state so
@@ -277,10 +325,17 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   // Guard: only act if the user was actually logged in — the sign-in flow calls
   // supabase.auth.signOut() before starting OAuth and we must not treat that as logout.
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+        hydrateUserFromSession(session.user);
+        setAuthInitializing(false);
+        return;
+      }
+
       if (event === 'SIGNED_OUT' && userIdRef.current !== null) {
         setUserId(null);
         setUserEmail('');
+        setSelectedUniversity(null);
         setExpoPushToken(null);
         setUserProfile(fallbackProfileFromEmail('student@uci.edu'));
         setUserSettings(DEFAULT_USER_SETTINGS);
@@ -290,6 +345,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         setCurrentTab('home');
         setNeedsProfileSetup(false);
         setNeedsFeatureOnboarding(false);
+        setShowNotificationPermissionPrompt(false);
         setShowBrandIntro(false);
         setSavingOnboarding(false);
         setAuthStack(['welcome']);
@@ -307,6 +363,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [authStack, setAuthStack] = useState<AuthScreen[]>(['welcome']);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [needsFeatureOnboarding, setNeedsFeatureOnboarding] = useState(false);
+  const [showNotificationPermissionPrompt, setShowNotificationPermissionPrompt] = useState(false);
   const [showBrandIntro, setShowBrandIntro] = useState(false);
   const [savingOnboarding, setSavingOnboarding] = useState(false);
   const pushAuth = (s: AuthScreen) => setAuthStack((prev) => prev[prev.length - 1] === s ? prev : [...prev, s]);
@@ -406,22 +463,27 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       if (!profileRow && !settingsRow) {
         setNeedsProfileSetup(true);
         setNeedsFeatureOnboarding(false);
+        setShowNotificationPermissionPrompt(false);
         setShowBrandIntro(false);
       } else if (!settingsRow) {
         setNeedsProfileSetup(true);
         setNeedsFeatureOnboarding(false);
+        setShowNotificationPermissionPrompt(false);
         setShowBrandIntro(false);
       } else if (settingsDetails?.profileSetupComplete === false) {
         setNeedsProfileSetup(true);
         setNeedsFeatureOnboarding(false);
+        setShowNotificationPermissionPrompt(false);
         setShowBrandIntro(false);
       } else if (hasCompletedProfileSetup(settingsDetails)) {
         setNeedsProfileSetup(false);
         if (needsInitialOnboarding(settingsDetails)) {
           setNeedsFeatureOnboarding(true);
+          setShowNotificationPermissionPrompt(false);
           setShowBrandIntro(false);
         } else {
           setNeedsFeatureOnboarding(false);
+          setShowNotificationPermissionPrompt(false);
           setShowBrandIntro(false);
         }
       }
@@ -1049,6 +1111,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setCurrentTab('home');
     setNeedsProfileSetup(false);
     setNeedsFeatureOnboarding(false);
+    setShowNotificationPermissionPrompt(false);
     setShowBrandIntro(false);
     setSavingOnboarding(false);
     setAuthStack(['welcome']);
@@ -1149,6 +1212,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       setNeedsProfileSetup(false);
       if (shouldStartOnboarding) {
         setNeedsFeatureOnboarding(true);
+        setShowNotificationPermissionPrompt(false);
         setShowBrandIntro(false);
       }
       return true;
@@ -1159,11 +1223,50 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
   };
 
-  const handleCompleteFeatureOnboarding = async () => {
+  const handleCompleteFeatureOnboarding = () => {
+    setNeedsFeatureOnboarding(false);
+    setShowNotificationPermissionPrompt(true);
+  };
+
+  const handleCompleteNotificationPrompt = async (enabled: boolean) => {
     setSavingOnboarding(true);
     try {
-      await saveUserSettingsRow(userSettings, userProfile, expoPushToken, true, true);
-      setNeedsFeatureOnboarding(false);
+      let nextPermissionStatus = userSettings.pushPermissionStatus;
+      let nextToken = expoPushToken;
+      const nextNotifications = {
+        ...userSettings.notifications,
+        pushNotifications: enabled,
+      };
+
+      if (enabled) {
+        nextPermissionStatus = await handleRequestPushPermissions();
+        if (nextPermissionStatus === 'granted') {
+          nextToken = await registerExpoPushToken();
+        } else {
+          nextNotifications.pushNotifications = false;
+          nextToken = null;
+          setExpoPushToken(null);
+          Alert.alert(
+            'Notifications stay off for now',
+            nextPermissionStatus === 'denied'
+              ? 'You can turn them back on later in Settings > Notifications.'
+              : 'Push notifications are not available right now, but you can try again later in Settings.'
+          );
+        }
+      } else {
+        nextToken = null;
+        setExpoPushToken(null);
+      }
+
+      const nextSettings = {
+        ...userSettings,
+        notifications: nextNotifications,
+        pushPermissionStatus: nextPermissionStatus,
+      };
+
+      await saveUserSettingsRow(nextSettings, userProfile, nextToken, true, true);
+      setUserSettings(nextSettings);
+      setShowNotificationPermissionPrompt(false);
       setShowBrandIntro(true);
     } catch {
       return;
@@ -1282,6 +1385,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   // ── auth screens ─────────────────────────────────────────────────────────────
 
+  if (authInitializing) {
+    return <View style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff' }} />;
+  }
+
   if (!userId) {
     const renderAuthScreen = (name: AuthScreen, goBack: () => void) => {
       if (name === 'welcome') {
@@ -1306,6 +1413,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               setUserProfile(fallbackProfileFromEmail(email));
               setNeedsProfileSetup(true);
               setNeedsFeatureOnboarding(false);
+              setShowNotificationPermissionPrompt(false);
               setShowBrandIntro(false);
             }}
             onGoToSignIn={() => replaceAuth('signin')}
@@ -1314,7 +1422,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       }
       return (
         <SignInScreen
-          university={selectedUniversity ?? { id: '1', name: 'UC Irvine', domain: '@uci.edu', location: 'Irvine, CA', logo: 'UCI' }}
+          university={selectedUniversity ?? DEFAULT_UNIVERSITY}
           onBack={goBack}
           onSignedIn={(id, email) => {
             setUserId(id);
@@ -1322,6 +1430,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             setUserProfile(fallbackProfileFromEmail(email));
             setNeedsProfileSetup(false);
             setNeedsFeatureOnboarding(false);
+            setShowNotificationPermissionPrompt(false);
             setShowBrandIntro(false);
           }}
           onGoToSignUp={() => pushAuth('signup')}
@@ -1349,6 +1458,16 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   if (showBrandIntro) {
     return <ClassMateIntroScreen onComplete={() => setShowBrandIntro(false)} />;
+  }
+
+  if (showNotificationPermissionPrompt) {
+    return (
+      <NotificationPermissionScreen
+        onEnable={() => handleCompleteNotificationPrompt(true)}
+        onSkip={() => handleCompleteNotificationPrompt(false)}
+        saving={savingOnboarding}
+      />
+    );
   }
 
   if (needsFeatureOnboarding) {

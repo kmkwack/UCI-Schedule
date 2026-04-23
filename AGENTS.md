@@ -1016,3 +1016,31 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64dx (Use app-scheme OAuth redirects instead of localhost)
 - **`src/screens/SignInScreen.tsx` / `src/screens/SignUpScreen.tsx`** — Replaced the raw `Linking.createURL('auth/callback')` redirect with a scheme-aware helper that prefers the configured Expo app scheme and falls back to `com.parksihyun.classmate`. This avoids Google auth bouncing to `localhost` in simulator/dev-client flows where no local web server is available.
+
+### Session 64dy (Restore persisted login sessions on app launch)
+- **`App.tsx`** — Added an initial `supabase.auth.getSession()` restore pass plus `INITIAL_SESSION` / `SIGNED_IN` / `TOKEN_REFRESHED` handling so saved Supabase sessions are hydrated when the app relaunches instead of sending users back to the welcome/login flow on every cold start.
+
+### Session 64dz (Keep tapped course visible when switching expanded rows)
+- **`src/screens/CoursePickerScreen.tsx`** — Added row-position tracking plus scroll-offset compensation to the course list so switching from one expanded course to another no longer yanks the newly tapped course off-screen when the previously expanded row collapses above it.
+
+### Session 64ea (Lower the entire welcome-screen stack)
+- **`src/screens/WelcomeScreen.tsx`** — Shifted the whole welcome layout slightly downward, including the CTA button and legal copy, so the first screen feels less top-heavy without changing the content itself.
+
+### Session 64eb (Reduce the welcome-screen legal copy size)
+- **`src/screens/WelcomeScreen.tsx`** — Lowered the `By continuing...` legal consent text size and line height on the welcome screen so the bottom copy feels lighter and less visually dominant.
+
+### Session 64ec (Force newly tapped course to stay visible after another collapses)
+- **`src/screens/CoursePickerScreen.tsx`** — Reworked the expanded-row scroll fix so when a different course is opened while another one is already expanded, the list now snaps the newly tapped course back near the top of the viewport after layout settles instead of only trying to compensate by height delta.
+
+### Session 64ed (Preserve the tapped course’s on-screen position)
+- **`src/screens/CoursePickerScreen.tsx`** — Adjusted the expanded-row scroll fix again so it keeps the newly tapped course at roughly the same viewport position it had before the other row collapsed, instead of snapping that course to the very top of the list.
+
+### Session 64ee (Allow multiple courses to stay expanded in search)
+- **`src/screens/CoursePickerScreen.tsx`** — Replaced the single-expanded-course behavior with independent per-course expand/collapse state so opening a new course no longer auto-collapses the one above it, which removes the scroll-jump problem entirely.
+
+### Session 64ef (Make DOB reachable on smaller signup screens)
+- **`src/components/ProfileEditorScreen.tsx`** — Reworked the profile editor’s keyboard handling so the Date of Birth field scrolls into view more reliably on shorter devices, with adaptive bottom padding based on keyboard height and footer height instead of a brittle hardcoded offset.
+
+### Session 64eg (Ask for notifications during first-run onboarding)
+- **`App.tsx`** — Inserted a first-run notification permission step between feature onboarding and the brand intro so new users can enable push notifications immediately instead of having to discover the setting later.
+- **`src/components/NotificationPermissionScreen.tsx`** — Added a dedicated onboarding screen that explains the benefit of reminders and social alerts, requests notification permission when the user taps enable, and falls back cleanly if permission is denied or unavailable.

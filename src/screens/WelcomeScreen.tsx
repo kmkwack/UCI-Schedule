@@ -62,139 +62,147 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
         style={{
           flex: 1,
           paddingHorizontal: 24,
-          paddingTop: 18,
-          paddingBottom: 44,
+          paddingTop: 10,
+          paddingBottom: 28,
+          transform: [{ translateY: 16 }],
         }}
       >
-        <View style={{ alignItems: 'center', marginBottom: 20 }}>
-          <View
-            style={{
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 999,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.82)',
-            }}
-          >
-            <Text style={{ color: '#4169E1', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }}>
-              ORGANIZE CAMPUS LIFE
-            </Text>
-          </View>
-        </View>
-
         <View
           style={{
-            alignItems: 'center',
-            paddingHorizontal: 6,
+            flex: 1,
+            justifyContent: 'center',
           }}
         >
-          <View
-            style={{
-              position: 'absolute',
-              top: 6,
-              right: 8,
-              width: 132,
-              height: 132,
-              borderRadius: 66,
-              backgroundColor: isDark ? 'rgba(65,105,225,0.12)' : 'rgba(65,105,225,0.10)',
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              top: 164,
-              left: -22,
-              width: 88,
-              height: 88,
-              borderRadius: 44,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,122,145,0.10)',
-            }}
-          />
-
-          <View style={{ alignItems: 'center', marginBottom: 18 }}>
-            <ClassMateMonogram isDark={isDark} />
-
-            <Text
+          <View style={{ alignItems: 'center', marginBottom: 24 }}>
+            <View
               style={{
-                fontSize: 16,
-                fontWeight: '700',
-                color: colors.textTertiary,
-                textAlign: 'center',
-                marginTop: 18,
-                marginBottom: 6,
-                letterSpacing: 0.3,
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 999,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.82)',
               }}
             >
-              Welcome to
-            </Text>
-            <Text
-              style={{
-                fontSize: 48,
-                lineHeight: 52,
-                fontWeight: '800',
-                letterSpacing: -2.2,
-                textAlign: 'center',
-                marginBottom: 12,
-              }}
-            >
-              <Text style={{ color: isDark ? '#edf2ff' : '#16285b' }}>Class</Text>
-              <Text style={{ color: '#4169E1' }}>Mate</Text>
-            </Text>
-            <Text
-              style={{
-                fontSize: 16,
-                lineHeight: 24,
-                color: colors.textSecondary,
-                textAlign: 'center',
-                maxWidth: 310,
-              }}
-            >
-              Keep your schedule, classmates, and campus conversations together in one calm place.
-            </Text>
+              <Text style={{ color: '#4169E1', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }}>
+                ORGANIZE CAMPUS LIFE
+              </Text>
+            </View>
           </View>
 
           <View
             style={{
-              width: '100%',
-              gap: 12,
+              alignItems: 'center',
+              paddingHorizontal: 6,
             }}
           >
-            {FEATURE_ROWS.map((feature) => (
-              <View
-                key={feature.title}
+            <View
+              style={{
+                position: 'absolute',
+                top: 6,
+                right: 8,
+                width: 132,
+                height: 132,
+                borderRadius: 66,
+                backgroundColor: isDark ? 'rgba(65,105,225,0.12)' : 'rgba(65,105,225,0.10)',
+              }}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                top: 184,
+                left: -22,
+                width: 88,
+                height: 88,
+                borderRadius: 44,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,122,145,0.10)',
+              }}
+            />
+
+            <View style={{ alignItems: 'center', marginBottom: 22 }}>
+              <ClassMateMonogram isDark={isDark} />
+
+              <Text
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: 6,
-                  paddingVertical: 4,
+                  fontSize: 16,
+                  fontWeight: '700',
+                  color: colors.textTertiary,
+                  textAlign: 'center',
+                  marginTop: 18,
+                  marginBottom: 6,
+                  letterSpacing: 0.3,
                 }}
               >
+                Welcome to
+              </Text>
+              <Text
+                style={{
+                  fontSize: 48,
+                  lineHeight: 52,
+                  fontWeight: '800',
+                  letterSpacing: -2.2,
+                  textAlign: 'center',
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ color: isDark ? '#edf2ff' : '#16285b' }}>Class</Text>
+                <Text style={{ color: '#4169E1' }}>Mate</Text>
+              </Text>
+              <Text
+                style={{
+                  fontSize: 16,
+                  lineHeight: 24,
+                  color: colors.textSecondary,
+                  textAlign: 'center',
+                  maxWidth: 310,
+                }}
+              >
+                Keep your schedule, classmates, and campus conversations together in one calm place.
+              </Text>
+            </View>
+
+            <View
+              style={{
+                width: '100%',
+                gap: 12,
+              }}
+            >
+              {FEATURE_ROWS.map((feature) => (
                 <View
+                  key={feature.title}
                   style={{
-                    width: 46,
-                    height: 46,
-                    borderRadius: 15,
-                    backgroundColor: isDark ? 'rgba(65,105,225,0.16)' : 'rgba(255,255,255,0.62)',
+                    flexDirection: 'row',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: 14,
+                    paddingHorizontal: 6,
+                    paddingVertical: 4,
                   }}
                 >
-                  <Ionicons name={feature.icon} size={20} color="#4169E1" />
+                  <View
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 15,
+                      backgroundColor: isDark ? 'rgba(65,105,225,0.16)' : 'rgba(255,255,255,0.62)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 14,
+                    }}
+                  >
+                    <Ionicons name={feature.icon} size={20} color="#4169E1" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
+                      {feature.title}
+                    </Text>
+                    <Text style={{ fontSize: 13, lineHeight: 18, color: colors.textTertiary }}>
+                      {feature.copy}
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
-                    {feature.title}
-                  </Text>
-                  <Text style={{ fontSize: 13, lineHeight: 18, color: colors.textTertiary }}>
-                    {feature.copy}
-                  </Text>
-                </View>
-              </View>
-            ))}
+              ))}
+            </View>
           </View>
         </View>
 
-        <View style={{ marginTop: 26, paddingTop: 6 }}>
+        <View style={{ marginTop: 18, paddingTop: 6 }}>
           <TouchableOpacity
             onPress={onGetStarted}
             activeOpacity={0.92}
@@ -226,8 +234,8 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
           >
             <LegalConsentText
               onOpenDocument={setActiveDocument}
-              fontSize={10.5}
-              lineHeight={14}
+              fontSize={9.5}
+              lineHeight={13}
               color={colors.textTertiary}
               linkColor="#4169E1"
             />

@@ -199,7 +199,7 @@ export default function CoursePickerScreen({
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [catalogCourses, setCatalogCourses] = useState<CatalogCourse[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
+  const [expandedCourseIds, setExpandedCourseIds] = useState<Record<string, boolean>>({});
   const [sectionsMap, setSectionsMap] = useState<Record<string, Course[]>>({});
   const [previewCourse, setPreviewCourse] = useState<Course | null>(null);
   const [enrollmentCache, setEnrollmentCache] = useState<Record<string, SectionEnrollment>>({});
@@ -212,7 +212,6 @@ export default function CoursePickerScreen({
   const [globalCatalog, setGlobalCatalog] = useState<CatalogCourse[]>([]);
   const [globalSectionsMap, setGlobalSectionsMap] = useState<Record<string, Course[]>>({});
   const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
-
   function buildCatalogFromRows(rows: any[]): { catalog: CatalogCourse[]; sections: Record<string, Course[]> } {
     const catalogMap: Record<string, CatalogCourse> = {};
     const rawSections: Record<string, any[]> = {};
@@ -307,7 +306,7 @@ export default function CoursePickerScreen({
       if (!selectedGE) {
         setCatalogCourses([]);
         setSectionsMap({});
-        setExpandedCourseId(null);
+        setExpandedCourseIds({});
         setPreviewCourse(null);
       }
       return;
@@ -316,7 +315,7 @@ export default function CoursePickerScreen({
     setCatalogLoading(true);
     setCatalogCourses([]);
     setSectionsMap({});
-    setExpandedCourseId(null);
+    setExpandedCourseIds({});
     setPreviewCourse(null);
 
     const qk = quarterKey(selectedQuarter);
@@ -343,7 +342,7 @@ export default function CoursePickerScreen({
       if (!selectedDept) {
         setCatalogCourses([]);
         setSectionsMap({});
-        setExpandedCourseId(null);
+        setExpandedCourseIds({});
         setPreviewCourse(null);
       }
       return;
@@ -352,7 +351,7 @@ export default function CoursePickerScreen({
     setCatalogLoading(true);
     setCatalogCourses([]);
     setSectionsMap({});
-    setExpandedCourseId(null);
+    setExpandedCourseIds({});
     setPreviewCourse(null);
 
     const qk = quarterKey(selectedQuarter);
@@ -412,14 +411,13 @@ export default function CoursePickerScreen({
   };
 
   const handleExpandCourse = (course: CatalogCourse) => {
-    if (expandedCourseId === course.id) {
-      setExpandedCourseId(null);
-      setPreviewCourse(null);
-    } else {
-      setExpandedCourseId(course.id);
-      setPreviewCourse(null);
-      fetchEnrollment(course);
-    }
+    const nextExpanded = !expandedCourseIds[course.id];
+    setExpandedCourseIds((prev) => ({
+      ...prev,
+      [course.id]: nextExpanded,
+    }));
+    if (nextExpanded) fetchEnrollment(course);
+    setPreviewCourse(null);
   };
 
   const isConflict = (candidate: Course) => {
@@ -819,7 +817,7 @@ export default function CoursePickerScreen({
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 30 }}
             renderItem={({ item }) => {
-              const isExpanded = expandedCourseId === item.id;
+              const isExpanded = !!expandedCourseIds[item.id];
               const activeSectionsMap = isGlobalSearch ? globalSectionsMap : sectionsMap;
               const sections = activeSectionsMap[item.id] ?? [];
 

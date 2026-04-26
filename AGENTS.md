@@ -1044,3 +1044,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64eg (Ask for notifications during first-run onboarding)
 - **`App.tsx`** — Inserted a first-run notification permission step between feature onboarding and the brand intro so new users can enable push notifications immediately instead of having to discover the setting later.
 - **`src/components/NotificationPermissionScreen.tsx`** — Added a dedicated onboarding screen that explains the benefit of reminders and social alerts, requests notification permission when the user taps enable, and falls back cleanly if permission is denied or unavailable.
+
+### Session 64eh (Add review-only email sign-in fallback)
+- **`src/screens/SignInScreen.tsx`** — Added a narrow email/password fallback section for App Review and other Duo-blocked cases, while keeping university Google sign-in as the primary path. The new flow reuses the existing ClassMate account checks so review accounts still need a real profile and saved setup before entering the app.

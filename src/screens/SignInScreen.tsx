@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
@@ -45,52 +45,34 @@ function GoogleIcon() {
 
 export default function SignInScreen({ university, onBack, onSignedIn, onGoToSignUp }: Props) {
   const [loading, setLoading] = useState(false);
+  const [reviewEmail, setReviewEmail] = useState('');
+  const [reviewPassword, setReviewPassword] = useState('');
   const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
   const hd = university.domain.replace('@', ''); // e.g. "uci.edu"
 
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    // Always sign out first so there's no auto-login from a persisted session
-    await supabase.auth.signOut();
-
-    const redirectTo = getOAuthRedirectUrl();
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo, queryParams: { hd, prompt: 'select_account' }, skipBrowserRedirect: true },
-    });
-    if (error || !data.url) {
-      setLoading(false);
-      Alert.alert('Sign-in failed', error?.message ?? 'Could not start sign-in');
-      return;
-    }
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-    setLoading(false);
-    if (result.type !== 'success') return;
-
-    const url = result.url;
-    const params = new URLSearchParams(url.split('#')[1] ?? url.split('?')[1] ?? '');
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    if (!accessToken) { Alert.alert('Sign-in failed', 'No token returned.'); return; }
-
-    const { data: sd, error: se } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken ?? '',
-    });
-    if (se || !sd.user) { Alert.alert('Sign-in failed', se?.message ?? 'Unknown error'); return; }
-
-    const email = sd.user.email ?? '';
-    if (!email.endsWith(hd)) {
+  const finalizeSignIn = async (
+    userId: string,
+    email: string,
+    options: { requireSchoolDomain: boolean }
+  ) => {
+    if (options.requireSchoolDomain && !email.endsWith(hd)) {
       await supabase.auth.signOut();
       Alert.alert('Wrong account', `Please sign in with your ${university.domain} email.`);
-      return;
+      return false;
     }
 
-    const hasSignupMarker = sd.user.user_metadata?.classmate_signup_started === true;
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      await supabase.auth.signOut();
+      Alert.alert('Sign-in failed', userError?.message ?? 'Could not verify your session.');
+      return false;
+    }
+
+    const hasSignupMarker = userData.user.user_metadata?.classmate_signup_started === true;
     const [{ data: existingProfile, error: profileError }, { data: existingSettings, error: settingsError }] =
       await Promise.all([
-        supabase.from('profiles').select('id').eq('id', sd.user.id).maybeSingle(),
-        supabase.from('user_settings').select('user_id').eq('user_id', sd.user.id).maybeSingle(),
+        supabase.from('profiles').select('id').eq('id', userId).maybeSingle(),
+        supabase.from('user_settings').select('user_id').eq('user_id', userId).maybeSingle(),
       ]);
 
     if (
@@ -118,7 +100,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
           },
         ]
       );
-      return;
+      return false;
     }
 
     if (!hasSignupMarker && !existingSettings) {
@@ -137,10 +119,75 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
           },
         ]
       );
+      return false;
+    }
+
+    onSignedIn(userId, email);
+    return true;
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    // Always sign out first so there's no auto-login from a persisted session
+    await supabase.auth.signOut();
+
+    const redirectTo = getOAuthRedirectUrl();
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo, queryParams: { hd, prompt: 'select_account' }, skipBrowserRedirect: true },
+    });
+    if (error || !data.url) {
+      setLoading(false);
+      Alert.alert('Sign-in failed', error?.message ?? 'Could not start sign-in');
+      return;
+    }
+    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+    setLoading(false);
+    if (result.type !== 'success') return;
+
+    const url = result.url;
+    const params = new URLSearchParams(url.split('#')[1] ?? url.split('?')[1] ?? '');
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    if (!accessToken) {
+      Alert.alert('Sign-in failed', 'No token returned.');
       return;
     }
 
-    onSignedIn(sd.user.id, email);
+    const { data: sd, error: se } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken ?? '',
+    });
+    if (se || !sd.user) {
+      Alert.alert('Sign-in failed', se?.message ?? 'Unknown error');
+      return;
+    }
+
+    await finalizeSignIn(sd.user.id, sd.user.email ?? '', { requireSchoolDomain: true });
+  };
+
+  const handleReviewSignIn = async () => {
+    if (!reviewEmail.trim() || !reviewPassword) {
+      Alert.alert('Missing information', 'Enter the review account email and password first.');
+      return;
+    }
+
+    setLoading(true);
+    await supabase.auth.signOut();
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: reviewEmail.trim(),
+      password: reviewPassword,
+    });
+
+    setLoading(false);
+
+    if (error || !data.user) {
+      Alert.alert('Sign-in failed', error?.message ?? 'Could not sign in with email and password.');
+      return;
+    }
+
+    await finalizeSignIn(data.user.id, data.user.email ?? reviewEmail.trim(), { requireSchoolDomain: false });
   };
 
   return (
@@ -227,6 +274,77 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
           <View style={{ flex: 1, height: 1, backgroundColor: '#e5e7eb' }} />
           <Text style={{ fontSize: 13, color: '#9ca3af' }}>or</Text>
           <View style={{ flex: 1, height: 1, backgroundColor: '#e5e7eb' }} />
+        </View>
+
+        <View
+          style={{
+            marginBottom: 24,
+            borderRadius: 18,
+            borderWidth: 1,
+            borderColor: '#e5e7eb',
+            backgroundColor: '#f8fafc',
+            padding: 16,
+            gap: 12,
+          }}
+        >
+          <View style={{ gap: 4 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827' }}>Review access</Text>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: '#6b7280' }}>
+              If your university sign-in uses Duo or another blocked step, use the review account credentials below.
+            </Text>
+          </View>
+          <TextInput
+            value={reviewEmail}
+            onChangeText={setReviewEmail}
+            placeholder="Review account email"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            textContentType="username"
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe2ea',
+              borderRadius: 12,
+              backgroundColor: 'white',
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              fontSize: 15,
+              color: '#111827',
+            }}
+          />
+          <TextInput
+            value={reviewPassword}
+            onChangeText={setReviewPassword}
+            placeholder="Review account password"
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="password"
+            secureTextEntry
+            style={{
+              borderWidth: 1,
+              borderColor: '#dbe2ea',
+              borderRadius: 12,
+              backgroundColor: 'white',
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              fontSize: 15,
+              color: '#111827',
+            }}
+          />
+          <TouchableOpacity
+            onPress={handleReviewSignIn}
+            disabled={loading}
+            style={{
+              borderRadius: 14,
+              backgroundColor: '#111827',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 14,
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: '700', color: 'white' }}>Sign in with email</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Create account link */}

@@ -9,6 +9,7 @@ export type SportsEvent = {
   color: string;
   bg: string;
   date: Date;
+  timeLabel?: string;
   sport: string;
   opponent: string;
   isHome: boolean;
@@ -53,6 +54,56 @@ function parseLocation(loc: string): string {
   return unescaped;
 }
 
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function stripHtml(value: string): string {
+  return decodeHtmlEntities(value)
+    .replace(/<!--\[-->/g, '')
+    .replace(/<!--\]-->/g, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseCompositeCalendarDate(dateText: string, timeText: string): Date | null {
+  const normalizedDate = dateText.replace(/\b([A-Za-z]{3})\./g, '$1');
+  const normalizedTime = timeText === 'TBA' ? '12:00 PM' : timeText;
+  const parsed = new Date(`${normalizedDate} ${normalizedTime}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseUpcomingHtmlSummary(summary: string): { sport: string; opponent: string; isHome: boolean } | null {
+  const cleaned = summary
+    .replace(/^UCI\s+/i, '')
+    .replace(/^UC Irvine\s+/i, '')
+    .trim();
+  const versusMatch = cleaned.match(/^(.*?)\s+(?:versus|vs\.?|vs)\s+(.+)$/i);
+  if (versusMatch) {
+    return {
+      sport: versusMatch[1].trim(),
+      opponent: versusMatch[2].trim().replace(/^#\d+\s+/, ''),
+      isHome: true,
+    };
+  }
+  const atMatch = cleaned.match(/^(.*?)\s+at\s+(.+)$/i);
+  if (atMatch) {
+    return {
+      sport: atMatch[1].trim(),
+      opponent: atMatch[2].trim().replace(/^#\d+\s+/, ''),
+      isHome: false,
+    };
+  }
+  return null;
+}
+
 function parseSummary(raw: string): { sport: string; opponent: string; isHome: boolean } | null {
   const s = raw.replace(/^\[.\]\s*/, '').replace(/^UCI\s+/, '');
   const vsIdx = s.indexOf(' vs ');
@@ -78,22 +129,78 @@ function parseSummary(raw: string): { sport: string; opponent: string; isHome: b
   return { sport, opponent, isHome };
 }
 
-export function formatSportsEventTime(date: Date): string {
+export function formatSportsEventTime(date: Date, timeLabel?: string): string {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const tomorrow = new Date(today.getTime() + 86400000);
   const eventDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const timeStr = timeLabel
+    ? timeLabel
+    : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
   if (eventDay.getTime() === today.getTime()) return `Today, ${timeStr}`;
   if (eventDay.getTime() === tomorrow.getTime()) return `Tomorrow, ${timeStr}`;
   return `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}, ${timeStr}`;
 }
 
+function parseSportsCompositeCalendarHtml(
+  text: string,
+  options?: { maxDaysAhead?: number; includePastDays?: number }
+): SportsEvent[] {
+  const maxDaysAhead = options?.maxDaysAhead ?? 2;
+  const includePastDays = options?.includePastDays ?? 0;
+  const today = new Date();
+  const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const results: SportsEvent[] = [];
+  const h3Matches = text.match(/<h3[^>]*>([\s\S]*?)<\/h3>/gi) ?? [];
+
+  for (const match of h3Matches) {
+    const heading = stripHtml(match);
+    if (!heading.startsWith('Upcoming Event:')) continue;
+
+    const parsedHeading = heading.match(/^Upcoming Event:\s*(.+?)\s+on\s+([A-Za-z]{3,4}\.?\s+\d{1,2},\s+\d{4})\s+at\s+(.+)$/i);
+    if (!parsedHeading) continue;
+
+    const [, summary, dateText, timeTextRaw] = parsedHeading;
+    const parsed = parseUpcomingHtmlSummary(summary);
+    if (!parsed) continue;
+
+    const timeLabel = timeTextRaw.trim();
+    const date = parseCompositeCalendarDate(dateText, timeLabel);
+    if (!date) continue;
+
+    const eventDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dayOffset = Math.round((eventDay.getTime() - todayMidnight.getTime()) / 86400000);
+    if (dayOffset < -includePastDays || dayOffset > maxDaysAhead) continue;
+
+    const sportShort = parsed.sport.replace(/^(Men's|Women's)\s+/i, '');
+    const style = getSportStyle(parsed.sport);
+
+    results.push({
+      id: `${sportShort}-${parsed.opponent}-${date.toISOString()}`,
+      title: `${sportShort} ${parsed.isHome ? 'vs' : 'at'} ${parsed.opponent}`,
+      location: parsed.isHome ? 'UCI Athletics' : 'Away',
+      icon: style.icon,
+      color: style.color,
+      bg: style.bg,
+      date,
+      timeLabel,
+      sport: sportShort,
+      opponent: parsed.opponent,
+      isHome: parsed.isHome,
+    });
+  }
+
+  return results.sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
 export function parseSportsCalendar(
   text: string,
   options?: { maxDaysAhead?: number; includePastDays?: number }
 ): SportsEvent[] {
+  if (!text.includes('BEGIN:VEVENT')) {
+    return parseSportsCompositeCalendarHtml(text, options);
+  }
   const maxDaysAhead = options?.maxDaysAhead ?? 2;
   const includePastDays = options?.includePastDays ?? 0;
   const unfolded = text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
@@ -135,6 +242,7 @@ export function parseSportsCalendar(
       color: style.color,
       bg: style.bg,
       date,
+      timeLabel: undefined,
       sport: sportShort,
       opponent,
       isHome,

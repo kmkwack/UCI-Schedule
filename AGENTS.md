@@ -1047,3 +1047,16 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64eh (Add review-only email sign-in fallback)
 - **`src/screens/SignInScreen.tsx`** — Added a narrow email/password fallback section for App Review and other Duo-blocked cases, while keeping university Google sign-in as the primary path. The new flow reuses the existing ClassMate account checks so review accounts still need a real profile and saved setup before entering the app.
+
+### Session 64ei (Keep board users anonymous while showing major/year)
+- **`src/screens/BoardScreen.tsx`** — Switched board post and comment display to always use anonymous Anteater IDs, while adding each user’s major and year as small secondary metadata next to the anonymous label. Also removed the old comment-name replacement that turned the original poster’s display name into `Author`; post owners now keep their anonymous ID and get a small `Author` badge only on their own comments so non-authors are no longer mislabeled.
+
+### Session 64ej (Add pull-to-refresh to community screens)
+- **`src/screens/BoardScreen.tsx`** — Added pull-to-refresh support to the main board list, board post list, and individual post detail view so dragging down refreshes the latest community posts and comments without leaving the screen.
+
+### Session 64ek (Dismiss keyboards after completion actions)
+- **`src/components/ProfileEditorScreen.tsx`**, **`src/components/ReviewsModal.tsx`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/MessagesScreen.tsx`**, **`src/screens/SettingsScreen.tsx`**, **`src/screens/SignInScreen.tsx`**, **`src/screens/UniversitySelectionScreen.tsx`** — Added `Keyboard.dismiss()` to key completion points such as save/submit/send buttons and selection confirmations so the keyboard drops away automatically once an action is finished or a picker selection has been made.
+
+### Session 64el (Restore Campus Events after UCI Athletics feed change)
+- **`src/data/sportsEvents.ts`** — Added a fallback parser for the new official UCI Athletics composite calendar HTML, including entity stripping, upcoming-event heading parsing, and support for `versus/at` event summaries and optional `TBA` time labels. The old ICS parser remains in place for compatibility.
+- **`src/screens/HomeScreen.tsx`** — Switched Campus Events from the broken `calendar.ics` URL to the live `https://ucirvinesports.com/calendar` page, added explicit sports loading state, and now shows a real empty-state message instead of getting stuck on “Loading upcoming games…” when no events are available.

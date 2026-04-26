@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Text,
@@ -375,7 +376,10 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
               returnKeyType="send"
             />
             <TouchableOpacity
-              onPress={() => { void handleSend(); }}
+              onPress={() => {
+                Keyboard.dismiss();
+                void handleSend();
+              }}
               disabled={!messageInput.trim() || sending}
               style={{
                 width: 40, height: 40, borderRadius: 20,

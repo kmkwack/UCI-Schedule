@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
@@ -172,6 +172,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
       return;
     }
 
+    Keyboard.dismiss();
     setLoading(true);
     await supabase.auth.signOut();
 

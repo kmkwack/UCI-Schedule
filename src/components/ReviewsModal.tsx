@@ -216,6 +216,7 @@ export default function ReviewsModal({
 
   async function handleSubmit() {
     if (!content.trim()) return;
+    Keyboard.dismiss();
     setSubmitting(true);
     let error;
     if (editingReviewId) {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -76,7 +76,10 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
             return (
               <TouchableOpacity
                 key={uni.id}
-                onPress={() => setSelected(uni)}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setSelected(uni);
+                }}
                 activeOpacity={0.85}
                 style={{
                   flexDirection: 'row', alignItems: 'center',
@@ -136,7 +139,10 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
       {selected && (
         <View style={{ paddingHorizontal: 24, paddingBottom: 32, paddingTop: 12 }}>
           <TouchableOpacity
-            onPress={() => onContinue(selected)}
+            onPress={() => {
+              Keyboard.dismiss();
+              onContinue(selected);
+            }}
             style={{
               backgroundColor: '#4169E1', borderRadius: 16,
               paddingVertical: 18, alignItems: 'center',

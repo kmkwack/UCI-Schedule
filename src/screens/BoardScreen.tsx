@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  RefreshControl,
   TextInput,
   KeyboardAvoidingView,
   Platform,
@@ -24,7 +25,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import type { ChatTarget } from '../data/messages';
-import { anteaterAliasForId, randomAnteaterAlias } from '../data/anonymousAliases';
+import { anteaterAliasForId } from '../data/anonymousAliases';
 
 type CommentRow = {
   id: string;
@@ -46,6 +47,7 @@ type CommentNode = {
   post_id: string;
   user_id: string;
   author_name: string;
+  author_meta: string | null;
   content: string;
   created_at: string;
   parent_comment_id: string | null;
@@ -58,6 +60,7 @@ type Post = {
   id: string;
   user_id: string;
   author_name: string;
+  author_meta: string | null;
   category: string;
   title: string;
   body: string;
@@ -196,6 +199,7 @@ function buildCommentTree(rows: CommentRow[], votes: CommentVoteRow[], userId: s
       post_id: row.post_id,
       user_id: row.user_id,
       author_name: authorNames[row.user_id] ?? row.author_name ?? anteaterAliasForId(row.user_id),
+      author_meta: null,
       content: row.content,
       created_at: row.created_at,
       parent_comment_id: row.parent_comment_id ?? null,
@@ -219,19 +223,14 @@ function buildCommentTree(rows: CommentRow[], votes: CommentVoteRow[], userId: s
   return roots;
 }
 
-function buildPostScopedAliasMap(rows: CommentRow[], postAuthorId: string) {
-  const aliasMap: Record<string, string> = {
-    [postAuthorId]: 'Author',
-  };
-  let anteaterNumber = 1;
+type AuthorSummary = {
+  displayName: string;
+  meta: string | null;
+};
 
-  rows.forEach((row) => {
-    if (!row.user_id || aliasMap[row.user_id]) return;
-    aliasMap[row.user_id] = `Anteater ${anteaterNumber}`;
-    anteaterNumber += 1;
-  });
-
-  return aliasMap;
+function formatAuthorMeta(major?: string | null, year?: string | null) {
+  const parts = [major?.trim(), year?.trim()].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : null;
 }
 
 type Props = {
@@ -282,6 +281,7 @@ export default function BoardScreen({
   const [requestBoardName, setRequestBoardName] = useState('');
   const [requestBoardDesc, setRequestBoardDesc] = useState('');
   const [submittingBoardRequest, setSubmittingBoardRequest] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const SCREEN_W = Dimensions.get('window').width;
   const boardSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
@@ -330,42 +330,42 @@ export default function BoardScreen({
     resetComposer();
   }
 
-  async function resolveAuthorNames(userIds: string[]) {
+  async function resolveAuthorSummaries(userIds: string[]): Promise<Record<string, AuthorSummary>> {
     const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
     if (uniqueIds.length === 0) return {};
 
     const validIds = uniqueIds.filter(isUuid);
-    const invalidNameMap = Object.fromEntries(uniqueIds.filter((id) => !isUuid(id)).map((id) => [id, anteaterAliasForId(id)]));
+    const invalidAuthorMap = Object.fromEntries(
+      uniqueIds
+        .filter((id) => !isUuid(id))
+        .map((id) => [id, { displayName: anteaterAliasForId(id), meta: null }])
+    );
 
-    if (validIds.length === 0) return invalidNameMap;
+    if (validIds.length === 0) return invalidAuthorMap;
 
-    const [{ data: profilesData, error: profilesError }, { data: settingsData, error: settingsError }] = await Promise.all([
-      supabase.from('profiles').select('id, name, email').in('id', validIds),
-      supabase.from('user_settings').select('user_id, profile_details').in('user_id', validIds),
-    ]);
+    const { data: profilesData, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, major, year')
+      .in('id', validIds);
 
     if (profilesError) console.error('Failed to load board profiles:', profilesError);
-    if (settingsError && settingsError.code !== 'PGRST205') {
-      console.error('Failed to load board visibility settings:', settingsError);
-    }
 
     const profilesById = Object.fromEntries(
-      ((profilesData ?? []) as Array<{ id: string; name: string | null; email: string | null }>).map((row) => [row.id, row])
-    );
-    const visibleById = Object.fromEntries(
-      ((settingsData ?? []) as Array<{ user_id: string; profile_details: Record<string, any> | null }>).map((row) => [
-        row.user_id,
-        row.profile_details?.boardProfileVisible === true,
-      ])
+      ((profilesData ?? []) as Array<{ id: string; major: string | null; year: string | null }>).map((row) => [row.id, row])
     );
 
     return {
-      ...invalidNameMap,
+      ...invalidAuthorMap,
       ...Object.fromEntries(
         validIds.map((id) => {
           const profile = profilesById[id];
-          const fallbackName = profile?.name?.trim() || profile?.email?.split('@')[0] || anteaterAliasForId(id);
-          return [id, visibleById[id] ? fallbackName : anteaterAliasForId(id)];
+          return [
+            id,
+            {
+              displayName: anteaterAliasForId(id),
+              meta: formatAuthorMeta(profile?.major, profile?.year),
+            },
+          ];
         })
       ),
     };
@@ -491,7 +491,7 @@ export default function BoardScreen({
       supabase.from('post_comments').select('id, post_id').in('post_id', postIds),
     ]);
 
-    const authorNames = await resolveAuthorNames(postsData.map((post: any) => post.user_id));
+    const authorSummaries = await resolveAuthorSummaries(postsData.map((post: any) => post.user_id));
     const likeCountMap: Record<string, number> = {};
     const userLikedSet = new Set<string>();
     (votesData ?? []).forEach((vote: any) => {
@@ -507,7 +507,8 @@ export default function BoardScreen({
     const freshPosts = postsData.map((post: any) => ({
       id: post.id,
       user_id: post.user_id,
-      author_name: authorNames[post.user_id] ?? post.author_name ?? anteaterAliasForId(post.user_id),
+      author_name: authorSummaries[post.user_id]?.displayName ?? anteaterAliasForId(post.user_id),
+      author_meta: authorSummaries[post.user_id]?.meta ?? null,
       category: post.category ?? 'General',
       title: post.title,
       body: post.body ?? '',
@@ -522,6 +523,19 @@ export default function BoardScreen({
     setPosts(freshPosts);
     setLoading(false);
     await AsyncStorage.setItem(postsCacheKey, JSON.stringify(freshPosts));
+  }
+
+  async function handleRefresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await fetchPosts();
+      if (selectedPost) {
+        await loadCommentsForPost(selectedPost.id);
+      }
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   async function loadCommentsForPost(postId: string) {
@@ -541,21 +555,30 @@ export default function BoardScreen({
 
     const commentRows = (commentsData ?? []) as CommentRow[];
     const commentIds = commentRows.map((comment) => comment.id);
-    const [{ data: commentVoteData, error: commentVotesError }, authorNames] = await Promise.all([
+    const [{ data: commentVoteData, error: commentVotesError }, authorSummaries] = await Promise.all([
       commentIds.length > 0
         ? supabase.from('post_comment_votes').select('comment_id, user_id').in('comment_id', commentIds)
         : Promise.resolve({ data: [], error: null }),
-      resolveAuthorNames(commentRows.map((comment) => comment.user_id)),
+      resolveAuthorSummaries(commentRows.map((comment) => comment.user_id)),
     ]);
 
     if (commentVotesError && (commentVotesError as any).code !== 'PGRST205') {
       console.error('Failed to load comment likes:', commentVotesError);
     }
 
-    const postAuthorId = selectedPost?.user_id ?? posts.find((post) => post.id === postId)?.user_id ?? '';
-    const scopedAliases = postAuthorId ? buildPostScopedAliasMap(commentRows, postAuthorId) : {};
-    const mergedNames = { ...authorNames, ...scopedAliases };
-    setComments(buildCommentTree(commentRows, ((commentVoteData ?? []) as CommentVoteRow[]), userId, mergedNames));
+    const authorNames = Object.fromEntries(
+      Object.entries(authorSummaries).map(([id, summary]) => [id, summary.displayName])
+    );
+    const commentTree = buildCommentTree(commentRows, ((commentVoteData ?? []) as CommentVoteRow[]), userId, authorNames).map(
+      (comment) => comment
+    );
+    const attachMeta = (nodes: CommentNode[]): CommentNode[] =>
+      nodes.map((node) => ({
+        ...node,
+        author_meta: authorSummaries[node.user_id]?.meta ?? null,
+        replies: attachMeta(node.replies),
+      }));
+    setComments(attachMeta(commentTree));
     setCommentsLoading(false);
   }
 
@@ -618,7 +641,8 @@ export default function BoardScreen({
   async function handleAddComment() {
     if (!commentInput.trim() || !selectedPost) return;
 
-    const authorName = boardProfileVisible ? boardAuthorName : randomAnteaterAlias();
+    Keyboard.dismiss();
+    const authorName = anteaterAliasForId(userId);
     const { error } = await supabase.from('post_comments').insert({
       post_id: selectedPost.id,
       user_id: userId,
@@ -649,12 +673,13 @@ export default function BoardScreen({
 
   async function handleCreatePost() {
     if (!newPostTitle.trim() || submittingPost) return;
+    Keyboard.dismiss();
     setSubmittingPost(true);
     setUploadingAttachments(true);
 
     const board = BOARDS.find((entry) => entry.id === newPostBoardId) ?? BOARDS[0];
     const category = board.category ?? 'General';
-    const authorName = boardProfileVisible ? boardAuthorName : randomAnteaterAlias();
+    const authorName = anteaterAliasForId(userId);
     try {
       const attachments = await Promise.all(newPostAttachments.map((attachment) => uploadAttachment(attachment)));
       const payload = {
@@ -696,6 +721,7 @@ export default function BoardScreen({
           id: data.id,
           user_id: data.user_id,
           author_name: authorName,
+          author_meta: formatAuthorMeta(null, null),
           category: data.category ?? 'General',
           title: data.title,
           body: data.body ?? '',
@@ -727,6 +753,7 @@ export default function BoardScreen({
           id: data.id,
           user_id: data.user_id,
           author_name: authorName,
+          author_meta: formatAuthorMeta(null, null),
           category: data.category ?? 'General',
           title: data.title,
           body: data.body ?? '',
@@ -858,6 +885,7 @@ export default function BoardScreen({
   async function submitReport() {
     if (!reportTarget || submittingReport) return;
 
+    Keyboard.dismiss();
     setSubmittingReport(true);
     const { error } = await supabase.from('reports').insert({
       reporter_id: userId,
@@ -891,6 +919,7 @@ export default function BoardScreen({
       Alert.alert('Board name required', 'Please enter a name for the board you are requesting.');
       return;
     }
+    Keyboard.dismiss();
     setSubmittingBoardRequest(true);
     const { error } = await supabase.from('board_requests').insert({
       requester_id: userId,
@@ -957,6 +986,23 @@ export default function BoardScreen({
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{comment.author_name ?? anteaterAliasForId(comment.user_id)}</Text>
+              {selectedPost?.user_id === comment.user_id ? (
+                <View
+                  style={{
+                    paddingHorizontal: 7,
+                    paddingVertical: 3,
+                    borderRadius: 999,
+                    backgroundColor: colors.brandBg,
+                    borderWidth: 1,
+                    borderColor: `${colors.brand}20`,
+                  }}
+                >
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: colors.brand }}>Author</Text>
+                </View>
+              ) : null}
+              {comment.author_meta ? (
+                <Text style={{ fontSize: 11, color: colors.textTertiary }}>{comment.author_meta}</Text>
+              ) : null}
               <Text style={{ fontSize: 11, color: colors.textTertiary }}>{timeAgo(comment.created_at)}</Text>
             </View>
             <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 20 }}>{comment.content}</Text>
@@ -1062,6 +1108,7 @@ export default function BoardScreen({
         ref={boardListScrollRef}
         contentContainerStyle={{ padding: 16, paddingBottom: bottomInset + 70 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={colors.brand} />}
       >
         {loading ? (
           <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
@@ -1204,10 +1251,21 @@ export default function BoardScreen({
               {(() => {
                 const post = posts.find((entry) => entry.id === selectedPost.id) ?? selectedPost;
                 return (
-                  <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+                  <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingBottom: 24 }}
+                    keyboardShouldPersistTaps="handled"
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={colors.brand} />}
+                  >
                     <View style={{ paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
                         <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{post.author_name}</Text>
+                        {post.author_meta ? (
+                          <>
+                            <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                            <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.author_meta}</Text>
+                          </>
+                        ) : null}
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
@@ -1500,7 +1558,12 @@ export default function BoardScreen({
                   <Text style={{ fontSize: 14, color: colors.border }}>Be the first to post!</Text>
                 </View>
               ) : (
-                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  style={{ flex: 1 }}
+                  contentContainerStyle={{ paddingBottom: 24 }}
+                  showsVerticalScrollIndicator={false}
+                  refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={colors.brand} />}
+                >
                   {filteredPosts.map((post, index) => (
                     <TouchableOpacity key={post.id} onPress={() => void openPost(post)} activeOpacity={0.8}>
                       <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>

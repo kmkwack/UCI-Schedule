@@ -514,6 +514,7 @@ export default function CoursePickerScreen({
       return;
     }
 
+    Keyboard.dismiss();
     const customCourse = buildCustomCourse(customCourseDraft);
     setShowCustomizeModal(false);
     handleAddToTable(customCourse);
@@ -641,7 +642,7 @@ export default function CoursePickerScreen({
 
           {/* Department / GE dropdown */}
           <TouchableOpacity
-            onPress={() => { setDeptDropdownOpen(true); setDeptSearch(''); }}
+            onPress={() => { Keyboard.dismiss(); setDeptDropdownOpen(true); setDeptSearch(''); }}
             style={{
               flexDirection: 'row',
               justifyContent: 'space-between',
@@ -716,7 +717,7 @@ export default function CoursePickerScreen({
                       const isSelected = selectedGE === ge.code;
                       return (
                         <TouchableOpacity
-                          onPress={() => { setSelectedGE(ge.code); setSelectedDept(''); setDeptDropdownOpen(false); setShowGESublist(false); setDeptSearch(''); }}
+                          onPress={() => { Keyboard.dismiss(); setSelectedGE(ge.code); setSelectedDept(''); setDeptDropdownOpen(false); setShowGESublist(false); setDeptSearch(''); }}
                           style={{
                             paddingVertical: 14,
                             borderBottomWidth: 1,
@@ -742,8 +743,8 @@ export default function CoursePickerScreen({
                     keyboardShouldPersistTaps="handled"
                     contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
                     ListHeaderComponent={
-                      <TouchableOpacity
-                        onPress={() => { setShowGESublist(true); setDeptSearch(''); }}
+                        <TouchableOpacity
+                        onPress={() => { Keyboard.dismiss(); setShowGESublist(true); setDeptSearch(''); }}
                         style={{
                           paddingVertical: 14,
                           borderBottomWidth: 1,
@@ -764,7 +765,7 @@ export default function CoursePickerScreen({
                       const isSelected = selectedDept === item;
                       return (
                         <TouchableOpacity
-                          onPress={() => { setSelectedDept(item); setSelectedGE(''); setDeptDropdownOpen(false); }}
+                          onPress={() => { Keyboard.dismiss(); setSelectedDept(item); setSelectedGE(''); setDeptDropdownOpen(false); }}
                           style={{
                             paddingVertical: 14,
                             borderBottomWidth: 1,

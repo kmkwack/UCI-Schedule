@@ -179,6 +179,7 @@ export default function HomeScreen({
   const scrollRef = useRef<ScrollView>(null);
   const [useCelsius, setUseCelsius] = useState(true);
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
+  const [sportsLoading, setSportsLoading] = useState(true);
   const [tempC, setTempC] = useState<number | null>(null);
   const [weatherCode, setWeatherCode] = useState<number | null>(null);
   const currentStopPulse = useState(() => new Animated.Value(0))[0];
@@ -208,14 +209,18 @@ export default function HomeScreen({
   useEffect(() => {
     async function loadSports() {
       const cached = await AsyncStorage.getItem('sports_cache');
-      if (cached) setSportsEvents(JSON.parse(cached).map((e: any) => ({ ...e, date: new Date(e.date) })));
+      if (cached) {
+        setSportsEvents(JSON.parse(cached).map((e: any) => ({ ...e, date: new Date(e.date) })));
+        setSportsLoading(false);
+      }
       try {
-        const r = await fetch('https://ucirvinesports.com/calendar.ics');
+        const r = await fetch('https://ucirvinesports.com/calendar');
         const text = await r.text();
         const events = parseSportsCalendar(text, { maxDaysAhead: 2, includePastDays: 0 });
         setSportsEvents(events);
         AsyncStorage.setItem('sports_cache', JSON.stringify(events));
       } catch {}
+      setSportsLoading(false);
     }
     loadSports();
   }, []);
@@ -638,7 +643,11 @@ export default function HomeScreen({
         </View>
 
         {sportsEvents.length === 0 ? (
-          <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading upcoming games…</Text>
+          sportsLoading ? (
+            <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading upcoming games…</Text>
+          ) : (
+            <Text style={{ fontSize: 14, color: colors.textTertiary }}>No upcoming campus events right now.</Text>
+          )
         ) : groupedSportsEvents.map((group, groupIndex) => (
           <View key={group.dayLabel} style={{ marginBottom: groupIndex === groupedSportsEvents.length - 1 ? 0 : 18 }}>
             <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 12 }}>
@@ -657,7 +666,7 @@ export default function HomeScreen({
                     <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
                       {event.title}
                     </Text>
-                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>{formatSportsEventTime(event.date)}</Text>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>{formatSportsEventTime(event.date, event.timeLabel)}</Text>
                     <Text style={{ fontSize: 13, color: colors.textTertiary }}>{event.location}</Text>
                   </View>
                 </View>

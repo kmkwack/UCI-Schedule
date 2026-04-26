@@ -424,6 +424,7 @@ export default function ProfileEditorScreen({
       return;
     }
 
+    Keyboard.dismiss();
     const saved = await onSave({ ...form, email: userEmail ?? form.email });
     if (saved) {
       onSaveSuccess?.();

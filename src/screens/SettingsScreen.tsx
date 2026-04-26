@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, Platform, Animated, PanResponder, Dimensions, Image, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, Platform, Animated, PanResponder, Dimensions, Image, StyleSheet, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
@@ -315,6 +315,7 @@ function PrivacySecurityScreen({
         <TouchableOpacity
           disabled={saving}
           onPress={async () => {
+            Keyboard.dismiss();
             const saved = await onSave({
               timetableVisibility: visibility,
               boardProfileVisible,
@@ -554,6 +555,7 @@ function NotificationsScreen({
               }
             }
 
+            Keyboard.dismiss();
             const saved = await onSave(nextNotifications, nextPermissionStatus);
             if (saved) onBack();
           }}

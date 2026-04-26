@@ -2,7 +2,7 @@
   "expo": {
     "name": "ClassMate",
     "slug": "classmate",
-    "owner": "parksihyun",
+    "owner": "hiiseans",
     "scheme": "com.parksihyun.classmate",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -41,7 +41,8 @@
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_AUDIO"
-      ]
+      ],
+      "package": "com.parksihyun.classmate"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -74,7 +75,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "29e496cc-1ff6-4471-9d56-e1b9128d7196"
+        "projectId": "cbef8d12-4f16-4858-bc73-635a6025e94e"
       }
     }
   }

@@ -1060,3 +1060,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64el (Restore Campus Events after UCI Athletics feed change)
 - **`src/data/sportsEvents.ts`** — Added a fallback parser for the new official UCI Athletics composite calendar HTML, including entity stripping, upcoming-event heading parsing, and support for `versus/at` event summaries and optional `TBA` time labels. The old ICS parser remains in place for compatibility.
 - **`src/screens/HomeScreen.tsx`** — Switched Campus Events from the broken `calendar.ics` URL to the live `https://ucirvinesports.com/calendar` page, added explicit sports loading state, and now shows a real empty-state message instead of getting stuck on “Loading upcoming games…” when no events are available.
+
+### Session 64em (Bump app version for a fresh external TestFlight review lane)
+- **`app.json`** — Updated the app version from `1.0.0` to `1.0.1` so a new external TestFlight review can be submitted while version `1.0.0` still has a build waiting for review.

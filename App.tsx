@@ -377,6 +377,65 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [gradesTabTapCount, setGradesTabTapCount] = useState(0);
   const [boardTabTapCount, setBoardTabTapCount] = useState(0);
   const [friendsTabTapCount, setFriendsTabTapCount] = useState(0);
+
+  const TABS = ['home', 'timetable', 'grades', 'board', 'friends'] as const;
+  const tabBarWidthRef = useRef(0);
+  const [tabBarReady, setTabBarReady] = useState(false);
+  const pillXAnim = useRef(new Animated.Value(0)).current;
+  const pillScaleAnim = useRef(new Animated.Value(1)).current;
+  const isDraggingPill = useRef(false);
+  const pillDragStartX = useRef(0);
+  const currentTabRef = useRef(currentTab);
+  currentTabRef.current = currentTab;
+
+  const pillPanResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderGrant: () => {
+      isDraggingPill.current = false;
+      pillDragStartX.current = (pillXAnim as any)._value;
+      Animated.spring(pillScaleAnim, { toValue: 1.15, useNativeDriver: false, tension: 300, friction: 10 }).start();
+    },
+    onPanResponderMove: (_, gs) => {
+      if (Math.abs(gs.dx) > 5) isDraggingPill.current = true;
+      if (!isDraggingPill.current) return;
+      const w = tabBarWidthRef.current;
+      const tabW = w / 5;
+      pillXAnim.setValue(Math.max(0, Math.min(w - tabW, pillDragStartX.current + gs.dx)));
+    },
+    onPanResponderRelease: (_, gs) => {
+      Animated.spring(pillScaleAnim, { toValue: 1, useNativeDriver: false, tension: 300, friction: 10 }).start();
+      if (isDraggingPill.current) {
+        const tabW = tabBarWidthRef.current / 5;
+        const nearestIdx = Math.max(0, Math.min(4, Math.round((pillXAnim as any)._value / tabW)));
+        Animated.spring(pillXAnim, { toValue: nearestIdx * tabW, useNativeDriver: false, tension: 160, friction: 18 }).start();
+        const newTab = TABS[nearestIdx];
+        if (newTab !== currentTabRef.current) {
+          if (newTab === 'friends') handleOpenFriendsTabRef.current?.();
+          else (setCurrentTab as (t: typeof TABS[number]) => void)(newTab);
+        }
+      } else {
+        const tab = currentTabRef.current;
+        if (tab === 'home') setHomeTabTapCount(c => c + 1);
+        else if (tab === 'timetable') setTimetableTabTapCount(c => c + 1);
+        else if (tab === 'grades') setGradesTabTapCount(c => c + 1);
+        else if (tab === 'board') setBoardTabTapCount(c => c + 1);
+        else if (tab === 'friends') setFriendsTabTapCount(c => c + 1);
+      }
+      isDraggingPill.current = false;
+    },
+    onPanResponderTerminate: () => {
+      isDraggingPill.current = false;
+      const tabW = tabBarWidthRef.current / 5;
+      Animated.spring(pillXAnim, { toValue: TABS.indexOf(currentTabRef.current) * tabW, useNativeDriver: false, tension: 160, friction: 18 }).start();
+      Animated.spring(pillScaleAnim, { toValue: 1, useNativeDriver: false, tension: 300, friction: 10 }).start();
+    },
+  })).current;
+
+  useEffect(() => {
+    if (!tabBarReady || isDraggingPill.current) return;
+    const tabW = tabBarWidthRef.current / 5;
+    Animated.spring(pillXAnim, { toValue: TABS.indexOf(currentTab) * tabW, useNativeDriver: false, tension: 160, friction: 18 }).start();
+  }, [currentTab, tabBarReady]);
   const [showCoursePicker, setShowCoursePicker] = useState(false);
   const [renderCoursePicker, setRenderCoursePicker] = useState(false);
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter>(getAcademicQuarterForDate(new Date()));
@@ -1379,9 +1438,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     userSettings,
   ]);
 
+  const handleOpenFriendsTabRef = useRef<(() => void) | null>(null);
   const handleOpenFriendsTab = () => {
     setCurrentTab('friends');
   };
+  handleOpenFriendsTabRef.current = handleOpenFriendsTab;
 
   // ── auth screens ─────────────────────────────────────────────────────────────
 
@@ -1564,42 +1625,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         justifyContent: 'center',
         paddingVertical: 7,
         paddingHorizontal: 4,
-        borderRadius: 19,
-        backgroundColor: active
-          ? (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.78)')
-          : 'transparent',
-        borderWidth: active ? 1 : 0,
-        borderColor: active
-          ? (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.95)')
-          : 'transparent',
-        shadowColor: active ? '#ffffff' : '#0f172a',
-        shadowOffset: { width: 0, height: active ? 2 : 0 },
-        shadowOpacity: active ? (isDark ? 0.08 : 0.35) : 0,
-        shadowRadius: active ? 8 : 0,
-        elevation: active ? 3 : 0,
       }}
       onPress={onPress}
     >
-      {active ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: 1,
-            left: 1,
-            right: 1,
-            height: '52%',
-            borderRadius: 18,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.52)',
-          }}
-        />
-      ) : null}
-      <Ionicons name={icon} size={20} color={active ? colors.brand : colors.textTertiary} />
+      <Ionicons name={icon} size={20} color={active ? colors.brand : colors.text} />
       <Text
         style={{
           marginTop: 2,
           fontSize: 10,
-          color: active ? colors.brand : colors.textTertiary,
+          color: active ? colors.brand : colors.text,
           fontWeight: active ? '600' : '400',
         }}
         numberOfLines={1}
@@ -1673,18 +1707,68 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         />
         <View
           style={{
-            flexDirection: 'row',
             paddingHorizontal: 10,
             paddingVertical: 5,
             borderRadius: 27,
             backgroundColor: isDark ? 'rgba(20,20,24,0.26)' : 'rgba(255,255,255,0.16)',
           }}
         >
-          <TabItem label="Home" icon="home-outline" active={currentTab === 'home'} onPress={() => { if (currentTab === 'home') setHomeTabTapCount(c => c + 1); else setCurrentTab('home'); }} />
-          <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => { if (currentTab === 'timetable') setTimetableTabTapCount(c => c + 1); else setCurrentTab('timetable'); }} />
-          <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => { if (currentTab === 'grades') setGradesTabTapCount(c => c + 1); else setCurrentTab('grades'); }} />
-          <TabItem label="Board" icon="clipboard-outline" active={currentTab === 'board'} onPress={() => { if (currentTab === 'board') setBoardTabTapCount(c => c + 1); else setCurrentTab('board'); }} />
-          <TabItem label="ClassMates" icon="person-add-outline" active={currentTab === 'friends'} onPress={() => { if (currentTab === 'friends') setFriendsTabTapCount(c => c + 1); else handleOpenFriendsTab(); }} />
+          <View
+            style={{ flexDirection: 'row' }}
+            onLayout={(e) => {
+              const w = e.nativeEvent.layout.width;
+              if (w <= 0) return;
+              tabBarWidthRef.current = w;
+              if (!tabBarReady) {
+                pillXAnim.setValue(TABS.indexOf(currentTab) * (w / 5));
+                setTabBarReady(true);
+              }
+            }}
+          >
+            {/* Glass pill — behind tab items so icons render on top */}
+            {tabBarReady && (
+              <Animated.View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  width: tabBarWidthRef.current / 5,
+                  borderRadius: 19,
+                  overflow: 'hidden',
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.38)',
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.7)',
+                  shadowColor: '#fff',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: isDark ? 0.06 : 0.35,
+                  shadowRadius: 6,
+                  transform: [{ translateX: pillXAnim }, { scale: pillScaleAnim }],
+                }}
+              >
+                <View pointerEvents="none" style={{ position: 'absolute', top: 1, left: 1, right: 1, height: '48%', borderRadius: 18, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.32)' }} />
+                <View pointerEvents="none" style={{ position: 'absolute', top: -4, left: 4, width: 28, height: 22, borderRadius: 11, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.18)', transform: [{ rotate: '-18deg' }] }} />
+              </Animated.View>
+            )}
+            <TabItem label="Home" icon="home-outline" active={currentTab === 'home'} onPress={() => { if (currentTab === 'home') setHomeTabTapCount(c => c + 1); else setCurrentTab('home'); }} />
+            <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => { if (currentTab === 'timetable') setTimetableTabTapCount(c => c + 1); else setCurrentTab('timetable'); }} />
+            <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => { if (currentTab === 'grades') setGradesTabTapCount(c => c + 1); else setCurrentTab('grades'); }} />
+            <TabItem label="Board" icon="clipboard-outline" active={currentTab === 'board'} onPress={() => { if (currentTab === 'board') setBoardTabTapCount(c => c + 1); else setCurrentTab('board'); }} />
+            <TabItem label="ClassMates" icon="person-add-outline" active={currentTab === 'friends'} onPress={() => { if (currentTab === 'friends') setFriendsTabTapCount(c => c + 1); else handleOpenFriendsTab(); }} />
+            {/* Transparent drag-capture layer — on top so PanResponder receives touches */}
+            {tabBarReady && (
+              <Animated.View
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  width: tabBarWidthRef.current / 5,
+                  transform: [{ translateX: pillXAnim }],
+                }}
+                {...pillPanResponder.panHandlers}
+              />
+            )}
+          </View>
         </View>
       </View>
 

@@ -1704,32 +1704,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         }}
       >
         <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 24,
-            width: 108,
-            height: 48,
-            borderRadius: 24,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.36)',
-            transform: [{ rotate: '-14deg' }],
-          }}
-        />
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: -6,
-            right: 42,
-            width: 132,
-            height: 54,
-            borderRadius: 27,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.28)',
-            transform: [{ rotate: '12deg' }],
-          }}
-        />
-        <View
           style={{
             paddingHorizontal: 10,
             paddingVertical: 5,
@@ -1769,10 +1743,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
                   shadowRadius: 6,
                   transform: [{ translateX: pillXAnim }, { scale: pillScaleAnim }],
                 }}
-              >
-                <View pointerEvents="none" style={{ position: 'absolute', top: 1, left: 1, right: 1, height: '48%', borderRadius: 18, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.32)' }} />
-                <View pointerEvents="none" style={{ position: 'absolute', top: -4, left: 4, width: 28, height: 22, borderRadius: 11, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.18)', transform: [{ rotate: '-18deg' }] }} />
-              </Animated.View>
+              />
             )}
             <TabItem label="Today" icon="home-outline" active={currentTab === 'home'} onPress={() => { if (currentTab === 'home') setHomeTabTapCount(c => c + 1); else setCurrentTab('home'); }} />
             <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => { if (currentTab === 'timetable') setTimetableTabTapCount(c => c + 1); else setCurrentTab('timetable'); }} />

@@ -1246,3 +1246,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/screens/FriendsScreen.tsx`** — Changed shared-class grouping to dedupe by course code instead of section id so the same course, such as `ECON 129`, appears only once in the shared-classes block.
 - **`src/screens/BoardScreen.tsx`** — Moved the Board title/actions into the main scroll content so the header scrolls away like Today and Grades.
 - **`src/screens/TimetableScreen.tsx`** — Moved the Timetable title, quarter picker, settings button, and plan tabs into the timetable scroll content so screen headers behave consistently across the app.
+
+### Session 64gp (Remove tab bar streak artifacts)
+- **`App.tsx`** — Removed decorative glass highlight layers from the bottom tab bar and active pill because they appeared as stray double-line marks on the Home tab bar in the built app.

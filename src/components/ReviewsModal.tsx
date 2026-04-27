@@ -66,6 +66,14 @@ function formatFinalExam(fe: FinalExam | string | null): string | null {
   return parts.length ? parts.join(' · ') : null;
 }
 
+function finalExamFallback(sectionComment?: string | null): string {
+  const trimmed = sectionComment?.trim() ?? '';
+  if (trimmed && /final|exam/i.test(trimmed)) {
+    return trimmed;
+  }
+  return 'Final exam details are not available in the current course data. Check WebSOC, Canvas, or your instructor for the latest final exam information.';
+}
+
 const courseInfoCache: Record<string, CourseInfo> = {};
 
 type GradeDistribution = {
@@ -184,16 +192,14 @@ export default function ReviewsModal({
       .eq('code', courseCode)
       .limit(1)
       .single();
-    if (data) {
-      const info: CourseInfo = {
-        finalExam: data.final_exam ?? null,
-        restrictions: data.restrictions ?? null,
-        prerequisiteLink: data.prerequisite_link ?? null,
-        sectionComment: data.section_comment ?? null,
-      };
-      courseInfoCache[courseCode] = info;
-      setCourseInfo(info);
-    }
+    const info: CourseInfo = {
+      finalExam: data?.final_exam ?? null,
+      restrictions: data?.restrictions ?? null,
+      prerequisiteLink: data?.prerequisite_link ?? null,
+      sectionComment: data?.section_comment ?? null,
+    };
+    courseInfoCache[courseCode] = info;
+    setCourseInfo(info);
     setCourseInfoLoading(false);
   }
 
@@ -313,10 +319,9 @@ export default function ReviewsModal({
                       <ActivityIndicator size="small" color={colors.brand} />
                     </View>
                   ) : courseInfo && (() => {
-                    const finalStr = formatFinalExam(courseInfo.finalExam);
+                    const finalStr = formatFinalExam(courseInfo.finalExam) ?? finalExamFallback(courseInfo.sectionComment);
                     const restrictionStr = decodeRestrictions(courseInfo.restrictions);
                     const comment = courseInfo.sectionComment?.trim() || null;
-                    if (!restrictionStr && !finalStr && !courseInfo.prerequisiteLink && !comment) return null;
                     return (
                       <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, gap: 10 }}>
                         {restrictionStr ? (

@@ -42,8 +42,6 @@ const UCI_LOCATION_MAP: Record<string, UciMapLocation> = {
 };
 
 const LOCATION_ALIASES: Record<string, string> = {
-  SSLH: 'SSL',
-  SSTR: 'SST',
   SSPA: 'SSPA',
   SSPB: 'SSPB',
   SEI: 'SE',

@@ -1077,3 +1077,10 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64eq (Add section-code search and ClassMate demand signals to course picker)
 - **`src/screens/CoursePickerScreen.tsx`** — Expanded course search so students can also find courses by 5-digit section code, both in department/global search and in the local expanded-section filter.
 - **`src/screens/CoursePickerScreen.tsx`** — Added ClassMate-specific metadata to each section card: the average review rating from this app’s `reviews` table and the number of unique users who have saved that exact section in their timetable for the selected quarter, giving students an in-app demand signal rather than relying on official enrollment alone.
+
+### Session 64er (Expand UCI map coverage and add final-exam fallback guidance)
+- **`src/data/uciLocations.ts`** — Expanded the UCI building map with more common classroom/location codes and added alias handling so more abbreviated room strings resolve to a map preview instead of falling back to plain text only.
+- **`src/components/ReviewsModal.tsx`** — Added a final-exam fallback message so courses without `final_exam` data still show a helpful “check WebSOC/Canvas/instructor” note instead of leaving the finals section blank.
+
+### Session 64es (Stop incorrectly merging distinct Social Sciences buildings)
+- **`src/data/uciLocations.ts`** — Removed the incorrect alias mappings that treated `SSTR` as `SST` and `SSLH` as `SSL`, so those UCI location codes are no longer collapsed into the wrong building during map resolution.

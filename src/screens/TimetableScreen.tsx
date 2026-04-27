@@ -85,6 +85,32 @@ type Props = {
 
 let seededQuartersCache: Set<string> | null = null;
 
+async function prefetchSeededQuarters() {
+  if (seededQuartersCache) return;
+  const allCandidates: Quarter[] = [];
+  for (let year = 2020; year <= 2026; year++) {
+    allCandidates.push(
+      { year: String(year), quarter: 'Winter' },
+      { year: String(year), quarter: 'Spring' },
+      { year: String(year), quarter: 'Summer1' },
+      { year: String(year), quarter: 'Summer10wk' },
+      { year: String(year), quarter: 'Summer2' },
+      { year: String(year), quarter: 'Fall' },
+    );
+  }
+  const results = await Promise.all(
+    allCandidates.map(async (q) => {
+      const { count } = await supabase
+        .from('sections')
+        .select('*', { count: 'exact', head: true })
+        .eq('quarter_key', quarterKey(q));
+      return (count ?? 0) > 0 ? q : null;
+    })
+  );
+  const seeded = results.filter((q): q is Quarter => q !== null);
+  seededQuartersCache = new Set(seeded.map((q) => quarterKey(q)));
+}
+
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
 const DEFAULT_START_HOUR = 8;
 const DEFAULT_END_HOUR = 17;
@@ -171,6 +197,8 @@ export default function TimetableScreen({
   useEffect(() => {
     if (scrollToTopTrigger > 0) timetableScrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [scrollToTopTrigger]);
+
+  useEffect(() => { prefetchSeededQuarters(); }, []);
   const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
   const quarterDropdownAnim = useRef(new Animated.Value(0)).current;
   const quarterItemAnims = useRef<Animated.Value[]>([]);

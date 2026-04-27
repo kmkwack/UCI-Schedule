@@ -229,6 +229,9 @@ const QUARTERS = [
 ### Session 68 (Settings sheet tap-outside-to-dismiss)
 - `App.tsx` — Replaced `presentationStyle="pageSheet" animationType="slide"` settings Modal with a `transparent animationType="none"` custom sheet. Added `settingsBackdropAnim` + `settingsSheetAnim` animated values, `openSettingsSheet` / `closeSettingsSheet` helpers. Backdrop `TouchableOpacity` covers the full screen behind the sheet so tapping above dismisses it.
 
+### Session 73 (Prefetch seeded quarters on mount)
+- `src/screens/TimetableScreen.tsx` — Extracted the Supabase quarter-availability fetch into a module-level `prefetchSeededQuarters()` function. Added `useEffect` on mount to call it, so `seededQuartersCache` is populated silently in the background when the screen first loads. The Add Quarter modal now opens instantly on first use instead of showing a loading spinner.
+
 ### Session 67 (GE Categories border fix)
 - `src/screens/CoursePickerScreen.tsx` — Changed GE Categories row `borderBottomColor` from `#e5e7eb` to `#f3f4f6` to match regular department rows (removes the visually bold separator).
 

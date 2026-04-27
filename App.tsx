@@ -438,6 +438,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   }, [currentTab, tabBarReady]);
   const [showCoursePicker, setShowCoursePicker] = useState(false);
   const [renderCoursePicker, setRenderCoursePicker] = useState(false);
+  const [editingCustomCourse, setEditingCustomCourse] = useState<Course | null>(null);
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter>(getAcademicQuarterForDate(new Date()));
   const [timetables, setTimetables] = useState<Timetable[]>([]);
   const [selectedTimetableId, setSelectedTimetableId] = useState<string | null>(null);
@@ -446,6 +447,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [showMessages, setShowMessages] = useState(false);
   const [messagesOpenWith, setMessagesOpenWith] = useState<ChatTarget | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const settingsBackdropAnim = useRef(new Animated.Value(0)).current;
+  const settingsSheetAnim = useRef(new Animated.Value(Dimensions.get('window').height)).current;
   const pickerTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
   const seenFriendRequestIdsRef = useRef<Set<string>>(new Set());
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
@@ -1045,6 +1048,32 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     await saveTimetable(updated);
   };
 
+  const handleReplaceCourse = async (oldId: string, newCourse: Course) => {
+    const target = activeTimetable;
+    if (!target) return;
+    const newCourses = target.courses.map((c) => (c.id === oldId ? newCourse : c));
+    const updated = { ...target, courses: newCourses };
+    setTimetables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    await saveTimetable(updated);
+  };
+
+  const openSettingsSheet = () => {
+    settingsBackdropAnim.setValue(0);
+    settingsSheetAnim.setValue(Dimensions.get('window').height);
+    setShowSettings(true);
+    Animated.parallel([
+      Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.timing(settingsBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const closeSettingsSheet = () => {
+    Animated.parallel([
+      Animated.timing(settingsSheetAnim, { toValue: Dimensions.get('window').height, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(settingsBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start(() => setShowSettings(false));
+  };
+
   const handleChangeQuarter = (q: Quarter) => {
     setSelectedQuarter(q);
     const key = quarterKey(q);
@@ -1548,7 +1577,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       <HomeScreen
         activeCourses={homeQuarterCourses}
         selectedQuarter={homeQuarterKey === academicQuarterKey ? academicQuarter : selectedQuarter}
-        onOpenSettings={() => setShowSettings(true)}
+        onOpenSettings={openSettingsSheet}
         userId={USER_ID}
         bottomInset={insets.bottom}
         scrollToTopTrigger={homeTabTapCount}
@@ -1565,6 +1594,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           onChangeQuarter={handleChangeQuarter}
           onOpenCoursePicker={() => setShowCoursePicker(true)}
           onRemoveCourse={handleToggleCourse}
+          onEditCustomCourse={(course) => { setEditingCustomCourse(course); setShowCoursePicker(true); }}
           school={selectedUniversity?.name ?? 'UC Irvine'}
           userId={USER_ID}
           timetables={timetables}
@@ -1776,30 +1806,35 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       <Modal
         visible={showSettings}
-        presentationStyle="pageSheet"
-        animationType="slide"
-        onRequestClose={() => setShowSettings(false)}
+        transparent
+        animationType="none"
+        onRequestClose={closeSettingsSheet}
       >
-        <SettingsScreen
-          visible={showSettings}
-          onClose={() => setShowSettings(false)}
-          onLogout={handleLogout}
-          userName={displayUserName}
-          userEmail={userEmail}
-          userProfile={userProfile}
-          userSettings={userSettings}
-          useCelsius={useCelsius}
-          onUseCelsiusChange={setUseCelsius}
-          themePreference={themePreference}
-          onThemeChange={onThemeChange}
-          onSaveProfile={handleSaveProfile}
-          onSaveVisibility={handleSaveVisibility}
-          onSaveNotifications={handleSaveNotifications}
-          onRequestPushPermissions={handleRequestPushPermissions}
-          savingProfile={savingProfile}
-          savingVisibility={savingVisibility}
-          savingNotifications={savingNotifications}
-        />
+        <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: settingsBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }) }}>
+          <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={closeSettingsSheet} />
+          <Animated.View style={{ height: '92%', transform: [{ translateY: settingsSheetAnim }] }}>
+            <SettingsScreen
+              visible={showSettings}
+              onClose={closeSettingsSheet}
+              onLogout={handleLogout}
+              userName={displayUserName}
+              userEmail={userEmail}
+              userProfile={userProfile}
+              userSettings={userSettings}
+              useCelsius={useCelsius}
+              onUseCelsiusChange={setUseCelsius}
+              themePreference={themePreference}
+              onThemeChange={onThemeChange}
+              onSaveProfile={handleSaveProfile}
+              onSaveVisibility={handleSaveVisibility}
+              onSaveNotifications={handleSaveNotifications}
+              onRequestPushPermissions={handleRequestPushPermissions}
+              savingProfile={savingProfile}
+              savingVisibility={savingVisibility}
+              savingNotifications={savingNotifications}
+            />
+          </Animated.View>
+        </Animated.View>
       </Modal>
 
       {renderCoursePicker && (
@@ -1824,6 +1859,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             timetableSettings={timetableSettings}
             userId={USER_ID}
             school={selectedUniversity?.name ?? 'UC Irvine'}
+            editingCustomCourse={editingCustomCourse}
+            onReplaceCourse={handleReplaceCourse}
+            onEditingHandled={() => setEditingCustomCourse(null)}
           />
         </Animated.View>
       )}

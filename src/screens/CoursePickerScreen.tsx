@@ -48,6 +48,9 @@ type Props = {
   timetableSettings?: TimetableSettings;
   userId: string;
   school: string;
+  editingCustomCourse?: Course | null;
+  onReplaceCourse?: (oldId: string, newCourse: Course) => void;
+  onEditingHandled?: () => void;
 };
 
 type CatalogCourse = {
@@ -182,6 +185,22 @@ function buildCustomCourse(draft: CustomCourseDraft): Course {
   };
 }
 
+function courseToCustomDraft(course: Course): CustomCourseDraft {
+  const [startTime = '', endTime = ''] = course.time.split(' - ');
+  const shortLabel = course.code !== course.title.toUpperCase() ? course.code : '';
+  return {
+    name: course.title,
+    shortLabel,
+    professor: course.professor ?? '',
+    location: course.location ?? '',
+    customColor: course.customColor ?? CUSTOM_COLOR_OPTIONS[0],
+    units: course.units != null ? String(course.units) : '',
+    startTime,
+    endTime,
+    selectedDays: getDaysArray(course.days),
+  };
+}
+
 export default function CoursePickerScreen({
   activeCourses,
   onToggleCourse,
@@ -191,6 +210,9 @@ export default function CoursePickerScreen({
   timetableSettings = DEFAULT_TIMETABLE_SETTINGS,
   userId,
   school,
+  editingCustomCourse,
+  onReplaceCourse,
+  onEditingHandled,
 }: Props) {
   if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -201,6 +223,9 @@ export default function CoursePickerScreen({
   const [deptDropdownOpen, setDeptDropdownOpen] = useState(false);
   const deptSheetSlideAnim = useRef(new Animated.Value(600)).current;
   const deptBackdropAnim = useRef(new Animated.Value(0)).current;
+  const customizeBackdropAnim = useRef(new Animated.Value(0)).current;
+  const customizeSheetAnim = useRef(new Animated.Value(600)).current;
+  const customizeKeyboardAnim = useRef(new Animated.Value(0)).current;
   const closeDeptModalRef = useRef<(() => void) | null>(null);
   const deptDragPan = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -235,6 +260,20 @@ export default function CoursePickerScreen({
   const [reviewsCourse, setReviewsCourse] = useState<Course | null>(null);
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
   const [customCourseDraft, setCustomCourseDraft] = useState<CustomCourseDraft>(EMPTY_CUSTOM_DRAFT);
+  const editingCourseIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!editingCustomCourse) return;
+    editingCourseIdRef.current = editingCustomCourse.id;
+    setCustomCourseDraft(courseToCustomDraft(editingCustomCourse));
+    customizeBackdropAnim.setValue(0);
+    customizeSheetAnim.setValue(600);
+    setShowCustomizeModal(true);
+    Animated.parallel([
+      Animated.spring(customizeSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.timing(customizeBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }, [editingCustomCourse]);
 
   function openDeptModal() {
     setDeptSearch('');
@@ -308,8 +347,22 @@ export default function CoursePickerScreen({
   }
 
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardWillShow', (e) => setKeyboardHeight(e.endCoordinates.height));
-    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardHeight(0));
+    const show = Keyboard.addListener('keyboardWillShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+      Animated.timing(customizeKeyboardAnim, {
+        toValue: e.endCoordinates.height,
+        duration: e.duration || 250,
+        useNativeDriver: false,
+      }).start();
+    });
+    const hide = Keyboard.addListener('keyboardWillHide', (e) => {
+      setKeyboardHeight(0);
+      Animated.timing(customizeKeyboardAnim, {
+        toValue: 0,
+        duration: (e as any).duration || 250,
+        useNativeDriver: false,
+      }).start();
+    });
     return () => { show.remove(); hide.remove(); };
   }, []);
 
@@ -625,7 +678,41 @@ export default function CoursePickerScreen({
 
   const openCustomizeModal = () => {
     resetCustomCourseDraft();
+    customizeBackdropAnim.setValue(0);
+    customizeSheetAnim.setValue(600);
+    customizeKeyboardAnim.setValue(0);
     setShowCustomizeModal(true);
+    Animated.parallel([
+      Animated.spring(customizeSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.timing(customizeBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const closeCustomizeModal = () => {
+    Animated.parallel([
+      Animated.timing(customizeSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(customizeBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start(() => {
+      setShowCustomizeModal(false);
+      if (editingCourseIdRef.current) {
+        editingCourseIdRef.current = null;
+        onEditingHandled?.();
+      }
+    });
+  };
+
+  const confirmCloseCustomizeModal = () => {
+    const { name, shortLabel, professor, location, units, startTime, endTime } = customCourseDraft;
+    const hasInput = [name, shortLabel, professor, location, units, startTime, endTime].some((v) => v.trim() !== '');
+    if (!hasInput) { closeCustomizeModal(); return; }
+    Alert.alert(
+      'Discard block?',
+      'Changes will not be saved.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: closeCustomizeModal },
+      ]
+    );
   };
 
   const toggleCustomDay = (dayKey: string) => {
@@ -663,9 +750,18 @@ export default function CoursePickerScreen({
 
     Keyboard.dismiss();
     const customCourse = buildCustomCourse(customCourseDraft);
-    setShowCustomizeModal(false);
-    handleAddToTable(customCourse);
-    setPreviewCourse(customCourse);
+    closeCustomizeModal();
+
+    const oldId = editingCourseIdRef.current;
+    if (oldId && onReplaceCourse) {
+      onReplaceCourse(oldId, { ...customCourse, id: oldId });
+      editingCourseIdRef.current = null;
+      onEditingHandled?.();
+    } else {
+      handleAddToTable(customCourse);
+      setPreviewCourse(customCourse);
+    }
+
     resetCustomCourseDraft();
   };
 
@@ -773,20 +869,20 @@ export default function CoursePickerScreen({
         }}
       >
         <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-          <TextInput
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Search title, code (e.g. ECON 100A), or professor"
-            placeholderTextColor="#9ca3af"
-            style={{
-              backgroundColor: '#f3f4f6',
-              color: '#111827',
-              borderRadius: 14,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              marginBottom: 10,
-            }}
-          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f3f4f6', borderRadius: 14, paddingHorizontal: 14, marginBottom: 10 }}>
+            <TextInput
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="Search title, code (e.g. ECON 100A), or professor"
+              placeholderTextColor="#9ca3af"
+              style={{ flex: 1, color: '#111827', paddingVertical: 12 }}
+            />
+            {searchText.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchText('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={18} color="#9ca3af" />
+              </TouchableOpacity>
+            )}
+          </View>
 
           {/* Department / GE dropdown */}
           <TouchableOpacity
@@ -843,19 +939,20 @@ export default function CoursePickerScreen({
 
                 {/* Search bar */}
                 <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
-                  <TextInput
-                    value={deptSearch}
-                    onChangeText={setDeptSearch}
-                    placeholder={showGESublist ? 'Search GE categories…' : 'Search departments…'}
-                    placeholderTextColor="#9ca3af"
-                    style={{
-                      backgroundColor: '#f3f4f6',
-                      borderRadius: 12,
-                      paddingHorizontal: 14,
-                      paddingVertical: 10,
-                      fontSize: 15,
-                    }}
-                  />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f3f4f6', borderRadius: 12, paddingHorizontal: 14 }}>
+                    <TextInput
+                      value={deptSearch}
+                      onChangeText={setDeptSearch}
+                      placeholder={showGESublist ? 'Search GE categories…' : 'Search departments…'}
+                      placeholderTextColor="#9ca3af"
+                      style={{ flex: 1, paddingVertical: 10, fontSize: 15 }}
+                    />
+                    {deptSearch.length > 0 && (
+                      <TouchableOpacity onPress={() => setDeptSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="close-circle" size={18} color="#9ca3af" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
 
                 {showGESublist ? (
@@ -895,23 +992,38 @@ export default function CoursePickerScreen({
                     keyboardShouldPersistTaps="handled"
                     contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
                     ListHeaderComponent={
+                      <>
                         <TouchableOpacity
-                        onPress={() => { Keyboard.dismiss(); setShowGESublist(true); setDeptSearch(''); }}
-                        style={{
-                          paddingVertical: 14,
-                          borderBottomWidth: 1,
-                          borderBottomColor: '#e5e7eb',
-                          marginBottom: 4,
-                          flexDirection: 'row',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <Text style={{ fontSize: 15, color: selectedGE ? '#4169E1' : '#111827', fontWeight: selectedGE ? '700' : '500' }}>
-                          {selectedGE ? GE_CATEGORIES.find(g => g.code === selectedGE)?.label : 'GE Categories'}
-                        </Text>
-                        <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-                      </TouchableOpacity>
+                          onPress={() => { Keyboard.dismiss(); closeDeptModal(() => { setSelectedDept(''); setSelectedGE(''); }); }}
+                          style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                        >
+                          <Text style={{ fontSize: 15, color: (!selectedDept && !selectedGE) ? '#4169E1' : '#111827', fontWeight: (!selectedDept && !selectedGE) ? '700' : '400' }}>
+                            All Departments
+                          </Text>
+                          {(!selectedDept && !selectedGE) && <Ionicons name="checkmark" size={18} color="#4169E1" />}
+                        </TouchableOpacity>
+                        {!deptSearch && (
+                          <TouchableOpacity
+                          onPress={() => { Keyboard.dismiss(); setShowGESublist(true); setDeptSearch(''); }}
+                          style={{
+                            paddingVertical: 14,
+                            borderTopWidth: 1,
+                            borderTopColor: '#e5e7eb',
+                            borderBottomWidth: 1,
+                            borderBottomColor: '#e5e7eb',
+                            marginBottom: 4,
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Text style={{ fontSize: 15, color: selectedGE ? '#4169E1' : '#111827', fontWeight: selectedGE ? '700' : '500' }}>
+                            {selectedGE ? GE_CATEGORIES.find(g => g.code === selectedGE)?.label : 'GE Categories'}
+                          </Text>
+                          <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+                        </TouchableOpacity>
+                        )}
+                      </>
                     }
                     renderItem={({ item }) => {
                       const isSelected = selectedDept === item;
@@ -1157,16 +1269,15 @@ export default function CoursePickerScreen({
 
       <Modal
         visible={showCustomizeModal}
-        animationType="slide"
+        animationType="none"
         transparent
-        onRequestClose={() => setShowCustomizeModal(false)}
+        onRequestClose={confirmCloseCustomizeModal}
       >
-        <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.28)', justifyContent: 'flex-end' }}
-          onPress={() => setShowCustomizeModal(false)}
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
+        <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: customizeBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(15,23,42,0.28)'] }) }}>
+          <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={confirmCloseCustomizeModal} />
+          <Animated.View style={{ marginBottom: customizeKeyboardAnim }}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+          <Animated.View
             style={{
               backgroundColor: 'white',
               borderTopLeftRadius: 28,
@@ -1174,7 +1285,10 @@ export default function CoursePickerScreen({
               paddingHorizontal: 18,
               paddingTop: 18,
               paddingBottom: 26,
-              maxHeight: Dimensions.get('window').height * 0.82,
+              maxHeight: keyboardHeight > 0
+                ? Dimensions.get('window').height - keyboardHeight - 20
+                : Dimensions.get('window').height * 0.82,
+              transform: [{ translateY: customizeSheetAnim }],
             }}
           >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -1184,7 +1298,7 @@ export default function CoursePickerScreen({
                   Add any custom class, event, shift, or study block.
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setShowCustomizeModal(false)}>
+              <TouchableOpacity onPress={confirmCloseCustomizeModal}>
                 <Text style={{ fontSize: 28, color: '#9ca3af' }}>×</Text>
               </TouchableOpacity>
             </View>
@@ -1198,6 +1312,7 @@ export default function CoursePickerScreen({
                     onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, name: value }))}
                     placeholder="Club Meeting"
                     placeholderTextColor="#9ca3af"
+                    clearButtonMode="while-editing"
                     style={{
                       backgroundColor: '#f8fafc',
                       borderWidth: 1,
@@ -1217,6 +1332,7 @@ export default function CoursePickerScreen({
                     onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, shortLabel: value }))}
                     placeholder="Optional"
                     placeholderTextColor="#9ca3af"
+                    clearButtonMode="while-editing"
                     style={{
                       backgroundColor: '#f8fafc',
                       borderWidth: 1,
@@ -1342,6 +1458,7 @@ export default function CoursePickerScreen({
                     onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, location: value }))}
                     placeholder="Optional"
                     placeholderTextColor="#9ca3af"
+                    clearButtonMode="while-editing"
                     style={{
                       backgroundColor: '#f8fafc',
                       borderWidth: 1,
@@ -1361,6 +1478,7 @@ export default function CoursePickerScreen({
                     onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, professor: value }))}
                     placeholder="Optional"
                     placeholderTextColor="#9ca3af"
+                    clearButtonMode="while-editing"
                     style={{
                       backgroundColor: '#f8fafc',
                       borderWidth: 1,
@@ -1409,8 +1527,10 @@ export default function CoursePickerScreen({
                 <Text style={{ color: 'white', fontSize: 15, fontWeight: '800' }}>Add Custom Block</Text>
               </TouchableOpacity>
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </Animated.View>
+          </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
       </Modal>
     </View>
   );

@@ -213,6 +213,44 @@ const QUARTERS = [
 - `src/data/sportsEvents.ts` — Fixed `parseCompositeCalendarDate` to use manual `new Date(year, month, day, h, m)` instead of `new Date(string)` (Hermes doesn't support non-ISO date strings). Fixed duplicate event `id` by using `parsed.sport` (retains gender prefix) instead of `sportShort`.
 - `src/screens/HomeScreen.tsx` — Changed `maxDaysAhead: 2` → `maxDaysAhead: 7`.
 
+### Session 66 (Time column same width as day columns)
+- `src/screens/TimetableScreen.tsx` — `usableGridWidth` no longer subtracts `TIME_LABEL_WIDTH`; `dayColumnWidth = usableGridWidth / (visibleDays.length + 1)` (+1 for the time column). All three `TIME_LABEL_WIDTH` references in JSX replaced with `dayColumnWidth`. Hour label absolute Views changed from `left: -GRID_LEFT_PAD, right: 0` to `left: 0, right: 0` so they no longer overflow into the left padding area — making the visual time column equal width to each day column.
+
+### Session 71 (Share closes timetable settings modal first)
+- `src/screens/TimetableScreen.tsx` — `shareSchedule` now calls `closeSettings` and waits 350ms (same as `saveSchedule`) before capturing the image, so the settings modal slides down before the share sheet appears.
+
+### Session 70 (Settings sub-screen swipe-back fix)
+- `src/screens/SettingsScreen.tsx` — Moved `borderTopLeftRadius/borderTopRightRadius/overflow:hidden` from App.tsx outer container to SettingsScreen's root View. Reverted swipePan to `onMoveShouldSetPanResponder` (same as Add Quarter's working pattern).
+- `App.tsx` — Removed `overflow:'hidden'` from the settings sheet container (it was clipping the touch region and breaking the PanResponder).
+
+### Session 69 (Settings sub-screen swipe-back)
+- `src/screens/SettingsScreen.tsx` — Switched `swipePan` from `onMoveShouldSetPanResponder` (bubble phase, blocked by inner ScrollViews) to `onMoveShouldSetPanResponderCapture` (capture phase, fires before children) so horizontal swipes reliably slide the sub-screen back over the main settings page. Threshold raised to `dx > 10` to reduce accidental capture.
+
+### Session 68 (Settings sheet tap-outside-to-dismiss)
+- `App.tsx` — Replaced `presentationStyle="pageSheet" animationType="slide"` settings Modal with a `transparent animationType="none"` custom sheet. Added `settingsBackdropAnim` + `settingsSheetAnim` animated values, `openSettingsSheet` / `closeSettingsSheet` helpers. Backdrop `TouchableOpacity` covers the full screen behind the sheet so tapping above dismisses it.
+
+### Session 67 (GE Categories border fix)
+- `src/screens/CoursePickerScreen.tsx` — Changed GE Categories row `borderBottomColor` from `#e5e7eb` to `#f3f4f6` to match regular department rows (removes the visually bold separator).
+
+### Session 66 (All Departments row in dept picker)
+- `src/screens/CoursePickerScreen.tsx` — Added "All Departments" as the first row in the department list (above GE Categories). Tapping it clears both `selectedDept` and `selectedGE`. Shows a checkmark and blue highlight when no filter is active.
+
+### Session 65 (Edit Custom Block from TimetableScreen)
+- `src/screens/TimetableScreen.tsx` — Added `onEditCustomCourse?: (course: Course) => void` prop. Course detail sheet shows "Edit Custom Block" button (above Remove) when `selectedCourse.department === 'CUSTOM'`. Tapping it calls `onEditCustomCourse` and closes the sheet.
+- `src/screens/CoursePickerScreen.tsx` — Added `editingCustomCourse?`, `onReplaceCourse?`, `onEditingHandled?` props. Added `courseToCustomDraft` helper (reverses `buildCustomCourse`). `useEffect` on `editingCustomCourse` pre-populates the draft and auto-opens the customize modal. `handleCreateCustomCourse` in edit mode calls `onReplaceCourse(oldId, newCourse)` (keeps same `id`, in-place swap) instead of adding a new course. `closeCustomizeModal` clears `editingCourseIdRef` and calls `onEditingHandled`.
+- `App.tsx` — Added `editingCustomCourse` state. Added `handleReplaceCourse` (atomic in-place swap + Supabase save). `onEditCustomCourse` on TimetableScreen sets state + opens CoursePicker. CoursePickerScreen receives the three new edit props.
+
+### Session 64 (Customize modal discard confirmation)
+- `src/screens/CoursePickerScreen.tsx` — Tapping X or outside the Customize Block modal now shows a "Discard block? Changes will not be saved." Alert with "Keep editing" / "Discard" options, but only if any text field has input; if all fields are empty it closes immediately. Direct submission via "Add Custom Block" still closes without prompt. Added `confirmCloseCustomizeModal` helper.
+
+### Session 63 (Customize modal animated backdrop)
+- `src/screens/CoursePickerScreen.tsx` — Customize Block modal backdrop now fades in separately from the sheet. Changed `animationType="slide"` → `animationType="none"`; added `customizeBackdropAnim` + `customizeSheetAnim`; `openCustomizeModal` animates both in parallel (spring sheet + 280ms backdrop fade); new `closeCustomizeModal` animates out before hiding. Matches TimetableScreen's Add Quarter pattern.
+
+### Session 64 (Clear X buttons on search inputs)
+- `src/screens/CoursePickerScreen.tsx` — Main search and dept-picker search wrapped in row View; conditional `close-circle` X button appears when text exists. Customize Block text fields (Name, Short Label, Location, Instructor) get `clearButtonMode="while-editing"` (native iOS clear button).
+- `src/screens/BoardScreen.tsx` — Added conditional X clear button to the board post `search` TextInput.
+- `src/screens/FriendsScreen.tsx` — Added conditional X clear button to the classmates `searchQuery` TextInput.
+
 ### Session 61 (RMP moved to ReviewsModal + Reviews button layout)
 - `src/components/ReviewsModal.tsx` — Added `sectionType: string` prop. Added RMP row in course info section (shows prof name as tappable link to RateMyProfessors). `fetchReviews` and `handleSubmit` filter/set `section_type`. Supabase `reviews` table requires `ALTER TABLE reviews ADD COLUMN section_type TEXT;`.
 - `src/screens/CoursePickerScreen.tsx` — Removed RMP button from section rows. Reviews button moved directly beneath Add button. Star rating ("★ X.X · N ratings") moved beneath Reviews button in right column. `fetchReviewSummary(courseCode, sectionType)` cache keyed as `"ECON 100A::Lec"`. Early-return guard: `if (cache[key]?.count)` (not truthy check). `handleExpandCourse` fetches summaries for all unique section types in the course.

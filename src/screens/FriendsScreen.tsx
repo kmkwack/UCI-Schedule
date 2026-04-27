@@ -843,6 +843,11 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
               onChangeText={setSearchQuery}
               style={{ flex: 1, fontSize: 15, color: colors.text }}
             />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={18} color={colors.placeholder} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 

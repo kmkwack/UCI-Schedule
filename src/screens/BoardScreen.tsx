@@ -1708,6 +1708,11 @@ export default function BoardScreen({
                     onChangeText={setSearch}
                     style={{ flex: 1, fontSize: 14, color: colors.text }}
                   />
+                  {search.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close-circle" size={16} color={colors.placeholder} />
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
 

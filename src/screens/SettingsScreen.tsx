@@ -1907,7 +1907,7 @@ export default function SettingsScreen({
   if (!visible) return null;
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' }}>
       {/* Main settings — always rendered as background */}
       <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
         <View style={{

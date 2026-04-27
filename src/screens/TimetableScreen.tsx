@@ -66,6 +66,7 @@ type Props = {
   onChangeQuarter: (q: Quarter) => void;
   onOpenCoursePicker: () => void;
   onRemoveCourse: (course: Course) => void;
+  onEditCustomCourse?: (course: Course) => void;
   school: string;
   userId: string;
   quarterTimetables: Timetable[];
@@ -90,7 +91,7 @@ const DEFAULT_END_HOUR = 17;
 
 const TIME_LABEL_WIDTH = 44;
 const GRID_LEFT_PAD = 16;
-const GRID_OUTER_HORIZONTAL_PADDING = 24;
+const GRID_OUTER_HORIZONTAL_PADDING = 30;
 
 const DAY_LABEL: Record<string, string> = {
   M: 'Mon', T: 'Tue', W: 'Wed', Th: 'Thu', F: 'Fri', Sa: 'Sat', Su: 'Sun',
@@ -146,6 +147,7 @@ export default function TimetableScreen({
   onChangeQuarter,
   onOpenCoursePicker,
   onRemoveCourse,
+  onEditCustomCourse,
   school,
   userId,
   quarterTimetables,
@@ -406,21 +408,18 @@ export default function TimetableScreen({
 
   const usableGridWidth =
     gridWidth > 0
-      ? gridWidth - TIME_LABEL_WIDTH
-      : screenWidth - GRID_LEFT_PAD - GRID_OUTER_HORIZONTAL_PADDING - TIME_LABEL_WIDTH;
+      ? gridWidth + GRID_LEFT_PAD
+      : screenWidth - GRID_OUTER_HORIZONTAL_PADDING;
 
-  const dayColumnWidth = usableGridWidth / visibleDays.length;
+  const dayColumnWidth = usableGridWidth / (visibleDays.length + 1);
   const compactGrid = visibleDays.length >= 6 || totalHours >= 11;
   const codeFontSize = compactGrid ? 9 : 10;
   const metaFontSize = compactGrid ? 8 : 9;
   const timeFontSize = compactGrid ? 7 : 8;
   const exportSnapshotWidth = Math.min(screenWidth - 28, 420);
   const exportCardPadding = 16;
-  const exportGridLeftPad = 10;
-  const exportTimeLabelWidth = 34;
-  const exportUsableGridWidth =
-    exportSnapshotWidth - exportCardPadding * 2 - exportGridLeftPad - exportTimeLabelWidth;
-  const exportDayColumnWidth = exportUsableGridWidth / visibleDays.length;
+  // outer padding 14×2=28 + card padding 16×2=32 + card border 1×2=2 + grid border 1×2=2 = 64
+  const exportDayColumnWidth = (exportSnapshotWidth - 64) / (visibleDays.length + 1);
   const exportHourHeight = Math.max(22, Math.min(34, (screenHeight * 0.5) / Math.max(totalHours, 1)));
   const exportTimetableHeight = exportHourHeight * totalHours;
   const exportCompactGrid = visibleDays.length >= 6 || totalHours >= 9;
@@ -704,8 +703,6 @@ export default function TimetableScreen({
   }
 
   async function shareSchedule() {
-    await new Promise<void>((r) => closeSettings(r));
-    await new Promise((r) => setTimeout(r, 350));
     try {
       const isSharingAvailable = await Sharing.isAvailableAsync();
       if (!isSharingAvailable) {
@@ -1295,6 +1292,15 @@ export default function TimetableScreen({
                       <Text style={{ color: colors.brand, fontWeight: '700', fontSize: 15 }}>Maps</Text>
                     </TouchableOpacity>
                   )}
+                  {selectedCourse.department === 'CUSTOM' && onEditCustomCourse && (
+                    <TouchableOpacity
+                      onPress={() => { onEditCustomCourse(selectedCourse); setSelectedCourse(null); }}
+                      style={{ borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.brand, backgroundColor: colors.brandBg }}
+                    >
+                      <Ionicons name="create-outline" size={17} color={colors.brand} />
+                      <Text style={{ color: colors.brand, fontWeight: '700', fontSize: 15 }}>Edit Custom Block</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={() => { onRemoveCourse(selectedCourse); setSelectedCourse(null); }}
                     style={{ borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.destructive, backgroundColor: colors.destructiveBg }}
@@ -1463,7 +1469,7 @@ export default function TimetableScreen({
           <View
             style={{
               backgroundColor: gridFrameBg,
-              borderRadius: 26,
+              borderRadius: 20,
               borderWidth: 1,
               borderColor: gridFrameBorder,
               overflow: 'hidden',
@@ -1480,11 +1486,10 @@ export default function TimetableScreen({
                   flexDirection: 'row',
                   borderBottomWidth: 1,
                   borderBottomColor: gridLine,
-                  paddingLeft: GRID_LEFT_PAD,
                   backgroundColor: gridHeaderBg,
                 }}
               >
-                <View style={{ width: TIME_LABEL_WIDTH }} />
+                <View style={{ width: dayColumnWidth }} />
                 {visibleDays.map((day) => (
                   <View
                     key={day}
@@ -1509,16 +1514,15 @@ export default function TimetableScreen({
                   <View
                     style={{
                       flexDirection: 'row',
-                      paddingLeft: GRID_LEFT_PAD,
                     }}
                   >
-                    <View style={{ width: TIME_LABEL_WIDTH, height: timetableHeight }}>
+                    <View style={{ width: dayColumnWidth, height: timetableHeight }}>
                       {hourLabels.map((hour, index) => (
                         <View key={hour} style={{
                           position: 'absolute',
                           top: index * hourHeight,
                           height: hourHeight,
-                          left: -GRID_LEFT_PAD, right: 0,
+                          left: 0, right: 0,
                           alignItems: 'center',
                           justifyContent: 'center',
                         }}>
@@ -1557,7 +1561,7 @@ export default function TimetableScreen({
                           style={{
                             position: 'absolute',
                             top: index * hourHeight,
-                            left: -(TIME_LABEL_WIDTH + GRID_LEFT_PAD),
+                            left: -dayColumnWidth,
                             right: 0,
                             height: 1,
                             backgroundColor: gridLine,
@@ -1775,11 +1779,10 @@ export default function TimetableScreen({
                   flexDirection: 'row',
                   borderBottomWidth: 1,
                   borderBottomColor: gridLine,
-                  paddingLeft: exportGridLeftPad,
                   backgroundColor: gridHeaderBg,
                 }}
               >
-                <View style={{ width: exportTimeLabelWidth }} />
+                <View style={{ width: exportDayColumnWidth }} />
                 {visibleDays.map((day) => (
                   <View
                     key={`export-header-${day}`}
@@ -1800,8 +1803,8 @@ export default function TimetableScreen({
               </View>
 
               <View style={{ backgroundColor: gridFrameBg, height: exportTimetableHeight }}>
-                <View style={{ flexDirection: 'row', paddingLeft: exportGridLeftPad }}>
-                  <View style={{ width: exportTimeLabelWidth, height: exportTimetableHeight }}>
+                <View style={{ flexDirection: 'row' }}>
+                  <View style={{ width: exportDayColumnWidth, height: exportTimetableHeight }}>
                     {hourLabels.map((hour, index) => (
                       <View
                         key={`export-hour-${hour}`}
@@ -1809,7 +1812,7 @@ export default function TimetableScreen({
                           position: 'absolute',
                           top: index * exportHourHeight,
                           height: exportHourHeight,
-                          left: -exportGridLeftPad,
+                          left: 0,
                           right: 0,
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -1850,7 +1853,7 @@ export default function TimetableScreen({
                         style={{
                           position: 'absolute',
                           top: index * exportHourHeight,
-                          left: -(exportTimeLabelWidth + exportGridLeftPad),
+                          left: -exportDayColumnWidth,
                           right: 0,
                           height: 1,
                           backgroundColor: gridLine,

@@ -1066,3 +1066,7 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64en (Detach unauthorized EAS project link and reassign Expo owner)
 - **`app.json`** — Changed the Expo owner from `hiiseans` to `parksihyun` and removed the stale `extra.eas.projectId` entry so EAS can initialize a new accessible project under the current account instead of repeatedly targeting an unauthorized legacy AppEntity.
+
+### Session 64eo (Fix Expo start failure from broken ws dependency resolution)
+- **`package.json`** — Added a direct `ws@7.5.10` dependency so React Native / Metro resolve the websocket package version they expect instead of picking an incompatible root `ws@8.x`.
+- **`package-lock.json`** — Refreshed the npm lockfile after reinstalling dependencies, which restored the correct mixed `ws@7.5.10` and nested `ws@8.x` tree and fixed the `Cannot find module './lib/subprotocol'` startup crash when running `npx expo start`.

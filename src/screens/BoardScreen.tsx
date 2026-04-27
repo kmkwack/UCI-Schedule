@@ -1179,11 +1179,13 @@ export default function BoardScreen({
             justifyContent: 'space-between',
           }}
         >
-          <View>
+          <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
             <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>Board</Text>
-            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>Search across boards or jump into a community space.</Text>
+            <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+              Search boards or jump into a community space.
+            </Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexShrink: 0 }}>
             {onOpenMessages ? (
               <TouchableOpacity
                 onPress={() => onOpenMessages?.(null)}
@@ -1214,7 +1216,7 @@ export default function BoardScreen({
                 gap: 5,
                 backgroundColor: colors.brand,
                 borderRadius: 22,
-                paddingHorizontal: 15,
+                paddingHorizontal: 12,
                 paddingVertical: 9,
                 shadowColor: colors.brand,
                 shadowOffset: { width: 0, height: 10 },
@@ -1224,7 +1226,7 @@ export default function BoardScreen({
               }}
             >
               <Ionicons name="add" size={16} color="white" />
-              <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
+              <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>Post</Text>
             </TouchableOpacity>
           </View>
         </View>

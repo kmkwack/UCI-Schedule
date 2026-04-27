@@ -1249,3 +1249,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64gp (Remove tab bar streak artifacts)
 - **`App.tsx`** — Removed decorative glass highlight layers from the bottom tab bar and active pill because they appeared as stray double-line marks on the Home tab bar in the built app.
+
+### Session 64gq (Contain Board header actions)
+- **`src/screens/BoardScreen.tsx`** — Constrained the Board header title/subtitle column, shortened the subtitle and post button label, and prevented the action button row from shrinking so the messages and post buttons no longer spill off-screen.

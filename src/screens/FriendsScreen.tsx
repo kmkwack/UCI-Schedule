@@ -1215,7 +1215,7 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
                         backgroundColor: colors.destructive, alignItems: 'center', justifyContent: 'center',
                       }}
                     >
-                      <Ionicons name="trash-outline" size={16} color="white" />
+                      <Ionicons name="remove-outline" size={20} color="white" />
                     </TouchableOpacity>
                   ) : null}
                 </View>

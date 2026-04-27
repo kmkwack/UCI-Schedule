@@ -102,6 +102,7 @@ type Props = {
   courseCode: string;    // e.g. "ECON 100A"
   department: string;    // e.g. "ECON"
   courseNumber: string;  // e.g. "100A"
+  sectionType: string;   // e.g. "Lec", "Lab", "Dis"
   title: string;
   professors: string[];  // non-STAFF professors
   school: string;
@@ -111,7 +112,7 @@ type Props = {
 };
 
 export default function ReviewsModal({
-  visible, onClose, sectionId, courseCode, department, courseNumber, title,
+  visible, onClose, sectionId, courseCode, department, courseNumber, sectionType, title,
   professors, school, userId, semesterLabel, quarterKey,
 }: Props) {
   const { colors } = useTheme();
@@ -245,7 +246,7 @@ export default function ReviewsModal({
     setReviewsLoading(true);
     const { data, error } = await supabase
       .from('reviews').select('*')
-      .eq('school', school).eq('course_code', courseCode)
+      .eq('school', school).eq('course_code', courseCode).eq('section_type', sectionType)
       .order('created_at', { ascending: false });
     if (!error && data) {
       setReviews(data.map((r: any) => ({
@@ -271,6 +272,7 @@ export default function ReviewsModal({
     } else {
       ({ error } = await supabase.from('reviews').insert({
         school, course_code: courseCode, department, course_number: courseNumber,
+        section_type: sectionType,
         user_id: userId, author: 'Anonymous',
         rating, difficulty, workload, content: content.trim(),
         semester: semesterLabel, quarter: quarterTaken || semesterLabel,
@@ -391,6 +393,25 @@ export default function ReviewsModal({
                             </View>
                           </View>
                         ) : null}
+                        {(() => {
+                          const prof = instructor || professors[0] || '';
+                          if (!prof || prof === 'STAFF' || prof.trim() === '') return null;
+                          const sid = school === 'UC Irvine' ? '1074' : '';
+                          const url = sid
+                            ? `https://www.ratemyprofessors.com/search/professors/${sid}?q=${encodeURIComponent(prof)}`
+                            : `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(prof)}`;
+                          return (
+                            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                              <Ionicons name="star-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Rate My Professors</Text>
+                                <TouchableOpacity onPress={() => Linking.openURL(url)}>
+                                  <Text style={{ fontSize: 13, color: colors.brand, textDecorationLine: 'underline' }}>{prof} on RateMyProfessors ›</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          );
+                        })()}
                         {comment ? (
                           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                             <Ionicons name="information-circle-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />

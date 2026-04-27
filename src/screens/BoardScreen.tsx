@@ -99,7 +99,7 @@ type ReportTarget = {
   label: string;
 };
 
-const BOARDS: Board[] = [
+const FALLBACK_BOARDS: Board[] = [
   { id: 'general', name: 'General Board', category: null, icon: 'chatbubbles-outline', color: '#4169E1', iconBg: '#eef1fb' },
   { id: 'sports', name: 'Sports Board', category: 'Sports', icon: 'barbell-outline', color: '#10B981', iconBg: '#ecfdf5' },
   { id: 'study', name: 'Study Groups Board', category: 'Study Groups', icon: 'book-outline', color: '#F59E0B', iconBg: '#fef9ec' },
@@ -284,6 +284,7 @@ export default function BoardScreen({
   const [requestBoardDesc, setRequestBoardDesc] = useState('');
   const [submittingBoardRequest, setSubmittingBoardRequest] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [boards, setBoards] = useState<Board[]>(FALLBACK_BOARDS);
 
   const SCREEN_W = Dimensions.get('window').width;
   const boardSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
@@ -310,6 +311,7 @@ export default function BoardScreen({
   ).current;
 
   useEffect(() => {
+    void fetchBoards();
     void fetchPosts();
   }, [boardAuthorName, boardProfileVisible, school, userId]);
 
@@ -322,7 +324,7 @@ export default function BoardScreen({
     setShowBoardPicker(false);
     setNewPostTitle('');
     setNewPostBody('');
-    setNewPostBoardId(selectedBoard?.id ?? 'general');
+    setNewPostBoardId(selectedBoard?.id ?? boards[0]?.id ?? '');
     setNewPostAttachments([]);
     setNewPostLocked(false);
   }
@@ -527,11 +529,40 @@ export default function BoardScreen({
     await AsyncStorage.setItem(postsCacheKey, JSON.stringify(freshPosts));
   }
 
+  async function fetchBoards() {
+    const { data, error } = await supabase
+      .from('boards')
+      .select('*')
+      .eq('school', school)
+      .order('created_at', { ascending: true });
+
+    if (!error && data && data.length > 0) {
+      setBoards(
+        (data as Array<{
+          id: string;
+          name: string;
+          description: string | null;
+          category: string | null;
+          icon: string;
+          color: string;
+          icon_bg: string;
+        }>).map((row) => ({
+          id: row.id,
+          name: row.name,
+          category: row.category,
+          icon: row.icon as React.ComponentProps<typeof Ionicons>['name'],
+          color: row.color,
+          iconBg: row.icon_bg,
+        }))
+      );
+    }
+  }
+
   async function handleRefresh() {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      await fetchPosts();
+      await Promise.all([fetchBoards(), fetchPosts()]);
       if (selectedPost) {
         await loadCommentsForPost(selectedPost.id);
       }
@@ -594,9 +625,9 @@ export default function BoardScreen({
   async function openPostFromBoardList(post: Post) {
     Keyboard.dismiss();
     const targetBoard =
-      BOARDS.find((board) => (board.category ?? 'General') === post.category) ??
-      BOARDS.find((board) => board.id === 'general') ??
-      BOARDS[0];
+      boards.find((board) => (board.category ?? 'General') === post.category) ??
+      boards.find((board) => board.category === null) ??
+      boards[0];
 
     boardSlideAnim.setValue(SCREEN_W);
     setSelectedBoard(targetBoard);
@@ -700,7 +731,7 @@ export default function BoardScreen({
     setSubmittingPost(true);
     setUploadingAttachments(true);
 
-    const board = BOARDS.find((entry) => entry.id === newPostBoardId) ?? BOARDS[0];
+    const board = boards.find((entry) => entry.id === newPostBoardId) ?? boards[0];
     const category = board.category ?? 'General';
     const authorName = anteaterAliasForId(userId);
     try {
@@ -807,7 +838,7 @@ export default function BoardScreen({
 
   function openNewPost(boardId?: string) {
     resetComposer();
-    setNewPostBoardId(boardId ?? selectedBoard?.id ?? 'general');
+    setNewPostBoardId(boardId ?? selectedBoard?.id ?? boards[0]?.id ?? '');
     setShowNewPost(true);
   }
 
@@ -817,7 +848,7 @@ export default function BoardScreen({
       return;
     }
     setEditingPostId(post.id);
-    setNewPostBoardId(BOARDS.find((board) => (board.category ?? 'General') === post.category)?.id ?? 'general');
+    setNewPostBoardId(boards.find((board) => (board.category ?? 'General') === post.category)?.id ?? boards[0]?.id ?? '');
     setNewPostTitle(post.title);
     setNewPostBody(post.body);
     setNewPostAttachments(post.attachments);
@@ -1235,7 +1266,7 @@ export default function BoardScreen({
               </View>
             ) : null}
 
-            {BOARDS.map((board) => (
+            {boards.map((board) => (
               <TouchableOpacity
                 key={board.id}
                 onPress={() => openBoard(board)}
@@ -1742,7 +1773,7 @@ export default function BoardScreen({
       <NewPostModal
         visible={showNewPost}
         onClose={closeComposer}
-        boards={BOARDS}
+        boards={boards}
         selectedBoardId={newPostBoardId}
         onSelectBoard={setNewPostBoardId}
         showBoardPicker={showBoardPicker}

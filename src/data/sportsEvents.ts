@@ -73,11 +73,35 @@ function stripHtml(value: string): string {
     .trim();
 }
 
+const MONTH_ABBR: Record<string, number> = {
+  Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+  Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+};
+
 function parseCompositeCalendarDate(dateText: string, timeText: string): Date | null {
-  const normalizedDate = dateText.replace(/\b([A-Za-z]{3})\./g, '$1');
-  const normalizedTime = timeText === 'TBA' ? '12:00 PM' : timeText;
-  const parsed = new Date(`${normalizedDate} ${normalizedTime}`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  // e.g. dateText = "Apr. 28, 2026" or "Apr 28, 2026"
+  const dateMatch = dateText.match(/([A-Za-z]{3})\.?\s+(\d{1,2}),\s+(\d{4})/);
+  if (!dateMatch) return null;
+  const monthIdx = MONTH_ABBR[dateMatch[1]];
+  if (monthIdx === undefined) return null;
+  const day = parseInt(dateMatch[2], 10);
+  const year = parseInt(dateMatch[3], 10);
+
+  // e.g. timeText = "6:00 PM", "TBA", "12:30 AM"
+  let hour = 12;
+  let minute = 0;
+  if (timeText !== 'TBA') {
+    const timeMatch = timeText.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (timeMatch) {
+      hour = parseInt(timeMatch[1], 10);
+      minute = parseInt(timeMatch[2], 10);
+      const isPM = timeMatch[3].toUpperCase() === 'PM';
+      if (isPM && hour !== 12) hour += 12;
+      if (!isPM && hour === 12) hour = 0;
+    }
+  }
+
+  return new Date(year, monthIdx, day, hour, minute);
 }
 
 function parseUpcomingHtmlSummary(summary: string): { sport: string; opponent: string; isHome: boolean } | null {
@@ -177,7 +201,7 @@ function parseSportsCompositeCalendarHtml(
     const style = getSportStyle(parsed.sport);
 
     results.push({
-      id: `${sportShort}-${parsed.opponent}-${date.toISOString()}`,
+      id: `${parsed.sport}-${parsed.opponent}-${date.toISOString()}`,
       title: `${sportShort} ${parsed.isHome ? 'vs' : 'at'} ${parsed.opponent}`,
       location: parsed.isHome ? 'UCI Athletics' : 'Away',
       icon: style.icon,

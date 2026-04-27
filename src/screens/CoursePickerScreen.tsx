@@ -23,10 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, UCI_DEPARTMENTS, quarterLabel, quarterKey } from '../data/courses';
 import PreviewTimetable from '../components/PreviewTimetable';
 import { supabase } from '../lib/supabase';
-import * as Linking from 'expo-linking';
 import ReviewsModal from '../components/ReviewsModal';
-
-const RMP_SCHOOL_IDS: Record<string, string> = { 'UC Irvine': '1074' };
 
 // GE category codes match what Anteater API stores in geCategories[]
 const GE_CATEGORIES = [
@@ -41,12 +38,6 @@ const GE_CATEGORIES = [
   { code: 'GE-7',  label: 'GE VII — Multicultural Studies' },
   { code: 'GE-8',  label: 'GE VIII — International/Global Issues' },
 ];
-
-function rmpUrl(professor: string, school: string) {
-  const sid = RMP_SCHOOL_IDS[school];
-  const base = `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(professor)}`;
-  return sid ? `${base}&sid=${sid}` : base;
-}
 
 type Props = {
   activeCourses: Course[];
@@ -512,19 +503,20 @@ export default function CoursePickerScreen({
     }
   };
 
-  const fetchReviewSummary = async (course: CatalogCourse) => {
-    const courseCode = `${course.department} ${course.courseNumber}`;
-    if (reviewSummaryCache[courseCode]) return;
+  const fetchReviewSummary = async (courseCode: string, sectionType: string) => {
+    const cacheKey = `${courseCode}::${sectionType}`;
+    if (reviewSummaryCache[cacheKey]?.count) return;
 
     const { data, error } = await supabase
       .from('reviews')
       .select('rating')
       .eq('school', school)
-      .eq('course_code', courseCode);
+      .eq('course_code', courseCode)
+      .eq('section_type', sectionType);
 
     if (error) {
       console.error('Failed to load ClassMate review summary:', error);
-      setReviewSummaryCache((prev) => ({ ...prev, [courseCode]: { average: null, count: 0 } }));
+      setReviewSummaryCache((prev) => ({ ...prev, [cacheKey]: { average: null, count: 0 } }));
       return;
     }
 
@@ -534,7 +526,7 @@ export default function CoursePickerScreen({
 
     setReviewSummaryCache((prev) => ({
       ...prev,
-      [courseCode]: {
+      [cacheKey]: {
         average: ratings.length ? ratings.reduce((sum, value) => sum + value, 0) / ratings.length : null,
         count: ratings.length,
       },
@@ -552,7 +544,10 @@ export default function CoursePickerScreen({
     setExpandedCourseIds(nextExpanded ? { [course.id]: true } : {});
     if (nextExpanded) {
       fetchEnrollment(course);
-      void fetchReviewSummary(course);
+      const activeSections = (isGlobalSearch ? globalSectionsMap : sectionsMap)[course.id] ?? [];
+      const courseCode = `${course.department} ${course.courseNumber}`.trim();
+      const sectionTypes = [...new Set(activeSections.map(s => s.sectionLabel?.split(' ')[0]).filter((t): t is string => !!t))];
+      for (const st of sectionTypes) void fetchReviewSummary(courseCode, st);
       const index = filteredCatalogRef.current.findIndex((c) => c.id === course.id);
       if (index >= 0) {
         setTimeout(() => {
@@ -1012,7 +1007,8 @@ export default function CoursePickerScreen({
                           const isAdded = activeCourses.some((c) => c.id === course.id);
                           const isPreviewing = previewCourse?.id === course.id;
                           const enroll = enrollmentCache[course.id];
-                          const reviewSummary = reviewSummaryCache[`${item.department} ${item.courseNumber}`] ?? { average: null, count: 0 };
+                          const sectionType = course.sectionLabel?.split(' ')[0] ?? '';
+                          const reviewSummary = reviewSummaryCache[`${item.department} ${item.courseNumber}::${sectionType}`.trim()] ?? { average: null, count: 0 };
                           const savedCount = savedCountCache[course.id] ?? 0;
                           const statusColor = !enroll ? '#9ca3af'
                             : enroll.status === 'OPEN' ? '#16a34a'
@@ -1063,25 +1059,15 @@ export default function CoursePickerScreen({
                                       {enroll.status === 'Waitl' ? ` · ${enroll.waitlist}/${enroll.waitlistCap} waitlist` : ''}
                                     </Text>
                                   )}
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                      <Ionicons name="star" size={12} color="#f59e0b" />
-                                      <Text style={{ color: '#6b7280', fontSize: 11 }}>
-                                        {reviewSummary.average == null
-                                          ? 'No ratings yet'
-                                          : `${reviewSummary.average.toFixed(1)} (${reviewSummary.count})`}
-                                      </Text>
-                                    </View>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                      <Ionicons name="people-outline" size={12} color="#6b7280" />
-                                      <Text style={{ color: '#6b7280', fontSize: 11 }}>
-                                        {savedCount} ClassMate {savedCount === 1 ? 'student has' : 'students have'} saved this
-                                      </Text>
-                                    </View>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                                    <Ionicons name="people-outline" size={12} color="#6b7280" />
+                                    <Text style={{ color: '#6b7280', fontSize: 11 }}>
+                                      {savedCount} ClassMate {savedCount === 1 ? 'student has' : 'students have'} saved this
+                                    </Text>
                                   </View>
                                 </View>
 
-                                <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', alignSelf: 'stretch', gap: 4 }}>
+                                <View style={{ alignItems: 'flex-end', justifyContent: 'flex-start', alignSelf: 'stretch', gap: 6 }}>
                                   <TouchableOpacity
                                     onPress={(e) => {
                                       e.stopPropagation();
@@ -1100,35 +1086,31 @@ export default function CoursePickerScreen({
                                     </Text>
                                   </TouchableOpacity>
                                   {['Lec', 'Lab', 'Sem'].some(t => course.sectionLabel?.startsWith(t)) && (
-                                    <TouchableOpacity
-                                      onPress={(e) => {
-                                        e.stopPropagation();
-                                        setReviewsCourse(course);
-                                      }}
-                                      style={{
-                                        paddingHorizontal: 10, paddingVertical: 5,
-                                        borderRadius: 999, backgroundColor: '#4169E1',
-                                        alignSelf: 'flex-end',
-                                      }}
-                                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                                    >
-                                      <Text style={{ fontSize: 11, color: 'white', fontWeight: '600' }}>Reviews</Text>
-                                    </TouchableOpacity>
-                                  )}
-                                  {(() => {
-                                    const prof = course.professor;
-                                    if (!prof || prof === 'STAFF' || prof.trim() === '') return null;
-                                    const profRmpUrl = rmpUrl(prof, school);
-                                    return (
+                                    <>
                                       <TouchableOpacity
-                                        onPress={(e) => { e.stopPropagation(); Linking.openURL(profRmpUrl); }}
-                                        style={{ backgroundColor: '#f0f4ff', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: '#c7d4f9', alignSelf: 'flex-end' }}
+                                        onPress={(e) => {
+                                          e.stopPropagation();
+                                          setReviewsCourse(course);
+                                        }}
+                                        style={{
+                                          paddingHorizontal: 10, paddingVertical: 5,
+                                          borderRadius: 999, backgroundColor: '#4169E1',
+                                          alignSelf: 'flex-end',
+                                        }}
                                         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                       >
-                                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#4169E1' }}>RMP</Text>
+                                        <Text style={{ fontSize: 11, color: 'white', fontWeight: '600' }}>Reviews</Text>
                                       </TouchableOpacity>
-                                    );
-                                  })()}
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-end' }}>
+                                        <Ionicons name="star" size={11} color="#f59e0b" />
+                                        <Text style={{ color: '#6b7280', fontSize: 10 }}>
+                                          {reviewSummary.average == null
+                                            ? 'No ratings yet'
+                                            : `${reviewSummary.average.toFixed(1)} (${reviewSummary.count})`}
+                                        </Text>
+                                      </View>
+                                    </>
+                                  )}
                                 </View>
                               </View>
                             </TouchableOpacity>
@@ -1152,6 +1134,7 @@ export default function CoursePickerScreen({
           courseCode={reviewsCourse.code}
           department={reviewsCourse.department}
           courseNumber={reviewsCourse.code.slice(reviewsCourse.department.length).trim()}
+          sectionType={reviewsCourse.sectionLabel?.split(' ')[0] ?? 'Lec'}
           title={reviewsCourse.title}
           professors={[...new Set(
             [reviewsCourse.professor].filter((p): p is string => !!p && !p.includes('STAFF'))

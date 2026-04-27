@@ -1312,6 +1312,7 @@ export default function TimetableScreen({
               courseCode={reviewsCourse.code}
               department={reviewsCourse.department}
               courseNumber={reviewsCourse.code.slice(reviewsCourse.department.length).trim()}
+              sectionType={reviewsCourse.sectionLabel?.split(' ')[0] ?? 'Lec'}
               title={reviewsCourse.title}
               professors={
                 reviewsCourse.professor && !reviewsCourse.professor.includes('STAFF')

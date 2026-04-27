@@ -1173,6 +1173,340 @@ function ModerationScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
+const BOARD_ICON_OPTIONS: Array<{
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  color: string;
+  iconBg: string;
+}> = [
+  { icon: 'chatbubbles-outline', label: 'Chat', color: '#4169E1', iconBg: '#eef1fb' },
+  { icon: 'barbell-outline', label: 'Sports', color: '#10B981', iconBg: '#ecfdf5' },
+  { icon: 'book-outline', label: 'Study', color: '#F59E0B', iconBg: '#fef9ec' },
+  { icon: 'bag-outline', label: 'Shop', color: '#8B5CF6', iconBg: '#f5f3ff' },
+  { icon: 'megaphone-outline', label: 'Announce', color: '#EC4899', iconBg: '#fdf2f8' },
+  { icon: 'people-outline', label: 'Social', color: '#06B6D4', iconBg: '#ecfeff' },
+  { icon: 'game-controller-outline', label: 'Gaming', color: '#F97316', iconBg: '#fff7ed' },
+  { icon: 'musical-notes-outline', label: 'Music', color: '#A855F7', iconBg: '#faf5ff' },
+  { icon: 'restaurant-outline', label: 'Food', color: '#EF4444', iconBg: '#fef2f2' },
+  { icon: 'laptop-outline', label: 'Tech', color: '#3B82F6', iconBg: '#eff6ff' },
+  { icon: 'brush-outline', label: 'Art', color: '#D97706', iconBg: '#fef9ec' },
+  { icon: 'film-outline', label: 'Movies', color: '#6366F1', iconBg: '#eef2ff' },
+  { icon: 'car-outline', label: 'Cars', color: '#64748B', iconBg: '#f8fafc' },
+  { icon: 'home-outline', label: 'Housing', color: '#10B981', iconBg: '#ecfdf5' },
+  { icon: 'briefcase-outline', label: 'Careers', color: '#0EA5E9', iconBg: '#f0f9ff' },
+  { icon: 'leaf-outline', label: 'Nature', color: '#22C55E', iconBg: '#f0fdf4' },
+  { icon: 'heart-outline', label: 'Health', color: '#EF4444', iconBg: '#fef2f2' },
+  { icon: 'airplane-outline', label: 'Travel', color: '#06B6D4', iconBg: '#ecfeff' },
+  { icon: 'globe-outline', label: 'Global', color: '#3B82F6', iconBg: '#eff6ff' },
+  { icon: 'flag-outline', label: 'Events', color: '#F97316', iconBg: '#fff7ed' },
+  { icon: 'flask-outline', label: 'Science', color: '#8B5CF6', iconBg: '#f5f3ff' },
+  { icon: 'camera-outline', label: 'Photos', color: '#EC4899', iconBg: '#fdf2f8' },
+  { icon: 'mic-outline', label: 'Podcast', color: '#6366F1', iconBg: '#eef2ff' },
+  { icon: 'star-outline', label: 'Featured', color: '#F59E0B', iconBg: '#fef9ec' },
+];
+
+function CreateBoardView({
+  requestId,
+  initialName,
+  initialDescription,
+  onBack,
+  onSuccess,
+}: {
+  requestId: string;
+  initialName: string;
+  initialDescription: string;
+  onBack: () => void;
+  onSuccess: (requestId: string) => void;
+}) {
+  const { colors } = useTheme();
+  const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState(initialDescription);
+  const [selectedIconIndex, setSelectedIconIndex] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+
+  const selectedIcon = BOARD_ICON_OPTIONS[selectedIconIndex];
+
+  async function handleApply() {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      Alert.alert('Name required', 'Please enter a board name.');
+      return;
+    }
+    setSubmitting(true);
+
+    const { error: insertError } = await supabase.from('boards').insert({
+      name: trimmedName,
+      description: description.trim() || null,
+      category: trimmedName,
+      icon: selectedIcon.icon,
+      color: selectedIcon.color,
+      icon_bg: selectedIcon.iconBg,
+      school: 'UC Irvine',
+    });
+
+    if (insertError) {
+      setSubmitting(false);
+      Alert.alert('Could not create board', insertError.message);
+      return;
+    }
+
+    await supabase.from('board_requests').update({ status: 'resolved' }).eq('id', requestId);
+    setSubmitting(false);
+    Alert.alert('Board created!', `"${trimmedName}" is now live for all users.`, [
+      { text: 'OK', onPress: () => onSuccess(requestId) },
+    ]);
+  }
+
+  const COLS = 4;
+  const rows: typeof BOARD_ICON_OPTIONS[] = [];
+  for (let i = 0; i < BOARD_ICON_OPTIONS.length; i += COLS) {
+    rows.push(BOARD_ICON_OPTIONS.slice(i, i + COLS));
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
+      <SubHeader title="Create Board" onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+        {/* Preview */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card,
+          borderRadius: 18, padding: 16, marginBottom: 24,
+          borderWidth: 1.5, borderColor: colors.borderSubtle,
+        }}>
+          <View style={{
+            width: 48, height: 48, borderRadius: 14,
+            backgroundColor: selectedIcon.iconBg,
+            alignItems: 'center', justifyContent: 'center', marginRight: 14,
+          }}>
+            <Ionicons name={selectedIcon.icon} size={22} color={selectedIcon.color} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
+              {name.trim() || 'Board Name'}
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
+              {description.trim() || 'Board description'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Name */}
+        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>
+          Board Name <Text style={{ color: '#ef4444' }}>*</Text>
+        </Text>
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Photography Club"
+          placeholderTextColor={colors.placeholder}
+          style={{
+            backgroundColor: colors.inputBg, borderRadius: 12,
+            paddingHorizontal: 14, paddingVertical: 13, fontSize: 14,
+            color: colors.text, marginBottom: 18,
+            borderWidth: 1, borderColor: colors.border,
+          }}
+        />
+
+        {/* Description */}
+        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>
+          Description
+        </Text>
+        <TextInput
+          value={description}
+          onChangeText={setDescription}
+          placeholder="What is this board about?"
+          placeholderTextColor={colors.placeholder}
+          multiline
+          style={{
+            backgroundColor: colors.inputBg, borderRadius: 12,
+            paddingHorizontal: 14, paddingVertical: 13, fontSize: 14,
+            color: colors.text, marginBottom: 24, minHeight: 80,
+            textAlignVertical: 'top', borderWidth: 1, borderColor: colors.border,
+          }}
+        />
+
+        {/* Icon picker */}
+        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 12 }}>
+          Choose Icon
+        </Text>
+        {rows.map((row, rowIdx) => (
+          <View key={rowIdx} style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+            {row.map((opt, colIdx) => {
+              const idx = rowIdx * COLS + colIdx;
+              const active = idx === selectedIconIndex;
+              return (
+                <TouchableOpacity
+                  key={opt.label}
+                  onPress={() => setSelectedIconIndex(idx)}
+                  style={{
+                    flex: 1, alignItems: 'center', paddingVertical: 12,
+                    borderRadius: 14, borderWidth: active ? 2 : 1,
+                    borderColor: active ? opt.color : colors.borderSubtle,
+                    backgroundColor: active ? opt.iconBg : colors.card,
+                  }}
+                >
+                  <View style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    backgroundColor: opt.iconBg,
+                    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
+                  }}>
+                    <Ionicons name={opt.icon} size={18} color={opt.color} />
+                  </View>
+                  <Text style={{ fontSize: 10, color: active ? opt.color : colors.textTertiary, fontWeight: active ? '700' : '400' }}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ))}
+
+        {/* Apply button */}
+        <TouchableOpacity
+          disabled={submitting}
+          onPress={() => void handleApply()}
+          style={{
+            marginTop: 20, backgroundColor: '#10B981', borderRadius: 14,
+            paddingVertical: 16, alignItems: 'center',
+            flexDirection: 'row', justifyContent: 'center', gap: 8,
+            opacity: submitting ? 0.7 : 1,
+          }}
+        >
+          {submitting
+            ? <ActivityIndicator size="small" color="white" />
+            : <Ionicons name="checkmark-circle-outline" size={18} color="white" />}
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>
+            {submitting ? 'Creating…' : 'Create Board'}
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+function ManageBoardsView({ onBack }: { onBack: () => void }) {
+  const { colors } = useTheme();
+  const [boards, setBoards] = useState<Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    icon: string;
+    color: string;
+    iconBg: string;
+    category: string | null;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => { void fetchBoards(); }, []);
+
+  async function fetchBoards() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('boards')
+      .select('*')
+      .eq('school', 'UC Irvine')
+      .order('created_at', { ascending: true });
+    setLoading(false);
+    if (error) { Alert.alert('Could not load boards', error.message); return; }
+    setBoards((data ?? []) as typeof boards);
+  }
+
+  function confirmDelete(board: typeof boards[0]) {
+    Alert.alert(
+      `Delete "${board.name}"?`,
+      'This will permanently remove the board. Existing posts will not be deleted but will no longer appear under any board.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => void handleDelete(board.id),
+        },
+      ]
+    );
+  }
+
+  async function handleDelete(boardId: string) {
+    setDeletingId(boardId);
+    const { data: deleted, error } = await supabase
+      .from('boards')
+      .delete()
+      .eq('id', boardId)
+      .select();
+    setDeletingId(null);
+    if (error) {
+      Alert.alert('Could not delete board', error.message);
+      return;
+    }
+    if (!deleted || deleted.length === 0) {
+      Alert.alert(
+        'Delete blocked',
+        'Supabase removed 0 rows. Run this in the Supabase SQL editor:\n\nCREATE POLICY "Authenticated users can delete boards" ON boards FOR DELETE USING (auth.role() = \'authenticated\');'
+      );
+      return;
+    }
+    setBoards((prev) => prev.filter((b) => b.id !== boardId));
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
+      <SubHeader title="Manage Boards" onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        {loading ? (
+          <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />
+        ) : boards.length === 0 ? (
+          <View style={{ backgroundColor: colors.card, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: colors.borderSubtle, alignItems: 'center' }}>
+            <Ionicons name="albums-outline" size={32} color={colors.textTertiary} style={{ marginBottom: 8 }} />
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>No boards yet</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>Create boards from approved requests.</Text>
+          </View>
+        ) : (
+          boards.map((board) => (
+            <View
+              key={board.id}
+              style={{
+                backgroundColor: colors.card, borderRadius: 18, padding: 16, marginBottom: 12,
+                borderWidth: 1, borderColor: colors.borderSubtle,
+                flexDirection: 'row', alignItems: 'center', gap: 14,
+              }}
+            >
+              <View style={{
+                width: 44, height: 44, borderRadius: 12,
+                backgroundColor: board.iconBg ?? '#eef1fb',
+                alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <Ionicons name={board.icon as React.ComponentProps<typeof Ionicons>['name']} size={20} color={board.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{board.name}</Text>
+                {board.description ? (
+                  <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>{board.description}</Text>
+                ) : null}
+              </View>
+              <TouchableOpacity
+                disabled={deletingId === board.id}
+                onPress={() => confirmDelete(board)}
+                style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca',
+                  alignItems: 'center', justifyContent: 'center',
+                  opacity: deletingId === board.id ? 0.5 : 1,
+                }}
+              >
+                {deletingId === board.id
+                  ? <ActivityIndicator size="small" color="#ef4444" />
+                  : <Ionicons name="trash-outline" size={16} color="#ef4444" />}
+              </TouchableOpacity>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
 function BoardRequestsScreen({ onBack }: { onBack: () => void }) {
   const { colors } = useTheme();
   const [requests, setRequests] = useState<Array<{
@@ -1187,6 +1521,41 @@ function BoardRequestsScreen({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | ReportStatus>('pending');
+  const [createBoardFor, setCreateBoardFor] = useState<{
+    id: string;
+    name: string;
+    description: string;
+  } | null>(null);
+  const [showManageBoards, setShowManageBoards] = useState(false);
+  const SCREEN_W = Dimensions.get('window').width;
+  const boardsSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
+  const swipeBoardsPan = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gs) => gs.dx > 6 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+    onPanResponderMove: (_, gs) => { if (gs.dx > 0) boardsSlideAnim.setValue(gs.dx); },
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dx > SCREEN_W * 0.35 || gs.vx > 0.6) {
+        closeManageBoards();
+      } else {
+        Animated.spring(boardsSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+      }
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(boardsSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+    },
+  })).current;
+
+  function openManageBoards() {
+    boardsSlideAnim.setValue(SCREEN_W);
+    setShowManageBoards(true);
+    Animated.spring(boardsSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+  }
+
+  function closeManageBoards() {
+    Animated.timing(boardsSlideAnim, { toValue: SCREEN_W, duration: 260, useNativeDriver: true }).start(() => {
+      setShowManageBoards(false);
+      boardsSlideAnim.setValue(SCREEN_W);
+    });
+  }
 
   useEffect(() => { void fetchRequests(); }, []);
 
@@ -1254,10 +1623,44 @@ function BoardRequestsScreen({ onBack }: { onBack: () => void }) {
   const filterOptions: Array<'all' | ReportStatus> = ['all', 'pending', 'reviewing', 'resolved', 'dismissed'];
   const filtered = requests.filter((r) => filter === 'all' || r.status === filter);
 
+  if (createBoardFor) {
+    return (
+      <CreateBoardView
+        requestId={createBoardFor.id}
+        initialName={createBoardFor.name}
+        initialDescription={createBoardFor.description}
+        onBack={() => setCreateBoardFor(null)}
+        onSuccess={(reqId) => {
+          setCreateBoardFor(null);
+          setRequests((prev) => prev.map((r) => (r.id === reqId ? { ...r, status: 'resolved' } : r)));
+        }}
+      />
+    );
+  }
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
+    <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
       <SubHeader title="Board Requests" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        <TouchableOpacity
+          onPress={openManageBoards}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 10,
+            backgroundColor: colors.card, borderRadius: 14, padding: 14, marginBottom: 16,
+            borderWidth: 1, borderColor: colors.borderSubtle,
+          }}
+        >
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.brandBg, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="albums-outline" size={18} color={colors.brand} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Manage Active Boards</Text>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}>View and delete existing boards</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+        </TouchableOpacity>
+
         <View style={{ backgroundColor: colors.card, borderRadius: 18, padding: 16, marginBottom: 18, borderWidth: 1, borderColor: colors.borderSubtle }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>New Board Requests</Text>
           <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4, lineHeight: 20 }}>
@@ -1349,10 +1752,34 @@ function BoardRequestsScreen({ onBack }: { onBack: () => void }) {
                   );
                 })}
               </View>
+
+              <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: colors.borderSubtle, paddingTop: 12 }}>
+                <TouchableOpacity
+                  onPress={() => setCreateBoardFor({ id: req.id, name: req.name, description: req.description })}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    paddingVertical: 12, borderRadius: 12,
+                    backgroundColor: '#ecfdf5', borderWidth: 1.5, borderColor: '#10B981',
+                  }}
+                >
+                  <Ionicons name="add-circle-outline" size={16} color="#10B981" />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#10B981' }}>Create Board from this Request</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))
         )}
       </ScrollView>
+      </View>
+
+      {showManageBoards && (
+        <Animated.View
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, transform: [{ translateX: boardsSlideAnim }] }}
+          {...swipeBoardsPan.panHandlers}
+        >
+          <ManageBoardsView onBack={closeManageBoards} />
+        </Animated.View>
+      )}
     </View>
   );
 }

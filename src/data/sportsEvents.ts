@@ -154,17 +154,29 @@ function parseSummary(raw: string): { sport: string; opponent: string; isHome: b
 }
 
 export function formatSportsEventTime(date: Date, timeLabel?: string): string {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrow = new Date(today.getTime() + 86400000);
-  const eventDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const timeStr = timeLabel
+  return timeLabel
     ? timeLabel
     : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
 
-  if (eventDay.getTime() === today.getTime()) return `Today, ${timeStr}`;
-  if (eventDay.getTime() === tomorrow.getTime()) return `Tomorrow, ${timeStr}`;
-  return `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}, ${timeStr}`;
+function dedupeSportsEvents(events: SportsEvent[]) {
+  const seen = new Set<string>();
+  const deduped: SportsEvent[] = [];
+
+  for (const event of events) {
+    const signature = [
+      event.title,
+      event.location,
+      event.date.toISOString(),
+      event.timeLabel ?? '',
+    ].join('|');
+
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    deduped.push(event);
+  }
+
+  return deduped;
 }
 
 function parseSportsCompositeCalendarHtml(
@@ -215,7 +227,7 @@ function parseSportsCompositeCalendarHtml(
     });
   }
 
-  return results.sort((a, b) => a.date.getTime() - b.date.getTime());
+  return dedupeSportsEvents(results.sort((a, b) => a.date.getTime() - b.date.getTime()));
 }
 
 export function parseSportsCalendar(
@@ -273,5 +285,5 @@ export function parseSportsCalendar(
     });
   }
 
-  return results.sort((a, b) => a.date.getTime() - b.date.getTime());
+  return dedupeSportsEvents(results.sort((a, b) => a.date.getTime() - b.date.getTime()));
 }

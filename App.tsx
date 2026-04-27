@@ -460,9 +460,13 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const academicQuarter = getAcademicQuarterForDate(new Date());
   const academicQuarterKey = quarterKey(academicQuarter);
   const homeQuarterKey = timetables.some((t) => t.quarterKey === academicQuarterKey) ? academicQuarterKey : activeKey;
-  const homeQuarterCourses = timetables
-    .filter((t) => t.quarterKey === homeQuarterKey)
-    .flatMap((t) => t.courses);
+  const homeQuarterTimetables = timetables.filter((t) => t.quarterKey === homeQuarterKey);
+  const homeTimetable =
+    homeQuarterTimetables.find((t) => t.name === 'My Schedule')
+    ?? (homeQuarterKey === activeKey ? activeTimetable : null)
+    ?? homeQuarterTimetables[0]
+    ?? null;
+  const homeQuarterCourses = homeTimetable?.courses ?? [];
 
   const USER_ID = userId ?? '';
   const displayUserName = buildDisplayName({ ...userProfile, email: userEmail || userProfile.email });
@@ -1544,9 +1548,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       <HomeScreen
         activeCourses={homeQuarterCourses}
         selectedQuarter={homeQuarterKey === academicQuarterKey ? academicQuarter : selectedQuarter}
-        onGoToTimetable={() => setCurrentTab('timetable')}
-        onGoToGrades={() => setCurrentTab('grades')}
         onOpenSettings={() => setShowSettings(true)}
+        userId={USER_ID}
         bottomInset={insets.bottom}
         scrollToTopTrigger={homeTabTapCount}
       />
@@ -1739,7 +1742,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
                 <View pointerEvents="none" style={{ position: 'absolute', top: -4, left: 4, width: 28, height: 22, borderRadius: 11, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.18)', transform: [{ rotate: '-18deg' }] }} />
               </Animated.View>
             )}
-            <TabItem label="Home" icon="home-outline" active={currentTab === 'home'} onPress={() => { if (currentTab === 'home') setHomeTabTapCount(c => c + 1); else setCurrentTab('home'); }} />
+            <TabItem label="Today" icon="home-outline" active={currentTab === 'home'} onPress={() => { if (currentTab === 'home') setHomeTabTapCount(c => c + 1); else setCurrentTab('home'); }} />
             <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => { if (currentTab === 'timetable') setTimetableTabTapCount(c => c + 1); else setCurrentTab('timetable'); }} />
             <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => { if (currentTab === 'grades') setGradesTabTapCount(c => c + 1); else setCurrentTab('grades'); }} />
             <TabItem label="Board" icon="clipboard-outline" active={currentTab === 'board'} onPress={() => { if (currentTab === 'board') setBoardTabTapCount(c => c + 1); else setCurrentTab('board'); }} />

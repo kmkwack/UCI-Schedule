@@ -1114,3 +1114,60 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64fa (Unify main tab header title weight across the app)
 - **`src/screens/GradesScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, **`src/screens/MessagesScreen.tsx`** — Upgraded the remaining legacy tab headers from the older `28 / bold` styling to the same heavier `30 / 800` title treatment used on Home, Timetable, and Board, so core screen titles now feel consistent and intentionally branded.
+
+### Session 64fb (Turn Home into a smarter student dashboard)
+- **`App.tsx`** — Changed Home to use a single primary timetable (`My Schedule` first, then fallback) instead of flattening every plan in the quarter together. Also passed Home the signed-in user context, ClassMates/message callbacks, and class-reminder settings so Home cards can show friend overlap and alert status accurately.
+- **`src/screens/HomeScreen.tsx`** — Added five new home cards built from existing app data only: `Next Class Intelligence` (countdown, walk estimate, leave-by time, shared-classmate signal), `Gap Planner` (gap length, suggested break/study blocks, quiet spot suggestion), `Academic Health` (current quarter grade snapshot), `Campus Map` (route to next class, frequent buildings, reminder status), and `ClassMates` (shared-classmate summary with quick message/open actions). Also restored an inline weather unit toggle and reduced the live clock refresh cadence so the dashboard updates efficiently without a 16ms timer.
+
+### Session 64fc (Repair broken local Expo `ws` install)
+- **`node_modules/ws/lib/subprotocol.js`**, **`node_modules/ws/wrapper.mjs`** — Restored two missing files from Expo’s nested `ws` copy after the root `ws` install was left incomplete and `expo start` failed with `Cannot find module './lib/subprotocol'`. This was an environment repair to get Metro booting again, not an app feature change.
+
+### Session 64fd (Reframe Home into a Today-first control center)
+- **`src/screens/HomeScreen.tsx`** — Rebuilt the home experience around a single `Today` hero instead of a stacked dashboard. The new layout now centers the next important class action first, with a progress ring, cleaner timeline, Today Insight block, compact quarter/weather cards, and tighter supporting sections for Academic Health, Campus Map, Classmates, and Campus Pulse. The copy also shifts away from negative completion language toward calmer, action-oriented status summaries.
+- **`App.tsx`** — Renamed the bottom tab label from `Home` to `Today` so the nav matches the new screen purpose and the app reads more like a daily student OS than a generic dashboard.
+
+### Session 64fe (Simplify Today around the next class and quarter pulse)
+- **`src/screens/HomeScreen.tsx`** — Removed the extra `Classmates` surface and folded friend overlap directly into the hero under the class title, so shared classes feel contextual instead of like a separate dashboard module. Also moved the `Map` action into a dedicated right-side hero column for better balance, kept only the most useful Today cards, and turned the quarter summary into a progress ring card that makes Spring-term progress feel more alive at a glance.
+- **`App.tsx`** — Stopped passing the old Home-only timetable/grades/friends navigation callbacks that the simplified `Today` screen no longer uses, keeping the screen contract smaller and type-safe.
+
+### Session 64ff (Put the hero progress ring above the map action)
+- **`src/screens/HomeScreen.tsx`** — Swapped the vertical order of the hero’s right-side controls so the day-progress ring sits above the `Map` button. This gives the status signal the higher visual priority and keeps the map action feeling like a secondary follow-up action.
+
+### Session 64fg (Align the hero map action with the class title row)
+- **`src/screens/HomeScreen.tsx`** — Moved the hero `Map` button out of the right-side ring column and back onto the class-title row, spaced to the far right of the title for a more balanced horizontal alignment. The progress ring stays in the separate right column so the hero keeps a clear status/action hierarchy without stacking both controls together.
+
+### Session 64fh (Anchor the hero map action under the ring, level with the title band)
+- **`src/screens/HomeScreen.tsx`** — Repositioned the hero `Map` button into the right-side action column beneath the day-progress ring, while offsetting it downward so it visually lines up with the class-title band rather than hugging the ring. This keeps the map action in the right rail but preserves the title row’s breathing room.
+
+### Session 64fi (Strip Today down to the essentials)
+- **`src/screens/HomeScreen.tsx`** — Removed the separate `Campus Map` card so the Today screen stays focused on the next action rather than repeating navigation detail in a second surface. Also simplified the quarter card into a larger progress ring with the percentage and remaining days inside the ring, while dropping the extra week-status copy that was redundant with the header.
+
+### Session 64fj (Restore multi-event campus list and quiet the quarter card)
+- **`src/screens/HomeScreen.tsx`** — Renamed the confusing `Campus Pulse` section back to `Campus Events` and restored a simple list of events across today and tomorrow instead of surfacing only one highlighted pick. Also removed the extra `Through finals week` caption under the quarter ring so the card stays minimal with just the title and the ring itself.
+
+### Session 64fk (Align the hero map action to the class-title band)
+- **`src/screens/HomeScreen.tsx`** — Kept the `Map` action in the hero’s right rail under the day-progress ring, but changed it from normal flow to an absolutely positioned control so it lines up with the class-title band instead of dropping to the level of the time/location line.
+
+### Session 64fl (Remove the unstable Today hero map action)
+- **`src/screens/HomeScreen.tsx`** — Removed the `Map` button from the Today hero after the right-rail placement kept fighting the layout. The card now prioritizes the next-class information and progress ring without a misaligned secondary action.
+- **`App.tsx`** — Dropped the no-longer-used `school` prop from the Today screen wiring after removing the hero map action.
+
+### Session 64fm (Give the hero title its width back)
+- **`src/screens/HomeScreen.tsx`** — Tightened the gap between the hero text column and the day-progress ring, removed the extra right padding from the text column, and narrowed the ring rail so ordinary class titles stop wrapping to a second line unnecessarily. The title now prefers a single line with tail truncation only when genuinely needed.
+
+### Session 64fn (Keep the hero duration on one line)
+- **`src/screens/HomeScreen.tsx`** — Made the main next-class headline fit on a single line with font scaling instead of wrapping, so hour/minute chunks such as `4h 40m` stay together and read naturally.
+
+### Session 64fo (Split the hero countdown into a label line and a duration line)
+- **`src/screens/HomeScreen.tsx`** — Reworked the hero countdown so copy like `Next class in` sits on one line and the full duration such as `15h 32m` sits together on the next line at the same size, instead of shrinking the text to force everything onto one line.
+- **`src/screens/HomeScreen.tsx`** — Expanded the `Campus Events` list to show more upcoming games from the fetched athletics feed instead of cutting the section off at only today/tomorrow.
+
+### Session 64fp (Deduplicate athletics events before rendering)
+- **`src/data/sportsEvents.ts`** — Added a dedupe pass keyed by title, location, timestamp, and time label so duplicate rows coming from the UCI athletics feed no longer survive parsing and cause repeated cards.
+- **`src/screens/HomeScreen.tsx`** — Switched the campus-event row keys to a stronger composite key and expanded the list to show up to 12 upcoming events, fixing the duplicate-key redbox while still surfacing more games on the Today screen.
+
+### Session 64fq (Stop showing the event day twice)
+- **`src/data/sportsEvents.ts`** — Simplified `formatSportsEventTime()` so it returns only the time portion. The Home screen already renders `Today` / `Tomorrow` / date labels separately, so this removes the duplicated day text like `Today · Today, 6:00 PM`.
+
+### Session 64fr (Add a shared-classmates summary to Today Insight)
+- **`src/screens/HomeScreen.tsx`** — Added a Today Insight line that summarizes how many friends overlap with how many of today’s classes, using only timetable-sharing friends and only courses happening today. This keeps the hero focused on the next class while still giving a quick sense of today’s social overlap.

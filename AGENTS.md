@@ -1095,3 +1095,22 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64ev (Fix one-month-early final exam dates)
 - **`src/components/ReviewsModal.tsx`** — Fixed final-exam month formatting so 0-based month values from the stored course data are no longer shifted one month early when rendered in the UI.
+
+### Session 64ew (Polish core UI surfaces for a more premium ClassMate brand feel)
+- **`src/context/ThemeContext.tsx`** — Refined the light/dark color palettes toward softer blue-tinted neutrals, deeper navy text, and more cohesive branded surfaces so the app feels more deliberate and upscale without changing the existing blue brand direction.
+- **`src/screens/WelcomeScreen.tsx`** — Tightened the hero composition, softened ambient background shapes, polished the monogram presentation, and refined the CTA/button surface so the first impression feels more premium while preserving the current tone.
+- **`src/screens/HomeScreen.tsx`** — Reworked the home header and card styling with stronger micro-label hierarchy, softer borders, subtler shadows, and cleaner branded surfaces to make the dashboard feel more luxurious and less boxy.
+- **`src/screens/TimetableScreen.tsx`** — Refined the timetable header, quarter picker, plan pills, and grid shell so the main planner screen better matches the upgraded brand language without changing core behavior.
+- **`src/screens/BoardScreen.tsx`** — Polished the board landing screen with a more elevated header, search field, board cards, and action surfaces so the community area feels consistent with the rest of the app’s premium styling.
+
+### Session 64ex (Restore Metro-compatible ws dependency for local Expo dev)
+- **`package.json`** — Reset the root `ws` dependency from `^8` back to `7.5.10` so React Native / Metro resolve the websocket version they expect and local `expo start` no longer crashes on the missing `./lib/subprotocol` module.
+
+### Session 64ey (Remove timetable header seam for a cleaner continuous surface)
+- **`src/screens/TimetableScreen.tsx`** — Removed the artificial divider line below the timetable header and matched the header/background surface colors so the top of the timetable screen reads as one continuous premium surface instead of splitting into a visible white/blue boundary.
+
+### Session 64ez (Remove decorative micro-labels from Home and Timetable headers)
+- **`src/screens/HomeScreen.tsx`**, **`src/screens/TimetableScreen.tsx`** — Removed the added “Today at a glance” and “Build your quarter” header pills so those screens feel cleaner, quieter, and less visually busy while keeping the upgraded spacing and surface polish.
+
+### Session 64fa (Unify main tab header title weight across the app)
+- **`src/screens/GradesScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, **`src/screens/MessagesScreen.tsx`** — Upgraded the remaining legacy tab headers from the older `28 / bold` styling to the same heavier `30 / 800` title treatment used on Home, Timetable, and Board, so core screen titles now feel consistent and intentionally branded.

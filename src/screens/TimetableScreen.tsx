@@ -1326,13 +1326,13 @@ export default function TimetableScreen({
           )}
       </Modal>
 
-      <View>
+      <View style={{ backgroundColor: colors.bg }}>
 
       {/* Header */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+      <View style={{ paddingHorizontal: 18, paddingBottom: 10, paddingTop: 6 }}>
         {/* Row 1: Title + Quarter picker + three-dots */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>
+          <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>
             Timetable
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -1343,11 +1343,16 @@ export default function TimetableScreen({
                 alignItems: 'center',
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 20,
-                paddingHorizontal: 12,
-                paddingVertical: 7,
+                borderRadius: 22,
+                paddingHorizontal: 13,
+                paddingVertical: 8,
                 backgroundColor: colors.card,
                 gap: 4,
+                shadowColor: '#0f172a',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: isDark ? 0.18 : 0.06,
+                shadowRadius: 12,
+                elevation: 3,
               }}
             >
               <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
@@ -1358,8 +1363,14 @@ export default function TimetableScreen({
             <TouchableOpacity
               onPress={openSettings}
               style={{
-                padding: 6,
-                borderRadius: 8,
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: colors.card,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: colors.border,
               }}
             >
               <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
@@ -1404,15 +1415,15 @@ export default function TimetableScreen({
                     activeOpacity={0.8}
                     style={{
                       paddingHorizontal: 16,
-                      paddingVertical: 8,
-                      borderRadius: 20,
-                      backgroundColor: isActive ? colors.brand : colors.card,
+                      paddingVertical: 9,
+                      borderRadius: 22,
+                      backgroundColor: isActive ? colors.brand : colors.inputBg,
                       borderWidth: 1.5,
-                      borderColor: isActive ? colors.brand : `${colors.border}`,
+                      borderColor: isActive ? colors.brand : `${colors.borderSubtle}`,
                       shadowColor: '#0f172a',
                       shadowOffset: { width: 0, height: 6 },
-                      shadowOpacity: 0.08,
-                      shadowRadius: 10,
+                      shadowOpacity: isActive ? (isDark ? 0.28 : 0.14) : (isDark ? 0.1 : 0.04),
+                      shadowRadius: isActive ? 14 : 8,
                       elevation: 3,
                     }}
                   >
@@ -1430,7 +1441,6 @@ export default function TimetableScreen({
         </View>
       </View>
 
-      <View style={{ height: 1, backgroundColor: colors.borderSubtle }} />
       </View>{/* end header area measurement wrapper */}
 
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -1445,13 +1455,13 @@ export default function TimetableScreen({
         >
         {/* Grid container */}
         <View
-          style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8 }}
+          style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 8 }}
           onLayout={(e) => setGridWidth(e.nativeEvent.layout.width - GRID_LEFT_PAD - GRID_OUTER_HORIZONTAL_PADDING)}
         >
           <View
             style={{
               backgroundColor: gridFrameBg,
-              borderRadius: 22,
+              borderRadius: 26,
               borderWidth: 1,
               borderColor: gridFrameBorder,
               overflow: 'hidden',

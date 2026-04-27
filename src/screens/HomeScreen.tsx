@@ -174,7 +174,7 @@ export default function HomeScreen({
   bottomInset = 0,
   scrollToTopTrigger = 0,
 }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const [useCelsius, setUseCelsius] = useState(true);
@@ -258,13 +258,13 @@ export default function HomeScreen({
     return groups;
   }, []);
   const raisedCardStyle = {
-    borderRadius: 24,
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
+    borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(188,199,221,0.42)',
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
+    shadowOpacity: isDark ? 0.22 : 0.07,
+    shadowRadius: 28,
     elevation: 6,
   } as const;
   const insetCardStyle = {
@@ -314,24 +314,33 @@ export default function HomeScreen({
   return (
     <ScrollView
       ref={scrollRef}
-      style={{ flex: 1, backgroundColor: colors.bgSecondary }}
-        contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: bottomInset + 70 }}
+      style={{ flex: 1, backgroundColor: colors.bg }}
+        contentContainerStyle={{ paddingTop: 62, paddingHorizontal: 18, paddingBottom: bottomInset + 74 }}
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
+      <View style={{ marginBottom: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>Home</Text>
+        <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>Home</Text>
         <TouchableOpacity
           onPress={onOpenSettings}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <View style={{
-            width: 36, height: 36, borderRadius: 18,
-            backgroundColor: colors.brandBg, alignItems: 'center', justifyContent: 'center',
+            width: 40, height: 40, borderRadius: 20,
+            backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: colors.border,
+            shadowColor: '#0f172a',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: isDark ? 0.2 : 0.08,
+            shadowRadius: 14,
+            elevation: 4,
           }}>
             <Ionicons name="person-outline" size={18} color={colors.brand} />
           </View>
         </TouchableOpacity>
+      </View>
       </View>
       <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 0, marginBottom: 16 }}>
         {getDateLabel(now, selectedQuarter, quarterStart, quarterEnd)}
@@ -341,10 +350,10 @@ export default function HomeScreen({
       <View style={{
         ...raisedCardStyle,
         backgroundColor: colors.card,
-        padding: 18,
+        padding: 22,
         marginBottom: 16,
       }}>
-        <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '500', marginBottom: 10 }}>Your Day</Text>
+        <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '800', letterSpacing: 0.7, marginBottom: 12 }}>YOUR DAY</Text>
 
         {/* Class count */}
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 16 }}>
@@ -609,7 +618,7 @@ export default function HomeScreen({
       {/* Weather card */}
       <View style={{
         ...raisedCardStyle,
-        backgroundColor: colors.brandBg,
+        backgroundColor: isDark ? 'rgba(65,105,225,0.18)' : 'rgba(233,240,255,0.96)',
         padding: 18,
         marginBottom: 16,
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

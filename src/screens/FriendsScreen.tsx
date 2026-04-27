@@ -1051,8 +1051,8 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
         </KeyboardAvoidingView>
       </Modal>
 
-      <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>ClassMates</Text>
+      <View style={{ paddingHorizontal: 18, paddingTop: 4, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: -0.8, color: colors.text }}>ClassMates</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <TouchableOpacity onPress={() => setShowAddModal(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="person-add-outline" size={24} color={colors.text} />
@@ -1060,7 +1060,7 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
         </View>
       </View>
 
-      <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+      <View style={{ paddingHorizontal: 18, marginBottom: 16 }}>
         <View style={{
           flexDirection: 'row', alignItems: 'center',
           backgroundColor: colors.inputBg, borderRadius: 12,
@@ -1077,7 +1077,7 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 4, alignItems: 'center', justifyContent: 'space-between' }}>
+      <View style={{ flexDirection: 'row', paddingHorizontal: 18, gap: 8, marginBottom: 4, alignItems: 'center', justifyContent: 'space-between' }}>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity
             onPress={() => setActiveTab('friends')}

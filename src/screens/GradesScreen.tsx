@@ -540,8 +540,8 @@ export default function GradesScreen({ timetables, userId, bottomInset = 0, scro
   }, [scrollToTopTrigger]);
 
   return (
-    <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.bgSecondary }} contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: bottomInset + 70 }} showsVerticalScrollIndicator={false}>
-      <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text, marginBottom: 16 }}>Grades</Text>
+    <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.bgSecondary }} contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 18, paddingBottom: bottomInset + 70 }} showsVerticalScrollIndicator={false}>
+      <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: -0.8, color: colors.text, marginBottom: 16 }}>Grades</Text>
 
       {/* Stats row */}
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>

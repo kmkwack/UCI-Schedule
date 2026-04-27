@@ -34,27 +34,27 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
   const { colors, isDark } = useTheme();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <View
         style={{
           position: 'absolute',
-          top: -50,
-          right: -40,
-          width: 220,
-          height: 220,
-          borderRadius: 110,
-          backgroundColor: 'rgba(65,105,225,0.16)',
+          top: -46,
+          right: -32,
+          width: 238,
+          height: 238,
+          borderRadius: 119,
+          backgroundColor: isDark ? 'rgba(65,105,225,0.14)' : 'rgba(65,105,225,0.12)',
         }}
       />
       <View
         style={{
           position: 'absolute',
-          bottom: -40,
-          left: -90,
-          width: 170,
-          height: 170,
-          borderRadius: 85,
-          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.28)',
+          bottom: -34,
+          left: -86,
+          width: 188,
+          height: 188,
+          borderRadius: 94,
+          backgroundColor: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.44)',
         }}
       />
 
@@ -62,8 +62,8 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
         style={{
           flex: 1,
           paddingHorizontal: 24,
-          paddingTop: 10,
-          paddingBottom: 28,
+          paddingTop: 14,
+          paddingBottom: 26,
           transform: [{ translateY: 16 }],
         }}
       >
@@ -76,10 +76,12 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
           <View style={{ alignItems: 'center', marginBottom: 24 }}>
             <View
               style={{
-                paddingHorizontal: 14,
+                paddingHorizontal: 15,
                 paddingVertical: 8,
                 borderRadius: 999,
-                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.82)',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.8)',
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(188,199,221,0.35)',
               }}
             >
               <Text style={{ color: '#4169E1', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }}>
@@ -97,28 +99,43 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
             <View
               style={{
                 position: 'absolute',
-                top: 6,
-                right: 8,
-                width: 132,
-                height: 132,
-                borderRadius: 66,
-                backgroundColor: isDark ? 'rgba(65,105,225,0.12)' : 'rgba(65,105,225,0.10)',
+                top: 2,
+                right: 12,
+                width: 144,
+                height: 144,
+                borderRadius: 72,
+                backgroundColor: isDark ? 'rgba(65,105,225,0.12)' : 'rgba(65,105,225,0.09)',
               }}
             />
             <View
               style={{
                 position: 'absolute',
-                top: 184,
-                left: -22,
-                width: 88,
-                height: 88,
-                borderRadius: 44,
+                top: 190,
+                left: -18,
+                width: 96,
+                height: 96,
+                borderRadius: 48,
                 backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,122,145,0.10)',
               }}
             />
 
             <View style={{ alignItems: 'center', marginBottom: 22 }}>
-              <ClassMateMonogram isDark={isDark} />
+              <View
+                style={{
+                  padding: 14,
+                  borderRadius: 34,
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.5)',
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(188,199,221,0.32)',
+                  shadowColor: '#0f172a',
+                  shadowOffset: { width: 0, height: 16 },
+                  shadowOpacity: isDark ? 0.22 : 0.08,
+                  shadowRadius: 28,
+                  elevation: 6,
+                }}
+              >
+                <ClassMateMonogram isDark={isDark} />
+              </View>
 
               <Text
                 style={{
@@ -152,7 +169,7 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
                   lineHeight: 24,
                   color: colors.textSecondary,
                   textAlign: 'center',
-                  maxWidth: 310,
+                  maxWidth: 318,
                 }}
               >
                 Keep your schedule, classmates, and campus conversations together in one calm place.
@@ -180,7 +197,9 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
                       width: 46,
                       height: 46,
                       borderRadius: 15,
-                      backgroundColor: isDark ? 'rgba(65,105,225,0.16)' : 'rgba(255,255,255,0.62)',
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.68)',
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(188,199,221,0.28)',
                       alignItems: 'center',
                       justifyContent: 'center',
                       marginRight: 14,
@@ -208,7 +227,7 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
             activeOpacity={0.92}
             style={{
               backgroundColor: '#4169E1',
-              borderRadius: 20,
+              borderRadius: 22,
               paddingVertical: 18,
               alignItems: 'center',
               flexDirection: 'row',
@@ -216,8 +235,8 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
               gap: 8,
               shadowColor: '#4169E1',
               shadowOffset: { width: 0, height: 12 },
-              shadowOpacity: 0.28,
-              shadowRadius: 18,
+              shadowOpacity: 0.22,
+              shadowRadius: 22,
               elevation: 8,
             }}
           >
@@ -228,7 +247,7 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
           <View
             style={{
               paddingTop: 12,
-              paddingBottom: 14,
+              paddingBottom: 12,
               paddingHorizontal: 8,
             }}
           >

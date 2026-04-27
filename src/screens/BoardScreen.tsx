@@ -253,7 +253,7 @@ export default function BoardScreen({
   bottomInset = 0,
   scrollToTopTrigger = 0,
 }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
@@ -1116,36 +1116,53 @@ export default function BoardScreen({
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
       <View
         style={{
           paddingTop: 64,
-          paddingHorizontal: 16,
+          paddingHorizontal: 18,
           paddingBottom: 14,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
           flexDirection: 'row',
           alignItems: 'flex-start',
           justifyContent: 'space-between',
         }}
       >
         <View>
-          <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>Board</Text>
-          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>Choose a board to explore</Text>
+          <View
+            style={{
+              alignSelf: 'flex-start',
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 999,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.72)',
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(188,199,221,0.34)',
+              marginBottom: 10,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.8, color: colors.brand }}>CAMPUS COMMUNITY</Text>
+          </View>
+          <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>Board</Text>
+          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>Search across boards or jump into a community space.</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
           {onOpenMessages ? (
             <TouchableOpacity
               onPress={() => onOpenMessages?.(null)}
               style={{
-                width: 38,
-                height: 38,
-                borderRadius: 19,
+                width: 40,
+                height: 40,
+                borderRadius: 20,
                 backgroundColor: colors.card,
                 borderWidth: 1,
                 borderColor: colors.border,
                 alignItems: 'center',
                 justifyContent: 'center',
+                shadowColor: '#0f172a',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: isDark ? 0.2 : 0.07,
+                shadowRadius: 14,
+                elevation: 4,
               }}
             >
               <Ionicons name="chatbubble-outline" size={18} color={colors.text} />
@@ -1158,9 +1175,14 @@ export default function BoardScreen({
               alignItems: 'center',
               gap: 5,
               backgroundColor: colors.brand,
-              borderRadius: 20,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
+              borderRadius: 22,
+              paddingHorizontal: 15,
+              paddingVertical: 9,
+              shadowColor: colors.brand,
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.2,
+              shadowRadius: 18,
+              elevation: 5,
             }}
           >
             <Ionicons name="add" size={16} color="white" />
@@ -1171,7 +1193,7 @@ export default function BoardScreen({
 
       <ScrollView
         ref={boardListScrollRef}
-        contentContainerStyle={{ padding: 16, paddingBottom: bottomInset + 70 }}
+        contentContainerStyle={{ padding: 18, paddingBottom: bottomInset + 74 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={colors.brand} />}
       >
@@ -1183,14 +1205,19 @@ export default function BoardScreen({
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                backgroundColor: colors.inputBg,
-                borderRadius: 14,
+                backgroundColor: colors.card,
+                borderRadius: 18,
                 paddingHorizontal: 14,
-                paddingVertical: 11,
+                paddingVertical: 12,
                 gap: 9,
-                marginBottom: 14,
+                marginBottom: 16,
                 borderWidth: 1,
-                borderColor: colors.borderSubtle,
+                borderColor: colors.border,
+                shadowColor: '#0f172a',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: isDark ? 0.16 : 0.05,
+                shadowRadius: 16,
+                elevation: 3,
               }}
             >
               <Ionicons name="search-outline" size={18} color={colors.placeholder} />
@@ -1224,7 +1251,7 @@ export default function BoardScreen({
                       padding: 16,
                       backgroundColor: colors.card,
                       borderWidth: 1,
-                      borderColor: colors.borderSubtle,
+                      borderColor: colors.border,
                       marginBottom: 8,
                     }}
                   >
@@ -1245,7 +1272,12 @@ export default function BoardScreen({
                           padding: 15,
                           backgroundColor: colors.card,
                           borderWidth: 1,
-                          borderColor: colors.borderSubtle,
+                          borderColor: colors.border,
+                          shadowColor: '#0f172a',
+                          shadowOffset: { width: 0, height: 8 },
+                          shadowOpacity: isDark ? 0.16 : 0.05,
+                          shadowRadius: 14,
+                          elevation: 3,
                         }}
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 7, flexWrap: 'wrap' }}>
@@ -1278,12 +1310,12 @@ export default function BoardScreen({
                   borderRadius: 18,
                   padding: 16,
                   marginBottom: 12,
-                  borderWidth: 1.5,
-                  borderColor: colors.borderSubtle,
+                  borderWidth: 1,
+                  borderColor: colors.border,
                   shadowColor: '#0f172a',
                   shadowOffset: { width: 0, height: 10 },
-                  shadowOpacity: 0.07,
-                  shadowRadius: 18,
+                  shadowOpacity: isDark ? 0.18 : 0.06,
+                  shadowRadius: 20,
                   elevation: 4,
                 }}
               >
@@ -1292,17 +1324,20 @@ export default function BoardScreen({
                     width: 48,
                     height: 48,
                     borderRadius: 14,
-                    backgroundColor: colors.brandBg,
+                    backgroundColor: board.iconBg,
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginRight: 14,
                     borderWidth: 1,
-                    borderColor: `${colors.brand}18`,
+                    borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(188,199,221,0.25)',
                   }}
                 >
-                  <Ionicons name={board.icon} size={22} color={colors.brand} />
+                  <Ionicons name={board.icon} size={22} color={board.color} />
                 </View>
                 <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.7, color: colors.textTertiary, marginBottom: 4 }}>
+                    COMMUNITY BOARD
+                  </Text>
                   <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{board.name}</Text>
                   <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{postCountForBoard(board)} posts</Text>
                 </View>

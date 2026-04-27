@@ -283,11 +283,11 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
   if (!hasValidUserId) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-        <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ paddingHorizontal: 18, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>Messages</Text>
+          <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: -0.8, color: colors.text }}>Messages</Text>
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
           <Ionicons name="chatbubbles-outline" size={60} color={colors.border} />
@@ -399,14 +399,14 @@ export default function MessagesScreen({ onClose, openChatWith, userId }: {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{
-        paddingHorizontal: 16, paddingVertical: 12,
+        paddingHorizontal: 18, paddingVertical: 12,
         borderBottomWidth: 1, borderBottomColor: colors.border,
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>Messages</Text>
+          <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: -0.8, color: colors.text }}>Messages</Text>
         </View>
         <View style={{
           flexDirection: 'row', alignItems: 'center',

@@ -1171,3 +1171,9 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64fr (Add a shared-classmates summary to Today Insight)
 - **`src/screens/HomeScreen.tsx`** — Added a Today Insight line that summarizes how many friends overlap with how many of today’s classes, using only timetable-sharing friends and only courses happening today. This keeps the hero focused on the next class while still giving a quick sense of today’s social overlap.
+
+### Session 64fs (Remove the duplicate “classes left” text from the hero)
+- **`src/screens/HomeScreen.tsx`** — Replaced the hero’s `One class left today` / `N classes left today` helper copy with the simpler `Next up` state label. The day-progress ring already communicates the remaining-count idea, so this avoids repeating the same status in two places.
+
+### Session 64ft (Let the hero open directly on the countdown)
+- **`src/screens/HomeScreen.tsx`** — Removed the extra `Next up` helper label as well, so the hero now starts directly with the main countdown/value unless there is an active current-class state to call out.

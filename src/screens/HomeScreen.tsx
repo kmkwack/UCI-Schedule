@@ -597,9 +597,7 @@ export default function HomeScreen({
 
   const heroSupport = currentClass
     ? 'Current class'
-    : nextClass
-      ? `${upcomingClasses.length === 1 ? 'One class' : `${upcomingClasses.length} classes`} left today`
-      : 'Today at a glance';
+    : null;
 
   const heroFooter = heroCourse
     ? `${formatHeroTimeRange(heroCourse.time)} · ${heroCourse.location ?? 'Location TBA'}`
@@ -730,12 +728,14 @@ export default function HomeScreen({
       }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: heroAccent }} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary }}>
-                {heroSupport}
-              </Text>
-            </View>
+            {heroSupport ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: heroAccent }} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary }}>
+                  {heroSupport}
+                </Text>
+              </View>
+            ) : null}
             {heroHeadlineLabel && heroHeadlineValue ? (
               <>
                 <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>

@@ -1063,3 +1063,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64em (Bump app version for a fresh external TestFlight review lane)
 - **`app.json`** — Updated the app version from `1.0.0` to `1.0.1` so a new external TestFlight review can be submitted while version `1.0.0` still has a build waiting for review.
+
+### Session 64en (Detach unauthorized EAS project link and reassign Expo owner)
+- **`app.json`** — Changed the Expo owner from `hiiseans` to `parksihyun` and removed the stale `extra.eas.projectId` entry so EAS can initialize a new accessible project under the current account instead of repeatedly targeting an unauthorized legacy AppEntity.

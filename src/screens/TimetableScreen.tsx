@@ -1308,6 +1308,7 @@ export default function TimetableScreen({
             <ReviewsModal
               visible={!!reviewsCourse}
               onClose={() => setReviewsCourse(null)}
+              sectionId={reviewsCourse.id}
               courseCode={reviewsCourse.code}
               department={reviewsCourse.department}
               courseNumber={reviewsCourse.code.slice(reviewsCourse.department.length).trim()}

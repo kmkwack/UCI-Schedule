@@ -90,6 +90,7 @@ type CourseReview = {
 type Props = {
   visible: boolean;
   onClose: () => void;
+  sectionId?: string | null;
   courseCode: string;    // e.g. "ECON 100A"
   department: string;    // e.g. "ECON"
   courseNumber: string;  // e.g. "100A"
@@ -102,7 +103,7 @@ type Props = {
 };
 
 export default function ReviewsModal({
-  visible, onClose, courseCode, department, courseNumber, title,
+  visible, onClose, sectionId, courseCode, department, courseNumber, title,
   professors, school, userId, semesterLabel, quarterKey,
 }: Props) {
   const { colors } = useTheme();
@@ -182,25 +183,38 @@ export default function ReviewsModal({
   }, [visible, instructor]);
 
   async function fetchCourseInfo() {
-    const cacheKey = `${courseCode}::${quarterKey}`;
+    const rowId = sectionId ? `${sectionId}::${quarterKey}` : null;
+    const cacheKey = rowId ? `${rowId}` : `${courseCode}::${quarterKey}`;
     if (courseInfoCache[cacheKey]) {
       setCourseInfo(courseInfoCache[cacheKey]);
       return;
     }
     setCourseInfoLoading(true);
-    const { data } = await supabase
-      .from('sections')
-      .select('final_exam, restrictions, prerequisite_link, section_comment')
-      .eq('code', courseCode)
-      .eq('quarter_key', quarterKey)
-      .limit(25);
-
-    const rows = (data ?? []) as Array<{
+    let rows: Array<{
       final_exam: FinalExam | string | null;
       restrictions: string | null;
       prerequisite_link: string | null;
       section_comment: string | null;
-    }>;
+    }> = [];
+
+    if (rowId) {
+      const { data } = await supabase
+        .from('sections')
+        .select('final_exam, restrictions, prerequisite_link, section_comment')
+        .eq('id', rowId)
+        .limit(1);
+      rows = (data ?? []) as typeof rows;
+    }
+
+    if (rows.length === 0) {
+      const { data } = await supabase
+        .from('sections')
+        .select('final_exam, restrictions, prerequisite_link, section_comment')
+        .eq('code', courseCode)
+        .eq('quarter_key', quarterKey)
+        .limit(25);
+      rows = (data ?? []) as typeof rows;
+    }
 
     const preferred =
       rows.find((row) => row.final_exam) ??

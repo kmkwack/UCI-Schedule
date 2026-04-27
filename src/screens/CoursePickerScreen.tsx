@@ -241,7 +241,7 @@ export default function CoursePickerScreen({
   const [enrollmentLoadingIds, setEnrollmentLoadingIds] = useState<Set<string>>(new Set());
   const [reviewSummaryCache, setReviewSummaryCache] = useState<Record<string, ReviewSummary>>({});
   const [savedCountCache, setSavedCountCache] = useState<Record<string, number>>({});
-  const [reviewsCourse, setReviewsCourse] = useState<CatalogCourse | null>(null);
+  const [reviewsCourse, setReviewsCourse] = useState<Course | null>(null);
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
   const [customCourseDraft, setCustomCourseDraft] = useState<CustomCourseDraft>(EMPTY_CUSTOM_DRAFT);
 
@@ -1103,7 +1103,7 @@ export default function CoursePickerScreen({
                                     <TouchableOpacity
                                       onPress={(e) => {
                                         e.stopPropagation();
-                                        setReviewsCourse(item);
+                                        setReviewsCourse(course);
                                       }}
                                       style={{
                                         paddingHorizontal: 10, paddingVertical: 5,
@@ -1148,14 +1148,13 @@ export default function CoursePickerScreen({
         <ReviewsModal
           visible={!!reviewsCourse}
           onClose={() => setReviewsCourse(null)}
-          courseCode={`${reviewsCourse.department} ${reviewsCourse.courseNumber}`}
+          sectionId={reviewsCourse.id}
+          courseCode={reviewsCourse.code}
           department={reviewsCourse.department}
-          courseNumber={reviewsCourse.courseNumber}
+          courseNumber={reviewsCourse.code.slice(reviewsCourse.department.length).trim()}
           title={reviewsCourse.title}
           professors={[...new Set(
-            ((isGlobalSearch ? globalSectionsMap : sectionsMap)[reviewsCourse.id] ?? [])
-              .map((s) => s.professor)
-              .filter((p): p is string => !!p && !p.includes('STAFF'))
+            [reviewsCourse.professor].filter((p): p is string => !!p && !p.includes('STAFF'))
           )]}
           school={school}
           userId={userId}

@@ -1092,3 +1092,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64eu (Use section-specific final-exam lookups first)
 - **`src/components/ReviewsModal.tsx`** — Added `sectionId` support so course details now look up `sections.id = <sectionCode>::<quarterKey>` first, falling back to course-code matching only if the exact section row is unavailable. This makes final-exam details much less likely to come from a different section of the same course.
 - **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/TimetableScreen.tsx`** — Updated Reviews modal launches to pass the actual selected section’s `id`, so the modal can fetch the most specific final-exam data available.
+
+### Session 64ev (Fix one-month-early final exam dates)
+- **`src/components/ReviewsModal.tsx`** — Fixed final-exam month formatting so 0-based month values from the stored course data are no longer shifted one month early when rendered in the UI.

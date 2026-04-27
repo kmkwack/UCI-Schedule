@@ -51,13 +51,21 @@ function decodeRestrictions(raw: string | null): string | null {
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+function formatMonthName(month?: number) {
+  if (month == null || Number.isNaN(month)) return null;
+  if (month >= 0 && month <= 11) return MONTH_NAMES[month];
+  if (month >= 1 && month <= 12) return MONTH_NAMES[month - 1];
+  return null;
+}
+
 function formatFinalExam(fe: FinalExam | string | null): string | null {
   if (!fe) return null;
   if (typeof fe === 'string') return fe;
   if (fe.examStatus === 'NO_FINAL' || fe.examStatus === 'TBA') return fe.examStatus === 'NO_FINAL' ? 'No final exam' : 'TBA';
   const parts: string[] = [];
   if (fe.dayOfWeek) parts.push(fe.dayOfWeek);
-  if (fe.month != null && fe.day != null) parts.push(`${MONTH_NAMES[fe.month - 1]} ${fe.day}`);
+  const monthName = formatMonthName(fe.month);
+  if (monthName && fe.day != null) parts.push(`${monthName} ${fe.day}`);
   const fmt = (t?: { hour: number; minute: number }) =>
     t ? `${t.hour}:${String(t.minute).padStart(2, '0')}` : null;
   const start = fmt(fe.startTime), end = fmt(fe.endTime);

@@ -1,0 +1,42 @@
+name: Test
+
+on:
+    pull_request:
+        types:
+            - opened
+            - synchronize
+            - unlabeled
+
+permissions:
+    id-token: write
+    contents: read
+    deployments: write
+    pull-requests: write
+
+concurrency:
+    group: ${{ github.head_ref }}-test
+    cancel-in-progress: true
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v3
+
+            - name: Setup Node.js and pnpm
+              uses: ./.github/actions/setup-node-and-pnpm
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Generate termData for tests
+              env:
+                  HUSKY: 0
+                  NODE_ENV: staging
+                  ANTEATER_API_KEY: ${{ secrets.ANTEATER_API_KEY }}
+              run: pnpm --filter=antalmanac fetch-term-data
+
+            - name: Test
+              run: pnpm test run

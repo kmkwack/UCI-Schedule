@@ -396,10 +396,11 @@ export default function ReviewsModal({
                         {(() => {
                           const prof = instructor || professors[0] || '';
                           if (!prof || prof === 'STAFF' || prof.trim() === '') return null;
+                          const lastName = prof.includes(',') ? prof.substring(0, prof.indexOf(',')) : prof;
                           const sid = school === 'UC Irvine' ? '1074' : '';
                           const url = sid
-                            ? `https://www.ratemyprofessors.com/search/professors/${sid}?q=${encodeURIComponent(prof)}`
-                            : `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(prof)}`;
+                            ? `https://www.ratemyprofessors.com/search/professors/${sid}?q=${encodeURIComponent(lastName)}`
+                            : `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(lastName)}`;
                           return (
                             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                               <Ionicons name="star-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />

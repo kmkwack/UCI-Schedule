@@ -1659,7 +1659,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           borderRadius: 28,
           borderWidth: 1,
           borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.86)',
-          backgroundColor: isDark ? 'rgba(30,30,34,0.72)' : 'rgba(244,247,255,0.78)',
+          backgroundColor: isDark ? 'rgba(30,30,34,0.72)' : 'rgba(236,242,255,0.80)',
           shadowColor: '#0f172a',
           shadowOffset: { width: 0, height: 14 },
           shadowOpacity: isDark ? 0.28 : 0.16,
@@ -1668,17 +1668,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           overflow: 'hidden',
         }}
       >
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '54%',
-            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.45)',
-          }}
-        />
         <View
           pointerEvents="none"
           style={{

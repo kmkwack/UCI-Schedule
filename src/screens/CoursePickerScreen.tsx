@@ -11,8 +11,8 @@ import {
   Animated,
   Easing,
   LayoutAnimation,
-  Platform,
   UIManager,
+  Platform,
   PanResponder,
   Modal,
   Keyboard,
@@ -535,12 +535,21 @@ export default function CoursePickerScreen({
 
   const handleExpandCourse = (course: CatalogCourse) => {
     const nextExpanded = !expandedCourseIds[course.id];
-    LayoutAnimation.configureNext({
-      duration: 280,
-      create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
-      update: { type: LayoutAnimation.Types.easeInEaseOut },
-      delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
-    });
+    if (nextExpanded) {
+      LayoutAnimation.configureNext({
+        duration: 280,
+        create: { type: LayoutAnimation.Types.easeOut, property: LayoutAnimation.Properties.opacity },
+        update: { type: LayoutAnimation.Types.easeOut },
+        delete: { type: LayoutAnimation.Types.easeOut, property: LayoutAnimation.Properties.opacity },
+      });
+    } else {
+      LayoutAnimation.configureNext({
+        duration: 280,
+        create: { type: LayoutAnimation.Types.easeIn, property: LayoutAnimation.Properties.opacity },
+        update: { type: LayoutAnimation.Types.easeIn },
+        delete: { type: LayoutAnimation.Types.easeIn, property: LayoutAnimation.Properties.opacity },
+      });
+    }
     setExpandedCourseIds(nextExpanded ? { [course.id]: true } : {});
     if (nextExpanded) {
       fetchEnrollment(course);

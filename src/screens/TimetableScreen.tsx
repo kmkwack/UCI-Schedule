@@ -17,8 +17,10 @@ const RMP_SCHOOL_IDS: Record<string, string> = { 'UC Irvine': '1074' };
 
 function rmpUrl(professor: string, school: string) {
   const sid = RMP_SCHOOL_IDS[school];
-  const base = `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(professor)}`;
-  return sid ? `${base}&sid=${sid}` : base;
+  const lastName = professor.includes(',') ? professor.substring(0, professor.indexOf(',')) : professor;
+  return sid
+    ? `https://www.ratemyprofessors.com/search/professors/${sid}?q=${encodeURIComponent(lastName)}`
+    : `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(lastName)}`;
 }
 
 function mapSearchUrl(location: string, school: string) {

@@ -98,11 +98,12 @@ type Props = {
   school: string;
   userId: string;
   semesterLabel: string; // e.g. "Spring 2026"
+  quarterKey: string;
 };
 
 export default function ReviewsModal({
   visible, onClose, courseCode, department, courseNumber, title,
-  professors, school, userId, semesterLabel,
+  professors, school, userId, semesterLabel, quarterKey,
 }: Props) {
   const { colors } = useTheme();
   const [courseInfo, setCourseInfo] = useState<CourseInfo | null>(null);
@@ -143,7 +144,7 @@ export default function ReviewsModal({
       fetchReviews();
       fetchCourseInfo();
     }
-  }, [visible, courseCode]);
+  }, [visible, courseCode, quarterKey]);
 
   useEffect(() => {
     if (!visible || !showWriteReview) return;
@@ -181,8 +182,9 @@ export default function ReviewsModal({
   }, [visible, instructor]);
 
   async function fetchCourseInfo() {
-    if (courseInfoCache[courseCode]) {
-      setCourseInfo(courseInfoCache[courseCode]);
+    const cacheKey = `${courseCode}::${quarterKey}`;
+    if (courseInfoCache[cacheKey]) {
+      setCourseInfo(courseInfoCache[cacheKey]);
       return;
     }
     setCourseInfoLoading(true);
@@ -190,15 +192,29 @@ export default function ReviewsModal({
       .from('sections')
       .select('final_exam, restrictions, prerequisite_link, section_comment')
       .eq('code', courseCode)
-      .limit(1)
-      .single();
+      .eq('quarter_key', quarterKey)
+      .limit(25);
+
+    const rows = (data ?? []) as Array<{
+      final_exam: FinalExam | string | null;
+      restrictions: string | null;
+      prerequisite_link: string | null;
+      section_comment: string | null;
+    }>;
+
+    const preferred =
+      rows.find((row) => row.final_exam) ??
+      rows.find((row) => row.section_comment?.trim()) ??
+      rows.find((row) => row.restrictions || row.prerequisite_link) ??
+      rows[0];
+
     const info: CourseInfo = {
-      finalExam: data?.final_exam ?? null,
-      restrictions: data?.restrictions ?? null,
-      prerequisiteLink: data?.prerequisite_link ?? null,
-      sectionComment: data?.section_comment ?? null,
+      finalExam: preferred?.final_exam ?? null,
+      restrictions: preferred?.restrictions ?? null,
+      prerequisiteLink: preferred?.prerequisite_link ?? null,
+      sectionComment: preferred?.section_comment ?? null,
     };
-    courseInfoCache[courseCode] = info;
+    courseInfoCache[cacheKey] = info;
     setCourseInfo(info);
     setCourseInfoLoading(false);
   }

@@ -1084,3 +1084,7 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64es (Stop incorrectly merging distinct Social Sciences buildings)
 - **`src/data/uciLocations.ts`** — Removed the incorrect alias mappings that treated `SSTR` as `SST` and `SSLH` as `SSL`, so those UCI location codes are no longer collapsed into the wrong building during map resolution.
+
+### Session 64et (Scope final-exam details to the selected quarter)
+- **`src/components/ReviewsModal.tsx`** — Stopped fetching course info by `code` alone and now scope `sections` lookups to the current `quarter_key`, preferring rows that actually contain `final_exam` data. This prevents a Spring course from showing final-exam details from a different quarter such as Fall.
+- **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/TimetableScreen.tsx`** — Passed the currently selected `quarterKey` into `ReviewsModal` so course details and final-exam data always match the quarter the user is viewing.

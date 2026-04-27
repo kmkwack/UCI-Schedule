@@ -1319,6 +1319,7 @@ export default function TimetableScreen({
               school={school}
               userId={userId}
               semesterLabel={quarterLabel(selectedQuarter)}
+              quarterKey={quarterKey(selectedQuarter)}
             />
           )}
       </Modal>

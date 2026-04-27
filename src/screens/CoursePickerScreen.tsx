@@ -1160,6 +1160,7 @@ export default function CoursePickerScreen({
           school={school}
           userId={userId}
           semesterLabel={quarterLabel(selectedQuarter)}
+          quarterKey={quarterKey(selectedQuarter)}
         />
       )}
 

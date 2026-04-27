@@ -1362,123 +1362,6 @@ export default function TimetableScreen({
           )}
       </Modal>
 
-      <View style={{ backgroundColor: colors.bg }}>
-
-      {/* Header */}
-      <View style={{ paddingHorizontal: 18, paddingBottom: 10, paddingTop: 6 }}>
-        {/* Row 1: Title + Quarter picker + three-dots */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>
-            Timetable
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <TouchableOpacity
-              onPress={openQuarterDropdown}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 22,
-                paddingHorizontal: 13,
-                paddingVertical: 8,
-                backgroundColor: colors.card,
-                gap: 4,
-                shadowColor: '#0f172a',
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: isDark ? 0.18 : 0.06,
-                shadowRadius: 12,
-                elevation: 3,
-              }}
-            >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
-                {timetables.length === 0 ? '--' : quarterLabel(selectedQuarter)}
-              </Text>
-              <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={openSettings}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
-                backgroundColor: colors.card,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: 1,
-                borderColor: colors.border,
-              }}
-            >
-              <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Row 2: Plan tabs + + Add */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            scrollEnabled={!draggingId}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingRight: 4 }}
-            {...pillPanResponder.panHandlers}
-          >
-            {orderedTimetables.map((t) => {
-              const isActive = t.id === activeTimetableId;
-              const isDragging = t.id === draggingId;
-              return (
-                <Animated.View
-                  key={t.id}
-                  onLayout={(e) => {
-                    pillXPos.current[t.id] = e.nativeEvent.layout.x;
-                    pillWidthRef.current[t.id] = e.nativeEvent.layout.width;
-                  }}
-                  style={isDragging ? {
-                    transform: [{ translateX: dragTranslate }, { scale: dragScaleAnim }],
-                    zIndex: 10,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.18,
-                    shadowRadius: 8,
-                    elevation: 8,
-                  } : {}}
-                >
-                  <TouchableOpacity
-                    onPress={() => { if (!draggingId) onSelectTimetable(t.id); }}
-                    onLongPress={() => handleLongPressPill(t.id)}
-                    delayLongPress={400}
-                    activeOpacity={0.8}
-                    style={{
-                      paddingHorizontal: 16,
-                      paddingVertical: 9,
-                      borderRadius: 22,
-                      backgroundColor: isActive ? colors.brand : colors.inputBg,
-                      borderWidth: 1.5,
-                      borderColor: isActive ? colors.brand : `${colors.borderSubtle}`,
-                      shadowColor: '#0f172a',
-                      shadowOffset: { width: 0, height: 6 },
-                      shadowOpacity: isActive ? (isDark ? 0.28 : 0.14) : (isDark ? 0.1 : 0.04),
-                      shadowRadius: isActive ? 14 : 8,
-                      elevation: 3,
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: isActive ? 'white' : colors.textSecondary }}>
-                      {t.name}
-                    </Text>
-                  </TouchableOpacity>
-                </Animated.View>
-              );
-            })}
-          </ScrollView>
-          <TouchableOpacity onPress={openAddMenu} style={{ paddingVertical: 7, paddingLeft: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.brand }}>+ Add</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      </View>{/* end header area measurement wrapper */}
-
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <ScrollView
           ref={timetableScrollRef}
@@ -1489,6 +1372,119 @@ export default function TimetableScreen({
           alwaysBounceVertical={false}
           contentContainerStyle={{ paddingBottom: bottomInset + 96 }}
         >
+        {/* Header */}
+        <View style={{ paddingHorizontal: 18, paddingBottom: 10, paddingTop: 6 }}>
+          {/* Row 1: Title + Quarter picker + three-dots */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>
+              Timetable
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <TouchableOpacity
+                onPress={openQuarterDropdown}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 22,
+                  paddingHorizontal: 13,
+                  paddingVertical: 8,
+                  backgroundColor: colors.card,
+                  gap: 4,
+                  shadowColor: '#0f172a',
+                  shadowOffset: { width: 0, height: 8 },
+                  shadowOpacity: isDark ? 0.18 : 0.06,
+                  shadowRadius: 12,
+                  elevation: 3,
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
+                  {timetables.length === 0 ? '--' : quarterLabel(selectedQuarter)}
+                </Text>
+                <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={openSettings}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: colors.card,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Row 2: Plan tabs + + Add */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              scrollEnabled={!draggingId}
+              style={{ flex: 1 }}
+              contentContainerStyle={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingRight: 4 }}
+              {...pillPanResponder.panHandlers}
+            >
+              {orderedTimetables.map((t) => {
+                const isActive = t.id === activeTimetableId;
+                const isDragging = t.id === draggingId;
+                return (
+                  <Animated.View
+                    key={t.id}
+                    onLayout={(e) => {
+                      pillXPos.current[t.id] = e.nativeEvent.layout.x;
+                      pillWidthRef.current[t.id] = e.nativeEvent.layout.width;
+                    }}
+                    style={isDragging ? {
+                      transform: [{ translateX: dragTranslate }, { scale: dragScaleAnim }],
+                      zIndex: 10,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.18,
+                      shadowRadius: 8,
+                      elevation: 8,
+                    } : {}}
+                  >
+                    <TouchableOpacity
+                      onPress={() => { if (!draggingId) onSelectTimetable(t.id); }}
+                      onLongPress={() => handleLongPressPill(t.id)}
+                      delayLongPress={400}
+                      activeOpacity={0.8}
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 9,
+                        borderRadius: 22,
+                        backgroundColor: isActive ? colors.brand : colors.inputBg,
+                        borderWidth: 1.5,
+                        borderColor: isActive ? colors.brand : `${colors.borderSubtle}`,
+                        shadowColor: '#0f172a',
+                        shadowOffset: { width: 0, height: 6 },
+                        shadowOpacity: isActive ? (isDark ? 0.28 : 0.14) : (isDark ? 0.1 : 0.04),
+                        shadowRadius: isActive ? 14 : 8,
+                        elevation: 3,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: isActive ? 'white' : colors.textSecondary }}>
+                        {t.name}
+                      </Text>
+                    </TouchableOpacity>
+                  </Animated.View>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity onPress={openAddMenu} style={{ paddingVertical: 7, paddingLeft: 8 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.brand }}>+ Add</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Grid container */}
         <View
           style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 8 }}

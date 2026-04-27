@@ -1210,3 +1210,34 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64ge (Quiet grouped hero labels)
 - **`src/screens/HomeScreen.tsx`** — Removed the small `Earlier today` / `Remaining today` status labels from grouped hero cards and unified the list-row dot color per card so the grouped class lists look calmer and more consistent.
+
+### Session 64gf (Shared classes on ClassMates)
+- **`App.tsx`** — Passed the active timetable courses and selected quarter into `FriendsScreen` so the friends tab can compare the signed-in user’s classes against friend timetables.
+- **`src/screens/FriendsScreen.tsx`** — Added shared-class detection for the active quarter, a top `Shared Classes This Quarter` card grouped by course with matching friends, and per-friend shared-course summaries in the ClassMates list.
+- **`src/screens/HomeScreen.tsx`** — Measured each hero carousel card and applied the active card height to the carousel container so shorter grouped cards no longer leave empty vertical space before the content below.
+
+### Session 64gg (Stabilize hero card height)
+- **`src/screens/HomeScreen.tsx`** — Replaced the horizontal `ScrollView` hero carousel with a single rendered active card plus swipe gestures. This removes clipped cards, delayed height changes, and empty space when grouped completed/upcoming cards have different list lengths.
+
+### Session 64gh (Match shared classes by course code)
+- **`src/screens/FriendsScreen.tsx`** — Relaxed ClassMates shared-class matching to treat the same course code as an overlap, even when friends have a different section/time. This makes the shared-classes card surface expected overlaps like `ECON 100A` instead of requiring identical section ids.
+
+### Session 64gi (Promote shared class block and remove board eyebrow)
+- **`src/screens/FriendsScreen.tsx`** — Moved the shared-classes block directly under the ClassMates header, added a header subtitle with friend/shared-class counts, and removed the duplicate shared block from inside the friends list so the feature appears as a first-class screen section.
+- **`src/screens/BoardScreen.tsx`** — Removed the `CAMPUS COMMUNITY` eyebrow pill above the Board title for a cleaner header.
+
+### Session 64gj (Department boards)
+- **`src/screens/BoardScreen.tsx`** — Added a `Department Boards` entry to the main board list, powered by `UCI_DEPARTMENTS`, with a searchable department-board picker. Selecting a department opens a normal board post list scoped to that department category, and posts created from that screen save back into the matching department board.
+
+### Session 64gk (Quarter grade summaries and persistent shared block)
+- **`src/screens/GradesScreen.tsx`** — Added per-quarter summary stats to each expandable quarter card, including quarter GPA, total units, graded-course count, and GPA-counted units before the course list.
+- **`src/screens/FriendsScreen.tsx`** — Kept the shared-classes block visible even when there are no overlaps, showing the user’s current-quarter classes with zero-overlap rows so the ClassMates screen keeps the same structure as the reference mockup.
+
+### Session 64gl (Compact shared classes block)
+- **`src/screens/FriendsScreen.tsx`** — Compressed the `Shared Classes This Quarter` block by reducing header and row padding, shrinking course chips and avatar bubbles, and capping the visible shared-class rows at four so the ClassMates screen keeps the concept without consuming as much vertical space.
+
+### Session 64gm (ClassMates search separation)
+- **`src/screens/FriendsScreen.tsx`** — Removed the friend/shared-class count subtitle under the ClassMates title and added divider lines around the classmate search field so the search area reads as a separate section.
+
+### Session 64gn (Reorder ClassMates controls)
+- **`src/screens/FriendsScreen.tsx`** — Moved the classmate search bar and ClassMates/Requests segmented controls above the shared-classes card while keeping the friend list below it. Restyled the search bar like the Board search field and removed the heavy divider lines so it feels lighter.

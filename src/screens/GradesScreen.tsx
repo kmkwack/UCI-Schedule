@@ -315,6 +315,25 @@ function PastQuarterSection({
 }) {
   const { colors } = useTheme();
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
+  const summary = useMemo(() => {
+    const rows = courses.map(course => {
+      const key = `${qk}|${course.id}`;
+      const units = unitOverrides[key] ?? course.units ?? 0;
+      const grade = grades[key];
+      return { units, grade };
+    });
+    const gradedRows = rows.filter(row => !!row.grade);
+    const gpaRows = rows.filter(row => row.grade && GRADE_POINTS[row.grade] !== undefined);
+    const totalUnits = rows.reduce((sum, row) => sum + row.units, 0);
+    const gpaUnits = gpaRows.reduce((sum, row) => sum + row.units, 0);
+    const gpaPoints = gpaRows.reduce((sum, row) => sum + GRADE_POINTS[row.grade as string] * row.units, 0);
+    return {
+      gpa: gpaUnits > 0 ? (gpaPoints / gpaUnits).toFixed(2) : '—',
+      totalUnits,
+      gpaUnits,
+      gradedCount: gradedRows.length,
+    };
+  }, [courses, grades, qk, unitOverrides]);
 
   const toggle = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -342,7 +361,9 @@ function PastQuarterSection({
       }}>
         <View>
           <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>{label}</Text>
-          <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{courses.length} course{courses.length !== 1 ? 's' : ''}</Text>
+          <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>
+            GPA {summary.gpa} · {summary.totalUnits} units · {summary.gradedCount}/{courses.length} graded
+          </Text>
         </View>
         <View
           style={{
@@ -367,6 +388,41 @@ function PastQuarterSection({
 
       {expanded && (
         <View style={{ paddingHorizontal: 12, paddingBottom: 12, gap: 8 }}>
+          <View
+            style={{
+              backgroundColor: colors.bg,
+              borderRadius: 16,
+              padding: 14,
+              borderWidth: 1,
+              borderColor: colors.borderSubtle,
+            }}
+          >
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {[
+                { label: 'GPA', value: summary.gpa },
+                { label: 'Units', value: String(summary.totalUnits) },
+                { label: 'Graded', value: `${summary.gradedCount}/${courses.length}` },
+                { label: 'GPA Units', value: String(summary.gpaUnits) },
+              ].map(item => (
+                <View
+                  key={item.label}
+                  style={{
+                    flex: 1,
+                    borderRadius: 13,
+                    paddingVertical: 11,
+                    paddingHorizontal: 8,
+                    backgroundColor: colors.inputBg,
+                    alignItems: 'center',
+                    minHeight: 62,
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: '600', textAlign: 'center' }}>{item.label}</Text>
+                  <Text style={{ fontSize: 17, color: colors.text, fontWeight: '800', marginTop: 4 }}>{item.value}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
           {courses.map(c => (
             <View key={c.id} style={{
               backgroundColor: colors.bg, borderRadius: 14, padding: 14,

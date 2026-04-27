@@ -27,6 +27,7 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import type { ChatTarget } from '../data/messages';
 import { anteaterAliasForId } from '../data/anonymousAliases';
+import { UCI_DEPARTMENTS, colorForDepartment } from '../data/courses';
 
 type CommentRow = {
   id: string;
@@ -117,6 +118,29 @@ const REPORT_REASONS = [
 ];
 
 const BOARD_ATTACHMENTS_BUCKET = 'board-attachments';
+const DEPARTMENT_BOARD_CATEGORY_PREFIX = 'Department: ';
+
+function departmentBoardCategory(department: string) {
+  return `${DEPARTMENT_BOARD_CATEGORY_PREFIX}${department}`;
+}
+
+function departmentFromCategory(category: string) {
+  return category.startsWith(DEPARTMENT_BOARD_CATEGORY_PREFIX)
+    ? category.slice(DEPARTMENT_BOARD_CATEGORY_PREFIX.length)
+    : null;
+}
+
+function departmentBoardFor(department: string): Board {
+  const color = colorForDepartment(department);
+  return {
+    id: `department-${department.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    name: `${department} Board`,
+    category: departmentBoardCategory(department),
+    icon: 'school-outline',
+    color,
+    iconBg: `${color}18`,
+  };
+}
 
 function sanitizeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '');
@@ -285,11 +309,20 @@ export default function BoardScreen({
   const [submittingBoardRequest, setSubmittingBoardRequest] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [boards, setBoards] = useState<Board[]>(FALLBACK_BOARDS);
+  const [showDepartmentBoards, setShowDepartmentBoards] = useState(false);
+  const [departmentSearch, setDepartmentSearch] = useState('');
 
   const SCREEN_W = Dimensions.get('window').width;
   const boardSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
   const postsCacheKey = `board_posts_${school}_${userId}`;
   const boardListScrollRef = useRef<ScrollView>(null);
+  const departmentBoards = useMemo(() => UCI_DEPARTMENTS.map(departmentBoardFor), []);
+  const composerBoards = useMemo(() => {
+    if (selectedBoard && departmentFromCategory(selectedBoard.category ?? '')) {
+      return [selectedBoard, ...boards];
+    }
+    return boards;
+  }, [boards, selectedBoard]);
 
   const swipeBoardPan = useRef(
     PanResponder.create({
@@ -624,8 +657,10 @@ export default function BoardScreen({
 
   async function openPostFromBoardList(post: Post) {
     Keyboard.dismiss();
+    const postDepartment = departmentFromCategory(post.category);
     const targetBoard =
       boards.find((board) => (board.category ?? 'General') === post.category) ??
+      (postDepartment ? departmentBoardFor(postDepartment) : null) ??
       boards.find((board) => board.category === null) ??
       boards[0];
 
@@ -731,7 +766,7 @@ export default function BoardScreen({
     setSubmittingPost(true);
     setUploadingAttachments(true);
 
-    const board = boards.find((entry) => entry.id === newPostBoardId) ?? boards[0];
+    const board = composerBoards.find((entry) => entry.id === newPostBoardId) ?? boards[0];
     const category = board.category ?? 'General';
     const authorName = anteaterAliasForId(userId);
     try {
@@ -848,7 +883,11 @@ export default function BoardScreen({
       return;
     }
     setEditingPostId(post.id);
-    setNewPostBoardId(boards.find((board) => (board.category ?? 'General') === post.category)?.id ?? boards[0]?.id ?? '');
+    const postDepartment = departmentFromCategory(post.category);
+    const board = boards.find((entry) => (entry.category ?? 'General') === post.category) ??
+      (postDepartment ? departmentBoardFor(postDepartment) : null) ??
+      boards[0];
+    setNewPostBoardId(board?.id ?? '');
     setNewPostTitle(post.title);
     setNewPostBody(post.body);
     setNewPostAttachments(post.attachments);
@@ -1008,6 +1047,15 @@ export default function BoardScreen({
     );
   }, [globalSearch, posts]);
 
+  const filteredDepartmentBoards = useMemo(() => {
+    const query = departmentSearch.trim().toLowerCase();
+    if (!query) return departmentBoards;
+    return departmentBoards.filter((board) => {
+      const department = departmentFromCategory(board.category ?? '') ?? board.name;
+      return department.toLowerCase().includes(query) || board.name.toLowerCase().includes(query);
+    });
+  }, [departmentBoards, departmentSearch]);
+
   const filteredPosts = useMemo(() => {
     let result = boardPosts.filter((post) => {
       const query = search.toLowerCase();
@@ -1128,20 +1176,6 @@ export default function BoardScreen({
         }}
       >
         <View>
-          <View
-            style={{
-              alignSelf: 'flex-start',
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 999,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.72)',
-              borderWidth: 1,
-              borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(188,199,221,0.34)',
-              marginBottom: 10,
-            }}
-          >
-            <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.8, color: colors.brand }}>CAMPUS COMMUNITY</Text>
-          </View>
           <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>Board</Text>
           <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>Search across boards or jump into a community space.</Text>
         </View>
@@ -1298,6 +1332,68 @@ export default function BoardScreen({
               </View>
             ) : null}
 
+            <TouchableOpacity
+              onPress={() => {
+                setDepartmentSearch('');
+                setShowDepartmentBoards(true);
+              }}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.card,
+                borderRadius: 18,
+                padding: 16,
+                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+                shadowColor: '#0f172a',
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: isDark ? 0.18 : 0.06,
+                shadowRadius: 20,
+                elevation: 4,
+              }}
+            >
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 14,
+                  backgroundColor: colors.brandBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 14,
+                  borderWidth: 1,
+                  borderColor: `${colors.brand}20`,
+                }}
+              >
+                <Ionicons name="school-outline" size={22} color={colors.brand} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.7, color: colors.textTertiary, marginBottom: 4 }}>
+                  SCHOOL BOARDS
+                </Text>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Department Boards</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
+                  Browse {UCI_DEPARTMENTS.length} department boards
+                </Text>
+              </View>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: colors.brandBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: `${colors.brand}18`,
+                }}
+              >
+                <Ionicons name="chevron-forward" size={16} color={colors.brand} />
+              </View>
+            </TouchableOpacity>
+
             {boards.map((board) => (
               <TouchableOpacity
                 key={board.id}
@@ -1394,6 +1490,113 @@ export default function BoardScreen({
           </>
         )}
       </ScrollView>
+
+      <Modal
+        visible={showDepartmentBoards}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowDepartmentBoards(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          <View style={{ paddingTop: 20, paddingHorizontal: 18, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <TouchableOpacity
+                onPress={() => setShowDepartmentBoards(false)}
+                style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.inputBg }}
+              >
+                <Ionicons name="chevron-back" size={22} color={colors.text} />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text }}>Department Boards</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{school}</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.inputBg, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, gap: 8 }}>
+              <Ionicons name="search-outline" size={17} color={colors.placeholder} />
+              <TextInput
+                placeholder="Search departments..."
+                placeholderTextColor={colors.placeholder}
+                value={departmentSearch}
+                onChangeText={setDepartmentSearch}
+                autoCapitalize="characters"
+                style={{ flex: 1, fontSize: 14, color: colors.text }}
+                returnKeyType="search"
+              />
+              {departmentSearch.length > 0 ? (
+                <TouchableOpacity onPress={() => setDepartmentSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={16} color={colors.placeholder} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={{ padding: 18, paddingBottom: bottomInset + 34 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {filteredDepartmentBoards.length === 0 ? (
+              <View
+                style={{
+                  borderRadius: 18,
+                  padding: 18,
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>No matching departments</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 5 }}>Try another department code.</Text>
+              </View>
+            ) : (
+              <View style={{ gap: 10 }}>
+                {filteredDepartmentBoards.map((board) => {
+                  const department = departmentFromCategory(board.category ?? '') ?? board.name;
+                  return (
+                    <TouchableOpacity
+                      key={board.id}
+                      onPress={() => {
+                        setShowDepartmentBoards(false);
+                        openBoard(board);
+                      }}
+                      activeOpacity={0.76}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        borderRadius: 16,
+                        paddingHorizontal: 14,
+                        paddingVertical: 13,
+                        backgroundColor: colors.card,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <View
+                        style={{
+                          minWidth: 82,
+                          borderRadius: 10,
+                          paddingHorizontal: 10,
+                          paddingVertical: 7,
+                          backgroundColor: board.iconBg,
+                          alignItems: 'center',
+                          marginRight: 12,
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: board.color }}>{department}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{board.name}</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{postCountForBoard(board)} posts</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={17} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
 
       {selectedBoard && (
         <Animated.View
@@ -1813,7 +2016,7 @@ export default function BoardScreen({
       <NewPostModal
         visible={showNewPost}
         onClose={closeComposer}
-        boards={boards}
+        boards={composerBoards}
         selectedBoardId={newPostBoardId}
         onSelectBoard={setNewPostBoardId}
         showBoardPicker={showBoardPicker}

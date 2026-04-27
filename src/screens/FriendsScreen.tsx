@@ -77,6 +77,11 @@ type UserSettingsRow = {
   timetable_visibility: TimetableVisibility | null;
 };
 
+type SharedClassGroup = {
+  course: Course;
+  friends: Friend[];
+};
+
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
 const DEFAULT_START_HOUR = 8;
 const DEFAULT_END_HOUR = 17;
@@ -137,6 +142,17 @@ function getInitials(name: string): string {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
+function buildCourseMatchKey(course: Pick<Course, 'id' | 'code' | 'days' | 'time'>) {
+  if (course.id?.trim()) return course.id.trim();
+  return `${course.code}|${course.days}|${course.time}`;
+}
+
+function coursesMatch(a: Pick<Course, 'id' | 'code' | 'days' | 'time'>, b: Pick<Course, 'id' | 'code' | 'days' | 'time'>) {
+  if (a.code.trim().toUpperCase() === b.code.trim().toUpperCase()) return true;
+  return buildCourseMatchKey(a) === buildCourseMatchKey(b)
+    || (a.code === b.code && a.days === b.days && a.time === b.time);
+}
+
 function mapProfileToFriend(
   profile: ProfileRow,
   timetables: Record<string, Course[]> = {},
@@ -157,11 +173,21 @@ type Props = {
   userId: string;
   userEmail?: string;
   school: string;
+  activeCourses: Course[];
+  selectedQuarter: Quarter;
   bottomInset?: number;
   scrollToTopTrigger?: number;
 };
 
-export default function FriendsScreen({ userId, userEmail, school, bottomInset = 0, scrollToTopTrigger = 0 }: Props) {
+export default function FriendsScreen({
+  userId,
+  userEmail,
+  school,
+  activeCourses: userActiveCourses,
+  selectedQuarter,
+  bottomInset = 0,
+  scrollToTopTrigger = 0,
+}: Props) {
   const { colors } = useTheme();
   const friendsScrollRef = useRef<ScrollView>(null);
   const requestsScrollRef = useRef<ScrollView>(null);
@@ -231,6 +257,39 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
     [friends, searchQuery]
   );
 
+  const selectedQuarterKey = quarterKey(selectedQuarter);
+  const userQuarterCourses = useMemo(
+    () => Array.from(new Map(userActiveCourses.map((course) => [buildCourseMatchKey(course), course])).values()),
+    [userActiveCourses]
+  );
+
+  const sharedClassGroups = useMemo<SharedClassGroup[]>(() => {
+    return userQuarterCourses.flatMap((course) => {
+      const matchingFriends = friends
+        .filter((friendRow) => friendRow.timetableVisibility !== 'private')
+        .filter((friendRow) => {
+          const friendCourses = friendRow.timetables[selectedQuarterKey] ?? [];
+          return friendCourses.some((friendCourse) => coursesMatch(course, friendCourse));
+        });
+
+      if (matchingFriends.length === 0) return [];
+      return [{ course, friends: matchingFriends }];
+    }).sort((left, right) => {
+      if (right.friends.length !== left.friends.length) return right.friends.length - left.friends.length;
+      return left.course.code.localeCompare(right.course.code);
+    });
+  }, [friends, selectedQuarterKey, userQuarterCourses]);
+
+  const sharedCoursesByFriendId = useMemo(() => {
+    const map: Record<string, Course[]> = {};
+    sharedClassGroups.forEach((group) => {
+      group.friends.forEach((friendRow) => {
+        if (!map[friendRow.id]) map[friendRow.id] = [];
+        map[friendRow.id].push(group.course);
+      });
+    });
+    return map;
+  }, [sharedClassGroups]);
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedEmailQuery(emailQuery.trim()), 300);
     return () => clearTimeout(timeout);
@@ -820,8 +879,10 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
           </KeyboardAvoidingView>
         </Modal>
 
-        <View style={{ paddingHorizontal: 18, paddingTop: 4, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: -0.8, color: colors.text }}>ClassMates</Text>
+        <View style={{ paddingHorizontal: 18, paddingTop: 4, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: -0.8, color: colors.text }}>ClassMates</Text>
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <TouchableOpacity onPress={() => setShowAddModal(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="person-add-outline" size={24} color={colors.text} />
@@ -829,11 +890,21 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
           </View>
         </View>
 
-        <View style={{ paddingHorizontal: 18, marginBottom: 16 }}>
+        <View style={{ paddingHorizontal: 18, marginBottom: 14 }}>
           <View style={{
             flexDirection: 'row', alignItems: 'center',
-            backgroundColor: colors.inputBg, borderRadius: 12,
-            paddingHorizontal: 12, paddingVertical: 10, gap: 8,
+            backgroundColor: colors.card,
+            borderRadius: 18,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            gap: 9,
+            borderWidth: 1,
+            borderColor: colors.border,
+            shadowColor: '#0f172a',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.05,
+            shadowRadius: 16,
+            elevation: 3,
           }}>
             <Ionicons name="search-outline" size={18} color={colors.placeholder} />
             <TextInput
@@ -912,6 +983,160 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
         <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 12 }} />
 
         {activeTab === 'friends' ? (
+          <View style={{ paddingHorizontal: 18, marginTop: 12, marginBottom: 12 }}>
+            <View style={{
+              borderRadius: 18,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              overflow: 'hidden',
+            }}>
+              <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 5 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.2, color: colors.textTertiary }}>
+                  SHARED CLASSES THIS QUARTER
+                </Text>
+              </View>
+              {sharedClassGroups.length > 0 ? (
+                sharedClassGroups.slice(0, 4).map((group, index) => (
+                  <View key={buildCourseMatchKey(group.course)}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, gap: 10 }}>
+                      <View style={{
+                        borderRadius: 8,
+                        backgroundColor: getBlockColors(group.course, 'minimal').bg,
+                        borderWidth: 1,
+                        borderColor: getBlockColors(group.course, 'minimal').border,
+                        paddingHorizontal: 8,
+                        paddingVertical: 5,
+                        minWidth: 96,
+                        alignItems: 'center',
+                      }}>
+                        <Text numberOfLines={1} adjustsFontSizeToFit style={{
+                          fontSize: 12,
+                          fontWeight: '800',
+                          color: getBlockColors(group.course, 'minimal').text,
+                        }}>
+                          {group.course.code}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                        {group.friends.slice(0, 4).map((sharedFriend, friendIndex) => (
+                          <View
+                            key={sharedFriend.id}
+                            style={{
+                              width: 26,
+                              height: 26,
+                              borderRadius: 13,
+                              backgroundColor: colors.brand,
+                              borderWidth: 2,
+                              borderColor: colors.card,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginLeft: friendIndex === 0 ? 0 : -7,
+                            }}
+                          >
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: 'white' }}>
+                              {getInitials(sharedFriend.name).slice(0, 1)}
+                            </Text>
+                          </View>
+                        ))}
+                        {group.friends.length > 4 ? (
+                          <View style={{
+                            width: 26,
+                            height: 26,
+                            borderRadius: 13,
+                            backgroundColor: colors.bgTertiary,
+                            borderWidth: 2,
+                            borderColor: colors.card,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginLeft: -7,
+                          }}>
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: colors.textSecondary }}>
+                              +{group.friends.length - 4}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: colors.textTertiary }}>
+                        {group.friends.length}
+                      </Text>
+                    </View>
+                    {index < Math.min(sharedClassGroups.length, 4) - 1 ? (
+                      <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 14 }} />
+                    ) : null}
+                  </View>
+                ))
+              ) : userQuarterCourses.length > 0 ? (
+                userQuarterCourses.slice(0, 4).map((course, index) => (
+                  <View key={buildCourseMatchKey(course)}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, gap: 10 }}>
+                      <View style={{
+                        borderRadius: 8,
+                        backgroundColor: getBlockColors(course, 'minimal').bg,
+                        borderWidth: 1,
+                        borderColor: getBlockColors(course, 'minimal').border,
+                        paddingHorizontal: 8,
+                        paddingVertical: 5,
+                        minWidth: 96,
+                        alignItems: 'center',
+                      }}>
+                        <Text numberOfLines={1} adjustsFontSizeToFit style={{
+                          fontSize: 12,
+                          fontWeight: '800',
+                          color: getBlockColors(course, 'minimal').text,
+                        }}>
+                          {course.code}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 13,
+                          backgroundColor: colors.bgTertiary,
+                          borderWidth: 2,
+                          borderColor: colors.card,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}>
+                          <Ionicons name="remove" size={13} color={colors.textTertiary} />
+                        </View>
+                        <Text numberOfLines={1} style={{ marginLeft: 8, fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>
+                          No overlap
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: colors.textTertiary }}>0</Text>
+                    </View>
+                    {index < Math.min(userQuarterCourses.length, 4) - 1 ? (
+                      <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 14 }} />
+                    ) : null}
+                  </View>
+                ))
+              ) : (
+                <View style={{ paddingHorizontal: 14, paddingVertical: 14 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 11,
+                      backgroundColor: colors.bgTertiary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <Ionicons name="calendar-outline" size={17} color={colors.textTertiary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>No classes in {quarterLabel(selectedQuarter)}</Text>
+                      <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>Add classes to see overlaps here.</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+        ) : null}
+
+        {activeTab === 'friends' ? (
           friendsLoading ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
               <Text style={{ fontSize: 15, color: colors.textTertiary }}>Loading classmates...</Text>
@@ -946,6 +1171,11 @@ export default function FriendsScreen({ userId, userEmail, school, bottomInset =
                       <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
                         {f.major} • {f.year}
                       </Text>
+                      {sharedCoursesByFriendId[f.id]?.length > 0 ? (
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.brand, marginTop: 4, fontWeight: '700' }}>
+                          {sharedCoursesByFriendId[f.id].length} shared • {sharedCoursesByFriendId[f.id].slice(0, 2).map((course) => course.code).join(' • ')}
+                        </Text>
+                      ) : null}
                       {f.timetableVisibility === 'private' && (
                         <Text style={{ fontSize: 11, color: colors.brand, marginTop: 4, fontWeight: '700' }}>
                           Timetable is private

@@ -1633,6 +1633,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           userId={USER_ID}
           userEmail={userEmail}
           school={selectedUniversity?.name ?? 'UC Irvine'}
+          activeCourses={activeCourses}
+          selectedQuarter={selectedQuarter}
           bottomInset={insets.bottom}
           scrollToTopTrigger={friendsTabTapCount}
         />

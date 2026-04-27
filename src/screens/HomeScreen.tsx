@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { NativeScrollEvent, NativeSyntheticEvent, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { PanResponder, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, blockColorKey, pastelForCourse, quarterKey, quarterLabel } from '../data/courses';
@@ -536,7 +536,6 @@ export default function HomeScreen({
     ...(currentClass ? [{ type: 'course' as const, course: currentClass }] : []),
     ...(upcomingCourseList.length > 0 ? [{ type: 'upcomingSummary' as const, courses: upcomingCourseList }] : []),
   ];
-  const heroCarouselRef = useRef<ScrollView>(null);
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
 
   const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
@@ -584,15 +583,22 @@ export default function HomeScreen({
         ? Math.max(0, heroItems.findIndex((item) => item.type === 'upcomingSummary'))
         : 0;
     setActiveHeroIndex(targetIndex);
-    requestAnimationFrame(() => {
-      heroCarouselRef.current?.scrollTo({ x: targetIndex * heroCardWidth, y: 0, animated: false });
-    });
-  }, [heroCardWidth, heroItems.length, currentClass?.id, nextClass?.id]);
+  }, [heroItems.length, currentClass?.id, nextClass?.id]);
 
-  const handleHeroScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const nextIndex = Math.round(event.nativeEvent.contentOffset.x / Math.max(heroCardWidth, 1));
-    setActiveHeroIndex(clamp(nextIndex, 0, Math.max(heroItems.length - 1, 0)));
-  };
+  const heroPanResponder = useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
+      onPanResponderRelease: (_, gesture) => {
+        if (Math.abs(gesture.dx) < 45 && Math.abs(gesture.vx) < 0.35) return;
+        setActiveHeroIndex((prev) => clamp(
+          prev + (gesture.dx < 0 ? 1 : -1),
+          0,
+          Math.max(heroItems.length - 1, 0)
+        ));
+      },
+    }),
+    [heroItems.length]
+  );
 
   return (
     <ScrollView
@@ -632,21 +638,11 @@ export default function HomeScreen({
         </Text>
       </View>
 
-      <View style={{ marginBottom: 14, width: heroCardWidth, overflow: 'hidden' }}>
-        {heroItems.length > 0 ? (
+      <View style={{ marginBottom: 14, width: heroCardWidth }}>
+        {activeHeroItem ? (
           <>
-            <ScrollView
-              ref={heroCarouselRef}
-              horizontal
-              pagingEnabled
-              disableIntervalMomentum
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={handleHeroScrollEnd}
-              snapToInterval={heroCardWidth}
-              decelerationRate="fast"
-              style={{ width: heroCardWidth, overflow: 'hidden' }}
-            >
-              {heroItems.map((item) => {
+            {(() => {
+                const item = activeHeroItem;
                 const course = item.type === 'course' ? item.course : null;
                 const summaryCourses = item.type !== 'course' ? item.courses : [];
                 const firstSummaryCourse = summaryCourses[0] ?? null;
@@ -693,7 +689,7 @@ export default function HomeScreen({
                   : `${item.type}-${summaryCourses.map((summaryCourse) => buildCourseMatchKey(summaryCourse)).join('|')}`;
 
                 return (
-                  <View key={itemKey} style={{ width: heroCardWidth }}>
+                  <View key={itemKey} style={{ width: heroCardWidth }} {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}>
                     <View style={{
                       ...raisedCardStyle,
                       backgroundColor: colors.card,
@@ -736,7 +732,7 @@ export default function HomeScreen({
                             </>
                           ) : (
                             <View style={{ marginTop: 12, gap: 8 }}>
-                              {summaryCourses.slice(0, 3).map((summaryCourse) => (
+                              {summaryCourses.map((summaryCourse) => (
                                 <View
                                   key={buildCourseMatchKey(summaryCourse)}
                                   style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}
@@ -757,11 +753,6 @@ export default function HomeScreen({
                                   </View>
                                 </View>
                               ))}
-                              {summaryCourses.length > 3 ? (
-                                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary }}>
-                                  +{summaryCourses.length - 3} more
-                                </Text>
-                              ) : null}
                             </View>
                           )}
                         </View>
@@ -806,8 +797,7 @@ export default function HomeScreen({
                     </View>
                   </View>
                 );
-              })}
-            </ScrollView>
+            })()}
             {heroItems.length > 1 ? (
               <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 }}>
                 {heroItems.map((item, index) => (

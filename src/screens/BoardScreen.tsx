@@ -271,6 +271,7 @@ export default function BoardScreen({
   const [showBoardPicker, setShowBoardPicker] = useState(false);
   const [submittingPost, setSubmittingPost] = useState(false);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState('');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'recent' | 'popular'>('recent');
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
@@ -586,6 +587,27 @@ export default function BoardScreen({
     setSelectedPost(post);
     setReplyingToComment(null);
     setCommentInput('');
+    await loadCommentsForPost(post.id);
+  }
+
+  async function openPostFromBoardList(post: Post) {
+    Keyboard.dismiss();
+    const targetBoard =
+      BOARDS.find((board) => (board.category ?? 'General') === post.category) ??
+      BOARDS.find((board) => board.id === 'general') ??
+      BOARDS[0];
+
+    boardSlideAnim.setValue(SCREEN_W);
+    setSelectedBoard(targetBoard);
+    setSelectedPost(post);
+    setReplyingToComment(null);
+    setCommentInput('');
+    Animated.spring(boardSlideAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 16,
+    }).start();
     await loadCommentsForPost(post.id);
   }
 
@@ -943,6 +965,17 @@ export default function BoardScreen({
     return selectedBoard.category === null ? posts : posts.filter((post) => post.category === selectedBoard.category);
   }, [posts, selectedBoard]);
 
+  const globalSearchResults = useMemo(() => {
+    const query = globalSearch.trim().toLowerCase();
+    if (!query) return [];
+    return posts.filter((post) =>
+      post.title.toLowerCase().includes(query) ||
+      post.body.toLowerCase().includes(query) ||
+      post.author_name.toLowerCase().includes(query) ||
+      post.category.toLowerCase().includes(query)
+    );
+  }, [globalSearch, posts]);
+
   const filteredPosts = useMemo(() => {
     let result = boardPosts.filter((post) => {
       const query = search.toLowerCase();
@@ -1114,6 +1147,93 @@ export default function BoardScreen({
           <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
         ) : (
           <>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.inputBg,
+                borderRadius: 14,
+                paddingHorizontal: 14,
+                paddingVertical: 11,
+                gap: 9,
+                marginBottom: 14,
+                borderWidth: 1,
+                borderColor: colors.borderSubtle,
+              }}
+            >
+              <Ionicons name="search-outline" size={18} color={colors.placeholder} />
+              <TextInput
+                placeholder="Search all board posts..."
+                placeholderTextColor={colors.placeholder}
+                value={globalSearch}
+                onChangeText={setGlobalSearch}
+                style={{ flex: 1, fontSize: 14, color: colors.text }}
+                returnKeyType="search"
+              />
+              {globalSearch.trim() ? (
+                <TouchableOpacity onPress={() => setGlobalSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={18} color={colors.placeholder} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {globalSearch.trim() ? (
+              <View style={{ marginBottom: 18 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Search Results</Text>
+                  <Text style={{ fontSize: 12, color: colors.textTertiary }}>
+                    {globalSearchResults.length} result{globalSearchResults.length === 1 ? '' : 's'}
+                  </Text>
+                </View>
+                {globalSearchResults.length === 0 ? (
+                  <View
+                    style={{
+                      borderRadius: 16,
+                      padding: 16,
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.borderSubtle,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>No matching posts</Text>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                      Try a different title, keyword, author, or board category.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 10 }}>
+                    {globalSearchResults.map((post) => (
+                      <TouchableOpacity
+                        key={`search-${post.id}`}
+                        onPress={() => void openPostFromBoardList(post)}
+                        activeOpacity={0.82}
+                        style={{
+                          borderRadius: 18,
+                          padding: 15,
+                          backgroundColor: colors.card,
+                          borderWidth: 1,
+                          borderColor: colors.borderSubtle,
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 7, flexWrap: 'wrap' }}>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.brand }}>{post.category}</Text>
+                          <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                          <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.author_name}</Text>
+                          <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                          <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
+                        </View>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 5 }}>{post.title}</Text>
+                        <Text numberOfLines={2} style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19 }}>
+                          {post.body}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ) : null}
+
             {BOARDS.map((board) => (
               <TouchableOpacity
                 key={board.id}

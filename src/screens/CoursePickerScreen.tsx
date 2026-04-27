@@ -120,6 +120,11 @@ type SectionEnrollment = {
   waitlistCap: number;
 };
 
+type ReviewSummary = {
+  average: number | null;
+  count: number;
+};
+
 
 
 function getDaysArray(daysString: string) {
@@ -234,6 +239,8 @@ export default function CoursePickerScreen({
   const [previewCourse, setPreviewCourse] = useState<Course | null>(null);
   const [enrollmentCache, setEnrollmentCache] = useState<Record<string, SectionEnrollment>>({});
   const [enrollmentLoadingIds, setEnrollmentLoadingIds] = useState<Set<string>>(new Set());
+  const [reviewSummaryCache, setReviewSummaryCache] = useState<Record<string, ReviewSummary>>({});
+  const [savedCountCache, setSavedCountCache] = useState<Record<string, number>>({});
   const [reviewsCourse, setReviewsCourse] = useState<CatalogCourse | null>(null);
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
   const [customCourseDraft, setCustomCourseDraft] = useState<CustomCourseDraft>(EMPTY_CUSTOM_DRAFT);
@@ -330,9 +337,9 @@ export default function CoursePickerScreen({
 
     const timer = setTimeout(async () => {
       const qk = quarterKey(selectedQuarter);
-      const baseClauses = `code.ilike.%${q}%,title.ilike.%${q}%,professor.ilike.%${q}%`;
+      const baseClauses = `code.ilike.%${q}%,title.ilike.%${q}%,professor.ilike.%${q}%,id.ilike.%${q}%`;
       const orClause = qNorm !== q
-        ? `${baseClauses},code.ilike.%${qNorm}%`
+        ? `${baseClauses},code.ilike.%${qNorm}%,id.ilike.%${qNorm}%`
         : baseClauses;
       const { data, error } = await supabase
         .from('sections')
@@ -352,6 +359,48 @@ export default function CoursePickerScreen({
 
     return () => { clearTimeout(timer); setGlobalSearchLoading(false); };
   }, [searchText, selectedDept, selectedQuarter]);
+
+  useEffect(() => {
+    const qk = quarterKey(selectedQuarter);
+    let cancelled = false;
+
+    void (async () => {
+      const { data, error } = await supabase
+        .from('timetables')
+        .select('user_id, courses')
+        .eq('quarter_key', qk);
+
+      if (cancelled) return;
+      if (error) {
+        console.error('Failed to load ClassMate saved counts:', error);
+        setSavedCountCache({});
+        return;
+      }
+
+      const sectionUsers = new Map<string, Set<string>>();
+      ((data ?? []) as Array<{ user_id: string; courses: Course[] | null }>).forEach((row) => {
+        const uid = row.user_id;
+        const seenSections = new Set<string>();
+        (row.courses ?? []).forEach((course) => {
+          if (!course?.id) return;
+          seenSections.add(course.id);
+        });
+        seenSections.forEach((sectionId) => {
+          const users = sectionUsers.get(sectionId) ?? new Set<string>();
+          users.add(uid);
+          sectionUsers.set(sectionId, users);
+        });
+      });
+
+      setSavedCountCache(
+        Object.fromEntries(Array.from(sectionUsers.entries()).map(([sectionId, users]) => [sectionId, users.size]))
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedQuarter]);
 
   // Fetch courses from Supabase when a department is selected
   useEffect(() => {
@@ -463,6 +512,35 @@ export default function CoursePickerScreen({
     }
   };
 
+  const fetchReviewSummary = async (course: CatalogCourse) => {
+    const courseCode = `${course.department} ${course.courseNumber}`;
+    if (reviewSummaryCache[courseCode]) return;
+
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('rating')
+      .eq('school', school)
+      .eq('course_code', courseCode);
+
+    if (error) {
+      console.error('Failed to load ClassMate review summary:', error);
+      setReviewSummaryCache((prev) => ({ ...prev, [courseCode]: { average: null, count: 0 } }));
+      return;
+    }
+
+    const ratings = ((data ?? []) as Array<{ rating: number | null }>)
+      .map((row) => Number(row.rating))
+      .filter((value) => Number.isFinite(value));
+
+    setReviewSummaryCache((prev) => ({
+      ...prev,
+      [courseCode]: {
+        average: ratings.length ? ratings.reduce((sum, value) => sum + value, 0) / ratings.length : null,
+        count: ratings.length,
+      },
+    }));
+  };
+
   const handleExpandCourse = (course: CatalogCourse) => {
     const nextExpanded = !expandedCourseIds[course.id];
     LayoutAnimation.configureNext({
@@ -474,6 +552,7 @@ export default function CoursePickerScreen({
     setExpandedCourseIds(nextExpanded ? { [course.id]: true } : {});
     if (nextExpanded) {
       fetchEnrollment(course);
+      void fetchReviewSummary(course);
       const index = filteredCatalogRef.current.findIndex((c) => c.id === course.id);
       if (index >= 0) {
         setTimeout(() => {
@@ -616,7 +695,8 @@ export default function CoursePickerScreen({
             `${c.department} ${c.courseNumber}`.toLowerCase().includes(q)
           ) return true;
           return (sectionsMap[c.id] ?? []).some((s) =>
-            s.professor.toLowerCase().includes(q)
+            s.professor.toLowerCase().includes(q) ||
+            s.id.toLowerCase().includes(q)
           );
         });
 
@@ -932,6 +1012,8 @@ export default function CoursePickerScreen({
                           const isAdded = activeCourses.some((c) => c.id === course.id);
                           const isPreviewing = previewCourse?.id === course.id;
                           const enroll = enrollmentCache[course.id];
+                          const reviewSummary = reviewSummaryCache[`${item.department} ${item.courseNumber}`] ?? { average: null, count: 0 };
+                          const savedCount = savedCountCache[course.id] ?? 0;
                           const statusColor = !enroll ? '#9ca3af'
                             : enroll.status === 'OPEN' ? '#16a34a'
                             : enroll.status === 'Waitl' ? '#d97706'
@@ -981,6 +1063,22 @@ export default function CoursePickerScreen({
                                       {enroll.status === 'Waitl' ? ` · ${enroll.waitlist}/${enroll.waitlistCap} waitlist` : ''}
                                     </Text>
                                   )}
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                      <Ionicons name="star" size={12} color="#f59e0b" />
+                                      <Text style={{ color: '#6b7280', fontSize: 11 }}>
+                                        {reviewSummary.average == null
+                                          ? 'No ratings yet'
+                                          : `${reviewSummary.average.toFixed(1)} (${reviewSummary.count})`}
+                                      </Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                      <Ionicons name="people-outline" size={12} color="#6b7280" />
+                                      <Text style={{ color: '#6b7280', fontSize: 11 }}>
+                                        {savedCount} ClassMate {savedCount === 1 ? 'student has' : 'students have'} saved this
+                                      </Text>
+                                    </View>
+                                  </View>
                                 </View>
 
                                 <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', alignSelf: 'stretch', gap: 4 }}>

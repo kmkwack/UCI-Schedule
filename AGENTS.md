@@ -1070,3 +1070,10 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64eo (Fix Expo start failure from broken ws dependency resolution)
 - **`package.json`** — Added a direct `ws@7.5.10` dependency so React Native / Metro resolve the websocket package version they expect instead of picking an incompatible root `ws@8.x`.
 - **`package-lock.json`** — Refreshed the npm lockfile after reinstalling dependencies, which restored the correct mixed `ws@7.5.10` and nested `ws@8.x` tree and fixed the `Cannot find module './lib/subprotocol'` startup crash when running `npx expo start`.
+
+### Session 64ep (Add all-board post search from the board landing screen)
+- **`src/screens/BoardScreen.tsx`** — Added a new global search bar to the board selection screen that searches across all posts by title, body, anonymous author label, and category before a user enters a specific board. Matching results now appear inline on the landing screen, and tapping one opens the correct board and post detail directly.
+
+### Session 64eq (Add section-code search and ClassMate demand signals to course picker)
+- **`src/screens/CoursePickerScreen.tsx`** — Expanded course search so students can also find courses by 5-digit section code, both in department/global search and in the local expanded-section filter.
+- **`src/screens/CoursePickerScreen.tsx`** — Added ClassMate-specific metadata to each section card: the average review rating from this app’s `reviews` table and the number of unique users who have saved that exact section in their timetable for the selected quarter, giving students an in-app demand signal rather than relying on official enrollment alone.

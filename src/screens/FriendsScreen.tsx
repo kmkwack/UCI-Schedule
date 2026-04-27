@@ -147,6 +147,10 @@ function buildCourseMatchKey(course: Pick<Course, 'id' | 'code' | 'days' | 'time
   return `${course.code}|${course.days}|${course.time}`;
 }
 
+function buildSharedCourseKey(course: Pick<Course, 'code'>) {
+  return course.code.trim().toUpperCase();
+}
+
 function coursesMatch(a: Pick<Course, 'id' | 'code' | 'days' | 'time'>, b: Pick<Course, 'id' | 'code' | 'days' | 'time'>) {
   if (a.code.trim().toUpperCase() === b.code.trim().toUpperCase()) return true;
   return buildCourseMatchKey(a) === buildCourseMatchKey(b)
@@ -259,7 +263,7 @@ export default function FriendsScreen({
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const userQuarterCourses = useMemo(
-    () => Array.from(new Map(userActiveCourses.map((course) => [buildCourseMatchKey(course), course])).values()),
+    () => Array.from(new Map(userActiveCourses.map((course) => [buildSharedCourseKey(course), course])).values()),
     [userActiveCourses]
   );
 

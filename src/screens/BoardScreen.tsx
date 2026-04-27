@@ -1165,72 +1165,70 @@ export default function BoardScreen({
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
-      <View
-        style={{
-          paddingTop: 64,
-          paddingHorizontal: 18,
-          paddingBottom: 14,
-          flexDirection: 'row',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-        }}
-      >
-        <View>
-          <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>Board</Text>
-          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>Search across boards or jump into a community space.</Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
-          {onOpenMessages ? (
-            <TouchableOpacity
-              onPress={() => onOpenMessages?.(null)}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: colors.card,
-                borderWidth: 1,
-                borderColor: colors.border,
-                alignItems: 'center',
-                justifyContent: 'center',
-                shadowColor: '#0f172a',
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: isDark ? 0.2 : 0.07,
-                shadowRadius: 14,
-                elevation: 4,
-              }}
-            >
-              <Ionicons name="chatbubble-outline" size={18} color={colors.text} />
-            </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity
-            onPress={() => openNewPost()}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 5,
-              backgroundColor: colors.brand,
-              borderRadius: 22,
-              paddingHorizontal: 15,
-              paddingVertical: 9,
-              shadowColor: colors.brand,
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 0.2,
-              shadowRadius: 18,
-              elevation: 5,
-            }}
-          >
-            <Ionicons name="add" size={16} color="white" />
-            <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
       <ScrollView
         ref={boardListScrollRef}
-        contentContainerStyle={{ padding: 18, paddingBottom: bottomInset + 74 }}
+        contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 64, paddingBottom: bottomInset + 74 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={colors.brand} />}
       >
+        <View
+          style={{
+            paddingBottom: 14,
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View>
+            <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>Board</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>Search across boards or jump into a community space.</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+            {onOpenMessages ? (
+              <TouchableOpacity
+                onPress={() => onOpenMessages?.(null)}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#0f172a',
+                  shadowOffset: { width: 0, height: 8 },
+                  shadowOpacity: isDark ? 0.2 : 0.07,
+                  shadowRadius: 14,
+                  elevation: 4,
+                }}
+              >
+                <Ionicons name="chatbubble-outline" size={18} color={colors.text} />
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              onPress={() => openNewPost()}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                backgroundColor: colors.brand,
+                borderRadius: 22,
+                paddingHorizontal: 15,
+                paddingVertical: 9,
+                shadowColor: colors.brand,
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.2,
+                shadowRadius: 18,
+                elevation: 5,
+              }}
+            >
+              <Ionicons name="add" size={16} color="white" />
+              <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {loading ? (
           <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
         ) : (

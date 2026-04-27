@@ -1,6 +1,0 @@
-src/generated/*
-!src/generated/deployed_terms.json
-.next
-.open-next
-next-env.d.ts
-tsconfig.tsbuildinfo

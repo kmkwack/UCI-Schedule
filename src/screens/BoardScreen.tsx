@@ -13,6 +13,7 @@ import {
   Modal,
   Alert,
   Animated,
+  Easing,
   PanResponder,
   Dimensions,
   Image,
@@ -1956,54 +1957,82 @@ function RequestBoardModal({
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const scrollRef = useRef<ScrollView>(null);
+  const sheetAnim = useRef(new Animated.Value(600)).current;
+  const backdropAnim = useRef(new Animated.Value(0)).current;
+  const closeRef = useRef<(() => void) | null>(null);
+  const dragPan = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderMove: (_, gs) => { if (gs.dy > 0) sheetAnim.setValue(gs.dy); },
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dy > 80 || gs.vy > 0.8) closeRef.current?.();
+      else Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+    },
+  })).current;
+
+  function openSheet() {
+    sheetAnim.setValue(600);
+    backdropAnim.setValue(0);
+    Animated.parallel([
+      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.timing(backdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }
+
+  function closeSheet() {
+    Animated.parallel([
+      Animated.timing(sheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(backdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start(() => onClose());
+  }
+  closeRef.current = closeSheet;
+
+  useEffect(() => {
+    if (visible) openSheet();
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
-
     const scrollToBottom = () => {
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          scrollRef.current?.scrollToEnd({ animated: true });
-        }, 120);
-      });
+      requestAnimationFrame(() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120));
     };
-
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const keyboardShow = Keyboard.addListener(showEvent, scrollToBottom);
-
-    return () => {
-      keyboardShow.remove();
-    };
+    const sub = Keyboard.addListener(showEvent, scrollToBottom);
+    return () => sub.remove();
   }, [visible]);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={closeSheet}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
       >
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.28)', justifyContent: 'flex-end' }}
-          activeOpacity={1}
-          onPress={onClose}
+        <Animated.View
+          style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }) }}
         >
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeSheet} />
+          <Animated.View style={{ transform: [{ translateY: sheetAnim }] }}>
+            {/* Drag handle */}
+            <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, alignItems: 'center', paddingTop: 12, paddingBottom: 4 }} {...dragPan.panHandlers}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
           <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
             <ScrollView
               ref={scrollRef}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{
                 backgroundColor: colors.card,
-                borderTopLeftRadius: 28,
-                borderTopRightRadius: 28,
                 paddingHorizontal: 20,
-                paddingTop: 18,
+                paddingTop: 8,
                 paddingBottom: Platform.OS === 'ios' ? 34 : 20,
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Request New Board</Text>
-                <TouchableOpacity onPress={onClose}>
+                <TouchableOpacity onPress={closeSheet}>
                   <Ionicons name="close" size={22} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
@@ -2089,7 +2118,8 @@ function RequestBoardModal({
               </View>
             </ScrollView>
           </TouchableOpacity>
-        </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );

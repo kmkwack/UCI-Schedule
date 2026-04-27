@@ -216,7 +216,7 @@ export default function HomeScreen({
       try {
         const r = await fetch('https://ucirvinesports.com/calendar');
         const text = await r.text();
-        const events = parseSportsCalendar(text, { maxDaysAhead: 2, includePastDays: 0 });
+        const events = parseSportsCalendar(text, { maxDaysAhead: 7, includePastDays: 0 });
         setSportsEvents(events);
         AsyncStorage.setItem('sports_cache', JSON.stringify(events));
       } catch {}

@@ -1177,3 +1177,36 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64ft (Let the hero open directly on the countdown)
 - **`src/screens/HomeScreen.tsx`** — Removed the extra `Next up` helper label as well, so the hero now starts directly with the main countdown/value unless there is an active current-class state to call out.
+
+### Session 64fu (Remove campus route experiment)
+- **`src/screens/HomeScreen.tsx`** — Removed the Today Insight campus-route map experiment and its route helper code after it did not feel useful in practice. Kept the current-class hero timeline as a filled progress bar instead of a moving dot because that state reads more clearly during an active class.
+
+### Session 64fv (Hero class carousel)
+- **`src/screens/HomeScreen.tsx`** — Removed the Today Insight card and replaced the single hero card with a horizontally swipeable class carousel. The first card now shows the active class with `Ends in`, later cards show remaining classes with `Starts in`, and the current-class timeline stays as a filled progress bar for a cleaner Apple-widget-style first screen.
+
+### Session 64fw (Full-width hero carousel cards)
+- **`src/screens/HomeScreen.tsx`** — Adjusted the hero class carousel so each page uses the existing Today content width without extra side padding or a negative container margin. This prevents the next card from peeking in while one card is selected, making each card feel full-width and centered.
+
+### Session 64fx (Clean hero carousel card edge)
+- **`src/screens/HomeScreen.tsx`** — Set the hero carousel wrapper/scroll view to allow visible overflow and softened the carousel card shadow so the rounded card no longer reads as a clipped rectangular box around the edge.
+
+### Session 64fy (Hide offscreen hero cards)
+- **`src/screens/HomeScreen.tsx`** — Clipped the hero carousel viewport to exactly one card width, enabled interval momentum locking, and softened the card shadow further so offscreen cards no longer peek in while the pagination dots still indicate additional cards.
+
+### Session 64fz (Include completed classes in hero carousel)
+- **`src/screens/HomeScreen.tsx`** — Changed the hero carousel to include every class from today, not only current/upcoming classes. Completed cards use the same layout with a `Completed` status, `Ended` time, and a filled muted progress bar; the carousel now opens on the current class, next class, or final completed class depending on where the day is.
+
+### Session 64ga (Contextual hero carousel window)
+- **`src/screens/HomeScreen.tsx`** — Narrowed the hero carousel from all of today’s classes to the current context only: during class it keeps previous/current/next cards, and between classes it keeps previous/next cards. The selected card defaults to current when in class, otherwise next, then previous after the day is done.
+
+### Session 64gb (Restore full-day hero carousel)
+- **`src/screens/HomeScreen.tsx`** — Restored the hero carousel to include all of today’s classes so multiple completed classes and multiple remaining classes are still available. The carousel still opens centered on the current class when one is active, otherwise the next class, then the final completed class.
+
+### Session 64gc (Group past and future hero cards)
+- **`src/screens/HomeScreen.tsx`** — Changed the hero carousel card model so completed classes collapse into one summary card and future classes collapse into one remaining-classes summary card, while the current class stays as its own live countdown card.
+
+### Session 64gd (List grouped hero classes)
+- **`src/screens/HomeScreen.tsx`** — Updated the grouped completed/upcoming hero cards to show each included class as its own row with code, time, and location instead of only showing a count. Removed the carousel card shadow to prevent the clipped rectangular shadow artifact from reappearing around the rounded card.
+
+### Session 64ge (Quiet grouped hero labels)
+- **`src/screens/HomeScreen.tsx`** — Removed the small `Earlier today` / `Remaining today` status labels from grouped hero cards and unified the list-row dot color per card so the grouped class lists look calmer and more consistent.

@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { NativeScrollEvent, NativeSyntheticEvent, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, blockColorKey, pastelForCourse, quarterKey, quarterLabel } from '../data/courses';
 import { formatSportsEventTime, parseSportsCalendar, type SportsEvent } from '../data/sportsEvents';
-import { getUciMapLocation, type UciMapLocation } from '../data/uciLocations';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -50,10 +49,10 @@ type ClassmateMatch = {
   sharedCourseCodes: string[];
 };
 
-type InsightItem = {
-  icon: ComponentProps<typeof Ionicons>['name'];
-  text: string;
-};
+type HeroCardItem =
+  | { type: 'completedSummary'; courses: Course[] }
+  | { type: 'upcomingSummary'; courses: Course[] }
+  | { type: 'course'; course: Course };
 
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -258,23 +257,6 @@ function weatherInsightText(tempC: number | null, weatherCode: number | null, us
   if (tempC <= 12) return `${tempLabel} on campus. A light layer should feel better on the walk over.`;
   if (tempC >= 27) return `${tempLabel} on campus. Expect a warmer walk between buildings.`;
   return `${tempLabel} and comfortable for getting around campus.`;
-}
-
-function distanceMeters(from: UciMapLocation, to: UciMapLocation) {
-  const toRad = (value: number) => value * (Math.PI / 180);
-  const earthRadius = 6371000;
-  const dLat = toRad(to.latitude - from.latitude);
-  const dLon = toRad(to.longitude - from.longitude);
-  const lat1 = toRad(from.latitude);
-  const lat2 = toRad(to.latitude);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 2 * earthRadius * Math.asin(Math.sqrt(a));
-}
-
-function estimateWalkMinutes(from: UciMapLocation, to: UciMapLocation) {
-  const adjustedMeters = distanceMeters(from, to) * 1.18;
-  return Math.max(3, Math.round(adjustedMeters / 78));
 }
 
 function ProgressRing({
@@ -545,12 +527,17 @@ export default function HomeScreen({
   const upcomingClasses = todayCourses.filter((course) => extractStartHour(course.time) > nowHour);
   const completedClasses = todayCourses.filter((course) => extractEndHour(course.time) <= nowHour).length;
   const currentClass = todayCourses.find((course) => extractStartHour(course.time) <= nowHour && extractEndHour(course.time) >= nowHour) ?? null;
+  const previousClass = [...todayCourses].reverse().find((course) => extractEndHour(course.time) <= nowHour) ?? null;
   const nextClass = upcomingClasses[0] ?? null;
-  const heroCourse = currentClass ?? nextClass;
-  const heroCourseKey = heroCourse ? buildCourseMatchKey(heroCourse) : null;
-  const heroClassmates = heroCourseKey
-    ? classmateMatches.filter((match) => match.sharedCourseIds.includes(heroCourseKey))
-    : [];
+  const completedCourseList = todayCourses.filter((course) => extractEndHour(course.time) <= nowHour);
+  const upcomingCourseList = todayCourses.filter((course) => extractStartHour(course.time) > nowHour);
+  const heroItems: HeroCardItem[] = [
+    ...(completedCourseList.length > 0 ? [{ type: 'completedSummary' as const, courses: completedCourseList }] : []),
+    ...(currentClass ? [{ type: 'course' as const, course: currentClass }] : []),
+    ...(upcomingCourseList.length > 0 ? [{ type: 'upcomingSummary' as const, courses: upcomingCourseList }] : []),
+  ];
+  const heroCarouselRef = useRef<ScrollView>(null);
+  const [activeHeroIndex, setActiveHeroIndex] = useState(0);
 
   const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
   const quarterProgress = clamp(
@@ -558,111 +545,7 @@ export default function HomeScreen({
     0,
     1
   );
-  const nextClassStart = nextClass ? dateFromHour(now, extractStartHour(nextClass.time)) : null;
-  const currentClassEnd = currentClass ? dateFromHour(now, extractEndHour(currentClass.time)) : null;
-
-  const previousCampusCourse = currentClass && getUciMapLocation(currentClass.location)
-    ? currentClass
-    : [...todayCourses]
-        .reverse()
-        .find((course) => extractEndHour(course.time) <= nowHour && getUciMapLocation(course.location)) ?? null;
-  const heroLocation = getUciMapLocation(heroCourse?.location);
-  const routeOrigin = previousCampusCourse
-    ? getUciMapLocation(previousCampusCourse.location)
-    : getUciMapLocation('ALP');
-  const walkMinutes = heroLocation && routeOrigin && heroCourse === nextClass
-    ? estimateWalkMinutes(routeOrigin, heroLocation)
-    : null;
-  const departureBufferMinutes = previousCampusCourse ? 4 : 7;
-  const recommendedDeparture = nextClassStart && walkMinutes !== null
-    ? new Date(nextClassStart.getTime() - (walkMinutes + departureBufferMinutes) * 60 * 1000)
-    : null;
-
-  const heroAccent = heroCourse ? pastelForCourse(blockColorKey(heroCourse)).border : colors.brand;
   const heroProgress = todayCourses.length === 0 ? 0 : completedClasses / todayCourses.length;
-  const heroHeadlineLabel = currentClass
-    ? 'Ends in'
-    : nextClass
-      ? 'Next class in'
-      : null;
-  const heroHeadlineValue = currentClass
-    ? formatDuration(((currentClassEnd?.getTime() ?? now.getTime()) - now.getTime()) / 60000)
-    : nextClass
-      ? formatDuration(((nextClassStart?.getTime() ?? now.getTime()) - now.getTime()) / 60000)
-      : null;
-
-  const heroHeadline = todayCourses.length > 0
-    ? 'You are clear for the rest of today'
-    : 'No classes on your schedule today';
-
-  const heroSupport = currentClass
-    ? 'Current class'
-    : null;
-
-  const heroFooter = heroCourse
-    ? `${formatHeroTimeRange(heroCourse.time)} · ${heroCourse.location ?? 'Location TBA'}`
-    : 'Open your timetable to add a class or switch plans.';
-
-  const heroTimelineStart = currentClass
-    ? dateFromHour(now, extractStartHour(currentClass.time))
-    : now;
-  const heroTimelineEnd = heroCourse
-    ? dateFromHour(now, extractEndHour(heroCourse.time))
-    : null;
-  const heroTimelineMarker = currentClass
-    ? now
-    : nextClassStart;
-  const heroTimelineRatio = heroTimelineEnd && heroTimelineMarker
-    ? clamp(
-        (heroTimelineMarker.getTime() - heroTimelineStart.getTime()) / Math.max(heroTimelineEnd.getTime() - heroTimelineStart.getTime(), 1),
-        0,
-        1
-      )
-    : 0;
-  const todayCourseKeys = useMemo(
-    () => new Set(todayCourses.map((course) => buildCourseMatchKey(course))),
-    [todayCourses]
-  );
-  const sharedTodayFriendCount = useMemo(
-    () => classmateMatches.filter((match) => match.sharedCourseIds.some((courseId) => todayCourseKeys.has(courseId))).length,
-    [classmateMatches, todayCourseKeys]
-  );
-  const sharedTodayClassCount = useMemo(() => {
-    const sharedCourseIds = new Set<string>();
-    classmateMatches.forEach((match) => {
-      match.sharedCourseIds.forEach((courseId) => {
-        if (todayCourseKeys.has(courseId)) sharedCourseIds.add(courseId);
-      });
-    });
-    return sharedCourseIds.size;
-  }, [classmateMatches, todayCourseKeys]);
-
-  const insightItems = useMemo<InsightItem[]>(() => {
-    const items: InsightItem[] = [];
-
-    if (recommendedDeparture) {
-      items.push({
-        icon: 'navigate-outline',
-        text: recommendedDeparture <= now
-          ? 'Head out soon to keep a comfortable buffer.'
-          : `Leave around ${formatClock(recommendedDeparture)} for a comfortable walk.`,
-      });
-    }
-
-    if (sharedTodayFriendCount > 0 && sharedTodayClassCount > 0) {
-      items.push({
-        icon: 'people-outline',
-        text: `${sharedTodayFriendCount} friend${sharedTodayFriendCount === 1 ? '' : 's'} overlap with ${sharedTodayClassCount} class${sharedTodayClassCount === 1 ? '' : 'es'} today.`,
-      });
-    }
-
-    items.push({
-      icon: weatherCode !== null && RAINY_CODES.has(weatherCode) ? 'rainy-outline' : 'partly-sunny-outline',
-      text: weatherInsightText(tempC, weatherCode, useCelsius),
-    });
-
-    return items.slice(0, 3);
-  }, [now, recommendedDeparture, sharedTodayClassCount, sharedTodayFriendCount, tempC, useCelsius, weatherCode]);
 
   const visibleCampusEvents = useMemo(
     () => sportsEvents.slice(0, 12),
@@ -681,6 +564,35 @@ export default function HomeScreen({
   } as const;
 
   const twoColumnWidth = Math.max((windowWidth - 18 * 2 - 12) / 2, 0);
+  const heroCardWidth = Math.max(windowWidth - 36, 0);
+  const activeHeroItem = heroItems[activeHeroIndex] ?? null;
+  const heroAccent = activeHeroItem?.type === 'course'
+    ? pastelForCourse(blockColorKey(activeHeroItem.course)).border
+    : activeHeroItem?.type === 'upcomingSummary'
+      ? colors.brand
+    : colors.brand;
+
+  useEffect(() => {
+    if (heroItems.length === 0) {
+      setActiveHeroIndex(0);
+      return;
+    }
+
+    const targetIndex = currentClass
+      ? Math.max(0, heroItems.findIndex((item) => item.type === 'course' && buildCourseMatchKey(item.course) === buildCourseMatchKey(currentClass)))
+      : nextClass
+        ? Math.max(0, heroItems.findIndex((item) => item.type === 'upcomingSummary'))
+        : 0;
+    setActiveHeroIndex(targetIndex);
+    requestAnimationFrame(() => {
+      heroCarouselRef.current?.scrollTo({ x: targetIndex * heroCardWidth, y: 0, animated: false });
+    });
+  }, [heroCardWidth, heroItems.length, currentClass?.id, nextClass?.id]);
+
+  const handleHeroScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const nextIndex = Math.round(event.nativeEvent.contentOffset.x / Math.max(heroCardWidth, 1));
+    setActiveHeroIndex(clamp(nextIndex, 0, Math.max(heroItems.length - 1, 0)));
+  };
 
   return (
     <ScrollView
@@ -720,135 +632,232 @@ export default function HomeScreen({
         </Text>
       </View>
 
-      <View style={{
-        ...raisedCardStyle,
-        backgroundColor: colors.card,
-        padding: 22,
-        marginBottom: 14,
-      }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <View style={{ flex: 1 }}>
-            {heroSupport ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: heroAccent }} />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary }}>
-                  {heroSupport}
-                </Text>
+      <View style={{ marginBottom: 14, width: heroCardWidth, overflow: 'hidden' }}>
+        {heroItems.length > 0 ? (
+          <>
+            <ScrollView
+              ref={heroCarouselRef}
+              horizontal
+              pagingEnabled
+              disableIntervalMomentum
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={handleHeroScrollEnd}
+              snapToInterval={heroCardWidth}
+              decelerationRate="fast"
+              style={{ width: heroCardWidth, overflow: 'hidden' }}
+            >
+              {heroItems.map((item) => {
+                const course = item.type === 'course' ? item.course : null;
+                const summaryCourses = item.type !== 'course' ? item.courses : [];
+                const firstSummaryCourse = summaryCourses[0] ?? null;
+                const lastSummaryCourse = summaryCourses[summaryCourses.length - 1] ?? null;
+                const isCurrent = course ? extractStartHour(course.time) <= nowHour && extractEndHour(course.time) >= nowHour : false;
+                const startDate = course
+                  ? dateFromHour(now, extractStartHour(course.time))
+                  : firstSummaryCourse
+                    ? dateFromHour(now, extractStartHour(firstSummaryCourse.time))
+                    : now;
+                const endDate = course
+                  ? dateFromHour(now, extractEndHour(course.time))
+                  : lastSummaryCourse
+                    ? dateFromHour(now, extractEndHour(lastSummaryCourse.time))
+                    : now;
+                const accent = course
+                  ? pastelForCourse(blockColorKey(course)).border
+                  : item.type === 'completedSummary'
+                    ? colors.textTertiary
+                    : colors.brand;
+                const courseKey = course ? buildCourseMatchKey(course) : '';
+                const courseClassmates = course
+                  ? classmateMatches.filter((match) => match.sharedCourseIds.includes(courseKey))
+                  : [];
+                const progress = isCurrent
+                  ? clamp((now.getTime() - startDate.getTime()) / Math.max(endDate.getTime() - startDate.getTime(), 1), 0, 1)
+                  : item.type === 'completedSummary'
+                    ? 1
+                    : 0;
+                const label = item.type === 'completedSummary'
+                  ? 'Completed'
+                  : item.type === 'upcomingSummary'
+                    ? 'Coming up'
+                    : 'Ends in';
+                const value = item.type === 'course'
+                  ? formatDuration((endDate.getTime() - now.getTime()) / 60000)
+                  : `${summaryCourses.length} class${summaryCourses.length === 1 ? '' : 'es'}`;
+                const title = course?.title ?? '';
+                const detail = course
+                  ? `${formatHeroTimeRange(course.time)} · ${course.location ?? 'Location TBA'}`
+                  : '';
+                const itemKey = item.type === 'course'
+                  ? buildCourseMatchKey(item.course)
+                  : `${item.type}-${summaryCourses.map((summaryCourse) => buildCourseMatchKey(summaryCourse)).join('|')}`;
+
+                return (
+                  <View key={itemKey} style={{ width: heroCardWidth }}>
+                    <View style={{
+                      ...raisedCardStyle,
+                      backgroundColor: colors.card,
+                      padding: 22,
+                      shadowOpacity: 0,
+                      shadowRadius: 0,
+                      elevation: 0,
+                    }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                        <View style={{ flex: 1 }}>
+                          {item.type === 'course' ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: accent }} />
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary }}>
+                                Current class
+                              </Text>
+                            </View>
+                          ) : null}
+                          <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                            {label}
+                          </Text>
+                          <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                            {value}
+                          </Text>
+                          {item.type === 'course' ? (
+                            <>
+                              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }}>
+                                {title}
+                              </Text>
+                              {courseClassmates.length > 0 ? (
+                                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
+                                  {courseClassmates.length === 1
+                                    ? '1 friend also has this class'
+                                    : `${courseClassmates.length} friends also have this class`}
+                                </Text>
+                              ) : null}
+                              <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 6 }}>
+                                {detail}
+                              </Text>
+                            </>
+                          ) : (
+                            <View style={{ marginTop: 12, gap: 8 }}>
+                              {summaryCourses.slice(0, 3).map((summaryCourse) => (
+                                <View
+                                  key={buildCourseMatchKey(summaryCourse)}
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}
+                                >
+                                  <View style={{
+                                    width: 7,
+                                    height: 7,
+                                    borderRadius: 3.5,
+                                    backgroundColor: accent,
+                                  }} />
+                                  <View style={{ flex: 1 }}>
+                                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
+                                      {summaryCourse.code}
+                                    </Text>
+                                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}>
+                                      {formatHeroTimeRange(summaryCourse.time)} · {summaryCourse.location ?? 'Location TBA'}
+                                    </Text>
+                                  </View>
+                                </View>
+                              ))}
+                              {summaryCourses.length > 3 ? (
+                                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary }}>
+                                  +{summaryCourses.length - 3} more
+                                </Text>
+                              ) : null}
+                            </View>
+                          )}
+                        </View>
+                        <View style={{ width: 74, alignItems: 'flex-end' }}>
+                          <ProgressRing
+                            progress={heroProgress}
+                            primaryLabel={`${completedClasses}/${Math.max(todayCourses.length, 1)}`}
+                            secondaryLabel="done"
+                            color={accent}
+                            trackColor={colors.bgTertiary}
+                            textColor={colors.text}
+                            subTextColor={colors.textTertiary}
+                          />
+                        </View>
+                      </View>
+
+                      <View style={{ marginTop: 20 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <Text style={{ fontSize: 12, color: colors.textTertiary }}>
+                            {formatClock(startDate)}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: colors.textTertiary }}>
+                            {formatClock(endDate)}
+                          </Text>
+                        </View>
+                        <View style={{ position: 'relative', height: 16, justifyContent: 'center' }}>
+                          <View style={{ height: isCurrent || item.type === 'completedSummary' ? 7 : 4, borderRadius: 999, backgroundColor: colors.bgTertiary }} />
+                          {isCurrent || item.type === 'completedSummary' ? (
+                            <View
+                              style={{
+                                position: 'absolute',
+                                left: 0,
+                                width: `${progress * 100}%`,
+                                height: 7,
+                                borderRadius: 999,
+                                backgroundColor: item.type === 'completedSummary' ? colors.textTertiary : accent,
+                              }}
+                            />
+                          ) : null}
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+            {heroItems.length > 1 ? (
+              <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 }}>
+                {heroItems.map((item, index) => (
+                  <View
+                    key={`${item.type}-${index}-dot`}
+                    style={{
+                      width: index === activeHeroIndex ? 16 : 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: index === activeHeroIndex ? heroAccent : colors.bgTertiary,
+                    }}
+                  />
+                ))}
               </View>
             ) : null}
-            {heroHeadlineLabel && heroHeadlineValue ? (
-              <>
-                <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
-                  {heroHeadlineLabel}
-                </Text>
-                <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
-                  {heroHeadlineValue}
-                </Text>
-              </>
-            ) : (
-              <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
-                {heroHeadline}
-              </Text>
-            )}
-            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }}>
-              {heroCourse?.title ?? 'Take a lighter campus day'}
-            </Text>
-            {heroClassmates.length > 0 ? (
-              <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
-                {heroClassmates.length === 1
-                  ? '1 friend also has this class'
-                  : `${heroClassmates.length} friends also have this class`}
-              </Text>
-            ) : null}
-            <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 6 }}>
-              {heroCourse ? heroFooter : 'Once a class is on deck, this card becomes your day hub.'}
-            </Text>
-          </View>
-          <View style={{ width: 74, alignItems: 'flex-end' }}>
-            <ProgressRing
-              progress={heroProgress}
-              primaryLabel={`${completedClasses}/${Math.max(todayCourses.length, 1)}`}
-              secondaryLabel="done"
-              color={heroAccent}
-              trackColor={colors.bgTertiary}
-              textColor={colors.text}
-              subTextColor={colors.textTertiary}
-            />
-          </View>
-        </View>
-
-        {heroCourse && heroTimelineEnd ? (
-          <View style={{ marginTop: 20 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Text style={{ fontSize: 12, color: colors.textTertiary }}>
-                {formatClock(heroTimelineStart)}
-              </Text>
-              <Text style={{ fontSize: 12, color: colors.textTertiary }}>
-                {formatClock(heroTimelineEnd)}
-              </Text>
-            </View>
-            <View style={{ position: 'relative', height: 26, justifyContent: 'center' }}>
-              <View style={{ height: 4, borderRadius: 999, backgroundColor: colors.bgTertiary }} />
-              <View
-                style={{
-                  position: 'absolute',
-                  left: `${heroTimelineRatio * 100}%`,
-                  top: 1,
-                  width: 12,
-                  height: 12,
-                  borderRadius: 6,
-                  backgroundColor: heroAccent,
-                  borderWidth: 2,
-                  borderColor: colors.card,
-                  transform: [{ translateX: -6 }],
-                }}
-              />
-              <View
-                style={{
-                  position: 'absolute',
-                  left: `${heroTimelineRatio * 100}%`,
-                  top: 16,
-                  transform: [{ translateX: -22 }],
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary }}>
-                  {currentClass ? 'Now' : heroCourse.code}
-                </Text>
+          </>
+        ) : (
+          <View>
+            <View style={{
+              ...raisedCardStyle,
+              backgroundColor: colors.card,
+              padding: 22,
+            }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                    {todayCourses.length > 0 ? 'You are clear for the rest of today' : 'No classes on your schedule today'}
+                  </Text>
+                  <Text style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }}>
+                    Take a lighter campus day
+                  </Text>
+                  <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 6 }}>
+                    Open your timetable to add a class or switch plans.
+                  </Text>
+                </View>
+                <View style={{ width: 74, alignItems: 'flex-end' }}>
+                  <ProgressRing
+                    progress={heroProgress}
+                    primaryLabel={`${completedClasses}/${Math.max(todayCourses.length, 1)}`}
+                    secondaryLabel="done"
+                    color={colors.brand}
+                    trackColor={colors.bgTertiary}
+                    textColor={colors.text}
+                    subTextColor={colors.textTertiary}
+                  />
+                </View>
               </View>
             </View>
           </View>
-        ) : null}
-      </View>
-
-      <View style={{
-        ...raisedCardStyle,
-        backgroundColor: colors.card,
-        padding: 18,
-        marginBottom: 14,
-      }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 12 }}>
-          Today Insight
-        </Text>
-        <View style={{ gap: 11 }}>
-          {insightItems.map((item) => (
-            <View key={item.text} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-              <View style={{
-                width: 26,
-                height: 26,
-                borderRadius: 13,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: colors.brandBg,
-                marginTop: 1,
-              }}>
-                <Ionicons name={item.icon} size={14} color={colors.brand} />
-              </View>
-              <Text style={{ flex: 1, fontSize: 14, lineHeight: 20, color: colors.textSecondary }}>
-                {item.text}
-              </Text>
-            </View>
-          ))}
-        </View>
+        )}
       </View>
 
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>

@@ -18,6 +18,8 @@ type Props = {
   visible: boolean;
   onClose: () => void;
   onLogout?: () => void;
+  onDeleteAccount?: () => void;
+  deletingAccount?: boolean;
   userName?: string;
   userEmail?: string;
   userProfile: EditableProfile;
@@ -1789,6 +1791,8 @@ export default function SettingsScreen({
   visible,
   onClose,
   onLogout,
+  onDeleteAccount,
+  deletingAccount = false,
   userName = 'John Doe',
   userEmail = 'john.doe@university.edu',
   userProfile,
@@ -1978,6 +1982,33 @@ export default function SettingsScreen({
             >
               <Ionicons name="log-out-outline" size={20} color={colors.destructive} />
               <Text style={{ color: colors.destructive, fontWeight: '700', fontSize: 15 }}>Log Out</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={onDeleteAccount}
+              disabled={deletingAccount}
+              style={{
+                marginTop: 12,
+                borderRadius: 14,
+                paddingVertical: 15,
+                alignItems: 'center',
+                flexDirection: 'row',
+                justifyContent: 'center',
+                gap: 8,
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: colors.destructive,
+                opacity: deletingAccount ? 0.55 : 1,
+              }}
+            >
+              {deletingAccount ? (
+                <ActivityIndicator size="small" color={colors.destructive} />
+              ) : (
+                <Ionicons name="trash-outline" size={20} color={colors.destructive} />
+              )}
+              <Text style={{ color: colors.destructive, fontWeight: '800', fontSize: 15 }}>
+                {deletingAccount ? 'Deleting Account...' : 'Delete Account'}
+              </Text>
             </TouchableOpacity>
           </View>
 

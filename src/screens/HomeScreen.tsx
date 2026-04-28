@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { PanResponder, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Animated, PanResponder, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, blockColorKey, pastelForCourse, quarterKey, quarterLabel } from '../data/courses';
@@ -537,6 +537,9 @@ export default function HomeScreen({
     ...(upcomingCourseList.length > 0 ? [{ type: 'upcomingSummary' as const, courses: upcomingCourseList }] : []),
   ];
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
+  const activeHeroIndexRef = useRef(0);
+  const heroSlideAnim = useRef(new Animated.Value(0)).current;
+  const heroOpacityAnim = useRef(new Animated.Value(1)).current;
 
   const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
   const quarterProgress = clamp(
@@ -574,6 +577,7 @@ export default function HomeScreen({
   useEffect(() => {
     if (heroItems.length === 0) {
       setActiveHeroIndex(0);
+      activeHeroIndexRef.current = 0;
       return;
     }
 
@@ -583,18 +587,53 @@ export default function HomeScreen({
         ? Math.max(0, heroItems.findIndex((item) => item.type === 'upcomingSummary'))
         : 0;
     setActiveHeroIndex(targetIndex);
+    activeHeroIndexRef.current = targetIndex;
   }, [heroItems.length, currentClass?.id, nextClass?.id]);
+
+  function moveHeroTo(nextIndex: number) {
+    const boundedNextIndex = clamp(nextIndex, 0, Math.max(heroItems.length - 1, 0));
+    const currentIndex = activeHeroIndexRef.current;
+    if (boundedNextIndex === currentIndex) return;
+
+    const direction = boundedNextIndex > currentIndex ? 1 : -1;
+    Animated.parallel([
+      Animated.timing(heroSlideAnim, {
+        toValue: -direction * 34,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.timing(heroOpacityAnim, {
+        toValue: 0.35,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      activeHeroIndexRef.current = boundedNextIndex;
+      setActiveHeroIndex(boundedNextIndex);
+      heroSlideAnim.setValue(direction * 34);
+      heroOpacityAnim.setValue(0.35);
+      Animated.parallel([
+        Animated.spring(heroSlideAnim, {
+          toValue: 0,
+          tension: 95,
+          friction: 13,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heroOpacityAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  }
 
   const heroPanResponder = useMemo(
     () => PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
       onPanResponderRelease: (_, gesture) => {
         if (Math.abs(gesture.dx) < 45 && Math.abs(gesture.vx) < 0.35) return;
-        setActiveHeroIndex((prev) => clamp(
-          prev + (gesture.dx < 0 ? 1 : -1),
-          0,
-          Math.max(heroItems.length - 1, 0)
-        ));
+        moveHeroTo(activeHeroIndexRef.current + (gesture.dx < 0 ? 1 : -1));
       },
     }),
     [heroItems.length]
@@ -689,7 +728,15 @@ export default function HomeScreen({
                   : `${item.type}-${summaryCourses.map((summaryCourse) => buildCourseMatchKey(summaryCourse)).join('|')}`;
 
                 return (
-                  <View key={itemKey} style={{ width: heroCardWidth }} {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}>
+                  <Animated.View
+                    key={itemKey}
+                    style={{
+                      width: heroCardWidth,
+                      opacity: heroOpacityAnim,
+                      transform: [{ translateX: heroSlideAnim }],
+                    }}
+                    {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
+                  >
                     <View style={{
                       ...raisedCardStyle,
                       backgroundColor: colors.card,
@@ -795,21 +842,33 @@ export default function HomeScreen({
                         </View>
                       </View>
                     </View>
-                  </View>
+                  </Animated.View>
                 );
             })()}
             {heroItems.length > 1 ? (
               <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 }}>
                 {heroItems.map((item, index) => (
-                  <View
+                  <TouchableOpacity
                     key={`${item.type}-${index}-dot`}
+                    onPress={() => moveHeroTo(index)}
+                    hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                    activeOpacity={0.75}
                     style={{
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: 18,
+                      height: 18,
+                    }}
+                  >
+                    <View
+                      style={{
                       width: index === activeHeroIndex ? 16 : 6,
                       height: 6,
                       borderRadius: 3,
                       backgroundColor: index === activeHeroIndex ? heroAccent : colors.bgTertiary,
-                    }}
-                  />
+                      }}
+                    />
+                  </TouchableOpacity>
                 ))}
               </View>
             ) : null}

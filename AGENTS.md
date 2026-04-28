@@ -1255,3 +1255,52 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64gr (Unify board search fields)
 - **`src/screens/BoardScreen.tsx`** — Restyled the Department Boards picker search field and individual board post search field to match the main Board search bar, using the same card background, border, shadow, spacing, and icon sizing.
+
+### Session 64gs (Board attachment storage setup)
+- **`supabase/sql/board_attachments_storage.sql`** — Added the missing Supabase Storage setup for board post attachments, including the `board-attachments` bucket, attachment-related `posts` columns, and storage policies that let signed-in users manage files under their own user-id folder. This fixes photo/file upload failures caused by the bucket not existing in Supabase.
+
+### Session 64gt (Allow iPhone HEIC board photos)
+- **`supabase/sql/board_attachments_storage.sql`** — Added `image/heic` and `image/heif` to the board attachment bucket MIME allowlist so photos selected directly from iPhone libraries can upload without being rejected by Supabase Storage.
+
+### Session 64gu (Inline board post images)
+- **`src/screens/BoardScreen.tsx`** — Changed board post detail rendering so image attachments display as large inline post images under the body, while non-image files remain in the separate attachments list. Added small attachment helpers to consistently detect image MIME types and resolve local/public image URIs.
+
+### Session 64gv (Open board files through native sharing)
+- **`src/screens/BoardScreen.tsx`** — Changed non-image board attachments to download into the app cache and open through the native sharing/preview sheet instead of sending users to the raw Supabase public URL. Inline image previews no longer open the Supabase URL when tapped.
+- **`package.json` / `package-lock.json`** — Added `expo-file-system` as a direct dependency so board files can be downloaded locally before handing them to iOS preview/sharing.
+
+### Session 64gw (Clean up board post metadata and composer fields)
+- **`src/screens/BoardScreen.tsx`** — Moved the board/category context out of the post author metadata row and into the post-detail header as `Post / <board>`, leaving author metadata focused on the writer and timestamp. Restyled the new-post Board, Title, and Content fields with card backgrounds, borders, and subtle elevation so they read as inputs against the modal background.
+
+### Session 64gx (Convert HEIC board photos to JPEG)
+- **`src/screens/BoardScreen.tsx`** — Added HEIC/HEIF detection in the image picker flow and converts those iPhone photos to JPEG before storing them as board attachments, so uploaded post images can render reliably in the inline post preview.
+- **`package.json` / `package-lock.json`** — Added `expo-image-manipulator` so selected HEIC/HEIF photos can be converted locally before upload.
+
+### Session 64gy (Improve file preview and hero carousel controls)
+- **`src/screens/BoardScreen.tsx`** — Added file extension and iOS UTI inference for board attachments, tries opening downloaded files by local URI first, and falls back to the native share/preview sheet with stronger type hints so PDFs and Office files do not just bounce users to the Supabase URL.
+- **`src/screens/HomeScreen.tsx`** — Added slide/fade animation to the Today hero card transitions and made the pagination dots tappable so users can switch hero cards by swiping or tapping the dots.
+
+### Session 64gz (Scope General Board posts)
+- **`src/screens/BoardScreen.tsx`** — Changed the General Board from a null catch-all board to the explicit `General` category and updated board filtering/count/edit lookups to use normalized board categories. General now shows only General posts instead of every board post.
+
+### Session 64ha (Make sign-up the primary auth path)
+- **`App.tsx`** — Changed the post-university-selection auth route to open the sign-up screen first instead of sign-in, so new users land on account creation by default.
+- **`src/screens/SignUpScreen.tsx`** — Strengthened the sign-up hierarchy with clearer copy, a `Create account with Google` primary action, and a more visible secondary `Sign in instead` button for existing users.
+
+### Session 64hb (Add account deletion flow)
+- **`src/screens/SettingsScreen.tsx`** — Added a destructive `Delete Account` button below `Log Out` with a disabled/loading state while deletion is running.
+- **`App.tsx`** — Added a two-step destructive confirmation flow and wired account deletion to a Supabase RPC before clearing local auth/app state.
+- **`supabase/sql/delete_account.sql`** — Added the `delete_current_user()` security-definer function that removes the signed-in user's profile, settings, friends, timetables, grades, messages, posts, comments, votes, reviews, reports by the user, board requests, board attachment storage objects, and Auth user row.
+
+### Session 64hc (Add Hot Board)
+- **`src/screens/BoardScreen.tsx`** — Added a dynamic `Hot Board` entry to the board landing screen that surfaces posts from the last 24 hours with likes or comments, ranked by likes and comment count. Hot Board is read-only as a board destination, hides the new-post action, and keeps posts in their original category while making trending activity easier to discover.
+
+### Session 64hd (Fix account deletion ID type mismatch)
+- **`supabase/sql/delete_account.sql`** — Changed user-id comparisons in `delete_current_user()` to compare via text casts so the deletion function works across tables whose user id columns are stored as either `uuid` or `text`. This fixes the `operator does not exist: text = uuid` error during account deletion.
+
+### Session 64he (Use likes threshold for Hot Board)
+- **`src/screens/BoardScreen.tsx`** — Changed Hot Board eligibility from recent 24-hour engagement to posts with more than 10 likes, sorted by likes first, then comments, then recency. Updated Hot Board copy and empty state to match the likes-threshold rule.
+
+### Session 64hf (Use Storage API for account attachment deletion)
+- **`App.tsx`** — Moved board attachment cleanup out of the account deletion SQL flow and into the app, using Supabase Storage `list`/`remove` on the signed-in user's `board-attachments/<userId>` folder before calling the account deletion RPC.
+- **`supabase/sql/delete_account.sql`** — Removed the direct `storage.objects` delete from `delete_current_user()` because Supabase Storage blocks direct table deletion and requires the Storage API instead.

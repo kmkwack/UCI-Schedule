@@ -22,7 +22,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
+import * as Sharing from 'expo-sharing';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import type { ChatTarget } from '../data/messages';
@@ -101,12 +104,21 @@ type ReportTarget = {
 };
 
 const FALLBACK_BOARDS: Board[] = [
-  { id: 'general', name: 'General Board', category: null, icon: 'chatbubbles-outline', color: '#4169E1', iconBg: '#eef1fb' },
+  { id: 'general', name: 'General Board', category: 'General', icon: 'chatbubbles-outline', color: '#4169E1', iconBg: '#eef1fb' },
   { id: 'sports', name: 'Sports Board', category: 'Sports', icon: 'barbell-outline', color: '#10B981', iconBg: '#ecfdf5' },
   { id: 'study', name: 'Study Groups Board', category: 'Study Groups', icon: 'book-outline', color: '#F59E0B', iconBg: '#fef9ec' },
   { id: 'market', name: 'Marketplace Board', category: 'Marketplace', icon: 'bag-outline', color: '#8B5CF6', iconBg: '#f5f3ff' },
   { id: 'clubs', name: 'Club Promotions Board', category: 'Club Promotions', icon: 'megaphone-outline', color: '#EC4899', iconBg: '#fdf2f8' },
 ];
+
+const HOT_BOARD: Board = {
+  id: 'hot',
+  name: 'Hot Board',
+  category: null,
+  icon: 'flame-outline',
+  color: '#F97316',
+  iconBg: '#fff7ed',
+};
 
 const REPORT_REASONS = [
   'Spam',
@@ -128,6 +140,19 @@ function departmentFromCategory(category: string) {
   return category.startsWith(DEPARTMENT_BOARD_CATEGORY_PREFIX)
     ? category.slice(DEPARTMENT_BOARD_CATEGORY_PREFIX.length)
     : null;
+}
+
+function boardContextLabel(category: string) {
+  if (!category || category === 'General') return 'Post';
+  return `Post / ${departmentFromCategory(category) ?? category}`;
+}
+
+function boardCategory(board: Board) {
+  return board.category ?? 'General';
+}
+
+function isHotBoard(board: Board | null) {
+  return board?.id === HOT_BOARD.id;
 }
 
 function departmentBoardFor(department: string): Board {
@@ -174,6 +199,53 @@ function normalizeAttachments(value: unknown): BoardAttachment[] {
     });
   });
   return normalized;
+}
+
+function isImageAttachment(attachment: BoardAttachment) {
+  return attachment.type === 'image' || attachment.mimeType?.startsWith('image/');
+}
+
+function attachmentUri(attachment: BoardAttachment) {
+  return attachment.url ?? attachment.localUri ?? '';
+}
+
+function isHeicImage(name?: string | null, mimeType?: string | null) {
+  const lowerName = name?.toLowerCase() ?? '';
+  const lowerMime = mimeType?.toLowerCase() ?? '';
+  return lowerMime === 'image/heic' || lowerMime === 'image/heif' || lowerName.endsWith('.heic') || lowerName.endsWith('.heif');
+}
+
+function jpegNameForImage(name: string, fallbackName: string) {
+  const baseName = name.trim() || fallbackName;
+  return baseName.replace(/\.(heic|heif|png|webp|gif)$/i, '.jpg').replace(/\.[^.]+$/i, '.jpg');
+}
+
+function fileExtensionForAttachment(attachment: BoardAttachment) {
+  const extension = attachment.name.split('.').pop();
+  if (extension && extension !== attachment.name) return extension.toLowerCase();
+  const mime = attachment.mimeType?.toLowerCase();
+  if (mime === 'application/pdf') return 'pdf';
+  if (mime === 'text/plain') return 'txt';
+  if (mime === 'application/msword') return 'doc';
+  if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  if (mime === 'application/vnd.ms-powerpoint') return 'ppt';
+  if (mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') return 'pptx';
+  if (mime === 'application/vnd.ms-excel') return 'xls';
+  if (mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx';
+  return 'file';
+}
+
+function fileUtiForAttachment(attachment: BoardAttachment) {
+  const extension = fileExtensionForAttachment(attachment);
+  if (extension === 'pdf') return 'com.adobe.pdf';
+  if (extension === 'txt') return 'public.plain-text';
+  if (extension === 'doc') return 'com.microsoft.word.doc';
+  if (extension === 'docx') return 'org.openxmlformats.wordprocessingml.document';
+  if (extension === 'ppt') return 'com.microsoft.powerpoint.ppt';
+  if (extension === 'pptx') return 'org.openxmlformats.presentationml.presentation';
+  if (extension === 'xls') return 'com.microsoft.excel.xls';
+  if (extension === 'xlsx') return 'org.openxmlformats.spreadsheetml.sheet';
+  return undefined;
 }
 
 function timeAgo(isoString: string): string {
@@ -317,6 +389,15 @@ export default function BoardScreen({
   const postsCacheKey = `board_posts_${school}_${userId}`;
   const boardListScrollRef = useRef<ScrollView>(null);
   const departmentBoards = useMemo(() => UCI_DEPARTMENTS.map(departmentBoardFor), []);
+  const hotPosts = useMemo(() => {
+    return posts
+      .filter((post) => post.likes > 10)
+      .sort((a, b) => {
+        if (b.likes !== a.likes) return b.likes - a.likes;
+        if (b.commentCount !== a.commentCount) return b.commentCount - a.commentCount;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+  }, [posts]);
   const composerBoards = useMemo(() => {
     if (selectedBoard && departmentFromCategory(selectedBoard.category ?? '')) {
       return [selectedBoard, ...boards];
@@ -442,6 +523,46 @@ export default function BoardScreen({
     if (error) console.error('Failed to delete board attachments:', error);
   }
 
+  async function openAttachment(attachment: BoardAttachment) {
+    if (!attachment.url) {
+      Alert.alert('File unavailable', 'This attachment does not have a downloadable file yet.');
+      return;
+    }
+
+    if (isImageAttachment(attachment)) return;
+
+    try {
+      const sharingAvailable = await Sharing.isAvailableAsync();
+      if (!sharingAvailable || !FileSystem.cacheDirectory) {
+        await Linking.openURL(attachment.url);
+        return;
+      }
+
+      const extension = fileExtensionForAttachment(attachment);
+      const safeBaseName = sanitizeFileName(attachment.name.replace(/\.[^.]+$/, '')) || 'board-attachment';
+      const safeFileName = `${safeBaseName}.${extension}`;
+      const localUri = `${FileSystem.cacheDirectory}${Date.now()}-${safeFileName}`;
+      const downloaded = await FileSystem.downloadAsync(attachment.url, localUri);
+
+      if (Platform.OS === 'ios') {
+        try {
+          await Linking.openURL(downloaded.uri);
+          return;
+        } catch {
+          // Fall through to the native share/preview sheet with stronger file type hints.
+        }
+      }
+
+      await Sharing.shareAsync(downloaded.uri, {
+        mimeType: attachment.mimeType ?? undefined,
+        UTI: fileUtiForAttachment(attachment),
+        dialogTitle: attachment.name,
+      });
+    } catch (error: any) {
+      Alert.alert('Could not open file', error?.message ?? 'Try again in a moment.');
+    }
+  }
+
   async function handlePickImages() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -458,16 +579,44 @@ export default function BoardScreen({
 
     if (result.canceled || !result.assets?.length) return;
 
-    const picked = result.assets.map((asset, index) => ({
-      id: `${Date.now()}-image-${index}-${Math.random().toString(36).slice(2, 8)}`,
-      name: asset.fileName || `image-${index + 1}.jpg`,
-      type: 'image' as const,
-      localUri: asset.uri,
-      mimeType: asset.mimeType ?? 'image/jpeg',
-      size: asset.fileSize ?? null,
-    }));
+    try {
+      const picked = await Promise.all(
+        result.assets.map(async (asset, index) => {
+          const fallbackName = `image-${index + 1}.jpg`;
+          const originalName = asset.fileName || fallbackName;
+          const shouldConvertToJpeg = isHeicImage(originalName, asset.mimeType);
 
-    setNewPostAttachments((prev) => [...prev, ...picked]);
+          if (!shouldConvertToJpeg) {
+            return {
+              id: `${Date.now()}-image-${index}-${Math.random().toString(36).slice(2, 8)}`,
+              name: originalName,
+              type: 'image' as const,
+              localUri: asset.uri,
+              mimeType: asset.mimeType ?? 'image/jpeg',
+              size: asset.fileSize ?? null,
+            };
+          }
+
+          const converted = await ImageManipulator.manipulateAsync(asset.uri, [], {
+            compress: 0.9,
+            format: ImageManipulator.SaveFormat.JPEG,
+          });
+
+          return {
+            id: `${Date.now()}-image-${index}-${Math.random().toString(36).slice(2, 8)}`,
+            name: jpegNameForImage(originalName, fallbackName),
+            type: 'image' as const,
+            localUri: converted.uri,
+            mimeType: 'image/jpeg',
+            size: null,
+          };
+        })
+      );
+
+      setNewPostAttachments((prev) => [...prev, ...picked]);
+    } catch (error: any) {
+      Alert.alert('Image could not be prepared', error?.message ?? 'Try choosing the photo again.');
+    }
   }
 
   async function handlePickFiles() {
@@ -659,9 +808,9 @@ export default function BoardScreen({
     Keyboard.dismiss();
     const postDepartment = departmentFromCategory(post.category);
     const targetBoard =
-      boards.find((board) => (board.category ?? 'General') === post.category) ??
+      boards.find((board) => boardCategory(board) === post.category) ??
       (postDepartment ? departmentBoardFor(postDepartment) : null) ??
-      boards.find((board) => board.category === null) ??
+      boards.find((board) => boardCategory(board) === 'General') ??
       boards[0];
 
     boardSlideAnim.setValue(SCREEN_W);
@@ -884,7 +1033,7 @@ export default function BoardScreen({
     }
     setEditingPostId(post.id);
     const postDepartment = departmentFromCategory(post.category);
-    const board = boards.find((entry) => (entry.category ?? 'General') === post.category) ??
+    const board = boards.find((entry) => boardCategory(entry) === post.category) ??
       (postDepartment ? departmentBoardFor(postDepartment) : null) ??
       boards[0];
     setNewPostBoardId(board?.id ?? '');
@@ -1033,8 +1182,9 @@ export default function BoardScreen({
 
   const boardPosts = useMemo(() => {
     if (!selectedBoard) return [];
-    return selectedBoard.category === null ? posts : posts.filter((post) => post.category === selectedBoard.category);
-  }, [posts, selectedBoard]);
+    if (isHotBoard(selectedBoard)) return hotPosts;
+    return posts.filter((post) => post.category === boardCategory(selectedBoard));
+  }, [hotPosts, posts, selectedBoard]);
 
   const globalSearchResults = useMemo(() => {
     const query = globalSearch.trim().toLowerCase();
@@ -1072,7 +1222,7 @@ export default function BoardScreen({
   }, [boardPosts, search, sort]);
 
   const postCountForBoard = (board: Board) =>
-    board.category === null ? posts.length : posts.filter((post) => post.category === board.category).length;
+    isHotBoard(board) ? hotPosts.length : posts.filter((post) => post.category === boardCategory(board)).length;
 
   const selectedPostCommentCount = useMemo(() => countComments(comments), [comments]);
 
@@ -1331,6 +1481,65 @@ export default function BoardScreen({
                 )}
               </View>
             ) : null}
+
+            <TouchableOpacity
+              onPress={() => openBoard(HOT_BOARD)}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.card,
+                borderRadius: 18,
+                padding: 16,
+                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+                shadowColor: '#0f172a',
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: isDark ? 0.18 : 0.06,
+                shadowRadius: 20,
+                elevation: 4,
+              }}
+            >
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 14,
+                  backgroundColor: HOT_BOARD.iconBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 14,
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(249,115,22,0.22)',
+                }}
+              >
+                <Ionicons name={HOT_BOARD.icon} size={22} color={HOT_BOARD.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.7, color: colors.textTertiary, marginBottom: 4 }}>
+                  TRENDING NOW
+                </Text>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{HOT_BOARD.name}</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
+                  {hotPosts.length} post{hotPosts.length === 1 ? '' : 's'} over 10 likes
+                </Text>
+              </View>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: HOT_BOARD.iconBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: 'rgba(249,115,22,0.18)',
+                }}
+              >
+                <Ionicons name="chevron-forward" size={16} color={HOT_BOARD.color} />
+              </View>
+            </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => {
@@ -1652,7 +1861,9 @@ export default function BoardScreen({
                 >
                   <Ionicons name="chevron-back" size={26} color={colors.text} />
                 </TouchableOpacity>
-                <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Post</Text>
+                <Text numberOfLines={1} style={{ flex: 1, fontSize: 18, fontWeight: '600', color: colors.text }}>
+                  {boardContextLabel(selectedPost.category)}
+                </Text>
               </View>
 
               {(() => {
@@ -1673,8 +1884,6 @@ export default function BoardScreen({
                             <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.author_meta}</Text>
                           </>
                         ) : null}
-                        <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
-                        <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
                         {post.is_locked ? (
@@ -1697,15 +1906,35 @@ export default function BoardScreen({
                       </View>
                       <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 10 }}>{post.title}</Text>
                       <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 22, marginBottom: 16 }}>{post.body}</Text>
-                      {post.attachments.length > 0 ? (
+                      {post.attachments.some(isImageAttachment) ? (
+                        <View style={{ marginBottom: 16, gap: 12 }}>
+                          {post.attachments.filter((attachment) => isImageAttachment(attachment) && attachmentUri(attachment)).map((attachment) => (
+                            <View
+                              key={attachment.id}
+                              style={{
+                                borderRadius: 18,
+                                overflow: 'hidden',
+                                backgroundColor: colors.bgTertiary,
+                                borderWidth: 1,
+                                borderColor: colors.borderSubtle,
+                              }}
+                            >
+                              <Image
+                                source={{ uri: attachmentUri(attachment) }}
+                                resizeMode="cover"
+                                style={{ width: '100%', aspectRatio: 4 / 3, backgroundColor: colors.bgTertiary }}
+                              />
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+                      {post.attachments.some((attachment) => !isImageAttachment(attachment)) ? (
                         <View style={{ marginBottom: 16, gap: 10 }}>
                           <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Attachments</Text>
-                          {post.attachments.map((attachment) => (
+                          {post.attachments.filter((attachment) => !isImageAttachment(attachment)).map((attachment) => (
                             <TouchableOpacity
                               key={attachment.id}
-                              onPress={() => {
-                                if (attachment.url) void Linking.openURL(attachment.url);
-                              }}
+                              onPress={() => void openAttachment(attachment)}
                               activeOpacity={0.82}
                               style={{
                                 flexDirection: 'row',
@@ -1718,32 +1947,24 @@ export default function BoardScreen({
                                 borderColor: colors.borderSubtle,
                               }}
                             >
-                              {attachment.type === 'image' && attachment.url ? (
-                                <Image
-                                  source={{ uri: attachment.url }}
-                                  style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: colors.bgTertiary }}
-                                />
-                              ) : (
-                                <View
-                                  style={{
-                                    width: 52,
-                                    height: 52,
-                                    borderRadius: 12,
-                                    backgroundColor: colors.brandBg,
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                  }}
-                                >
-                                  <Ionicons name="document-outline" size={24} color={colors.brand} />
-                                </View>
-                              )}
+                              <View
+                                style={{
+                                  width: 52,
+                                  height: 52,
+                                  borderRadius: 12,
+                                  backgroundColor: colors.brandBg,
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Ionicons name="document-outline" size={24} color={colors.brand} />
+                              </View>
                               <View style={{ flex: 1 }}>
                                 <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
                                   {attachment.name}
                                 </Text>
                                 <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
-                                  {attachment.type === 'image' ? 'Image' : 'File'}
-                                  {formatFileSize(attachment.size) ? ` · ${formatFileSize(attachment.size)}` : ''}
+                                  File{formatFileSize(attachment.size) ? ` · ${formatFileSize(attachment.size)}` : ''}
                                 </Text>
                               </View>
                               <Ionicons name="open-outline" size={18} color={colors.textTertiary} />
@@ -1911,13 +2132,15 @@ export default function BoardScreen({
                     <Ionicons name={selectedBoard.icon} size={18} color={selectedBoard.color} />
                   </View>
                   <Text style={{ flex: 1, fontSize: 18, fontWeight: '700', color: colors.text }}>{selectedBoard.name}</Text>
-                  <TouchableOpacity
-                    onPress={() => openNewPost(selectedBoard.id)}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.brand, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}
-                  >
-                    <Ionicons name="add" size={15} color="white" />
-                    <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
-                  </TouchableOpacity>
+                  {!isHotBoard(selectedBoard) ? (
+                    <TouchableOpacity
+                      onPress={() => openNewPost(selectedBoard.id)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.brand, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}
+                    >
+                      <Ionicons name="add" size={15} color="white" />
+                      <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
                 <View
                   style={{
@@ -1982,9 +2205,13 @@ export default function BoardScreen({
                 </View>
               ) : filteredPosts.length === 0 ? (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <Ionicons name="clipboard-outline" size={40} color={colors.border} />
-                  <Text style={{ fontSize: 16, color: colors.textTertiary }}>No posts yet</Text>
-                  <Text style={{ fontSize: 14, color: colors.border }}>Be the first to post!</Text>
+                  <Ionicons name={isHotBoard(selectedBoard) ? 'flame-outline' : 'clipboard-outline'} size={40} color={colors.border} />
+                  <Text style={{ fontSize: 16, color: colors.textTertiary }}>
+                    {isHotBoard(selectedBoard) ? 'No hot posts yet' : 'No posts yet'}
+                  </Text>
+                  <Text style={{ fontSize: 14, color: colors.border }}>
+                    {isHotBoard(selectedBoard) ? 'Posts with more than 10 likes will appear here.' : 'Be the first to post!'}
+                  </Text>
                 </View>
               ) : (
                 <ScrollView
@@ -2483,6 +2710,16 @@ function NewPostModal({
   colors,
 }: NewPostModalProps) {
   const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? boards[0];
+  const fieldChrome = {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -2504,7 +2741,7 @@ function NewPostModal({
           </Text>
           <TouchableOpacity
             onPress={onToggleBoardPicker}
-            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, marginBottom: 20 }}
+            style={{ ...fieldChrome, flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 14, marginBottom: 20 }}
           >
             <Text style={{ flex: 1, fontSize: 15, color: colors.text }}>{selectedBoard.name}</Text>
             <Ionicons name="chevron-down" size={18} color={colors.textTertiary} />
@@ -2539,7 +2776,7 @@ function NewPostModal({
             onChangeText={onTitleChange}
             placeholder="Write a clear and descriptive title..."
             placeholderTextColor={colors.placeholder}
-            style={{ backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: colors.text, marginBottom: 20 }}
+            style={{ ...fieldChrome, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: colors.text, marginBottom: 20 }}
           />
 
           <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 }}>
@@ -2551,7 +2788,7 @@ function NewPostModal({
             placeholder="Share your thoughts, ask questions, or provide details..."
             placeholderTextColor={colors.placeholder}
             multiline
-            style={{ backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: colors.text, marginBottom: 20, minHeight: 160, textAlignVertical: 'top' }}
+            style={{ ...fieldChrome, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: colors.text, marginBottom: 20, minHeight: 160, textAlignVertical: 'top' }}
           />
 
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>

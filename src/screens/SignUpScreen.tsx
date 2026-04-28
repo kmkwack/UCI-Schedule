@@ -157,7 +157,7 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
           Join ClassMate
         </Text>
         <Text style={{ fontSize: 15, color: '#6b7280', textAlign: 'center', marginBottom: 20 }}>
-          Start organizing your campus life today
+          Create your student profile with your university Google account.
         </Text>
 
         {/* Info pill */}
@@ -189,7 +189,7 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
           }}
         >
           {loading ? <ActivityIndicator size="small" color="#4169E1" /> : <GoogleIcon />}
-          <Text style={{ fontSize: 16, fontWeight: '500', color: '#111827' }}>Continue with Google</Text>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Create account with Google</Text>
         </TouchableOpacity>
 
         {/* OR divider */}
@@ -201,9 +201,20 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
 
         {/* Sign in link */}
         <View style={{ alignItems: 'center', marginBottom: 28 }}>
-          <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 6 }}>Already have an account?</Text>
-          <TouchableOpacity onPress={onGoToSignIn}>
-            <Text style={{ fontSize: 15, color: '#4169E1', fontWeight: '600' }}>Sign in instead →</Text>
+          <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 10 }}>Already have an account?</Text>
+          <TouchableOpacity
+            onPress={onGoToSignIn}
+            activeOpacity={0.84}
+            style={{
+              borderRadius: 14,
+              paddingHorizontal: 18,
+              paddingVertical: 12,
+              backgroundColor: '#eff3ff',
+              borderWidth: 1,
+              borderColor: 'rgba(65,105,225,0.16)',
+            }}
+          >
+            <Text style={{ fontSize: 15, color: '#4169E1', fontWeight: '700' }}>Sign in instead →</Text>
           </TouchableOpacity>
         </View>
 

@@ -359,6 +359,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingVisibility, setSavingVisibility] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [useCelsius, setUseCelsius] = useState(true);
   const [authStack, setAuthStack] = useState<AuthScreen[]>(['welcome']);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
@@ -1209,6 +1210,94 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setAuthStack(['welcome']);
   };
 
+  const deleteAccountStorageObjects = async (accountUserId: string) => {
+    const folder = accountUserId;
+    const paths: string[] = [];
+    let offset = 0;
+    const limit = 100;
+
+    while (true) {
+      const { data, error } = await supabase.storage
+        .from('board-attachments')
+        .list(folder, { limit, offset });
+
+      if (error) {
+        if (error.message.toLowerCase().includes('bucket')) return;
+        throw error;
+      }
+
+      const batch = (data ?? [])
+        .filter((item) => item.name && item.name !== '.emptyFolderPlaceholder')
+        .map((item) => `${folder}/${item.name}`);
+      paths.push(...batch);
+
+      if (!data || data.length < limit) break;
+      offset += limit;
+    }
+
+    for (let index = 0; index < paths.length; index += 100) {
+      const batch = paths.slice(index, index + 100);
+      const { error } = await supabase.storage.from('board-attachments').remove(batch);
+      if (error) throw error;
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!userId || deletingAccount) return;
+
+    Alert.alert(
+      'Delete account?',
+      'This will permanently delete your profile, friends, class schedules, grades, messages, board posts, comments, reviews, and uploaded files. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Delete everything?',
+              'Your ClassMate account and account-related data will be permanently removed.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete Account',
+                  style: 'destructive',
+                  onPress: () => {
+                    void (async () => {
+                      setDeletingAccount(true);
+                      try {
+                        await deleteAccountStorageObjects(userId);
+                      } catch (error: any) {
+                        setDeletingAccount(false);
+                        Alert.alert('Could not delete uploaded files', error?.message ?? 'Try again in a moment.');
+                        return;
+                      }
+
+                      const { error } = await supabase.rpc('delete_current_user');
+                      setDeletingAccount(false);
+
+                      if (error) {
+                        Alert.alert(
+                          'Could not delete account',
+                          error.code === 'PGRST202' || error.message.includes('delete_current_user')
+                            ? 'The account deletion SQL is not installed yet. Run supabase/sql/delete_account.sql in Supabase first.'
+                            : error.message
+                        );
+                        return;
+                      }
+
+                      handleLogout();
+                    })();
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
   const saveUserSettingsRow = async (
     nextSettings: UserSettingsState,
     nextProfile: EditableProfile = userProfile,
@@ -1492,7 +1581,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         return (
           <UniversitySelectionScreen
             onBack={goBack}
-            onContinue={(uni) => { setSelectedUniversity(uni); pushAuth('signin'); }}
+            onContinue={(uni) => { setSelectedUniversity(uni); pushAuth('signup'); }}
           />
         );
       }
@@ -1790,6 +1879,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               visible={showSettings}
               onClose={closeSettingsSheet}
               onLogout={handleLogout}
+              onDeleteAccount={handleDeleteAccount}
+              deletingAccount={deletingAccount}
               userName={displayUserName}
               userEmail={userEmail}
               userProfile={userProfile}

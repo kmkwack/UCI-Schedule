@@ -1304,3 +1304,54 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64hf (Use Storage API for account attachment deletion)
 - **`App.tsx`** — Moved board attachment cleanup out of the account deletion SQL flow and into the app, using Supabase Storage `list`/`remove` on the signed-in user's `board-attachments/<userId>` folder before calling the account deletion RPC.
 - **`supabase/sql/delete_account.sql`** — Removed the direct `storage.objects` delete from `delete_current_user()` because Supabase Storage blocks direct table deletion and requires the Storage API instead.
+
+### Session 64hg (Validate restored auth sessions)
+- **`App.tsx`** — Added `getUser()` validation before hydrating restored Supabase sessions so stale local sessions from deleted accounts are signed out and returned to the welcome screen instead of falling into profile setup. Centralized signed-out state cleanup and reused it for logout, auth-state sign-out, and invalid restored sessions.
+
+### Session 64hh (Refresh feature onboarding previews)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Updated the four feature onboarding slides to match the current app: Home now previews the swipeable Today hero card with progress dots and quarter/weather cards, ClassMates previews the search/tabs/shared-classes block and friend list, and Boards previews global search, Hot Board, Department Boards, inline post images, likes, and replies.
+
+### Session 64hi (Compact ClassMates and Timetable onboarding)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Compressed the ClassMates onboarding preview so the Next button stays visible on smaller screens, and rebuilt the Timetable preview to mirror the current app with quarter controls, schedule pills, and the grey timetable grid.
+
+### Session 64hj (Fit Board onboarding and align timetable blocks)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Compressed the Board onboarding preview so bottom navigation stays visible, and changed the Timetable preview course blocks to render inside their day columns so example classes align with the grid.
+
+### Session 64hk (Use signed URLs for board attachments)
+- **`src/screens/BoardScreen.tsx`** — Changed board attachment display to resolve Supabase Storage paths into signed URLs before rendering or opening files, so uploaded images can preview even when the storage bucket is private or public reads are blocked.
+
+### Session 64hl (Fix sign-in legal placement and board image previews)
+- **`src/screens/SignInScreen.tsx`** — Moved the legal consent text into the scroll content at the bottom of the sign-in page instead of keeping it in a separate bordered footer.
+- **`src/screens/BoardScreen.tsx`** — Added board-list image thumbnails and changed image attachment rendering to cache signed Storage URLs locally before passing them to React Native `Image`, making post image previews more reliable on device.
+
+### Session 64hm (Expo-safe board image uploads)
+- **`src/screens/BoardScreen.tsx`** — Changed board image picking to normalize every selected image into a JPEG cache file and changed attachment upload to read local files through Expo FileSystem base64 bytes instead of `fetch(file://...).blob()`, preventing corrupted image uploads in Expo. Renamed the main Board header action from `Post` to `New Post`.
+
+### Session 64hn (Remove board-list report action)
+- **`src/screens/BoardScreen.tsx`** — Removed the report flag button from board post list rows so reporting is only available inside the post detail view.
+
+### Session 64ho (Harden board images and add comment editing)
+- **`src/screens/BoardScreen.tsx`** — Switched board image rendering from React Native `Image` to `expo-image` with memory/disk caching, moved image uploads to the Expo FileSystem base64-arraybuffer path, fixed extension handling for JPEG-normalized picker images, added `Edited` markers for edited posts/comments, and added owner-only edit/delete actions for comments and replies.
+- **`package.json` / `package-lock.json`** — Added `expo-image` and `base64-arraybuffer` so board images render and upload reliably in Expo.
+- **`supabase/sql/board_edit_markers.sql`** — Added optional `edited_at` columns for posts and post comments so edit markers persist after refresh.
+
+### Session 64hp (Hide self-report actions)
+- **`src/screens/BoardScreen.tsx`** — Hid report actions on the signed-in user's own posts and comments while keeping reporting available for other users' content inside detail views.
+
+### Session 64hq (Remove Board messaging entry points)
+- **`src/screens/BoardScreen.tsx`** — Removed the Board header messages button and the post-detail direct-message button because messaging is not part of the current Board feature set.
+
+### Session 64hr (Move seeder secrets to env)
+- **`scripts/seed-sections.js` / `scripts/seed-summer.js` / `scripts/seed-enrollment-history.js`** — Removed hardcoded Supabase service-role and Anteater API keys from local seeding scripts and made the scripts require `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, and `ANTEATER_API_KEY` environment variables instead.
+
+### Session 64hs (Pre-TestFlight QA fixes)
+- **`src/screens/HomeScreen.tsx`** — Fixed the empty-day hero progress ring so days with no classes show `0 classes` instead of the misleading `0/1 done`.
+- **`src/screens/CoursePickerScreen.tsx` / `src/screens/TimetableScreen.tsx`** — Made the Reviews/course-info sheet available for every real section type instead of only lecture/lab/seminar sections, so finals, prerequisites, restrictions, and notes are reachable from discussion-style sections too.
+
+### Session 64ht (Hide unfinished messaging surface)
+- **`App.tsx` / `src/screens/BoardScreen.tsx`** — Removed the Board-to-Messages wiring and messages overlay entry point now that messaging is not part of the current beta surface.
+- **`src/screens/SettingsScreen.tsx` / `src/data/userPreferences.ts`** — Removed the visible Messages notification toggle and defaulted message notifications off to avoid exposing unfinished messaging behavior.
+
+### Session 64hu (Align summer quarter logic)
+- **`src/data/courses.ts`** — Changed the summer academic-quarter resolver to return the app's seeded `Summer10wk` quarter instead of an unseeded `Summer` key, and made the fallback choose a safe seeded quarter.
+- **`App.tsx` / `src/screens/HomeScreen.tsx`** — Updated invalid-quarter fallback logic and added 2026 summer session date ranges so Home progress does not use the generic winter fallback for summer sessions.

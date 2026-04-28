@@ -1300,17 +1300,15 @@ export default function TimetableScreen({
                   </View>
                 ) : null}
                 <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 10 }}>
-                  {['Lec', 'Lab', 'Sem'].some(t => selectedCourse.sectionLabel?.startsWith(t)) && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        setReviewsCourse(selectedCourse);
-                      }}
-                      style={{ backgroundColor: colors.brand, borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-                    >
-                      <Ionicons name="star-outline" size={17} color="white" />
-                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    onPress={() => {
+                      setReviewsCourse(selectedCourse);
+                    }}
+                    style={{ backgroundColor: colors.brand, borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                  >
+                    <Ionicons name="star-outline" size={17} color="white" />
+                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
+                  </TouchableOpacity>
                   {courseMapUrl && !mappedLocation && (
                     <TouchableOpacity
                       onPress={() => { if (mapQuery) void openMaps(mapQuery, school, mappedLocation); }}

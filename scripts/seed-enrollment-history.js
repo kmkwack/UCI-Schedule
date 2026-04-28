@@ -20,9 +20,13 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-const SUPABASE_URL         = 'https://koiawtfuuevblrvlpuhe.supabase.co';
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvaWF3dGZ1dWV2YmxydmxwdWhlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjM5MjgyMSwiZXhwIjoyMDkxOTY4ODIxfQ.66VReYhiU9ssbT_yMmB_KoH_0qpmsUu5YrUn69His54';
-const ANTEATER_API_KEY     = '1RHP9_TksIaNG6whqwEBCCmREp5Ub4CD-pjeuHZu1kY.sk.izl90mcmhm0vfui8124bod7z';
+const SUPABASE_URL         = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const ANTEATER_API_KEY     = process.env.ANTEATER_API_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !ANTEATER_API_KEY) {
+  throw new Error('Missing SUPABASE_URL, SUPABASE_SERVICE_KEY, or ANTEATER_API_KEY environment variable.');
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 

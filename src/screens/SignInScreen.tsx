@@ -200,7 +200,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 28, paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 28, paddingBottom: 28 }}>
         {/* University card */}
         <View style={{
           padding: 20, borderRadius: 20, marginBottom: 28,
@@ -356,16 +356,16 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
           </TouchableOpacity>
         </View>
 
+        <View style={{ marginTop: 'auto', paddingTop: 28 }}>
+          <LegalConsentText
+            onOpenDocument={setActiveDocument}
+            color="#9ca3af"
+            linkColor="#4169E1"
+            fontSize={11}
+            lineHeight={16}
+          />
+        </View>
       </ScrollView>
-      <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 14, paddingBottom: 8, paddingHorizontal: 16 }}>
-        <LegalConsentText
-          onOpenDocument={setActiveDocument}
-          color="#9ca3af"
-          linkColor="#4169E1"
-          fontSize={11}
-          lineHeight={16}
-        />
-      </View>
       <LegalDocumentModal
         visible={!!activeDocument}
         document={activeDocument ?? 'terms'}

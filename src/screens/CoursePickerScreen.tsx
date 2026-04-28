@@ -1206,32 +1206,28 @@ export default function CoursePickerScreen({
                                       {isAdded ? 'Remove' : 'Add'}
                                     </Text>
                                   </TouchableOpacity>
-                                  {['Lec', 'Lab', 'Sem'].some(t => course.sectionLabel?.startsWith(t)) && (
-                                    <>
-                                      <TouchableOpacity
-                                        onPress={(e) => {
-                                          e.stopPropagation();
-                                          setReviewsCourse(course);
-                                        }}
-                                        style={{
-                                          paddingHorizontal: 10, paddingVertical: 5,
-                                          borderRadius: 999, backgroundColor: '#4169E1',
-                                          alignSelf: 'flex-end',
-                                        }}
-                                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                                      >
-                                        <Text style={{ fontSize: 11, color: 'white', fontWeight: '600' }}>Reviews</Text>
-                                      </TouchableOpacity>
-                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-end' }}>
-                                        <Ionicons name="star" size={11} color="#f59e0b" />
-                                        <Text style={{ color: '#6b7280', fontSize: 10 }}>
-                                          {reviewSummary.average == null
-                                            ? 'No ratings yet'
-                                            : `${reviewSummary.average.toFixed(1)} (${reviewSummary.count})`}
-                                        </Text>
-                                      </View>
-                                    </>
-                                  )}
+                                  <TouchableOpacity
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      setReviewsCourse(course);
+                                    }}
+                                    style={{
+                                      paddingHorizontal: 10, paddingVertical: 5,
+                                      borderRadius: 999, backgroundColor: '#4169E1',
+                                      alignSelf: 'flex-end',
+                                    }}
+                                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                  >
+                                    <Text style={{ fontSize: 11, color: 'white', fontWeight: '600' }}>Reviews</Text>
+                                  </TouchableOpacity>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-end' }}>
+                                    <Ionicons name="star" size={11} color="#f59e0b" />
+                                    <Text style={{ color: '#6b7280', fontSize: 10 }}>
+                                      {reviewSummary.average == null
+                                        ? 'No ratings yet'
+                                        : `${reviewSummary.average.toFixed(1)} (${reviewSummary.count})`}
+                                    </Text>
+                                  </View>
                                 </View>
                               </View>
                             </TouchableOpacity>

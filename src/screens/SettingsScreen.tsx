@@ -365,8 +365,8 @@ function NotificationsScreen({
   const [s, setS] = useState<NotificationPreferences>(initialSettings);
   const [permissionStatus, setPermissionStatus] = useState<PushPermissionStatus>(initialPermissionStatus);
   const toggleableKeys: Array<
-    'pushNotifications' | 'dailyScheduleSummary' | 'classReminders' | 'sportsGameReminders' | 'friendRequests' | 'comments' | 'likes' | 'messages'
-  > = ['pushNotifications', 'dailyScheduleSummary', 'classReminders', 'sportsGameReminders', 'friendRequests', 'comments', 'likes', 'messages'];
+    'pushNotifications' | 'dailyScheduleSummary' | 'classReminders' | 'sportsGameReminders' | 'friendRequests' | 'comments' | 'likes'
+  > = ['pushNotifications', 'dailyScheduleSummary', 'classReminders', 'sportsGameReminders', 'friendRequests', 'comments', 'likes'];
 
   useEffect(() => {
     setS(initialSettings);
@@ -530,8 +530,7 @@ function NotificationsScreen({
         {section('SOCIAL', <>
           {row('friendRequests', 'Friend Requests')}
           {row('comments', 'Comments')}
-          {row('likes', 'Likes')}
-          {row('messages', 'Messages', undefined, true)}
+          {row('likes', 'Likes', undefined, true)}
         </>)}
       </ScrollView>
       <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle, backgroundColor: colors.card }}>

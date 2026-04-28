@@ -64,6 +64,9 @@ const QUARTER_DATES: Record<string, { start: string; end: string }> = {
   '2025-Fall': { start: '2025-09-25', end: '2025-12-12T23:59:59' },
   '2026-Winter': { start: '2026-01-05', end: '2026-03-20T23:59:59' },
   '2026-Spring': { start: '2026-03-30', end: '2026-06-12T23:59:59' },
+  '2026-Summer1': { start: '2026-06-22', end: '2026-07-29T23:59:59' },
+  '2026-Summer10wk': { start: '2026-06-22', end: '2026-08-28T23:59:59' },
+  '2026-Summer2': { start: '2026-08-03', end: '2026-09-09T23:59:59' },
   '2026-Fall': { start: '2026-09-24', end: '2026-12-11T23:59:59' },
   '2027-Winter': { start: '2027-01-04', end: '2027-03-19T23:59:59' },
   '2027-Spring': { start: '2027-03-29', end: '2027-06-11T23:59:59' },
@@ -568,6 +571,8 @@ export default function HomeScreen({
     1
   );
   const heroProgress = todayCourses.length === 0 ? 0 : completedClasses / todayCourses.length;
+  const heroProgressLabel = todayCourses.length === 0 ? '0' : `${completedClasses}/${todayCourses.length}`;
+  const heroProgressSubLabel = todayCourses.length === 0 ? 'classes' : 'done';
 
   const visibleCampusEvents = useMemo(
     () => sportsEvents.slice(0, 12),
@@ -826,8 +831,8 @@ export default function HomeScreen({
                         <View style={{ width: 74, alignItems: 'flex-end' }}>
                           <ProgressRing
                             progress={heroProgress}
-                            primaryLabel={`${completedClasses}/${Math.max(todayCourses.length, 1)}`}
-                            secondaryLabel="done"
+                            primaryLabel={heroProgressLabel}
+                            secondaryLabel={heroProgressSubLabel}
                             color={accent}
                             trackColor={colors.bgTertiary}
                             textColor={colors.text}
@@ -915,8 +920,8 @@ export default function HomeScreen({
                 <View style={{ width: 74, alignItems: 'flex-end' }}>
                   <ProgressRing
                     progress={heroProgress}
-                    primaryLabel={`${completedClasses}/${Math.max(todayCourses.length, 1)}`}
-                    secondaryLabel="done"
+                    primaryLabel={heroProgressLabel}
+                    secondaryLabel={heroProgressSubLabel}
                     color={colors.brand}
                     trackColor={colors.bgTertiary}
                     textColor={colors.text}

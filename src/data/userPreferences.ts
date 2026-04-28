@@ -46,7 +46,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   friendRequests: true,
   comments: true,
   likes: true,
-  messages: true,
+  messages: false,
 };
 
 export const DEFAULT_USER_SETTINGS: UserSettingsState = {

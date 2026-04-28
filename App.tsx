@@ -15,14 +15,12 @@ import WelcomeScreen from './src/screens/WelcomeScreen';
 import UniversitySelectionScreen from './src/screens/UniversitySelectionScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
-import MessagesScreen from './src/screens/MessagesScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
 import ProfileEditorScreen from './src/components/ProfileEditorScreen';
-import type { ChatTarget } from './src/data/messages';
 import { Course, Quarter, QUARTERS, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey, getAcademicQuarterForDate, resolveCurrentQuarter } from './src/data/courses';
 import {
   buildDisplayName,
@@ -292,6 +290,44 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
   };
 
+  const clearSignedOutState = () => {
+    setUserId(null);
+    setUserEmail('');
+    setSelectedUniversity(null);
+    setExpoPushToken(null);
+    setUserProfile(fallbackProfileFromEmail('student@uci.edu'));
+    setUserSettings(DEFAULT_USER_SETTINGS);
+    setTimetables([]);
+    setSelectedTimetableId(null);
+    setShowSettings(false);
+    setCurrentTab('home');
+    setNeedsProfileSetup(false);
+    setNeedsFeatureOnboarding(false);
+    setShowNotificationPermissionPrompt(false);
+    setShowBrandIntro(false);
+    setSavingOnboarding(false);
+    setDeletingAccount(false);
+    setAuthStack(['welcome']);
+  };
+
+  const validateAndHydrateSession = async (
+    sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> },
+    active = true
+  ) => {
+    const { data, error } = await supabase.auth.getUser();
+    if (!active) return;
+
+    if (error || !data.user || data.user.id !== sessionUser.id) {
+      await supabase.auth.signOut();
+      clearSignedOutState();
+      setAuthInitializing(false);
+      return;
+    }
+
+    hydrateUserFromSession(data.user);
+    setAuthInitializing(false);
+  };
+
   useEffect(() => {
     let active = true;
 
@@ -307,7 +343,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       const sessionUser = data.session?.user;
       if (sessionUser) {
-        hydrateUserFromSession(sessionUser);
+        await validateAndHydrateSession(sessionUser, active);
+        return;
       }
       setAuthInitializing(false);
     }
@@ -327,28 +364,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-        hydrateUserFromSession(session.user);
-        setAuthInitializing(false);
+        void validateAndHydrateSession(session.user);
         return;
       }
 
       if (event === 'SIGNED_OUT' && userIdRef.current !== null) {
-        setUserId(null);
-        setUserEmail('');
-        setSelectedUniversity(null);
-        setExpoPushToken(null);
-        setUserProfile(fallbackProfileFromEmail('student@uci.edu'));
-        setUserSettings(DEFAULT_USER_SETTINGS);
-        setTimetables([]);
-        setSelectedTimetableId(null);
-        setShowSettings(false);
-        setCurrentTab('home');
-        setNeedsProfileSetup(false);
-        setNeedsFeatureOnboarding(false);
-        setShowNotificationPermissionPrompt(false);
-        setShowBrandIntro(false);
-        setSavingOnboarding(false);
-        setAuthStack(['welcome']);
+        clearSignedOutState();
       }
     });
     return () => subscription.unsubscribe();
@@ -445,8 +466,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [selectedTimetableId, setSelectedTimetableId] = useState<string | null>(null);
   const [focusedCourseId, setFocusedCourseId] = useState<string | null>(null);
   const [timetableSettings, setTimetableSettings] = useState<TimetableSettings>(DEFAULT_TIMETABLE_SETTINGS);
-  const [showMessages, setShowMessages] = useState(false);
-  const [messagesOpenWith, setMessagesOpenWith] = useState<ChatTarget | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const settingsBackdropAnim = useRef(new Animated.Value(0)).current;
   const settingsSheetAnim = useRef(new Animated.Value(Dimensions.get('window').height)).current;
@@ -977,8 +996,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         await createTimetable(activeKey, 'My Schedule');
       } else {
         let targetKey = activeKey;
-        // During summer there's no summer timetable — fall back to most recent quarter
-        if (selectedQuarter.quarter === 'Summer') {
+        // If the current date maps to a quarter outside the seeded list, fall back safely.
+        if (!QUARTERS.some((quarter) => quarterKey(quarter) === quarterKey(selectedQuarter))) {
           const fallback = resolveCurrentQuarter(loaded);
           setSelectedQuarter(fallback);
           targetKey = quarterKey(fallback);
@@ -1155,11 +1174,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     );
   };
 
-  const handleOpenMessages = (target?: ChatTarget | null) => {
-    setMessagesOpenWith(target ?? null);
-    setShowMessages(true);
-  };
-
   const handleFocusCourse = (courseId: string | null) => {
     setFocusedCourseId(null);
     setTimeout(() => setFocusedCourseId(courseId), 0);
@@ -1193,21 +1207,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const handleLogout = () => {
     void supabase.auth.signOut();
     void Notifications.cancelAllScheduledNotificationsAsync();
-    setUserId(null);
-    setUserEmail('');
-    setExpoPushToken(null);
-    setUserProfile(fallbackProfileFromEmail('student@uci.edu'));
-    setUserSettings(DEFAULT_USER_SETTINGS);
-    setTimetables([]);
-    setSelectedTimetableId(null);
-    setShowSettings(false);
-    setCurrentTab('home');
-    setNeedsProfileSetup(false);
-    setNeedsFeatureOnboarding(false);
-    setShowNotificationPermissionPrompt(false);
-    setShowBrandIntro(false);
-    setSavingOnboarding(false);
-    setAuthStack(['welcome']);
+    clearSignedOutState();
   };
 
   const deleteAccountStorageObjects = async (accountUserId: string) => {
@@ -1706,7 +1706,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   } else if (currentTab === 'board') {
     content = (
       <BoardScreen
-        onOpenMessages={handleOpenMessages}
         school={selectedUniversity?.name ?? 'UC Irvine'}
         userId={USER_ID}
         boardAuthorName={userProfile.nickname.trim() || displayUserName}
@@ -1855,16 +1854,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           </View>
         </View>
       </View>
-
-      {showMessages && (
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 30, elevation: 30 }}>
-          <MessagesScreen
-            onClose={() => { setShowMessages(false); setMessagesOpenWith(null); }}
-            openChatWith={messagesOpenWith}
-            userId={USER_ID}
-          />
-        </View>
-      )}
 
       <Modal
         visible={showSettings}

@@ -54,20 +54,19 @@ export function getAcademicQuarterForDate(date: Date): Quarter {
   const month = date.getMonth();
   if (month <= 2) return { year: String(date.getFullYear()), quarter: 'Winter' };
   if (month <= 5) return { year: String(date.getFullYear()), quarter: 'Spring' };
-  if (month <= 8) return { year: String(date.getFullYear()), quarter: 'Summer' };
+  if (month <= 8) return { year: String(date.getFullYear()), quarter: 'Summer10wk' };
   return { year: String(date.getFullYear()), quarter: 'Fall' };
 }
 
-// During summer there's no summer timetable — resolve to the most recent quarter
-// that has existing timetables, falling back to the last entry in QUARTERS.
+// Resolve to the academic quarter used by the app's seeded quarter list.
 export function resolveCurrentQuarter(timetables: Timetable[]): Quarter {
   const q = getAcademicQuarterForDate(new Date());
-  if (q.quarter !== 'Summer') return q;
+  if (QUARTERS.some((quarter) => quarterKey(quarter) === quarterKey(q))) return q;
   const existingKeys = new Set(timetables.map((t) => t.quarterKey));
   for (let i = QUARTERS.length - 1; i >= 0; i--) {
     if (existingKeys.has(quarterKey(QUARTERS[i]))) return QUARTERS[i];
   }
-  return QUARTERS[QUARTERS.length - 1];
+  return QUARTERS[0];
 }
 
 export const QUARTERS: Quarter[] = [

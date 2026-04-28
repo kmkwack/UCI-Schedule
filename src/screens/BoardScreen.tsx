@@ -16,19 +16,19 @@ import {
   Easing,
   PanResponder,
   Dimensions,
-  Image,
   Linking,
   Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { decode } from 'base64-arraybuffer';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Image as ExpoImage } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import * as Sharing from 'expo-sharing';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
-import type { ChatTarget } from '../data/messages';
 import { anteaterAliasForId } from '../data/anonymousAliases';
 import { UCI_DEPARTMENTS, colorForDepartment } from '../data/courses';
 
@@ -39,6 +39,7 @@ type CommentRow = {
   author_name: string;
   content: string;
   created_at: string;
+  edited_at?: string | null;
   parent_comment_id?: string | null;
 };
 
@@ -55,6 +56,7 @@ type CommentNode = {
   author_meta: string | null;
   content: string;
   created_at: string;
+  edited_at: string | null;
   parent_comment_id: string | null;
   likes: number;
   liked: boolean;
@@ -70,6 +72,7 @@ type Post = {
   title: string;
   body: string;
   created_at: string;
+  edited_at: string | null;
   likes: number;
   commentCount: number;
   liked: boolean;
@@ -206,7 +209,64 @@ function isImageAttachment(attachment: BoardAttachment) {
 }
 
 function attachmentUri(attachment: BoardAttachment) {
-  return attachment.url ?? attachment.localUri ?? '';
+  return attachment.localUri ?? attachment.url ?? '';
+}
+
+function extensionFromName(name: string) {
+  const parts = name.split('.');
+  if (parts.length < 2) return null;
+  const extension = parts.pop()?.trim().toLowerCase();
+  return extension || null;
+}
+
+function imageExtensionForAttachment(attachment: BoardAttachment) {
+  const extension = attachment.name.split('.').pop()?.toLowerCase();
+  if (extension && ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(extension)) return extension;
+
+  const mime = attachment.mimeType?.toLowerCase();
+  if (mime === 'image/jpeg' || mime === 'image/jpg') return 'jpg';
+  if (mime === 'image/png') return 'png';
+  if (mime === 'image/webp') return 'webp';
+  if (mime === 'image/gif') return 'gif';
+  return 'jpg';
+}
+
+async function cacheImageAttachment(attachment: BoardAttachment, remoteUrl: string) {
+  if (!isImageAttachment(attachment) || Platform.OS === 'web' || !FileSystem.cacheDirectory) {
+    return attachment;
+  }
+
+  try {
+    const safeId = sanitizeFileName(attachment.path ?? attachment.id) || `image-${attachment.id}`;
+    const localUri = `${FileSystem.cacheDirectory}board-${safeId}.${imageExtensionForAttachment(attachment)}`;
+    const info = await FileSystem.getInfoAsync(localUri);
+    if (info.exists) return { ...attachment, localUri, url: remoteUrl };
+
+    const downloaded = await FileSystem.downloadAsync(remoteUrl, localUri);
+    return { ...attachment, localUri: downloaded.uri, url: remoteUrl };
+  } catch (error) {
+    console.warn('Failed to cache board image attachment:', error);
+    return { ...attachment, url: remoteUrl };
+  }
+}
+
+async function resolveAttachmentDisplayUrls(attachments: BoardAttachment[]) {
+  return Promise.all(
+    attachments.map(async (attachment) => {
+      if (!attachment.path) return attachment;
+
+      const { data, error } = await supabase.storage
+        .from(BOARD_ATTACHMENTS_BUCKET)
+        .createSignedUrl(attachment.path, 60 * 60 * 24 * 7);
+
+      if (!error && data?.signedUrl) {
+        return cacheImageAttachment(attachment, data.signedUrl);
+      }
+
+      const { data: publicData } = supabase.storage.from(BOARD_ATTACHMENTS_BUCKET).getPublicUrl(attachment.path);
+      return publicData?.publicUrl ? cacheImageAttachment(attachment, publicData.publicUrl) : attachment;
+    })
+  );
 }
 
 function isHeicImage(name?: string | null, mimeType?: string | null) {
@@ -216,8 +276,23 @@ function isHeicImage(name?: string | null, mimeType?: string | null) {
 }
 
 function jpegNameForImage(name: string, fallbackName: string) {
-  const baseName = name.trim() || fallbackName;
-  return baseName.replace(/\.(heic|heif|png|webp|gif)$/i, '.jpg').replace(/\.[^.]+$/i, '.jpg');
+  const baseName = (name.trim() || fallbackName).replace(/\.[^.]+$/i, '').trim() || fallbackName.replace(/\.[^.]+$/i, '');
+  return `${baseName}.jpg`;
+}
+
+async function readLocalFileAsArrayBuffer(uri: string) {
+  const fileInfo = await FileSystem.getInfoAsync(uri);
+  if (!fileInfo.exists) {
+    throw new Error('Selected file is no longer available. Please choose it again.');
+  }
+  if ('size' in fileInfo && typeof fileInfo.size === 'number' && fileInfo.size <= 0) {
+    throw new Error('Selected file is empty. Please choose another file.');
+  }
+
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return decode(base64);
 }
 
 function fileExtensionForAttachment(attachment: BoardAttachment) {
@@ -268,6 +343,11 @@ function countComments(nodes: CommentNode[]): number {
   return nodes.reduce((total, node) => total + 1 + countComments(node.replies), 0);
 }
 
+function hasBeenEdited(createdAt: string, editedAt?: string | null) {
+  if (!editedAt) return false;
+  return Math.abs(new Date(editedAt).getTime() - new Date(createdAt).getTime()) > 1000;
+}
+
 function updateCommentTree(
   nodes: CommentNode[],
   commentId: string,
@@ -277,6 +357,14 @@ function updateCommentTree(
     if (node.id === commentId) return updater(node);
     if (node.replies.length === 0) return node;
     return { ...node, replies: updateCommentTree(node.replies, commentId, updater) };
+  });
+}
+
+function removeCommentFromTree(nodes: CommentNode[], commentId: string): CommentNode[] {
+  return nodes.flatMap((node) => {
+    if (node.id === commentId) return node.replies;
+    if (node.replies.length === 0) return [node];
+    return [{ ...node, replies: removeCommentFromTree(node.replies, commentId) }];
   });
 }
 
@@ -299,6 +387,7 @@ function buildCommentTree(rows: CommentRow[], votes: CommentVoteRow[], userId: s
       author_meta: null,
       content: row.content,
       created_at: row.created_at,
+      edited_at: row.edited_at ?? null,
       parent_comment_id: row.parent_comment_id ?? null,
       likes: likeCountMap[row.id] ?? 0,
       liked: likedCommentIds.has(row.id),
@@ -331,7 +420,6 @@ function formatAuthorMeta(major?: string | null, year?: string | null) {
 }
 
 type Props = {
-  onOpenMessages?: (target?: ChatTarget | null) => void;
   school: string;
   userId: string;
   boardAuthorName: string;
@@ -341,7 +429,6 @@ type Props = {
 };
 
 export default function BoardScreen({
-  onOpenMessages,
   school,
   userId,
   boardAuthorName,
@@ -358,6 +445,7 @@ export default function BoardScreen({
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentInput, setCommentInput] = useState('');
   const [replyingToComment, setReplyingToComment] = useState<{ id: string; authorName: string } | null>(null);
+  const [editingComment, setEditingComment] = useState<{ id: string; authorName: string } | null>(null);
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostBody, setNewPostBody] = useState('');
@@ -493,25 +581,28 @@ export default function BoardScreen({
     if (attachment.url || !attachment.localUri) return attachment;
 
     const inferredExtension =
-      attachment.name.split('.').pop() ||
+      extensionFromName(attachment.name) ||
       attachment.mimeType?.split('/').pop() ||
       (attachment.type === 'image' ? 'jpg' : 'bin');
     const fileNameBase = sanitizeFileName(attachment.name.replace(/\.[^.]+$/, '')) || `${attachment.type}-attachment`;
     const path = `${userId}/${Date.now()}-${attachment.id}-${fileNameBase}.${inferredExtension}`;
 
-    const response = await fetch(attachment.localUri);
-    const blob = await response.blob();
-    const { error } = await supabase.storage.from(BOARD_ATTACHMENTS_BUCKET).upload(path, blob, {
+    const fileBody = await readLocalFileAsArrayBuffer(attachment.localUri);
+    const { error } = await supabase.storage.from(BOARD_ATTACHMENTS_BUCKET).upload(path, fileBody, {
       contentType: attachment.mimeType ?? undefined,
       upsert: false,
     });
 
     if (error) throw error;
 
-    const { data } = supabase.storage.from(BOARD_ATTACHMENTS_BUCKET).getPublicUrl(path);
+    const [{ data: signedData }, { data: publicData }] = await Promise.all([
+      supabase.storage.from(BOARD_ATTACHMENTS_BUCKET).createSignedUrl(path, 60 * 60 * 24 * 7),
+      Promise.resolve(supabase.storage.from(BOARD_ATTACHMENTS_BUCKET).getPublicUrl(path)),
+    ]);
+
     return {
       ...attachment,
-      url: data.publicUrl,
+      url: signedData?.signedUrl ?? publicData.publicUrl,
       path,
       localUri: undefined,
     };
@@ -524,25 +615,27 @@ export default function BoardScreen({
   }
 
   async function openAttachment(attachment: BoardAttachment) {
-    if (!attachment.url) {
+    const [resolvedAttachment] = await resolveAttachmentDisplayUrls([attachment]);
+
+    if (!resolvedAttachment.url) {
       Alert.alert('File unavailable', 'This attachment does not have a downloadable file yet.');
       return;
     }
 
-    if (isImageAttachment(attachment)) return;
+    if (isImageAttachment(resolvedAttachment)) return;
 
     try {
       const sharingAvailable = await Sharing.isAvailableAsync();
       if (!sharingAvailable || !FileSystem.cacheDirectory) {
-        await Linking.openURL(attachment.url);
+        await Linking.openURL(resolvedAttachment.url);
         return;
       }
 
-      const extension = fileExtensionForAttachment(attachment);
-      const safeBaseName = sanitizeFileName(attachment.name.replace(/\.[^.]+$/, '')) || 'board-attachment';
+      const extension = fileExtensionForAttachment(resolvedAttachment);
+      const safeBaseName = sanitizeFileName(resolvedAttachment.name.replace(/\.[^.]+$/, '')) || 'board-attachment';
       const safeFileName = `${safeBaseName}.${extension}`;
       const localUri = `${FileSystem.cacheDirectory}${Date.now()}-${safeFileName}`;
-      const downloaded = await FileSystem.downloadAsync(attachment.url, localUri);
+      const downloaded = await FileSystem.downloadAsync(resolvedAttachment.url, localUri);
 
       if (Platform.OS === 'ios') {
         try {
@@ -554,9 +647,9 @@ export default function BoardScreen({
       }
 
       await Sharing.shareAsync(downloaded.uri, {
-        mimeType: attachment.mimeType ?? undefined,
-        UTI: fileUtiForAttachment(attachment),
-        dialogTitle: attachment.name,
+        mimeType: resolvedAttachment.mimeType ?? undefined,
+        UTI: fileUtiForAttachment(resolvedAttachment),
+        dialogTitle: resolvedAttachment.name,
       });
     } catch (error: any) {
       Alert.alert('Could not open file', error?.message ?? 'Try again in a moment.');
@@ -584,18 +677,6 @@ export default function BoardScreen({
         result.assets.map(async (asset, index) => {
           const fallbackName = `image-${index + 1}.jpg`;
           const originalName = asset.fileName || fallbackName;
-          const shouldConvertToJpeg = isHeicImage(originalName, asset.mimeType);
-
-          if (!shouldConvertToJpeg) {
-            return {
-              id: `${Date.now()}-image-${index}-${Math.random().toString(36).slice(2, 8)}`,
-              name: originalName,
-              type: 'image' as const,
-              localUri: asset.uri,
-              mimeType: asset.mimeType ?? 'image/jpeg',
-              size: asset.fileSize ?? null,
-            };
-          }
 
           const converted = await ImageManipulator.manipulateAsync(asset.uri, [], {
             compress: 0.9,
@@ -647,7 +728,15 @@ export default function BoardScreen({
   async function fetchPosts() {
     const cached = await AsyncStorage.getItem(postsCacheKey);
     if (cached) {
-      setPosts(JSON.parse(cached));
+      const cachedPosts = JSON.parse(cached) as Post[];
+      setPosts(
+        await Promise.all(
+          cachedPosts.map(async (post) => ({
+            ...post,
+            attachments: await resolveAttachmentDisplayUrls(normalizeAttachments(post.attachments)),
+          }))
+        )
+      );
       setLoading(false);
     } else {
       setLoading(true);
@@ -690,21 +779,24 @@ export default function BoardScreen({
       commentCountMap[comment.post_id] = (commentCountMap[comment.post_id] ?? 0) + 1;
     });
 
-    const freshPosts = postsData.map((post: any) => ({
-      id: post.id,
-      user_id: post.user_id,
-      author_name: authorSummaries[post.user_id]?.displayName ?? anteaterAliasForId(post.user_id),
-      author_meta: authorSummaries[post.user_id]?.meta ?? null,
-      category: post.category ?? 'General',
-      title: post.title,
-      body: post.body ?? '',
-      created_at: post.created_at,
-      likes: likeCountMap[post.id] ?? 0,
-      commentCount: commentCountMap[post.id] ?? 0,
-      liked: userLikedSet.has(post.id),
-      attachments: normalizeAttachments(post.attachments),
-      is_locked: !!post.is_locked,
-    }));
+    const freshPosts = await Promise.all(
+      postsData.map(async (post: any) => ({
+        id: post.id,
+        user_id: post.user_id,
+        author_name: authorSummaries[post.user_id]?.displayName ?? anteaterAliasForId(post.user_id),
+        author_meta: authorSummaries[post.user_id]?.meta ?? null,
+        category: post.category ?? 'General',
+        title: post.title,
+        body: post.body ?? '',
+        created_at: post.created_at,
+        edited_at: post.edited_at ?? post.updated_at ?? null,
+        likes: likeCountMap[post.id] ?? 0,
+        commentCount: commentCountMap[post.id] ?? 0,
+        liked: userLikedSet.has(post.id),
+        attachments: await resolveAttachmentDisplayUrls(normalizeAttachments(post.attachments)),
+        is_locked: !!post.is_locked,
+      }))
+    );
 
     setPosts(freshPosts);
     setLoading(false);
@@ -800,6 +892,7 @@ export default function BoardScreen({
   async function openPost(post: Post) {
     setSelectedPost(post);
     setReplyingToComment(null);
+    setEditingComment(null);
     setCommentInput('');
     await loadCommentsForPost(post.id);
   }
@@ -817,6 +910,7 @@ export default function BoardScreen({
     setSelectedBoard(targetBoard);
     setSelectedPost(post);
     setReplyingToComment(null);
+    setEditingComment(null);
     setCommentInput('');
     Animated.spring(boardSlideAnim, {
       toValue: 0,
@@ -876,10 +970,87 @@ export default function BoardScreen({
     }
   }
 
+  function startEditComment(comment: CommentNode) {
+    if (comment.user_id !== userId) return;
+    setEditingComment({ id: comment.id, authorName: comment.author_name });
+    setReplyingToComment(null);
+    setCommentInput(comment.content);
+  }
+
+  async function handleDeleteComment(comment: CommentNode) {
+    if (comment.user_id !== userId) return;
+
+    Alert.alert('Delete comment?', 'This will permanently remove your comment.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            await supabase.from('post_comment_votes').delete().eq('comment_id', comment.id);
+            const { error } = await supabase.from('post_comments').delete().eq('id', comment.id).eq('user_id', userId);
+
+            if (error) {
+              Alert.alert('Delete failed', error.message);
+              return;
+            }
+
+            setComments((prev) => removeCommentFromTree(prev, comment.id));
+            setPosts((prev) =>
+              prev.map((post) =>
+                post.id === comment.post_id ? { ...post, commentCount: Math.max(0, post.commentCount - 1) } : post
+              )
+            );
+            if (editingComment?.id === comment.id) {
+              setEditingComment(null);
+              setCommentInput('');
+            }
+            if (replyingToComment?.id === comment.id) setReplyingToComment(null);
+          })();
+        },
+      },
+    ]);
+  }
+
   async function handleAddComment() {
     if (!commentInput.trim() || !selectedPost) return;
 
     Keyboard.dismiss();
+    if (editingComment) {
+      const editedAt = new Date().toISOString();
+      const content = commentInput.trim();
+      let { error } = await supabase
+        .from('post_comments')
+        .update({ content, edited_at: editedAt })
+        .eq('id', editingComment.id)
+        .eq('user_id', userId);
+
+      if (error?.code === 'PGRST204' || error?.code === '42703') {
+        const retry = await supabase
+          .from('post_comments')
+          .update({ content })
+          .eq('id', editingComment.id)
+          .eq('user_id', userId);
+        error = retry.error;
+      }
+
+      if (error) {
+        Alert.alert('Comment update failed', error.message);
+        return;
+      }
+
+      setComments((prev) =>
+        updateCommentTree(prev, editingComment.id, (comment) => ({
+          ...comment,
+          content,
+          edited_at: editedAt,
+        }))
+      );
+      setEditingComment(null);
+      setCommentInput('');
+      return;
+    }
+
     const authorName = anteaterAliasForId(userId);
     const { error } = await supabase.from('post_comments').insert({
       post_id: selectedPost.id,
@@ -933,17 +1104,31 @@ export default function BoardScreen({
 
       if (editingPostId) {
         const existingPost = posts.find((post) => post.id === editingPostId);
+        const editedAt = new Date().toISOString();
+        const editPayload = { ...payload, edited_at: editedAt };
         const removedPaths = (existingPost?.attachments ?? [])
           .map((attachment) => attachment.path)
           .filter((path): path is string => !!path && !attachments.some((next) => next.path === path));
 
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('posts')
-          .update(payload)
+          .update(editPayload)
           .eq('id', editingPostId)
           .eq('user_id', userId)
           .select()
           .single();
+
+        if (error?.code === 'PGRST204' || error?.code === '42703') {
+          const retry = await supabase
+            .from('posts')
+            .update(payload)
+            .eq('id', editingPostId)
+            .eq('user_id', userId)
+            .select()
+            .single();
+          data = retry.data;
+          error = retry.error;
+        }
 
         if (error || !data) {
           Alert.alert(
@@ -964,10 +1149,11 @@ export default function BoardScreen({
           title: data.title,
           body: data.body ?? '',
           created_at: data.created_at,
+          edited_at: data.edited_at ?? editedAt,
           likes: existingPost?.likes ?? 0,
           commentCount: existingPost?.commentCount ?? 0,
           liked: existingPost?.liked ?? false,
-          attachments: normalizeAttachments(data.attachments),
+          attachments: await resolveAttachmentDisplayUrls(normalizeAttachments(data.attachments)),
           is_locked: !!data.is_locked,
         };
 
@@ -996,10 +1182,11 @@ export default function BoardScreen({
           title: data.title,
           body: data.body ?? '',
           created_at: data.created_at,
+          edited_at: data.edited_at ?? null,
           likes: 0,
           commentCount: 0,
           liked: false,
-          attachments: normalizeAttachments(data.attachments),
+          attachments: await resolveAttachmentDisplayUrls(normalizeAttachments(data.attachments)),
           is_locked: !!data.is_locked,
         };
 
@@ -1083,6 +1270,7 @@ export default function BoardScreen({
               setComments([]);
               setCommentInput('');
               setReplyingToComment(null);
+              setEditingComment(null);
             }
           })();
         },
@@ -1111,6 +1299,7 @@ export default function BoardScreen({
       setSelectedPost(null);
       setComments([]);
       setReplyingToComment(null);
+      setEditingComment(null);
       setCommentInput('');
       setSearch('');
       setSort('recent');
@@ -1267,6 +1456,12 @@ export default function BoardScreen({
                 <Text style={{ fontSize: 11, color: colors.textTertiary }}>{comment.author_meta}</Text>
               ) : null}
               <Text style={{ fontSize: 11, color: colors.textTertiary }}>{timeAgo(comment.created_at)}</Text>
+              {hasBeenEdited(comment.created_at, comment.edited_at) ? (
+                <>
+                  <Text style={{ fontSize: 11, color: colors.textTertiary }}>·</Text>
+                  <Text style={{ fontSize: 11, color: colors.textTertiary }}>Edited</Text>
+                </>
+              ) : null}
             </View>
             <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 20 }}>{comment.content}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 8 }}>
@@ -1284,23 +1479,47 @@ export default function BoardScreen({
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => setReplyingToComment({ id: comment.id, authorName: comment.author_name })}
+                onPress={() => {
+                  setEditingComment(null);
+                  setCommentInput('');
+                  setReplyingToComment({ id: comment.id, authorName: comment.author_name });
+                }}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
               >
                 <Ionicons name="return-up-forward-outline" size={14} color={colors.textTertiary} />
                 <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>Reply</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => openReport({
-                  id: comment.id,
-                  type: 'comment',
-                  label: `Comment by ${comment.author_name}`,
-                })}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-              >
-                <Ionicons name="flag-outline" size={14} color={colors.textTertiary} />
-                <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>Report</Text>
-              </TouchableOpacity>
+              {comment.user_id === userId ? (
+                <>
+                  <TouchableOpacity
+                    onPress={() => startEditComment(comment)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                  >
+                    <Ionicons name="create-outline" size={14} color={colors.textTertiary} />
+                    <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => void handleDeleteComment(comment)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                  >
+                    <Ionicons name="trash-outline" size={14} color="#dc2626" />
+                    <Text style={{ fontSize: 12, color: '#dc2626', fontWeight: '600' }}>Delete</Text>
+                  </TouchableOpacity>
+                </>
+              ) : null}
+              {comment.user_id !== userId ? (
+                <TouchableOpacity
+                  onPress={() => openReport({
+                    id: comment.id,
+                    type: 'comment',
+                    label: `Comment by ${comment.author_name}`,
+                  })}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                >
+                  <Ionicons name="flag-outline" size={14} color={colors.textTertiary} />
+                  <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>Report</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
         </View>
@@ -1336,28 +1555,6 @@ export default function BoardScreen({
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexShrink: 0 }}>
-            {onOpenMessages ? (
-              <TouchableOpacity
-                onPress={() => onOpenMessages?.(null)}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  backgroundColor: colors.card,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  shadowColor: '#0f172a',
-                  shadowOffset: { width: 0, height: 8 },
-                  shadowOpacity: isDark ? 0.2 : 0.07,
-                  shadowRadius: 14,
-                  elevation: 4,
-                }}
-              >
-                <Ionicons name="chatbubble-outline" size={18} color={colors.text} />
-              </TouchableOpacity>
-            ) : null}
             <TouchableOpacity
               onPress={() => openNewPost()}
               style={{
@@ -1376,7 +1573,7 @@ export default function BoardScreen({
               }}
             >
               <Ionicons name="add" size={16} color="white" />
-              <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>Post</Text>
+              <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1886,6 +2083,12 @@ export default function BoardScreen({
                         ) : null}
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
+                        {hasBeenEdited(post.created_at, post.edited_at) ? (
+                          <>
+                            <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                            <Text style={{ fontSize: 12, color: colors.textTertiary }}>Edited</Text>
+                          </>
+                        ) : null}
                         {post.is_locked ? (
                           <>
                             <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
@@ -1919,9 +2122,12 @@ export default function BoardScreen({
                                 borderColor: colors.borderSubtle,
                               }}
                             >
-                              <Image
+                              <ExpoImage
                                 source={{ uri: attachmentUri(attachment) }}
-                                resizeMode="cover"
+                                contentFit="cover"
+                                cachePolicy="memory-disk"
+                                transition={120}
+                                onError={(event) => console.warn('Board detail image failed to load:', event)}
                                 style={{ width: '100%', aspectRatio: 4 / 3, backgroundColor: colors.bgTertiary }}
                               />
                             </View>
@@ -1981,27 +2187,13 @@ export default function BoardScreen({
                           <Ionicons name="chatbubble-outline" size={16} color={colors.textTertiary} />
                           <Text style={{ fontSize: 14, color: colors.textTertiary, fontWeight: '500' }}>{selectedPostCommentCount}</Text>
                         </View>
-                        <TouchableOpacity
-                          onPress={() => openReport({ id: post.id, type: 'post', label: post.title })}
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-                        >
-                          <Ionicons name="flag-outline" size={16} color={colors.textTertiary} />
-                          <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '600' }}>Report</Text>
-                        </TouchableOpacity>
-                        {onOpenMessages && post.user_id !== userId ? (
+                        {post.user_id !== userId ? (
                           <TouchableOpacity
-                            onPress={() => onOpenMessages?.({ id: post.user_id, name: post.author_name })}
-                            style={{
-                              marginLeft: 'auto',
-                              width: 36,
-                              height: 36,
-                              borderRadius: 18,
-                              backgroundColor: colors.brand,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
+                            onPress={() => openReport({ id: post.id, type: 'post', label: post.title })}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
                           >
-                            <Ionicons name="send-outline" size={16} color="white" />
+                            <Ionicons name="flag-outline" size={16} color={colors.textTertiary} />
+                            <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '600' }}>Report</Text>
                           </TouchableOpacity>
                         ) : null}
                       </View>
@@ -2051,6 +2243,33 @@ export default function BoardScreen({
                         <Text style={{ fontSize: 14, color: colors.textTertiary, marginBottom: 18 }}>No comments yet.</Text>
                       )}
 
+                      {editingComment ? (
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            backgroundColor: colors.bgTertiary,
+                            borderRadius: 12,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            marginBottom: 10,
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, color: colors.textSecondary, fontWeight: '600', flex: 1 }}>
+                            Editing your comment
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setEditingComment(null);
+                              setCommentInput('');
+                            }}
+                          >
+                            <Ionicons name="close" size={18} color={colors.textSecondary} />
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
+
                       {replyingToComment ? (
                         <View
                           style={{
@@ -2087,7 +2306,7 @@ export default function BoardScreen({
                         <TextInput
                           value={commentInput}
                           onChangeText={setCommentInput}
-                          placeholder={replyingToComment ? 'Write a reply...' : 'Add a comment...'}
+                          placeholder={editingComment ? 'Edit your comment...' : replyingToComment ? 'Write a reply...' : 'Add a comment...'}
                           placeholderTextColor={colors.placeholder}
                           style={{
                             flex: 1,
@@ -2220,7 +2439,10 @@ export default function BoardScreen({
                   showsVerticalScrollIndicator={false}
                   refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={colors.brand} />}
                 >
-                  {filteredPosts.map((post, index) => (
+                  {filteredPosts.map((post, index) => {
+                    const previewImage = post.attachments.find((attachment) => isImageAttachment(attachment) && attachmentUri(attachment));
+
+                    return (
                     <TouchableOpacity key={post.id} onPress={() => void openPost(post)} activeOpacity={0.8}>
                       <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -2229,21 +2451,35 @@ export default function BoardScreen({
                               <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
                               <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                               <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
+                              {hasBeenEdited(post.created_at, post.edited_at) ? (
+                                <>
+                                  <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                                  <Text style={{ fontSize: 12, color: colors.textTertiary }}>Edited</Text>
+                                </>
+                              ) : null}
                             </View>
                             <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 5 }}>{post.title}</Text>
                             <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19, marginBottom: 10 }} numberOfLines={2}>
                               {post.body}
                             </Text>
                           </View>
-                          <TouchableOpacity
-                            onPress={(event: any) => {
-                              event.stopPropagation?.();
-                              openReport({ id: post.id, type: 'post', label: post.title });
-                            }}
-                            style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <Ionicons name="flag-outline" size={16} color={colors.textTertiary} />
-                          </TouchableOpacity>
+                          {previewImage ? (
+                            <ExpoImage
+                              source={{ uri: attachmentUri(previewImage) }}
+                              contentFit="cover"
+                              cachePolicy="memory-disk"
+                              transition={120}
+                              onError={(event) => console.warn('Board list image failed to load:', event)}
+                              style={{
+                                width: 76,
+                                height: 76,
+                                borderRadius: 14,
+                                backgroundColor: colors.bgTertiary,
+                                borderWidth: 1,
+                                borderColor: colors.borderSubtle,
+                              }}
+                            />
+                          ) : null}
                         </View>
                         <View style={{ flexDirection: 'row', gap: 16 }}>
                           <TouchableOpacity
@@ -2266,7 +2502,8 @@ export default function BoardScreen({
                         <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 16 }} />
                       ) : null}
                     </TouchableOpacity>
-                  ))}
+                    );
+                  })}
                 </ScrollView>
               )}
             </View>
@@ -2848,8 +3085,11 @@ function NewPostModal({
                   }}
                 >
                   {attachment.type === 'image' && (attachment.localUri || attachment.url) ? (
-                    <Image
+                    <ExpoImage
                       source={{ uri: attachment.localUri ?? attachment.url }}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                      transition={120}
                       style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: colors.bgTertiary }}
                     />
                   ) : (

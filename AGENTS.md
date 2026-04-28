@@ -1370,3 +1370,34 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64hz (Keep board comment input above tab bar)
 - **`src/screens/BoardScreen.tsx`** — Added explicit bottom clearance to the post-detail comment composer so long image posts cannot leave the comment input hidden under the floating app tab bar.
+
+### Session 64ia (Fix comment deletion and hide edit labels)
+- **`src/screens/BoardScreen.tsx`** — Reworked owner comment deletion to call a Supabase RPC first, then fall back to reparenting replies and deleting the comment client-side; removed visible `Edited` labels from posts/comments to keep the board UI cleaner.
+- **`supabase/sql/delete_own_comment.sql`** — Added a security-definer helper that lets the signed-in owner delete their own comment while preserving replies by reparenting child comments before deleting the parent.
+
+### Session 64ib (Speed board landing and stabilize course expansion)
+- **`src/screens/BoardScreen.tsx`** — Removed per-board post counts from board cards and department-board rows, stopped blocking the Board landing page behind the posts loading spinner, and moved board attachment signed-URL hydration off the critical loading path so the Board surface appears faster.
+- **`src/screens/CoursePickerScreen.tsx`** — Changed course expansion so multiple courses can stay open and removed the automatic scroll-to-top behavior, preventing the list from jumping upward when a lower course is expanded.
+
+### Session 64ic (Keep review login visible above keyboard)
+- **`src/screens/SignInScreen.tsx`** — Wrapped the sign-in content in a keyboard-aware container, added extra bottom scroll padding, and auto-scrolls to the review email/password fields on focus so the keyboard does not cover review-account login inputs.
+
+### Session 64id (Conversation-based chat foundation)
+- **`supabase/sql/conversation_messages.sql`** — Added conversation, participant, and message tables plus RLS policies and a `get_or_create_conversation` RPC so ClassMate can support both real-name friend chats and anonymous board chats without mixing identities.
+- **`src/data/messages.ts` / `src/screens/MessagesScreen.tsx`** — Replaced the legacy direct-message model with a conversation-based message list and thread UI that labels friend chats separately from anonymous board chats.
+- **`App.tsx` / `src/screens/BoardScreen.tsx` / `src/screens/FriendsScreen.tsx`** — Reconnected the Messages modal, added Board anonymous-chat entry points on posts/comments, added ClassMates real-name chat entry points, and updated in-app message notification polling to read `conversation_messages`.
+- **`src/data/userPreferences.ts` / `supabase/functions/social-notifier/index.ts` / `supabase/functions/social-notifier/README.md` / `supabase/sql/delete_account.sql`** — Enabled message notifications by default, updated remote notification handling for `conversation_messages`, documented the new webhook table, and made account deletion clean up conversation chat data.
+
+### Session 64ie (Respect message modal safe areas)
+- **`src/screens/MessagesScreen.tsx`** — Replaced implicit modal safe-area handling with explicit top and bottom inset padding so the Messages headers do not run under the status bar/dynamic island and the composer stays above the home indicator.
+
+### Session 64if (Compact board comment actions)
+- **`src/screens/BoardScreen.tsx`** — Collapsed comment and reply secondary actions into an ellipsis menu so visible comment rows keep only like and reply controls while edit/delete/message/report remain available from the overflow action sheet.
+
+### Session 64ig (Fix false message sign-in guard)
+- **`src/screens/MessagesScreen.tsx`** — Corrected the UUID validation used by the Messages screen so signed-in Supabase users are no longer rejected as unauthenticated, and split invalid chat-target handling into a separate error instead of showing a misleading sign-in alert.
+
+### Session 64ih (Harden message rollout)
+- **`App.tsx`** — Unmounts the Messages screen when its modal closes so stale selected-thread state does not persist, and renamed in-app message notification payloads to `conversation-message`.
+- **`src/screens/MessagesScreen.tsx` / `supabase/sql/conversation_messages.sql`** — Removed client-side conversation timestamp updates and added a database trigger that touches `conversations.updated_at` after each inserted message, keeping clients from needing direct conversation update access.
+- **`src/screens/BoardScreen.tsx`** — Relaxed UUID validation for board author profile lookup so valid Supabase UUIDs are not accidentally treated as anonymous legacy ids.

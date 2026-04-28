@@ -11,6 +11,7 @@ import GradesScreen from './src/screens/GradesScreen';
 import CoursePickerScreen from './src/screens/CoursePickerScreen';
 import FriendsScreen from './src/screens/FriendsScreen';
 import BoardScreen from './src/screens/BoardScreen';
+import MessagesScreen from './src/screens/MessagesScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import UniversitySelectionScreen from './src/screens/UniversitySelectionScreen';
 import SignInScreen from './src/screens/SignInScreen';
@@ -35,12 +36,13 @@ import {
 import { parseSportsCalendar } from './src/data/sportsEvents';
 import { supabase } from './src/lib/supabase';
 import type { University } from './src/screens/UniversitySelectionScreen';
+import type { ChatTarget } from './src/data/messages';
 import type { EditableProfile, NotificationPreferences, PushPermissionStatus, TimetableVisibility, UserSettingsState } from './src/data/userPreferences';
 
-type DirectMessageNotificationRow = {
+type ConversationMessageNotificationRow = {
   id: string;
+  conversation_id: string;
   sender_id: string;
-  receiver_id: string;
   content: string;
   created_at: string;
 };
@@ -72,7 +74,7 @@ type LikeNotificationRow = {
 
 type SocialNotificationSnapshot = {
   friendRequests: FriendRequestNotificationRow[];
-  messages: DirectMessageNotificationRow[];
+  messages: ConversationMessageNotificationRow[];
   comments: CommentNotificationRow[];
   likes: LikeNotificationRow[];
   postTitlesById: Record<string, string>;
@@ -399,6 +401,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [gradesTabTapCount, setGradesTabTapCount] = useState(0);
   const [boardTabTapCount, setBoardTabTapCount] = useState(0);
   const [friendsTabTapCount, setFriendsTabTapCount] = useState(0);
+  const [showMessages, setShowMessages] = useState(false);
+  const [messageTarget, setMessageTarget] = useState<ChatTarget | null>(null);
 
   const TABS = ['home', 'timetable', 'grades', 'board', 'friends'] as const;
   const tabBarWidthRef = useRef(0);
@@ -580,6 +584,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         notifications: {
           ...DEFAULT_NOTIFICATION_PREFERENCES,
           ...(((settingsRow as Record<string, any> | null | undefined)?.notification_settings as NotificationPreferences | undefined) ?? {}),
+          messages: true,
         },
         pushPermissionStatus: ((settingsRow as Record<string, any> | null | undefined)?.push_permission_status as PushPermissionStatus | undefined) ?? DEFAULT_USER_SETTINGS.pushPermissionStatus,
       });
@@ -624,7 +629,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     async function loadSocialNotificationSnapshot(): Promise<SocialNotificationSnapshot> {
       const [
         { data: friendRequestData, error: friendRequestError },
-        { data: messageData, error: messageError },
         { data: myPosts, error: postsError },
         { data: myComments, error: myCommentsError },
       ] = await Promise.all([
@@ -633,11 +637,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           .select('id, sender_id, receiver_id, status, created_at')
           .eq('receiver_id', userId)
           .eq('status', 'pending')
-          .order('created_at', { ascending: true }),
-        supabase
-          .from('direct_messages')
-          .select('id, sender_id, receiver_id, content, created_at')
-          .eq('receiver_id', userId)
           .order('created_at', { ascending: true }),
         supabase
           .from('posts')
@@ -651,9 +650,40 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       ]);
 
       if (friendRequestError) console.error('Failed to load friend request notifications:', friendRequestError);
-      if (messageError) console.error('Failed to load direct message notifications:', messageError);
       if (postsError) console.error('Failed to load post ids for notifications:', postsError);
       if (myCommentsError) console.error('Failed to load my comment ids for notifications:', myCommentsError);
+
+      let messageRows: ConversationMessageNotificationRow[] = [];
+      const { data: myConversationRows, error: myConversationError } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('user_id', userId);
+
+      if (myConversationError) {
+        if (myConversationError.code !== 'PGRST205') {
+          console.error('Failed to load conversation notification participants:', myConversationError);
+        }
+      } else {
+        const conversationIds = ((myConversationRows ?? []) as Array<{ conversation_id: string }>)
+          .map((row) => row.conversation_id);
+
+        if (conversationIds.length > 0) {
+          const { data: messageData, error: messageError } = await supabase
+            .from('conversation_messages')
+            .select('id, conversation_id, sender_id, content, created_at')
+            .in('conversation_id', conversationIds)
+            .neq('sender_id', userId)
+            .order('created_at', { ascending: true });
+
+          if (messageError) {
+            if (messageError.code !== 'PGRST205') {
+              console.error('Failed to load message notifications:', messageError);
+            }
+          } else {
+            messageRows = (messageData ?? []) as ConversationMessageNotificationRow[];
+          }
+        }
+      }
 
       const postRows = (myPosts ?? []) as Array<{ id: string; title: string }>;
       const postIds = postRows.map((post) => post.id);
@@ -665,7 +695,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       if (postIds.length === 0 && myCommentIdList.length === 0) {
         return {
           friendRequests: (friendRequestData ?? []) as FriendRequestNotificationRow[],
-          messages: (messageData ?? []) as DirectMessageNotificationRow[],
+          messages: messageRows,
           comments: [],
           likes: [],
           postTitlesById,
@@ -759,7 +789,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       return {
         friendRequests: (friendRequestData ?? []) as FriendRequestNotificationRow[],
-        messages: (messageData ?? []) as DirectMessageNotificationRow[],
+        messages: messageRows,
         comments: Array.from(mergedComments.values()).sort((a, b) => (
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         )),
@@ -806,7 +836,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             await presentInAppNotification(
               'New message',
               truncateNotificationText(message.content || 'Open Messages to read it.'),
-              { type: 'direct-message', messageId: message.id, senderId: message.sender_id }
+              {
+                type: 'conversation-message',
+                messageId: message.id,
+                conversationId: message.conversation_id,
+                senderId: message.sender_id,
+              }
             );
           }
         }
@@ -1566,6 +1601,16 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   };
   handleOpenFriendsTabRef.current = handleOpenFriendsTab;
 
+  const openMessages = (target?: ChatTarget | null) => {
+    setMessageTarget(target ?? null);
+    setShowMessages(true);
+  };
+
+  const closeMessages = () => {
+    setShowMessages(false);
+    setMessageTarget(null);
+  };
+
   // ── auth screens ─────────────────────────────────────────────────────────────
 
   if (authInitializing) {
@@ -1712,6 +1757,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         boardProfileVisible={userSettings.boardProfileVisible}
         bottomInset={insets.bottom}
         scrollToTopTrigger={boardTabTapCount}
+        onOpenMessages={() => openMessages(null)}
+        onOpenChat={openMessages}
       />
     );
   } else if (currentTab === 'friends') {
@@ -1725,6 +1772,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           selectedQuarter={selectedQuarter}
           bottomInset={insets.bottom}
           scrollToTopTrigger={friendsTabTapCount}
+          onOpenMessages={() => openMessages(null)}
+          onOpenChat={openMessages}
         />
       </View>
     );
@@ -1888,6 +1937,22 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             />
           </Animated.View>
         </Animated.View>
+      </Modal>
+
+      <Modal
+        visible={showMessages}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={closeMessages}
+      >
+        {showMessages ? (
+          <MessagesScreen
+            onClose={closeMessages}
+            openChatWith={messageTarget}
+            userId={USER_ID}
+            school={selectedUniversity?.name ?? 'UC Irvine'}
+          />
+        ) : null}
       </Modal>
 
       {renderCoursePicker && (

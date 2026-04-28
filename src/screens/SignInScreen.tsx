@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput, Keyboard } from 'react-native';
+import { useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
@@ -44,6 +44,7 @@ function GoogleIcon() {
 }
 
 export default function SignInScreen({ university, onBack, onSignedIn, onGoToSignUp }: Props) {
+  const scrollRef = useRef<ScrollView>(null);
   const [loading, setLoading] = useState(false);
   const [reviewEmail, setReviewEmail] = useState('');
   const [reviewPassword, setReviewPassword] = useState('');
@@ -193,14 +194,20 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
-      {/* Header */}
-      <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-        <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 4 }}>
-          <Ionicons name="arrow-back" size={22} color="#111827" />
-        </TouchableOpacity>
-      </View>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        {/* Header */}
+        <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+          <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 4 }}>
+            <Ionicons name="arrow-back" size={22} color="#111827" />
+          </TouchableOpacity>
+        </View>
 
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 28, paddingBottom: 28 }}>
+      <ScrollView
+        ref={scrollRef}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 28, paddingBottom: Platform.OS === 'ios' ? 96 : 72 }}
+      >
         {/* University card */}
         <View style={{
           padding: 20, borderRadius: 20, marginBottom: 28,
@@ -302,6 +309,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
             autoCorrect={false}
             keyboardType="email-address"
             textContentType="username"
+            onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
             style={{
               borderWidth: 1,
               borderColor: '#dbe2ea',
@@ -321,6 +329,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
             autoCorrect={false}
             textContentType="password"
             secureTextEntry
+            onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
             style={{
               borderWidth: 1,
               borderColor: '#dbe2ea',
@@ -366,6 +375,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
           />
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
       <LegalDocumentModal
         visible={!!activeDocument}
         document={activeDocument ?? 'terms'}

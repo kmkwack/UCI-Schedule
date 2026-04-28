@@ -45,6 +45,10 @@ type CommentRow = {
   post_id: string;
 };
 
+type ConversationParticipantRow = {
+  user_id: string;
+};
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
@@ -176,7 +180,7 @@ async function notifyRecipient(
 ) {
   const recipient = await fetchRecipient(userId);
   if (!recipient) return;
-  if (recipient.settings[preferenceKey] !== true) return;
+  if (preferenceKey !== 'messages' && recipient.settings[preferenceKey] !== true) return;
 
   await Promise.all([
     sendPush(recipient, title, body, data),
@@ -210,6 +214,35 @@ async function handleDirectMessage(record: Record<string, any>) {
     `<p>You received a new direct message in ClassMate.</p><p>${content}</p>`,
     { type: 'direct-message', messageId: record.id, senderId: record.sender_id }
   );
+}
+
+async function handleConversationMessage(record: Record<string, any>) {
+  const content = typeof record.content === 'string' && record.content.trim()
+    ? record.content.trim().slice(0, 120)
+    : 'Open ClassMate to read it.';
+  const participants = await fetchRows<ConversationParticipantRow>(
+    `conversation_participants?conversation_id=eq.${record.conversation_id}&select=user_id`
+  );
+  const recipientIds = participants
+    .map((participant) => participant.user_id)
+    .filter((participantId) => participantId && participantId !== record.sender_id);
+
+  await Promise.all(recipientIds.map((recipientId) =>
+    notifyRecipient(
+      recipientId,
+      'messages',
+      'New message',
+      content,
+      'New message on ClassMate',
+      `<p>You received a new message in ClassMate.</p><p>${content}</p>`,
+      {
+        type: 'conversation-message',
+        messageId: record.id,
+        conversationId: record.conversation_id,
+        senderId: record.sender_id,
+      }
+    )
+  ));
 }
 
 async function handlePostComment(record: Record<string, any>) {
@@ -314,6 +347,9 @@ Deno.serve(async (req) => {
         break;
       case 'direct_messages':
         await handleDirectMessage(record);
+        break;
+      case 'conversation_messages':
+        await handleConversationMessage(record);
         break;
       case 'post_comments':
         await handlePostComment(record);

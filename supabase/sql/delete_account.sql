@@ -12,6 +12,7 @@ declare
   uid_text text := auth.uid()::text;
   owned_post_ids uuid[];
   affected_comment_ids uuid[];
+  owned_conversation_ids uuid[];
 begin
   if uid is null then
     raise exception 'Not authenticated';
@@ -57,6 +58,20 @@ begin
   delete from public.direct_messages
   where sender_id::text = uid_text
      or receiver_id::text = uid_text;
+
+  select coalesce(array_agg(conversation_id), '{}'::uuid[])
+  into owned_conversation_ids
+  from public.conversation_participants
+  where user_id::text = uid_text;
+
+  delete from public.conversation_messages
+  where conversation_id = any(owned_conversation_ids);
+
+  delete from public.conversation_participants
+  where conversation_id = any(owned_conversation_ids);
+
+  delete from public.conversations
+  where id = any(owned_conversation_ids);
 
   delete from public.friend_requests
   where sender_id::text = uid_text

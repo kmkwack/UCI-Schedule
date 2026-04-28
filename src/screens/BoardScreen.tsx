@@ -33,6 +33,7 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import { anteaterAliasForId } from '../data/anonymousAliases';
 import { UCI_DEPARTMENTS, colorForDepartment } from '../data/courses';
+import type { ChatTarget } from '../data/messages';
 
 type CommentRow = {
   id: string;
@@ -452,16 +453,11 @@ function timeAgo(isoString: string): string {
 }
 
 function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 function countComments(nodes: CommentNode[]): number {
   return nodes.reduce((total, node) => total + 1 + countComments(node.replies), 0);
-}
-
-function hasBeenEdited(createdAt: string, editedAt?: string | null) {
-  if (!editedAt) return false;
-  return Math.abs(new Date(editedAt).getTime() - new Date(createdAt).getTime()) > 1000;
 }
 
 function updateCommentTree(
@@ -474,6 +470,10 @@ function updateCommentTree(
     if (node.replies.length === 0) return node;
     return { ...node, replies: updateCommentTree(node.replies, commentId, updater) };
   });
+}
+
+function hasCommentReplies(comment: CommentNode) {
+  return comment.replies.length > 0;
 }
 
 function removeCommentFromTree(nodes: CommentNode[], commentId: string): CommentNode[] {
@@ -542,6 +542,8 @@ type Props = {
   boardProfileVisible: boolean;
   bottomInset?: number;
   scrollToTopTrigger?: number;
+  onOpenMessages?: () => void;
+  onOpenChat?: (target: ChatTarget) => void;
 };
 
 export default function BoardScreen({
@@ -551,6 +553,8 @@ export default function BoardScreen({
   boardProfileVisible,
   bottomInset = 0,
   scrollToTopTrigger = 0,
+  onOpenMessages,
+  onOpenChat,
 }: Props) {
   const { colors, isDark } = useTheme();
   const [posts, setPosts] = useState<Post[]>([]);
@@ -891,19 +895,49 @@ export default function BoardScreen({
     setNewPostAttachments((prev) => prev.filter((attachment) => attachment.id !== attachmentId));
   }
 
+  function hydrateAttachmentUrlsForPosts(postsToHydrate: Post[]) {
+    const postsWithAttachmentPaths = postsToHydrate.filter((post) =>
+      post.attachments.some((attachment) => attachment.path)
+    );
+    if (postsWithAttachmentPaths.length === 0) return;
+
+    void Promise.all(
+      postsWithAttachmentPaths.map(async (post) => ({
+        id: post.id,
+        attachments: await resolveAttachmentDisplayUrls(post.attachments),
+      }))
+    ).then((hydrated) => {
+      const hydratedMap = new Map(hydrated.map((post) => [post.id, post.attachments]));
+      setPosts((prev) =>
+        prev.map((post) => {
+          const attachments = hydratedMap.get(post.id);
+          return attachments ? { ...post, attachments } : post;
+        })
+      );
+      setSelectedPost((prev) => {
+        if (!prev) return prev;
+        const attachments = hydratedMap.get(prev.id);
+        return attachments ? { ...prev, attachments } : prev;
+      });
+    }).catch((error) => {
+      console.warn('Failed to hydrate board attachment URLs:', error);
+    });
+  }
+
   async function fetchPosts() {
     const cached = await AsyncStorage.getItem(postsCacheKey);
     if (cached) {
-      const cachedPosts = JSON.parse(cached) as Post[];
-      setPosts(
-        await Promise.all(
-          cachedPosts.map(async (post) => ({
-            ...post,
-            attachments: await resolveAttachmentDisplayUrls(normalizeAttachments(post.attachments)),
-          }))
-        )
-      );
-      setLoading(false);
+      try {
+        const cachedPosts = (JSON.parse(cached) as Post[]).map((post) => ({
+          ...post,
+          attachments: normalizeAttachments(post.attachments),
+        }));
+        setPosts(cachedPosts);
+        setLoading(false);
+        hydrateAttachmentUrlsForPosts(cachedPosts);
+      } catch {
+        setLoading(true);
+      }
     } else {
       setLoading(true);
     }
@@ -927,12 +961,12 @@ export default function BoardScreen({
     }
 
     const postIds = postsData.map((post: any) => post.id);
-    const [{ data: votesData }, { data: commentsData }] = await Promise.all([
+    const [{ data: votesData }, { data: commentsData }, authorSummaries] = await Promise.all([
       supabase.from('post_votes').select('post_id, user_id').in('post_id', postIds),
       supabase.from('post_comments').select('id, post_id').in('post_id', postIds),
+      resolveAuthorSummaries(postsData.map((post: any) => post.user_id)),
     ]);
 
-    const authorSummaries = await resolveAuthorSummaries(postsData.map((post: any) => post.user_id));
     const likeCountMap: Record<string, number> = {};
     const userLikedSet = new Set<string>();
     (votesData ?? []).forEach((vote: any) => {
@@ -945,8 +979,7 @@ export default function BoardScreen({
       commentCountMap[comment.post_id] = (commentCountMap[comment.post_id] ?? 0) + 1;
     });
 
-    const freshPosts = await Promise.all(
-      postsData.map(async (post: any) => ({
+    const freshPosts = postsData.map((post: any) => ({
         id: post.id,
         user_id: post.user_id,
         author_name: authorSummaries[post.user_id]?.displayName ?? anteaterAliasForId(post.user_id),
@@ -959,14 +992,14 @@ export default function BoardScreen({
         likes: likeCountMap[post.id] ?? 0,
         commentCount: commentCountMap[post.id] ?? 0,
         liked: userLikedSet.has(post.id),
-        attachments: await resolveAttachmentDisplayUrls(normalizeAttachments(post.attachments)),
+        attachments: normalizeAttachments(post.attachments),
         is_locked: !!post.is_locked,
-      }))
-    );
+      }));
 
     setPosts(freshPosts);
     setLoading(false);
     await AsyncStorage.setItem(postsCacheKey, JSON.stringify(freshPosts));
+    hydrateAttachmentUrlsForPosts(freshPosts);
   }
 
   async function fetchBoards() {
@@ -1146,18 +1179,36 @@ export default function BoardScreen({
   async function handleDeleteComment(comment: CommentNode) {
     if (comment.user_id !== userId) return;
 
-    Alert.alert('Delete comment?', 'This will permanently remove your comment.', [
+    const hasReplies = hasCommentReplies(comment);
+    Alert.alert('Delete comment?', hasReplies ? 'This will remove your comment and keep its replies in the thread.' : 'This will permanently remove your comment.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
           void (async () => {
-            await supabase.from('post_comment_votes').delete().eq('comment_id', comment.id);
-            const { error } = await supabase.from('post_comments').delete().eq('id', comment.id).eq('user_id', userId);
+            let { error } = await supabase.rpc('delete_own_comment', { target_comment_id: comment.id });
 
             if (error) {
-              Alert.alert('Delete failed', error.message);
+              if (hasReplies) {
+                await supabase
+                  .from('post_comments')
+                  .update({ parent_comment_id: comment.parent_comment_id })
+                  .eq('parent_comment_id', comment.id);
+              }
+
+              await supabase.from('post_comment_votes').delete().eq('comment_id', comment.id);
+              const fallback = await supabase.from('post_comments').delete().eq('id', comment.id).eq('user_id', userId);
+              error = fallback.error;
+            }
+
+            if (error) {
+              Alert.alert(
+                'Delete failed',
+                error.message.includes('violates foreign key')
+                  ? 'This comment has replies and needs the delete_own_comment SQL helper installed in Supabase.'
+                  : error.message
+              );
               return;
             }
 
@@ -1576,10 +1627,46 @@ export default function BoardScreen({
     return result;
   }, [boardPosts, search, sort]);
 
-  const postCountForBoard = (board: Board) =>
-    isHotBoard(board) ? hotPosts.length : posts.filter((post) => post.category === boardCategory(board)).length;
-
   const selectedPostCommentCount = useMemo(() => countComments(comments), [comments]);
+
+  function openCommentActions(comment: CommentNode) {
+    const buttons: Array<{
+      text: string;
+      onPress?: () => void;
+      style?: 'default' | 'cancel' | 'destructive';
+    }> = [];
+
+    if (comment.user_id === userId) {
+      buttons.push(
+        { text: 'Edit', onPress: () => startEditComment(comment) },
+        { text: 'Delete', style: 'destructive', onPress: () => void handleDeleteComment(comment) }
+      );
+    } else {
+      if (selectedPost && onOpenChat) {
+        buttons.push({
+          text: 'Message',
+          onPress: () => onOpenChat({
+            id: comment.user_id,
+            kind: 'board_anonymous',
+            name: comment.author_name,
+            sourcePostId: selectedPost.id,
+            sourceLabel: selectedPost.title,
+          }),
+        });
+      }
+      buttons.push({
+        text: 'Report',
+        onPress: () => openReport({
+          id: comment.id,
+          type: 'comment',
+          label: `Comment by ${comment.author_name}`,
+        }),
+      });
+    }
+
+    buttons.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Comment actions', undefined, buttons);
+  }
 
   const renderComment = (comment: CommentNode, depth = 0): React.ReactNode => {
     const indent = Math.min(depth, 2) * 18;
@@ -1622,12 +1709,6 @@ export default function BoardScreen({
                 <Text style={{ fontSize: 11, color: colors.textTertiary }}>{comment.author_meta}</Text>
               ) : null}
               <Text style={{ fontSize: 11, color: colors.textTertiary }}>{timeAgo(comment.created_at)}</Text>
-              {hasBeenEdited(comment.created_at, comment.edited_at) ? (
-                <>
-                  <Text style={{ fontSize: 11, color: colors.textTertiary }}>·</Text>
-                  <Text style={{ fontSize: 11, color: colors.textTertiary }}>Edited</Text>
-                </>
-              ) : null}
             </View>
             <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 20 }}>{comment.content}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 8 }}>
@@ -1655,37 +1736,13 @@ export default function BoardScreen({
                 <Ionicons name="return-up-forward-outline" size={14} color={colors.textTertiary} />
                 <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>Reply</Text>
               </TouchableOpacity>
-              {comment.user_id === userId ? (
-                <>
-                  <TouchableOpacity
-                    onPress={() => startEditComment(comment)}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-                  >
-                    <Ionicons name="create-outline" size={14} color={colors.textTertiary} />
-                    <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => void handleDeleteComment(comment)}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-                  >
-                    <Ionicons name="trash-outline" size={14} color="#dc2626" />
-                    <Text style={{ fontSize: 12, color: '#dc2626', fontWeight: '600' }}>Delete</Text>
-                  </TouchableOpacity>
-                </>
-              ) : null}
-              {comment.user_id !== userId ? (
-                <TouchableOpacity
-                  onPress={() => openReport({
-                    id: comment.id,
-                    type: 'comment',
-                    label: `Comment by ${comment.author_name}`,
-                  })}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-                >
-                  <Ionicons name="flag-outline" size={14} color={colors.textTertiary} />
-                  <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>Report</Text>
-                </TouchableOpacity>
-              ) : null}
+              <TouchableOpacity
+                onPress={() => openCommentActions(comment)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+              >
+                <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -1718,6 +1775,23 @@ export default function BoardScreen({
             <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>Board</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexShrink: 0 }}>
+            {onOpenMessages ? (
+              <TouchableOpacity
+                onPress={onOpenMessages}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.text} />
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               onPress={() => openNewPost()}
               style={{
@@ -1741,10 +1815,7 @@ export default function BoardScreen({
           </View>
         </View>
 
-        {loading ? (
-          <ActivityIndicator color={colors.brand} style={{ marginTop: 40 }} />
-        ) : (
-          <>
+        <>
             <View
               style={{
                 flexDirection: 'row',
@@ -1881,9 +1952,7 @@ export default function BoardScreen({
                   TRENDING NOW
                 </Text>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{HOT_BOARD.name}</Text>
-                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
-                  {hotPosts.length} post{hotPosts.length === 1 ? '' : 's'} over 10 likes
-                </Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>Posts over 10 likes</Text>
               </View>
               <View
                 style={{
@@ -2004,7 +2073,6 @@ export default function BoardScreen({
                     COMMUNITY BOARD
                   </Text>
                   <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{board.name}</Text>
-                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{postCountForBoard(board)} posts</Text>
                 </View>
                 <View
                   style={{
@@ -2056,8 +2124,7 @@ export default function BoardScreen({
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.brand} />
             </TouchableOpacity>
-          </>
-        )}
+        </>
       </ScrollView>
 
       <Modal
@@ -2172,7 +2239,6 @@ export default function BoardScreen({
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{board.name}</Text>
-                        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{postCountForBoard(board)} posts</Text>
                       </View>
                       <Ionicons name="chevron-forward" size={17} color={colors.textTertiary} />
                     </TouchableOpacity>
@@ -2246,12 +2312,6 @@ export default function BoardScreen({
                         ) : null}
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
-                        {hasBeenEdited(post.created_at, post.edited_at) ? (
-                          <>
-                            <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
-                            <Text style={{ fontSize: 12, color: colors.textTertiary }}>Edited</Text>
-                          </>
-                        ) : null}
                         {post.is_locked ? (
                           <>
                             <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
@@ -2337,6 +2397,21 @@ export default function BoardScreen({
                           <Ionicons name="chatbubble-outline" size={16} color={colors.textTertiary} />
                           <Text style={{ fontSize: 14, color: colors.textTertiary, fontWeight: '500' }}>{selectedPostCommentCount}</Text>
                         </View>
+                        {post.user_id !== userId && onOpenChat ? (
+                          <TouchableOpacity
+                            onPress={() => onOpenChat({
+                              id: post.user_id,
+                              kind: 'board_anonymous',
+                              name: post.author_name,
+                              sourcePostId: post.id,
+                              sourceLabel: post.title,
+                            })}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                          >
+                            <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.textTertiary} />
+                            <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '600' }}>Message</Text>
+                          </TouchableOpacity>
+                        ) : null}
                         {post.user_id !== userId ? (
                           <TouchableOpacity
                             onPress={() => openReport({ id: post.id, type: 'post', label: post.title })}
@@ -2602,12 +2677,6 @@ export default function BoardScreen({
                               <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.category}</Text>
                               <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                               <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
-                              {hasBeenEdited(post.created_at, post.edited_at) ? (
-                                <>
-                                  <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
-                                  <Text style={{ fontSize: 12, color: colors.textTertiary }}>Edited</Text>
-                                </>
-                              ) : null}
                             </View>
                             <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 5 }}>{post.title}</Text>
                             <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19, marginBottom: 10 }} numberOfLines={2}>

@@ -8,7 +8,7 @@ Supabase Edge Function that turns new social activity into:
 It listens for inserts from:
 
 - `friend_requests`
-- `direct_messages`
+- `conversation_messages`
 - `post_comments`
 - `post_votes`
 - `post_comment_votes`
@@ -47,7 +47,7 @@ https://<project-ref>.functions.supabase.co/social-notifier
 Use `INSERT` events for these tables:
 
 - `friend_requests`
-- `direct_messages`
+- `conversation_messages`
 - `post_comments`
 - `post_votes`
 - `post_comment_votes`
@@ -76,4 +76,4 @@ The function reads those settings to decide whether the recipient wants:
 - friend request alerts
 - comment/reply alerts
 - like alerts
-- direct message alerts
+- message alerts

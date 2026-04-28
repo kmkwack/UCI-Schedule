@@ -33,6 +33,7 @@ import {
 import type { TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
+import type { ChatTarget } from '../data/messages';
 
 type Friend = {
   id: string;
@@ -183,6 +184,8 @@ type Props = {
   selectedQuarter: Quarter;
   bottomInset?: number;
   scrollToTopTrigger?: number;
+  onOpenMessages?: () => void;
+  onOpenChat?: (target: ChatTarget) => void;
 };
 
 export default function FriendsScreen({
@@ -193,6 +196,8 @@ export default function FriendsScreen({
   selectedQuarter,
   bottomInset = 0,
   scrollToTopTrigger = 0,
+  onOpenMessages,
+  onOpenChat,
 }: Props) {
   const { colors } = useTheme();
   const friendsScrollRef = useRef<ScrollView>(null);
@@ -914,6 +919,11 @@ export default function FriendsScreen({
             <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: -0.8, color: colors.text }}>ClassMates</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            {onOpenMessages ? (
+              <TouchableOpacity onPress={onOpenMessages} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="chatbubble-ellipses-outline" size={24} color={colors.text} />
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity onPress={() => setShowAddModal(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="person-add-outline" size={24} color={colors.text} />
             </TouchableOpacity>
@@ -1214,26 +1224,43 @@ export default function FriendsScreen({
                     </View>
 
                     {!editMode && (
-                      <TouchableOpacity
-                        onPress={() => {
-                          if (f.timetableVisibility === 'private') {
-                            Alert.alert('Private timetable', `${f.name} has chosen to keep their timetable private.`);
-                            return;
-                          }
-                          openFriendTimetable(f.id);
-                        }}
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 6,
-                          backgroundColor: f.timetableVisibility === 'private' ? colors.bgTertiary : colors.brand,
-                          borderRadius: 20,
-                          paddingHorizontal: 12, paddingVertical: 7, marginRight: 8,
-                        }}
-                      >
-                        <Ionicons name={f.timetableVisibility === 'private' ? 'lock-closed-outline' : 'calendar-outline'} size={14} color={f.timetableVisibility === 'private' ? colors.textTertiary : 'white'} />
-                        <Text style={{ color: f.timetableVisibility === 'private' ? colors.textTertiary : 'white', fontSize: 13, fontWeight: '600' }}>
-                          {f.timetableVisibility === 'private' ? 'Private' : 'Timetable'}
-                        </Text>
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+                        {onOpenChat ? (
+                          <TouchableOpacity
+                            onPress={() => onOpenChat({ id: f.id, kind: 'friend', name: f.name })}
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 18,
+                              backgroundColor: colors.bgTertiary,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Ionicons name="chatbubble-ellipses-outline" size={17} color={colors.text} />
+                          </TouchableOpacity>
+                        ) : null}
+                        <TouchableOpacity
+                          onPress={() => {
+                            if (f.timetableVisibility === 'private') {
+                              Alert.alert('Private timetable', `${f.name} has chosen to keep their timetable private.`);
+                              return;
+                            }
+                            openFriendTimetable(f.id);
+                          }}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 6,
+                            backgroundColor: f.timetableVisibility === 'private' ? colors.bgTertiary : colors.brand,
+                            borderRadius: 20,
+                            paddingHorizontal: 12, paddingVertical: 7,
+                          }}
+                        >
+                          <Ionicons name={f.timetableVisibility === 'private' ? 'lock-closed-outline' : 'calendar-outline'} size={14} color={f.timetableVisibility === 'private' ? colors.textTertiary : 'white'} />
+                          <Text style={{ color: f.timetableVisibility === 'private' ? colors.textTertiary : 'white', fontSize: 13, fontWeight: '600' }}>
+                            {f.timetableVisibility === 'private' ? 'Private' : 'Timetable'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     )}
 
                     {editMode ? (
@@ -1433,18 +1460,37 @@ export default function FriendsScreen({
                   <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{friend.email}</Text>
                 </View>
               </View>
-              <TouchableOpacity
-                onPress={openQuarterDropdown}
-                style={{
-                  flexDirection: 'row', alignItems: 'center',
-                  backgroundColor: colors.card, borderRadius: 20,
-                  paddingHorizontal: 12, paddingVertical: 7,
-                  borderWidth: 1, borderColor: colors.border, gap: 4,
-                }}
-              >
-                <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{quarterLabel(friendQuarter)}</Text>
-                <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {onOpenChat ? (
+                  <TouchableOpacity
+                    onPress={() => onOpenChat({ id: friend.id, kind: 'friend', name: friend.name })}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={17} color={colors.text} />
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  onPress={openQuarterDropdown}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center',
+                    backgroundColor: colors.card, borderRadius: 20,
+                    paddingHorizontal: 12, paddingVertical: 7,
+                    borderWidth: 1, borderColor: colors.border, gap: 4,
+                  }}
+                >
+                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{quarterLabel(friendQuarter)}</Text>
+                  <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 

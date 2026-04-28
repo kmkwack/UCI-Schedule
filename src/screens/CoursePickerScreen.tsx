@@ -249,8 +249,6 @@ export default function CoursePickerScreen({
   const [catalogCourses, setCatalogCourses] = useState<CatalogCourse[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [expandedCourseIds, setExpandedCourseIds] = useState<Record<string, boolean>>({});
-  const courseListRef = useRef<FlatList<CatalogCourse>>(null);
-  const filteredCatalogRef = useRef<CatalogCourse[]>([]);
   const [sectionsMap, setSectionsMap] = useState<Record<string, Course[]>>({});
   const [previewCourse, setPreviewCourse] = useState<Course | null>(null);
   const [enrollmentCache, setEnrollmentCache] = useState<Record<string, SectionEnrollment>>({});
@@ -603,19 +601,18 @@ export default function CoursePickerScreen({
         delete: { type: LayoutAnimation.Types.easeIn, property: LayoutAnimation.Properties.opacity },
       });
     }
-    setExpandedCourseIds(nextExpanded ? { [course.id]: true } : {});
+    setExpandedCourseIds((prev) => {
+      const next = { ...prev };
+      if (nextExpanded) next[course.id] = true;
+      else delete next[course.id];
+      return next;
+    });
     if (nextExpanded) {
       fetchEnrollment(course);
       const activeSections = (isGlobalSearch ? globalSectionsMap : sectionsMap)[course.id] ?? [];
       const courseCode = `${course.department} ${course.courseNumber}`.trim();
       const sectionTypes = [...new Set(activeSections.map(s => s.sectionLabel?.split(' ')[0]).filter((t): t is string => !!t))];
       for (const st of sectionTypes) void fetchReviewSummary(courseCode, st);
-      const index = filteredCatalogRef.current.findIndex((c) => c.id === course.id);
-      if (index >= 0) {
-        setTimeout(() => {
-          courseListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0 });
-        }, 50);
-      }
     }
     setPreviewCourse(null);
   };
@@ -1078,15 +1075,10 @@ export default function CoursePickerScreen({
           </View>
         ) : (
           <FlatList
-            ref={courseListRef}
             data={filteredCatalog}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 30 }}
-            onScrollToIndexFailed={({ index }) => {
-              setTimeout(() => courseListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0 }), 200);
-            }}
             renderItem={({ item }) => {
-              filteredCatalogRef.current = filteredCatalog;
               const isExpanded = !!expandedCourseIds[item.id];
               const activeSectionsMap = isGlobalSearch ? globalSectionsMap : sectionsMap;
               const sections = activeSectionsMap[item.id] ?? [];

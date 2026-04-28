@@ -1355,3 +1355,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64hu (Align summer quarter logic)
 - **`src/data/courses.ts`** — Changed the summer academic-quarter resolver to return the app's seeded `Summer10wk` quarter instead of an unseeded `Summer` key, and made the fallback choose a safe seeded quarter.
 - **`App.tsx` / `src/screens/HomeScreen.tsx`** — Updated invalid-quarter fallback logic and added 2026 summer session date ranges so Home progress does not use the generic winter fallback for summer sessions.
+
+### Session 64hv (Board image failure fallback)
+- **`src/screens/BoardScreen.tsx`** — Added a reusable board attachment image wrapper that shows an explicit fallback instead of a blank image when decoding fails, and changed remote image caching to download to fresh cache files while discarding zero-byte downloads so stale broken caches do not keep failing.

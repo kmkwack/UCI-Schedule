@@ -212,6 +212,52 @@ function attachmentUri(attachment: BoardAttachment) {
   return attachment.localUri ?? attachment.url ?? '';
 }
 
+function BoardAttachmentImage({
+  uri,
+  style,
+  colors,
+}: {
+  uri: string;
+  style: any;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (!uri || failed) {
+    return (
+      <View
+        style={[
+          style,
+          {
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: colors.bgTertiary,
+          },
+        ]}
+      >
+        <Ionicons name="image-outline" size={22} color={colors.textTertiary} />
+        <Text style={{ marginTop: 6, fontSize: 11, color: colors.textTertiary, fontWeight: '600' }}>
+          Image unavailable
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <ExpoImage
+      source={{ uri }}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      transition={120}
+      onError={(event) => {
+        console.warn('Board image failed to load:', event);
+        setFailed(true);
+      }}
+      style={style}
+    />
+  );
+}
+
 function extensionFromName(name: string) {
   const parts = name.split('.');
   if (parts.length < 2) return null;
@@ -238,11 +284,14 @@ async function cacheImageAttachment(attachment: BoardAttachment, remoteUrl: stri
 
   try {
     const safeId = sanitizeFileName(attachment.path ?? attachment.id) || `image-${attachment.id}`;
-    const localUri = `${FileSystem.cacheDirectory}board-${safeId}.${imageExtensionForAttachment(attachment)}`;
-    const info = await FileSystem.getInfoAsync(localUri);
-    if (info.exists) return { ...attachment, localUri, url: remoteUrl };
+    const localUri = `${FileSystem.cacheDirectory}board-${Date.now()}-${safeId}.${imageExtensionForAttachment(attachment)}`;
 
     const downloaded = await FileSystem.downloadAsync(remoteUrl, localUri);
+    const info = await FileSystem.getInfoAsync(downloaded.uri);
+    if ('size' in info && typeof info.size === 'number' && info.size <= 0) {
+      await FileSystem.deleteAsync(downloaded.uri, { idempotent: true });
+      return { ...attachment, url: remoteUrl, localUri: undefined };
+    }
     return { ...attachment, localUri: downloaded.uri, url: remoteUrl };
   } catch (error) {
     console.warn('Failed to cache board image attachment:', error);
@@ -2122,12 +2171,9 @@ export default function BoardScreen({
                                 borderColor: colors.borderSubtle,
                               }}
                             >
-                              <ExpoImage
-                                source={{ uri: attachmentUri(attachment) }}
-                                contentFit="cover"
-                                cachePolicy="memory-disk"
-                                transition={120}
-                                onError={(event) => console.warn('Board detail image failed to load:', event)}
+                              <BoardAttachmentImage
+                                uri={attachmentUri(attachment)}
+                                colors={colors}
                                 style={{ width: '100%', aspectRatio: 4 / 3, backgroundColor: colors.bgTertiary }}
                               />
                             </View>
@@ -2464,12 +2510,9 @@ export default function BoardScreen({
                             </Text>
                           </View>
                           {previewImage ? (
-                            <ExpoImage
-                              source={{ uri: attachmentUri(previewImage) }}
-                              contentFit="cover"
-                              cachePolicy="memory-disk"
-                              transition={120}
-                              onError={(event) => console.warn('Board list image failed to load:', event)}
+                            <BoardAttachmentImage
+                              uri={attachmentUri(previewImage)}
+                              colors={colors}
                               style={{
                                 width: 76,
                                 height: 76,
@@ -3085,11 +3128,9 @@ function NewPostModal({
                   }}
                 >
                   {attachment.type === 'image' && (attachment.localUri || attachment.url) ? (
-                    <ExpoImage
-                      source={{ uri: attachment.localUri ?? attachment.url }}
-                      contentFit="cover"
-                      cachePolicy="memory-disk"
-                      transition={120}
+                    <BoardAttachmentImage
+                      uri={attachment.localUri ?? attachment.url ?? ''}
+                      colors={colors}
                       style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: colors.bgTertiary }}
                     />
                   ) : (

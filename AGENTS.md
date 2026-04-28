@@ -1358,3 +1358,12 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64hv (Board image failure fallback)
 - **`src/screens/BoardScreen.tsx`** — Added a reusable board attachment image wrapper that shows an explicit fallback instead of a blank image when decoding fails, and changed remote image caching to download to fresh cache files while discarding zero-byte downloads so stale broken caches do not keep failing.
+
+### Session 64hw (Point EAS config to parksihyun project)
+- **`app.json`** — Updated the Expo owner and EAS project id to the active `@parksihyun/classmate` project so production builds run against the account that has project permissions.
+
+### Session 64hx (Persist iOS submit app id)
+- **`eas.json`** — Added the production iOS `ascAppId` discovered during the successful EAS Submit flow so future production submits can run non-interactively without prompting for the App Store Connect app.
+
+### Session 64hy (Improve board image viewing)
+- **`src/screens/BoardScreen.tsx`** — Removed the Board landing helper subtitle, changed post-detail images to render with their full original aspect ratio instead of cropped 4:3 previews, and added a full-screen image viewer with a photo-library save action so users can inspect and save attached images.

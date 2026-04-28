@@ -18,6 +18,7 @@ import {
   Dimensions,
   Linking,
   Keyboard,
+  Image as RNImage,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
@@ -26,6 +27,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Image as ExpoImage } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
@@ -216,10 +218,12 @@ function BoardAttachmentImage({
   uri,
   style,
   colors,
+  contentFit = 'cover',
 }: {
   uri: string;
   style: any;
   colors: ReturnType<typeof useTheme>['colors'];
+  contentFit?: 'cover' | 'contain';
 }) {
   const [failed, setFailed] = useState(false);
 
@@ -246,7 +250,7 @@ function BoardAttachmentImage({
   return (
     <ExpoImage
       source={{ uri }}
-      contentFit="cover"
+      contentFit={contentFit}
       cachePolicy="memory-disk"
       transition={120}
       onError={(event) => {
@@ -255,6 +259,68 @@ function BoardAttachmentImage({
       }}
       style={style}
     />
+  );
+}
+
+function BoardPostImage({
+  attachment,
+  colors,
+  onPress,
+}: {
+  attachment: BoardAttachment;
+  colors: ReturnType<typeof useTheme>['colors'];
+  onPress: () => void;
+}) {
+  const uri = attachmentUri(attachment);
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!uri) {
+      setAspectRatio(null);
+      return;
+    }
+
+    let active = true;
+    RNImage.getSize(
+      uri,
+      (width, height) => {
+        if (!active || width <= 0 || height <= 0) return;
+        setAspectRatio(width / height);
+      },
+      () => {
+        if (active) setAspectRatio(null);
+      }
+    );
+
+    return () => {
+      active = false;
+    };
+  }, [uri]);
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.92}
+      style={{
+        borderRadius: 18,
+        overflow: 'hidden',
+        backgroundColor: colors.bgTertiary,
+        borderWidth: 1,
+        borderColor: colors.borderSubtle,
+      }}
+    >
+      <BoardAttachmentImage
+        uri={uri}
+        colors={colors}
+        contentFit="contain"
+        style={{
+          width: '100%',
+          aspectRatio: aspectRatio ?? 4 / 3,
+          minHeight: 160,
+          backgroundColor: colors.bgTertiary,
+        }}
+      />
+    </TouchableOpacity>
   );
 }
 
@@ -505,6 +571,8 @@ export default function BoardScreen({
   const [showBoardPicker, setShowBoardPicker] = useState(false);
   const [submittingPost, setSubmittingPost] = useState(false);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [imageViewerAttachment, setImageViewerAttachment] = useState<BoardAttachment | null>(null);
+  const [savingImage, setSavingImage] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'recent' | 'popular'>('recent');
@@ -702,6 +770,54 @@ export default function BoardScreen({
       });
     } catch (error: any) {
       Alert.alert('Could not open file', error?.message ?? 'Try again in a moment.');
+    }
+  }
+
+  async function localImageUriForSaving(attachment: BoardAttachment) {
+    const [resolvedAttachment] = await resolveAttachmentDisplayUrls([attachment]);
+    const uri = attachmentUri(resolvedAttachment);
+
+    if (!uri) {
+      throw new Error('This image is not available yet.');
+    }
+
+    if (!/^https?:\/\//i.test(uri)) {
+      return uri;
+    }
+
+    if (!FileSystem.cacheDirectory) {
+      throw new Error('Image saving is not available on this device.');
+    }
+
+    const extension = imageExtensionForAttachment(resolvedAttachment);
+    const safeId = sanitizeFileName(resolvedAttachment.path ?? resolvedAttachment.id) || `board-image-${Date.now()}`;
+    const localUri = `${FileSystem.cacheDirectory}board-save-${Date.now()}-${safeId}.${extension}`;
+    const downloaded = await FileSystem.downloadAsync(uri, localUri);
+    return downloaded.uri;
+  }
+
+  async function saveImageAttachment(attachment: BoardAttachment) {
+    if (Platform.OS === 'web') {
+      const uri = attachmentUri(attachment);
+      if (uri) await Linking.openURL(uri);
+      return;
+    }
+
+    try {
+      setSavingImage(true);
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Photos access needed', 'Allow photo library access to save this image.');
+        return;
+      }
+
+      const localUri = await localImageUriForSaving(attachment);
+      await MediaLibrary.saveToLibraryAsync(localUri);
+      Alert.alert('Saved', 'The image has been saved to your photo library.');
+    } catch (error: any) {
+      Alert.alert('Could not save image', error?.message ?? 'Try again in a moment.');
+    } finally {
+      setSavingImage(false);
     }
   }
 
@@ -1599,9 +1715,6 @@ export default function BoardScreen({
         >
           <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
             <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>Board</Text>
-            <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-              Search boards or jump into a community space.
-            </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexShrink: 0 }}>
             <TouchableOpacity
@@ -2161,22 +2274,12 @@ export default function BoardScreen({
                       {post.attachments.some(isImageAttachment) ? (
                         <View style={{ marginBottom: 16, gap: 12 }}>
                           {post.attachments.filter((attachment) => isImageAttachment(attachment) && attachmentUri(attachment)).map((attachment) => (
-                            <View
+                            <BoardPostImage
                               key={attachment.id}
-                              style={{
-                                borderRadius: 18,
-                                overflow: 'hidden',
-                                backgroundColor: colors.bgTertiary,
-                                borderWidth: 1,
-                                borderColor: colors.borderSubtle,
-                              }}
-                            >
-                              <BoardAttachmentImage
-                                uri={attachmentUri(attachment)}
-                                colors={colors}
-                                style={{ width: '100%', aspectRatio: 4 / 3, backgroundColor: colors.bgTertiary }}
-                              />
-                            </View>
+                              attachment={attachment}
+                              colors={colors}
+                              onPress={() => setImageViewerAttachment(attachment)}
+                            />
                           ))}
                         </View>
                       ) : null}
@@ -2554,6 +2657,14 @@ export default function BoardScreen({
         </Animated.View>
       )}
 
+      <ImageViewerModal
+        attachment={imageViewerAttachment}
+        onClose={() => setImageViewerAttachment(null)}
+        onSave={(attachment) => void saveImageAttachment(attachment)}
+        saving={savingImage}
+        colors={colors}
+      />
+
       <NewPostModal
         visible={showNewPost}
         onClose={closeComposer}
@@ -2619,6 +2730,112 @@ type ReportModalProps = {
   submitting: boolean;
   colors: ReturnType<typeof useTheme>['colors'];
 };
+
+function ImageViewerModal({
+  attachment,
+  onClose,
+  onSave,
+  saving,
+  colors,
+}: {
+  attachment: BoardAttachment | null;
+  onClose: () => void;
+  onSave: (attachment: BoardAttachment) => void;
+  saving: boolean;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  const uri = attachment ? attachmentUri(attachment) : '';
+  const screen = Dimensions.get('window');
+
+  return (
+    <Modal visible={!!attachment} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(2,6,23,0.96)' }}>
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 2,
+            paddingTop: Platform.OS === 'ios' ? 58 : 24,
+            paddingHorizontal: 16,
+            paddingBottom: 12,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <TouchableOpacity
+            onPress={onClose}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(255,255,255,0.12)',
+            }}
+          >
+            <Ionicons name="close" size={22} color="white" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => attachment && onSave(attachment)}
+            disabled={!attachment || saving}
+            style={{
+              minWidth: 104,
+              height: 42,
+              borderRadius: 21,
+              paddingHorizontal: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 7,
+              backgroundColor: 'rgba(255,255,255,0.14)',
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving ? (
+              <ActivityIndicator color="white" size="small" />
+            ) : (
+              <>
+                <Ionicons name="download-outline" size={17} color="white" />
+                <Text style={{ color: 'white', fontSize: 14, fontWeight: '700' }}>Save</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            minHeight: screen.height,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingTop: Platform.OS === 'ios' ? 112 : 82,
+            paddingBottom: Platform.OS === 'ios' ? 96 : 72,
+          }}
+          maximumZoomScale={4}
+          minimumZoomScale={1}
+          centerContent
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+        >
+          <BoardAttachmentImage
+            uri={uri}
+            colors={colors}
+            contentFit="contain"
+            style={{
+              width: screen.width,
+              height: Math.max(260, screen.height - (Platform.OS === 'ios' ? 208 : 154)),
+              backgroundColor: 'transparent',
+            }}
+          />
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
 
 function ReportModal({
   visible,

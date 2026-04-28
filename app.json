@@ -2,7 +2,7 @@
   "expo": {
     "name": "ClassMate",
     "slug": "classmate",
-    "owner": "hiiseans",
+    "owner": "parksihyun",
     "scheme": "com.parksihyun.classmate",
     "version": "1.0.1",
     "orientation": "portrait",
@@ -75,7 +75,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "cbef8d12-4f16-4858-bc73-635a6025e94e"
+        "projectId": "29e496cc-1ff6-4471-9d56-e1b9128d7196"
       }
     }
   }

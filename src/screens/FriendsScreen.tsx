@@ -9,9 +9,11 @@ import {
   Text,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  Pressable,
   Modal,
   TextInput,
   ScrollView,
+  StyleSheet,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
@@ -458,7 +460,7 @@ export default function FriendsScreen({
   }, [userId]);
 
   useEffect(() => {
-    if (!showAddModal || !debouncedEmailQuery || !userId) {
+    if (!showAddModal || !debouncedEmailQuery || debouncedEmailQuery.length < 2 || !userId) {
       setSearchResults([]);
       setSearchLoading(false);
       return;
@@ -470,12 +472,16 @@ export default function FriendsScreen({
       const pendingIds = new Set(pendingRequests.map((p) => p.id));
       const outgoingIds = new Set(sentRequestIds);
 
+      const emailTerm = debouncedEmailQuery.includes('@')
+        ? debouncedEmailQuery.split('@')[0]
+        : debouncedEmailQuery;
+
       const { data, error } = await supabase
         .from('profiles')
         .select('id, email, name, major, year, school')
         .eq('school', school)
-        .ilike('email', `%${debouncedEmailQuery}%`)
-        .limit(8);
+        .or(`email.ilike.%${emailTerm}%,name.ilike.%${debouncedEmailQuery}%`)
+        .limit(50);
 
       if (error) {
         console.error('Failed to search users:', error);
@@ -484,6 +490,9 @@ export default function FriendsScreen({
         return;
       }
 
+      const term = emailTerm.toLowerCase();
+      const nameTerm = debouncedEmailQuery.toLowerCase();
+
       setSearchResults(
         ((data ?? []) as ProfileRow[])
           .filter((profile) => profile.id !== userId)
@@ -491,6 +500,11 @@ export default function FriendsScreen({
           .filter((profile) => !existingIds.has(profile.id))
           .filter((profile) => !pendingIds.has(profile.id))
           .filter((profile) => !outgoingIds.has(profile.id))
+          .filter((profile) => {
+            const localPart = profile.email.split('@')[0].toLowerCase();
+            const nameMatch = (profile.name ?? '').toLowerCase().includes(nameTerm);
+            return localPart.includes(term) || nameMatch;
+          })
           .map((profile) => mapProfileToFriend(profile))
       );
       setSearchLoading(false);
@@ -620,7 +634,6 @@ export default function FriendsScreen({
       id: target.id, name: target.name, email: target.email,
       major: target.major, year: target.year,
     }]);
-    closeAddModal();
     Alert.alert('Request sent', `Your friend request was sent to ${target.name}.`);
   };
 
@@ -741,16 +754,18 @@ export default function FriendsScreen({
         >
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <TouchableOpacity
-              style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }}
+              style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' }}
               activeOpacity={1}
-              onPress={closeAddModal}
-            >
-              <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-                <View style={{
-                  backgroundColor: colors.card, borderRadius: 18, padding: 24, width: 300,
-                  shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
-                  shadowOpacity: 0.18, shadowRadius: 16, elevation: 10,
-                }}>
+              onPress={() => { Keyboard.dismiss(); closeAddModal(); }}
+            />
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} pointerEvents="box-none">
+              <View style={{
+                backgroundColor: colors.card, borderRadius: 18, padding: 24, width: 300,
+                shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.18, shadowRadius: 16, elevation: 10,
+              }}>
+                  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                  <View>
                   <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 16, color: colors.text }}>
                     Add Friend
                   </Text>
@@ -764,14 +779,14 @@ export default function FriendsScreen({
                     borderColor: colors.border,
                   }}>
                     <Text style={{ fontSize: 12, fontWeight: '700', color: colors.brand, marginBottom: 4 }}>
-                      Search by Email
+                      Search by Name or Email
                     </Text>
                     <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 18 }}>
-                      Enter a university email below to search for another student and send them a friend request.
+                      Enter a name or university email to find another student and send them a friend request.
                     </Text>
                   </View>
                   <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 8 }}>
-                    University Email
+                    Name or Email
                   </Text>
                   <View style={{
                     flexDirection: 'row',
@@ -785,15 +800,14 @@ export default function FriendsScreen({
                     backgroundColor: colors.inputBg,
                     marginBottom: 16,
                   }}>
-                    <Ionicons name="mail-outline" size={16} color={colors.placeholder} />
+                    <Ionicons name="search-outline" size={16} color={colors.placeholder} />
                     <TextInput
-                      placeholder="student@uci.edu"
+                      placeholder="Name or student@uci.edu"
                       placeholderTextColor={colors.placeholder}
                       value={emailQuery}
                       onChangeText={setEmailQuery}
                       autoCapitalize="none"
                       autoCorrect={false}
-                      keyboardType="email-address"
                       returnKeyType="search"
                       autoFocus
                       style={{ flex: 1, fontSize: 15, color: colors.text }}
@@ -802,6 +816,8 @@ export default function FriendsScreen({
                   <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 8 }}>
                     Search Results
                   </Text>
+                  </View>
+                  </TouchableWithoutFeedback>
                   <View style={{
                     borderWidth: 1,
                     borderColor: colors.border,
@@ -813,7 +829,13 @@ export default function FriendsScreen({
                     {!emailQuery.trim() ? (
                       <View style={{ paddingHorizontal: 14, paddingVertical: 16, backgroundColor: colors.bgSecondary }}>
                         <Text style={{ fontSize: 13, color: colors.textTertiary }}>
-                          Type an email above to start searching for a user.
+                          Type a name or email above to start searching.
+                        </Text>
+                      </View>
+                    ) : emailQuery.trim().length < 2 ? (
+                      <View style={{ paddingHorizontal: 14, paddingVertical: 16, backgroundColor: colors.bgSecondary }}>
+                        <Text style={{ fontSize: 13, color: colors.textTertiary }}>
+                          Type at least 2 characters to search.
                         </Text>
                       </View>
                     ) : searchLoading ? (
@@ -825,45 +847,50 @@ export default function FriendsScreen({
                     ) : searchResults.length === 0 ? (
                       <View style={{ paddingHorizontal: 14, paddingVertical: 16, backgroundColor: colors.bgSecondary }}>
                         <Text style={{ fontSize: 13, color: colors.textTertiary }}>
-                          No user matched that email search.
+                          No user matched that search.
                         </Text>
                       </View>
                     ) : (
-                      searchResults.map((user, index) => (
-                        <TouchableOpacity
-                          key={user.id}
-                          onPress={() => sendFriendRequest(user)}
-                          style={{
-                            paddingHorizontal: 14,
-                            paddingVertical: 14,
-                            borderTopWidth: index === 0 ? 0 : 1,
-                            borderTopColor: colors.borderSubtle,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 12,
-                          }}
-                        >
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{user.name}</Text>
-                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{user.email}</Text>
-                            <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
-                              {user.major} • {user.year}
-                            </Text>
+                      <ScrollView style={{ maxHeight: 294 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true}>
+                        {searchResults.map((user, index) => (
+                          <View
+                            key={user.id}
+                            style={{
+                              paddingHorizontal: 14,
+                              paddingVertical: 14,
+                              borderTopWidth: index === 0 ? 0 : 1,
+                              borderTopColor: colors.borderSubtle,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 12,
+                            }}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{user.name}</Text>
+                              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{user.email}</Text>
+                              <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
+                                {user.major} • {user.year}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              onPress={() => { Keyboard.dismiss(); sendFriendRequest(user); }}
+                              disabled={submittingRequestId === user.id}
+                              style={{
+                                backgroundColor: colors.brand,
+                                borderRadius: 16,
+                                paddingHorizontal: 10,
+                                paddingVertical: 6,
+                                opacity: submittingRequestId === user.id ? 0.7 : 1,
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontSize: 12, fontWeight: '700' }}>
+                                {submittingRequestId === user.id ? 'Sending...' : 'Send Request'}
+                              </Text>
+                            </TouchableOpacity>
                           </View>
-                          <View style={{
-                            backgroundColor: colors.brand,
-                            borderRadius: 16,
-                            paddingHorizontal: 10,
-                            paddingVertical: 6,
-                            opacity: submittingRequestId === user.id ? 0.7 : 1,
-                          }}>
-                            <Text style={{ color: 'white', fontSize: 12, fontWeight: '700' }}>
-                              {submittingRequestId === user.id ? 'Sending...' : 'Send Request'}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                      ))
+                        ))}
+                      </ScrollView>
                     )}
                   </View>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -877,9 +904,8 @@ export default function FriendsScreen({
                       <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
-                </View>
-              </TouchableOpacity>
-            </TouchableOpacity>
+              </View>
+            </View>
           </KeyboardAvoidingView>
         </Modal>
 
@@ -1149,7 +1175,7 @@ export default function FriendsScreen({
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
               <Ionicons name="people-outline" size={60} color={colors.border} />
               <Text style={{ fontSize: 16, color: colors.textTertiary, fontWeight: '500' }}>No friends yet</Text>
-              <Text style={{ fontSize: 13, color: colors.border }}>Tap the icon above to search by email and send a request</Text>
+              <Text style={{ fontSize: 13, color: colors.border }}>Tap the icon above to search by name or email</Text>
             </View>
           ) : (
             <ScrollView ref={friendsScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: bottomInset + 70 }}>

@@ -2735,7 +2735,7 @@ function NewPostModal({
         </View>
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'ios' ? 80 : 60 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 }}>
             Board <Text style={{ color: '#ef4444' }}>*</Text>
           </Text>
@@ -2788,7 +2788,7 @@ function NewPostModal({
             placeholder="Share your thoughts, ask questions, or provide details..."
             placeholderTextColor={colors.placeholder}
             multiline
-            style={{ ...fieldChrome, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: colors.text, marginBottom: 20, minHeight: 160, textAlignVertical: 'top' }}
+            style={{ ...fieldChrome, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: colors.text, marginBottom: 20, minHeight: 240, textAlignVertical: 'top' }}
           />
 
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
@@ -2939,30 +2939,30 @@ function NewPostModal({
           </TouchableOpacity>
 
           {uploadingAttachments ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
               <ActivityIndicator size="small" color={colors.brand} />
               <Text style={{ fontSize: 13, color: colors.textSecondary }}>Uploading attachments...</Text>
             </View>
           ) : null}
+
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TouchableOpacity onPress={onClose} style={{ flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: 'white', borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onSubmit}
+              disabled={!title.trim() || submitting || uploadingAttachments}
+              style={{ flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: title.trim() ? colors.brand : colors.border }}
+            >
+              {submitting ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>{editing ? 'Save' : 'Post'}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </ScrollView>
         </KeyboardAvoidingView>
-
-        <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16, paddingBottom: Platform.OS === 'ios' ? 32 : 16, borderTopWidth: 1, borderTopColor: colors.border }}>
-          <TouchableOpacity onPress={onClose} style={{ flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: colors.inputBg }}>
-            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onSubmit}
-            disabled={!title.trim() || submitting || uploadingAttachments}
-            style={{ flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: title.trim() ? colors.brand : colors.border }}
-          >
-            {submitting ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>{editing ? 'Save' : 'Post'}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
       </View>
     </Modal>
   );

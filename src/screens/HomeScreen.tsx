@@ -337,6 +337,9 @@ export default function HomeScreen({
   const { width: windowWidth } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const [useCelsius, setUseCelsius] = useState(true);
+  const [tempUnitLoaded, setTempUnitLoaded] = useState(false);
+  const tempToggleAnim = useRef(new Animated.Value(0)).current;
+  const [tempPillWidth, setTempPillWidth] = useState(0);
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
   const [sportsLoading, setSportsLoading] = useState(true);
   const [tempC, setTempC] = useState<number | null>(null);
@@ -346,6 +349,23 @@ export default function HomeScreen({
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const { start: quarterStart, end: quarterEnd } = getQuarterBounds(selectedQuarter);
+
+  useEffect(() => {
+    async function loadTempUnit() {
+      const stored = await AsyncStorage.getItem('temp_unit');
+      if (stored === 'F') {
+        setUseCelsius(false);
+        tempToggleAnim.setValue(1);
+      }
+      setTempUnitLoaded(true);
+    }
+    void loadTempUnit();
+  }, []);
+
+  useEffect(() => {
+    if (!tempUnitLoaded) return;
+    void AsyncStorage.setItem('temp_unit', useCelsius ? 'C' : 'F');
+  }, [useCelsius, tempUnitLoaded]);
 
   useEffect(() => {
     async function loadWeather() {
@@ -958,33 +978,58 @@ export default function HomeScreen({
                 size={24}
                 color={colors.brand}
               />
-              <View style={{
-                flexDirection: 'row',
-                backgroundColor: colors.inputBg,
-                borderRadius: 999,
-                padding: 3,
-                marginTop: 12,
-              }}>
-                {[
-                  { label: 'C', active: useCelsius, onPress: () => setUseCelsius(true) },
-                  { label: 'F', active: !useCelsius, onPress: () => setUseCelsius(false) },
-                ].map((option) => (
-                  <TouchableOpacity
-                    key={option.label}
-                    onPress={option.onPress}
-                    style={{
-                      borderRadius: 999,
-                      paddingHorizontal: 9,
-                      paddingVertical: 5,
-                      backgroundColor: option.active ? colors.brand : 'transparent',
-                    }}
-                  >
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: option.active ? '#ffffff' : colors.textSecondary }}>
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  const next = !useCelsius;
+                  setUseCelsius(next);
+                  Animated.spring(tempToggleAnim, {
+                    toValue: next ? 0 : 1,
+                    tension: 220,
+                    friction: 18,
+                    useNativeDriver: true,
+                  }).start();
+                }}
+                style={{
+                  flexDirection: 'row',
+                  backgroundColor: colors.inputBg,
+                  borderRadius: 999,
+                  padding: 3,
+                  marginTop: 12,
+                  overflow: 'hidden',
+                }}
+              >
+                <Animated.View
+                  style={{
+                    position: 'absolute',
+                    left: 3,
+                    top: 3,
+                    bottom: 3,
+                    width: tempPillWidth,
+                    borderRadius: 999,
+                    backgroundColor: colors.brand,
+                    transform: [{
+                      translateX: tempToggleAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, tempPillWidth],
+                      }),
+                    }],
+                  }}
+                />
+                {(['C', 'F'] as const).map((label, idx) => {
+                  const active = label === 'C' ? useCelsius : !useCelsius;
+                  return (
+                    <View
+                      key={label}
+                      onLayout={idx === 0 ? (e) => setTempPillWidth(e.nativeEvent.layout.width) : undefined}
+                      style={{ paddingHorizontal: 9, paddingVertical: 5 }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#ffffff' : colors.textSecondary }}>
+                        {label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </TouchableOpacity>
             </View>
           </View>
           <Text style={{ fontSize: 12, lineHeight: 18, color: colors.textTertiary, marginTop: 12 }}>

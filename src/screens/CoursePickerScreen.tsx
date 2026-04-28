@@ -1275,7 +1275,6 @@ export default function CoursePickerScreen({
       >
         <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: customizeBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(15,23,42,0.28)'] }) }}>
           <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={confirmCloseCustomizeModal} />
-          <Animated.View style={{ marginBottom: customizeKeyboardAnim }}>
           <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
           <Animated.View
             style={{
@@ -1285,9 +1284,7 @@ export default function CoursePickerScreen({
               paddingHorizontal: 18,
               paddingTop: 18,
               paddingBottom: 26,
-              maxHeight: keyboardHeight > 0
-                ? Dimensions.get('window').height - keyboardHeight - 20
-                : Dimensions.get('window').height * 0.82,
+              maxHeight: Dimensions.get('window').height * 0.82,
               transform: [{ translateY: customizeSheetAnim }],
             }}
           >
@@ -1303,7 +1300,7 @@ export default function CoursePickerScreen({
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
               <View style={{ gap: 12 }}>
                 <View>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Name</Text>
@@ -1529,7 +1526,6 @@ export default function CoursePickerScreen({
             </ScrollView>
           </Animated.View>
           </TouchableOpacity>
-          </Animated.View>
         </Animated.View>
       </Modal>
     </View>

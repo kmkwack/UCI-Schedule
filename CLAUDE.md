@@ -254,6 +254,15 @@ const QUARTERS = [
 - `src/screens/BoardScreen.tsx` — Added conditional X clear button to the board post `search` TextInput.
 - `src/screens/FriendsScreen.tsx` — Added conditional X clear button to the classmates `searchQuery` TextInput.
 
+### Session 75 (Add Friend modal — search + scroll + keyboard fixes)
+- `src/screens/FriendsScreen.tsx` — Search now queries both `email` and `name` via Supabase `.or()`. Email search strips the domain (uses only the part before `@`). Results list is a `ScrollView` capped at `maxHeight: 294` (3 rows) with vertical scroll indicator. Major/year text capped at 2 lines with ellipsis. Send Request moved to a button-only tap (row is a plain `View`). Modal stays open after sending a request. Backdrop and card restructured as siblings (backdrop is `StyleSheet.absoluteFillObject` `TouchableOpacity`; card is a plain `View` inside a `pointerEvents="box-none"` container) — eliminates all scroll-blocking from wrapper touchables. `TouchableWithoutFeedback` wraps only the static top section for keyboard dismiss; `ScrollView` dismisses keyboard on unhandled taps via `keyboardShouldPersistTaps="handled"`. Send Request button calls `Keyboard.dismiss()` before sending.
+
+### Session 74 (New Post modal — buttons inside scroll)
+- `src/screens/BoardScreen.tsx` — Moved Cancel/Post buttons from a fixed footer View into the ScrollView so they are reachable when the keyboard is open.
+
+### Session 75 (Persist C/F temperature preference)
+- `src/screens/HomeScreen.tsx` — Added `tempUnitLoaded` state + two effects: one loads `temp_unit` from AsyncStorage on mount and sets `useCelsius`; the other saves `'C'`/`'F'` to AsyncStorage whenever `useCelsius` changes (guarded by `tempUnitLoaded` to avoid overwriting stored value before load completes).
+
 ### Session 61 (RMP moved to ReviewsModal + Reviews button layout)
 - `src/components/ReviewsModal.tsx` — Added `sectionType: string` prop. Added RMP row in course info section (shows prof name as tappable link to RateMyProfessors). `fetchReviews` and `handleSubmit` filter/set `section_type`. Supabase `reviews` table requires `ALTER TABLE reviews ADD COLUMN section_type TEXT;`.
 - `src/screens/CoursePickerScreen.tsx` — Removed RMP button from section rows. Reviews button moved directly beneath Add button. Star rating ("★ X.X · N ratings") moved beneath Reviews button in right column. `fetchReviewSummary(courseCode, sectionType)` cache keyed as `"ECON 100A::Lec"`. Early-return guard: `if (cache[key]?.count)` (not truthy check). `handleExpandCourse` fetches summaries for all unique section types in the course.

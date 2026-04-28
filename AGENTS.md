@@ -1367,3 +1367,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64hy (Improve board image viewing)
 - **`src/screens/BoardScreen.tsx`** — Removed the Board landing helper subtitle, changed post-detail images to render with their full original aspect ratio instead of cropped 4:3 previews, and added a full-screen image viewer with a photo-library save action so users can inspect and save attached images.
+
+### Session 64hz (Keep board comment input above tab bar)
+- **`src/screens/BoardScreen.tsx`** — Added explicit bottom clearance to the post-detail comment composer so long image posts cannot leave the comment input hidden under the floating app tab bar.

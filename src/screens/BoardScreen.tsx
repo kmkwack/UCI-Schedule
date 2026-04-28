@@ -136,6 +136,7 @@ const REPORT_REASONS = [
 
 const BOARD_ATTACHMENTS_BUCKET = 'board-attachments';
 const DEPARTMENT_BOARD_CATEGORY_PREFIX = 'Department: ';
+const BOARD_TAB_BAR_CLEARANCE = 96;
 
 function departmentBoardCategory(department: string) {
   return `${DEPARTMENT_BOARD_CATEGORY_PREFIX}${department}`;
@@ -2230,7 +2231,7 @@ export default function BoardScreen({
                 return (
                   <ScrollView
                     style={{ flex: 1 }}
-                    contentContainerStyle={{ paddingBottom: 24 }}
+                    contentContainerStyle={{ paddingBottom: bottomInset + 24 }}
                     keyboardShouldPersistTaps="handled"
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={colors.brand} />}
                   >
@@ -2450,6 +2451,7 @@ export default function BoardScreen({
                           paddingBottom: Platform.OS === 'ios' ? 14 : 10,
                           borderTopWidth: 1,
                           borderTopColor: colors.border,
+                          marginBottom: bottomInset + BOARD_TAB_BAR_CLEARANCE,
                         }}
                       >
                         <TextInput

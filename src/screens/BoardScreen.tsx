@@ -1511,8 +1511,25 @@ export default function BoardScreen({
                 <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{school}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.inputBg, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, gap: 8 }}>
-              <Ionicons name="search-outline" size={17} color={colors.placeholder} />
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.card,
+                borderRadius: 18,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                gap: 9,
+                borderWidth: 1,
+                borderColor: colors.border,
+                shadowColor: '#0f172a',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: isDark ? 0.16 : 0.05,
+                shadowRadius: 16,
+                elevation: 3,
+              }}
+            >
+              <Ionicons name="search-outline" size={18} color={colors.placeholder} />
               <TextInput
                 placeholder="Search departments..."
                 placeholderTextColor={colors.placeholder}
@@ -1524,7 +1541,7 @@ export default function BoardScreen({
               />
               {departmentSearch.length > 0 ? (
                 <TouchableOpacity onPress={() => setDepartmentSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="close-circle" size={16} color={colors.placeholder} />
+                  <Ionicons name="close-circle" size={18} color={colors.placeholder} />
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -1902,8 +1919,25 @@ export default function BoardScreen({
                     <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>New Post</Text>
                   </TouchableOpacity>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, gap: 8 }}>
-                  <Ionicons name="search-outline" size={16} color={colors.placeholder} />
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: colors.card,
+                    borderRadius: 18,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    gap: 9,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    shadowColor: '#0f172a',
+                    shadowOffset: { width: 0, height: 8 },
+                    shadowOpacity: isDark ? 0.16 : 0.05,
+                    shadowRadius: 16,
+                    elevation: 3,
+                  }}
+                >
+                  <Ionicons name="search-outline" size={18} color={colors.placeholder} />
                   <TextInput
                     placeholder="Search posts..."
                     placeholderTextColor={colors.placeholder}
@@ -1913,7 +1947,7 @@ export default function BoardScreen({
                   />
                   {search.length > 0 && (
                     <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Ionicons name="close-circle" size={16} color={colors.placeholder} />
+                      <Ionicons name="close-circle" size={18} color={colors.placeholder} />
                     </TouchableOpacity>
                   )}
                 </View>

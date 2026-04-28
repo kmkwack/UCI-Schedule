@@ -1252,3 +1252,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64gq (Contain Board header actions)
 - **`src/screens/BoardScreen.tsx`** — Constrained the Board header title/subtitle column, shortened the subtitle and post button label, and prevented the action button row from shrinking so the messages and post buttons no longer spill off-screen.
+
+### Session 64gr (Unify board search fields)
+- **`src/screens/BoardScreen.tsx`** — Restyled the Department Boards picker search field and individual board post search field to match the main Board search bar, using the same card background, border, shadow, spacing, and icon sizing.

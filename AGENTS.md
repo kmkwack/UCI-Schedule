@@ -1597,3 +1597,45 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64kk (Guard sports event stale updates)
 - **`src/screens/HomeScreen.tsx`** — Added a selected-event ref and close helper for the sports event sheet so delayed RSVP/comment fetches from a previous event cannot overwrite the currently open event after users switch or close the detail view.
 - **`src/components/FeatureOnboardingScreen.tsx`** — Removed the leftover no-op onboarding backdrop component so the “no extra decorative shapes” direction is reflected directly in the render tree.
+
+### Session 64kl (Open existing friend chat history)
+- **`src/screens/MessagesScreen.tsx`** — Added an existing-conversation lookup before opening a direct chat target. Friend or board message buttons now resolve the prior conversation with actual messages and load its history immediately instead of showing `Start the conversation` until after a new send/re-entry cycle.
+
+### Session 64km (Polish chat room composer)
+- **`src/screens/MessagesScreen.tsx`** — Tightened the chat detail header, source-post preview, message bubble spacing, and composer styling. Added keyboard visibility tracking so the input bar drops extra safe-area padding while the keyboard is open, removed the send-time keyboard dismissal, and auto-scrolls the message list to the latest message for a more stable chat experience.
+
+### Session 64kn (Keep keyboard open after chat send)
+- **`src/screens/MessagesScreen.tsx`** — Added a TextInput ref and explicit focus retention around the send action so tapping the send button no longer blurs the composer or drops the keyboard after each message.
+
+### Session 64ko (Keep latest chat visible above keyboard)
+- **`src/screens/MessagesScreen.tsx`** — Added keyboard-show, input-focus, list-layout, and content-size scroll-to-end hooks plus a little extra bottom padding so the newest message stays visible above the composer when the keyboard opens.
+
+### Session 64kp (Stabilize chat scroll after sending)
+- **`src/screens/MessagesScreen.tsx`** — Replaced single-shot chat scroll correction with a short settle sequence after keyboard show, focus, layout, content-size changes, and message send completion so newly sent messages remain visible while the keyboard is already open.
+
+### Session 64kq (Normalize keyboard composers)
+- **`src/screens/BoardScreen.tsx`** — Matched the board post comment composer to the chat composer sizing, border, spacing, send button, keyboard padding, and focus behavior. The post detail scroll now settles to the composer while the keyboard is open instead of leaving the input row misaligned above the keyboard.
+- **`src/screens/HomeScreen.tsx`** — Updated the sports event comment composer to the same 40px input/send-button rhythm and multiline padding so comment inputs feel consistent across modal surfaces.
+
+### Session 64kr (Pin board comment composer)
+- **`src/screens/BoardScreen.tsx`** — Moved the post-detail comment composer out of the scroll content into a fixed bottom bar matching the Messages composer. This keeps the input row and send button aligned with the keyboard instead of letting the composer float inside long post/comment content.
+
+### Session 64ks (Keep latest text above composer)
+- **`src/screens/MessagesScreen.tsx`** — Added keyboard-aware bottom padding to the chat message list so the latest message stays above the fixed composer when the keyboard is open.
+- **`src/screens/BoardScreen.tsx`** — Added matching keyboard-aware scroll padding for board post comments now that the composer is pinned at the bottom of the post detail view.
+
+### Session 64kt (Course chat entry from timetable)
+- **`src/data/messages.ts`** — Added the `course` chat kind plus course metadata fields so messages can represent class-wide rooms in addition to friend and anonymous board chats.
+- **`src/screens/TimetableScreen.tsx`** — Added a `Course Chat` action to the course detail sheet. Tapping a timetable block can now open the room for that course and quarter.
+- **`App.tsx`** — Wired `TimetableScreen` into the existing messages modal so course chat targets open through the same Messages experience.
+- **`src/screens/MessagesScreen.tsx`** — Added course-chat previews, headers, list rows, and course-room creation/join handling. Course chats join immediately on open so prior class messages can load before the user sends anything.
+- **`supabase/sql/conversation_messages.sql`** — Extended conversation storage with course metadata and added `get_or_create_course_conversation`, which only lets students join a course room if that course is in their timetable for the matching quarter.
+
+### Session 64ku (Fix course chat timetable user cast)
+- **`supabase/sql/conversation_messages.sql`** — Cast `timetables.user_id` and `auth.uid()` to text inside `get_or_create_course_conversation` so installs where timetable user IDs are stored as text do not fail with `operator does not exist: text = uuid`.
+
+### Session 64kv (Course chat member count)
+- **`src/screens/MessagesScreen.tsx`** — Removed the large course preview card from course-chat detail rooms and moved the context into the header. Course chats now show participant counts in the room header and message list rows.
+
+### Session 64kw (Message edit and delete actions)
+- **`src/screens/MessagesScreen.tsx`** — Added shared long-press actions for all chat room types. Users can now long-press their own non-deleted messages to edit or soft-delete them, with a composer edit mode and optimistic message updates.

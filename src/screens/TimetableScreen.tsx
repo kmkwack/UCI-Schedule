@@ -12,6 +12,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import * as Linking from 'expo-linking';
 import MapView, { Marker } from 'react-native-maps';
+import type { ChatTarget } from '../data/messages';
 
 const RMP_SCHOOL_IDS: Record<string, string> = { 'UC Irvine': '1074' };
 
@@ -67,6 +68,7 @@ type Props = {
   onOpenCoursePicker: () => void;
   onRemoveCourse: (course: Course) => void;
   onEditCustomCourse?: (course: Course) => void;
+  onOpenChat?: (target: ChatTarget) => void;
   school: string;
   userId: string;
   quarterTimetables: Timetable[];
@@ -174,6 +176,7 @@ export default function TimetableScreen({
   onOpenCoursePicker,
   onRemoveCourse,
   onEditCustomCourse,
+  onOpenChat,
   school,
   userId,
   quarterTimetables,
@@ -1194,6 +1197,9 @@ export default function TimetableScreen({
             const mappedLocation = school === 'UC Irvine' ? getUciMapLocation(rawLocation) : null;
             const mapQuery = mappedLocation?.name ?? rawLocation;
             const courseMapUrl = hasMapLocation ? appleMapsUrl(mapQuery, school) : null;
+            const selectedQuarterKey = quarterKey(selectedQuarter);
+            const courseChatKey = `${selectedQuarterKey}:${selectedCourse.code}`;
+            const canOpenCourseChat = !!onOpenChat && selectedCourse.department !== 'CUSTOM';
             return (
               <View style={{ flex: 1, backgroundColor: colors.card }}>
                 <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
@@ -1302,14 +1308,44 @@ export default function TimetableScreen({
                   </View>
                 ) : null}
                 <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 10 }}>
+                  {canOpenCourseChat ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        onOpenChat?.({
+                          id: courseChatKey,
+                          kind: 'course',
+                          name: `${selectedCourse.code} Chat`,
+                          courseKey: courseChatKey,
+                          courseCode: selectedCourse.code,
+                          courseTitle: selectedCourse.title,
+                          quarterKey: selectedQuarterKey,
+                        });
+                        setSelectedCourse(null);
+                      }}
+                      style={{ backgroundColor: colors.brand, borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                    >
+                      <Ionicons name="chatbubbles-outline" size={17} color="white" />
+                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Course Chat</Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <TouchableOpacity
                     onPress={() => {
                       setReviewsCourse(selectedCourse);
                     }}
-                    style={{ backgroundColor: colors.brand, borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                    style={{
+                      borderRadius: 14,
+                      paddingVertical: 14,
+                      alignItems: 'center',
+                      flexDirection: 'row',
+                      justifyContent: 'center',
+                      gap: 8,
+                      borderWidth: canOpenCourseChat ? 1.5 : 0,
+                      borderColor: colors.brand,
+                      backgroundColor: canOpenCourseChat ? colors.brandBg : colors.brand,
+                    }}
                   >
-                    <Ionicons name="star-outline" size={17} color="white" />
-                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
+                    <Ionicons name="star-outline" size={17} color={canOpenCourseChat ? colors.brand : 'white'} />
+                    <Text style={{ color: canOpenCourseChat ? colors.brand : 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
                   </TouchableOpacity>
                   {courseMapUrl && !mappedLocation && (
                     <TouchableOpacity

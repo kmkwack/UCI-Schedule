@@ -1701,18 +1701,21 @@ export default function HomeScreen({
                       placeholder="Add a comment..."
                       placeholderTextColor={colors.placeholder}
                       multiline
+                      blurOnSubmit={false}
                       maxLength={500}
                       style={{
                         flex: 1,
-                        minHeight: 42,
-                        maxHeight: 96,
-                        borderRadius: 16,
+                        minHeight: 40,
+                        maxHeight: 104,
+                        borderRadius: 20,
                         borderWidth: 1,
                         borderColor: colors.border,
                         backgroundColor: colors.inputBg,
-                        paddingHorizontal: 13,
-                        paddingVertical: 10,
-                        fontSize: 13,
+                        paddingHorizontal: 14,
+                        paddingTop: 10,
+                        paddingBottom: 10,
+                        fontSize: 14,
+                        lineHeight: 19,
                         color: colors.text,
                       }}
                     />
@@ -1720,9 +1723,9 @@ export default function HomeScreen({
                       onPress={() => void handleSubmitSportsEventComment()}
                       disabled={!sportsEventCommentInput.trim() || submittingSportsEventComment}
                       style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 21,
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
                         alignItems: 'center',
                         justifyContent: 'center',
                         backgroundColor: sportsEventCommentInput.trim() ? colors.brand : colors.border,

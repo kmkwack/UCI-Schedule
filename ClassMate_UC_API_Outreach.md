@@ -12,7 +12,7 @@
 | **UCSD** | ⚠️ 비공식 | Registrar에 직접 요청 | registrar@ucsd.edu |
 | **UC Berkeley** | ✅ 공식 API Central 있음 | 외부 접근은 eis-support에 연락 | eis-support@berkeley.edu |
 | **UC Davis** | ⚠️ 제한적 | Registrar/IT에 직접 요청 | registrar@ucdavis.edu |
-| **UCSB** | ✅ 공식 API 포털 있음 | @ucsb.edu 이메일 필요 — 외부는 support에 이메일 | support@developer.ucsb.edu |
+| **UCSB** | ✅ 가장 개방적인 공식 포털 | developer.ucsb.edu 에서 앱 생성 후 승인 요청 | 포털 내 셀프서비스 |
 | **UCSC** | ❌ 공식 API 없음 | Registrar에 직접 요청 | registrar@ucsc.edu |
 | **UCR** | ⚠️ 포털 있으나 수업 API 없음 | Developer Portal 통해 요청 | ithelp@ucr.edu |
 
@@ -20,8 +20,9 @@
 
 ## 행동 가이드
 
-### UCSB — 이메일 필수 🟡
-→ 포털 계정은 `@ucsb.edu` UCSBNetID 로그인 전용. 외부 개발자는 `support@developer.ucsb.edu` 로 이메일 발송.
+### UCSB — 바로 시작 가능 🟢
+→ [developer.ucsb.edu](https://developer.ucsb.edu/) 에서 계정 생성 → "Academic Curriculums" API 구독 신청  
+별도 이메일 불필요. 포털 내에서 앱 등록 후 승인 대기.
 
 ### UCLA — 이메일 + 포털 등록 🟡
 → 아래 이메일을 `api-support@it.ucla.edu` 로 발송 + [developer.api.ucla.edu](https://developer.api.ucla.edu/) 에서 앱 생성
@@ -62,11 +63,14 @@ Could you point me to the right steps to get started, or let me know who I shoul
 
 Thank you so much for your time.
 
+ClassMate — [Testflight Beta / https://testflight.apple.com/join/9UjRhFmz ]
+
+review sign in email / pw : review@classmate.app / 123123
+
 Best,  
 Sihyun Park  
 B.S. Student, UC Irvine  
 mm3762571@gmail.com  
-ClassMate — [GitHub / App Link if available]
 
 ---
 
@@ -148,22 +152,20 @@ mm3762571@gmail.com
 ---
 
 ### 5. UCSB
-**To:** support@developer.ucsb.edu  
-**Subject:** External Developer Access Request — ClassMate Student Schedule App
+**To:** (Portal 내 메시지 또는 developer@ucsb.edu 로 사전 인사)  
+**Subject:** Introducing ClassMate — Requesting API Access via UCSB Developer Portal
 
 ---
 
 Hi UCSB Developer Portal Team,
 
-My name is Sihyun Park, and I'm an undergraduate student at UC Irvine. I'm the developer of **ClassMate**, a mobile app that helps college students browse live course offerings, build weekly timetables, and connect with classmates. ClassMate is currently live for UCI students via the Anteater API, and I'm expanding it across the UC system.
+My name is Sihyun Park, a UCI undergraduate and developer of **ClassMate**, a mobile schedule and community app for college students. I've already registered on the UCSB API Developer Portal and submitted a subscription request for the **Academic Curriculums** API.
 
-I came across the UCSB API Developer Portal and was impressed by the range of APIs available — particularly the Academic Curriculums API, which is exactly what I'd need to bring ClassMate to UCSB students. However, since portal accounts require a UCSBNetID, I'm not able to register as an external developer from UCI.
+I wanted to introduce myself and provide context for the access request. ClassMate currently serves UCI students through the Anteater API (maintained by ICSSC), and I'm expanding it to other UC campuses. For UCSB students, I plan to use the API for read-only course listing display — no student data, no write operations.
 
-I'm reaching out to ask whether there's a process for external UC developers to gain read-only access to course listing data. My intended use is strictly non-commercial and read-only: displaying publicly available course information (departments, sections, meeting times, instructors) to UCSB students within ClassMate.
+If there's anything else you need from me to approve the request, or if there's a preferred point of contact I should work with, please don't hesitate to reach out.
 
-I'm happy to provide documentation about the app, sign a data use agreement, or coordinate with your team in whatever way works best.
-
-Thank you so much — UCSB's developer ecosystem is genuinely impressive, and I'd love the chance to build on it.
+Thank you so much — I really appreciate UCSB having such an accessible developer ecosystem!
 
 Best,  
 Sihyun Park  

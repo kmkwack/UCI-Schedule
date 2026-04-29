@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   FlatList,
@@ -36,6 +37,11 @@ type ConversationPreview = {
   sourcePostId: string | null;
   sourceLabel: string | null;
   sourcePost: SourcePostPreview | null;
+  courseKey: string | null;
+  courseCode: string | null;
+  courseTitle: string | null;
+  quarterKey: string | null;
+  participantCount: number | null;
   lastMessage: string;
   timestamp: string;
   unread: number;
@@ -91,7 +97,9 @@ function isUuid(value: string) {
 }
 
 function conversationLabel(kind: ChatKind) {
-  return kind === 'friend' ? 'ClassMate' : 'Anonymous board chat';
+  if (kind === 'friend') return 'ClassMate';
+  if (kind === 'course') return 'Course chat';
+  return 'Anonymous board chat';
 }
 
 function messageTableMissing(error: any) {
@@ -112,6 +120,16 @@ function sourcePostImageAttachment(attachments: SourcePostAttachment[] | null | 
   ));
 }
 
+function conversationAccent(kind: ChatKind, brand: string) {
+  if (kind === 'board_anonymous') return '#111827';
+  return brand;
+}
+
+function formatMemberCount(count: number | null | undefined) {
+  if (!count || count <= 0) return null;
+  return `${count} ${count === 1 ? 'member' : 'members'}`;
+}
+
 export default function MessagesScreen({ onClose, openChatWith, userId, school }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -119,13 +137,34 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   const [selectedChat, setSelectedChat] = useState<ConversationPreview | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [messageInput, setMessageInput] = useState('');
+  const [editingMessage, setEditingMessage] = useState<MessageBubble | null>(null);
   const [messages, setMessages] = useState<MessageBubble[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [openingConversation, setOpeningConversation] = useState(false);
   const [sending, setSending] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const messageListRef = useRef<FlatList<MessageBubble>>(null);
+  const messageInputRef = useRef<TextInput>(null);
   const hasValidUserId = !!userId && isUuid(userId);
   const selectedConversationId = selectedChat?.conversationId ?? null;
+  const composerBottomPadding = keyboardVisible ? 8 : Math.max(insets.bottom, 8);
+  const messageListBottomPadding = keyboardVisible
+    ? editingMessage ? 132 : 92
+    : editingMessage ? 64 : 22;
+
+  const scrollMessagesToEnd = useCallback((animated = true, delay = 0) => {
+    const run = () => messageListRef.current?.scrollToEnd({ animated });
+    if (delay > 0) {
+      setTimeout(run, delay);
+      return;
+    }
+    requestAnimationFrame(run);
+  }, []);
+
+  const settleMessagesAtEnd = useCallback((animated = true) => {
+    [0, 60, 160, 320].forEach((delay) => scrollMessagesToEnd(animated, delay));
+  }, [scrollMessagesToEnd]);
 
   const mapMessageRow = useCallback((row: ConversationMessageRow): MessageBubble => ({
     id: row.id,
@@ -203,9 +242,6 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     messagesByConversation: Record<string, ConversationMessageRow[]>,
     sourcePostsById: Record<string, SourcePostPreview>
   ): ConversationPreview | null => {
-    const partner = participants.find((row) => row.conversation_id === conversation.id && row.user_id !== userId);
-    if (!partner) return null;
-
     const threadMessages = messagesByConversation[conversation.id] ?? [];
     const lastMessage = threadMessages[0];
     if (!lastMessage) return null;
@@ -215,10 +251,18 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       !message.deleted_at &&
       (!myParticipant.last_read_at || new Date(message.created_at) > new Date(myParticipant.last_read_at))
     )).length;
+    const isCourse = conversation.kind === 'course';
     const isAnonymous = conversation.kind === 'board_anonymous';
-    const name = isAnonymous
-      ? partner.alias_snapshot || anteaterAliasForId(partner.user_id)
-      : namesById[partner.user_id] || anteaterAliasForId(partner.user_id);
+    const partner = isCourse
+      ? null
+      : participants.find((row) => row.conversation_id === conversation.id && row.user_id !== userId);
+    if (!isCourse && !partner) return null;
+
+    const name = isCourse
+      ? `${conversation.course_code ?? 'Course'} Chat`
+      : isAnonymous
+        ? partner?.alias_snapshot || anteaterAliasForId(partner?.user_id ?? conversation.id)
+        : namesById[partner?.user_id ?? ''] || anteaterAliasForId(partner?.user_id ?? conversation.id);
     const sortStamp = new Date(lastMessage.created_at).getTime();
     const sourcePost = isAnonymous && conversation.source_post_id
       ? sourcePostsById[conversation.source_post_id] ?? {
@@ -230,10 +274,11 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
           deleted: true,
         }
       : null;
+    const participantCount = participants.filter((row) => row.conversation_id === conversation.id).length;
 
     return {
       conversationId: conversation.id,
-      partnerId: partner.user_id,
+      partnerId: isCourse ? conversation.course_key ?? conversation.id : partner?.user_id ?? conversation.id,
       kind: conversation.kind,
       name,
       avatar: getInitials(name),
@@ -241,6 +286,11 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       sourcePostId: conversation.source_post_id,
       sourceLabel: sourcePost?.title ?? null,
       sourcePost,
+      courseKey: conversation.course_key,
+      courseCode: conversation.course_code,
+      courseTitle: conversation.course_title,
+      quarterKey: conversation.quarter_key,
+      participantCount,
       lastMessage: lastMessage.deleted_at ? 'Message deleted' : lastMessage.content,
       timestamp: formatMessageTime(lastMessage.created_at),
       unread,
@@ -278,7 +328,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     ] = await Promise.all([
       supabase
         .from('conversations')
-        .select('id, school, kind, source_post_id, created_at, updated_at')
+        .select('id, school, kind, source_post_id, course_key, course_code, course_title, quarter_key, created_at, updated_at')
         .in('id', conversationIds),
       supabase
         .from('conversation_participants')
@@ -372,10 +422,112 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   }, [hasValidUserId, mapMessageRow, markThreadRead]);
 
   const openExistingConversation = useCallback(async (conversation: ConversationPreview) => {
+    setEditingMessage(null);
+    setMessageInput('');
     setSelectedChat(conversation);
     await fetchMessages(conversation);
     await fetchConversations({ silent: true });
   }, [fetchConversations, fetchMessages]);
+
+  const getOrCreateCourseConversationId = useCallback(async (target: {
+    id?: string;
+    partnerId?: string;
+    courseKey?: string | null;
+    courseCode?: string | null;
+    courseTitle?: string | null;
+    quarterKey?: string | null;
+    name?: string | null;
+  }) => {
+    const fallbackId = target.id ?? target.partnerId ?? '';
+    const { data, error } = await supabase.rpc('get_or_create_course_conversation', {
+      p_course_key: target.courseKey ?? fallbackId,
+      p_course_code: target.courseCode ?? target.name?.replace(/\s+Chat$/i, '') ?? 'Course',
+      p_course_title: target.courseTitle ?? null,
+      p_quarter_key: target.quarterKey ?? null,
+      p_conversation_school: school,
+    });
+
+    if (error) throw error;
+    return data as string;
+  }, [school]);
+
+  const fetchParticipantCount = useCallback(async (conversationId: string | null) => {
+    if (!conversationId) return null;
+    const { count, error } = await supabase
+      .from('conversation_participants')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('conversation_id', conversationId);
+
+    if (error) {
+      console.warn('Failed to load conversation participant count:', error);
+      return null;
+    }
+
+    return count ?? null;
+  }, []);
+
+  const findExistingConversationId = useCallback(async (target: ChatTarget) => {
+    if (!hasValidUserId) return null;
+
+    const { data: myParticipantsData, error: myParticipantsError } = await supabase
+      .from('conversation_participants')
+      .select('conversation_id')
+      .eq('user_id', userId);
+
+    if (myParticipantsError) throw myParticipantsError;
+
+    const myConversationIds = Array.from(new Set(
+      ((myParticipantsData ?? []) as Array<{ conversation_id: string }>).map((row) => row.conversation_id)
+    ));
+    if (myConversationIds.length === 0) return null;
+
+    const { data: conversationsData, error: conversationsError } = await supabase
+      .from('conversations')
+      .select('id, school, kind, source_post_id, course_key, course_code, course_title, quarter_key, created_at, updated_at')
+      .in('id', myConversationIds)
+      .eq('school', school)
+      .eq('kind', target.kind)
+      .order('updated_at', { ascending: false });
+
+    if (conversationsError) throw conversationsError;
+
+    const candidateConversations = ((conversationsData ?? []) as ConversationRow[]).filter((conversation) => {
+      if (target.kind === 'friend') return true;
+      if (target.kind === 'course') return conversation.course_key === (target.courseKey ?? target.id);
+      return conversation.source_post_id === (target.sourcePostId ?? null);
+    });
+    if (candidateConversations.length === 0) return null;
+    if (target.kind === 'course') return candidateConversations[0]?.id ?? null;
+
+    const candidateIds = candidateConversations.map((conversation) => conversation.id);
+    const { data: targetParticipantsData, error: targetParticipantsError } = await supabase
+      .from('conversation_participants')
+      .select('conversation_id')
+      .in('conversation_id', candidateIds)
+      .eq('user_id', target.id);
+
+    if (targetParticipantsError) throw targetParticipantsError;
+
+    const targetConversationIds = new Set(
+      ((targetParticipantsData ?? []) as Array<{ conversation_id: string }>).map((row) => row.conversation_id)
+    );
+    const pairConversations = candidateConversations.filter((conversation) => targetConversationIds.has(conversation.id));
+    if (pairConversations.length === 0) return null;
+
+    const { data: messageRows, error: messagesError } = await supabase
+      .from('conversation_messages')
+      .select('conversation_id, created_at')
+      .in('conversation_id', pairConversations.map((conversation) => conversation.id))
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (messagesError) throw messagesError;
+
+    const conversationsWithMessages = new Set(
+      ((messageRows ?? []) as Array<{ conversation_id: string }>).map((row) => row.conversation_id)
+    );
+    return pairConversations.find((conversation) => conversationsWithMessages.has(conversation.id))?.id ?? null;
+  }, [hasValidUserId, school, userId]);
 
   const openTargetConversation = useCallback(async (target: ChatTarget) => {
     if (!hasValidUserId) {
@@ -383,17 +535,23 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       return;
     }
 
-    if (!isUuid(target.id)) {
+    if (target.kind !== 'course' && !isUuid(target.id)) {
       Alert.alert('Could not open chat', 'This user cannot be messaged from this older board item.');
       return;
     }
 
-    const conversationId = target.conversationId ?? null;
-    setOpeningConversation(!!conversationId);
+    setOpeningConversation(true);
     try {
-      const name = target.kind === 'board_anonymous'
-        ? anteaterAliasForId(target.id)
-        : target.name?.trim() || anteaterAliasForId(target.id);
+      const conversationId = target.conversationId ?? (
+        target.kind === 'course'
+          ? await getOrCreateCourseConversationId(target)
+          : await findExistingConversationId(target)
+      );
+      const name = target.kind === 'course'
+        ? target.name?.trim() || `${target.courseCode ?? 'Course'} Chat`
+        : target.kind === 'board_anonymous'
+          ? anteaterAliasForId(target.id)
+          : target.name?.trim() || anteaterAliasForId(target.id);
       const sourcePostsById = target.kind === 'board_anonymous' && target.sourcePostId
         ? await loadSourcePostsById([target.sourcePostId])
         : {};
@@ -407,6 +565,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
             deleted: !target.sourceLabel?.trim(),
           }
         : null;
+      const participantCount = target.kind === 'course' ? await fetchParticipantCount(conversationId) : null;
       const preview: ConversationPreview = {
         conversationId,
         partnerId: target.id,
@@ -417,12 +576,19 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         sourcePostId: target.sourcePostId ?? null,
         sourceLabel: sourcePost?.title ?? null,
         sourcePost,
+        courseKey: target.courseKey ?? (target.kind === 'course' ? target.id : null),
+        courseCode: target.courseCode ?? null,
+        courseTitle: target.courseTitle ?? null,
+        quarterKey: target.quarterKey ?? null,
+        participantCount,
         lastMessage: 'Start the conversation.',
         timestamp: '',
         unread: 0,
         sortStamp: Date.now(),
       };
 
+      setEditingMessage(null);
+      setMessageInput('');
       setSelectedChat(preview);
       if (conversationId) {
         await fetchMessages(preview);
@@ -440,7 +606,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     } finally {
       setOpeningConversation(false);
     }
-  }, [fetchConversations, fetchMessages, hasValidUserId, loadSourcePostsById, school]);
+  }, [fetchConversations, fetchMessages, fetchParticipantCount, findExistingConversationId, getOrCreateCourseConversationId, hasValidUserId, loadSourcePostsById, school]);
 
   useEffect(() => {
     void fetchConversations();
@@ -459,6 +625,26 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     return () => clearInterval(interval);
   }, [fetchConversations, hasValidUserId]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => {
+      setKeyboardVisible(true);
+      settleMessagesAtEnd(true);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [settleMessagesAtEnd]);
+
+  useEffect(() => {
+    if (!selectedChat || messages.length === 0) return;
+    settleMessagesAtEnd(true);
+  }, [messages.length, selectedChat, settleMessagesAtEnd]);
 
   useEffect(() => {
     if (!hasValidUserId || !selectedConversationId) return;
@@ -506,22 +692,172 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     };
   }, [fetchConversations, hasValidUserId, mapMessageRow, markThreadRead, selectedConversationId]);
 
+  const cancelMessageEdit = useCallback(() => {
+    setEditingMessage(null);
+    setMessageInput('');
+    requestAnimationFrame(() => messageInputRef.current?.focus());
+  }, []);
+
+  const handleDeleteMessage = useCallback(async (message: MessageBubble) => {
+    if (!selectedConversationId || !message.isMe || message.deleted) return;
+
+    Alert.alert(
+      'Delete message?',
+      'This will remove the message from this conversation.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const deletedAt = new Date().toISOString();
+            setMessages((current) => current.map((item) => (
+              item.id === message.id
+                ? { ...item, content: 'Message deleted', deleted: true }
+                : item
+            )));
+            if (editingMessage?.id === message.id) cancelMessageEdit();
+
+            const { data, error } = await supabase
+              .from('conversation_messages')
+              .update({ deleted_at: deletedAt })
+              .eq('id', message.id)
+              .eq('sender_id', userId)
+              .select('id, conversation_id, sender_id, content, created_at, deleted_at')
+              .single();
+
+            if (error) {
+              Alert.alert('Could not delete message', error.message);
+              void fetchMessages(selectedChat as ConversationPreview, { silent: true });
+              return;
+            }
+
+            if (data) {
+              const row = data as ConversationMessageRow;
+              setMessages((current) => current.map((item) => (
+                item.id === row.id ? mapMessageRow(row) : item
+              )));
+            }
+            void fetchConversations({ silent: true });
+          },
+        },
+      ]
+    );
+  }, [
+    cancelMessageEdit,
+    editingMessage?.id,
+    fetchConversations,
+    fetchMessages,
+    mapMessageRow,
+    selectedChat,
+    selectedConversationId,
+    userId,
+  ]);
+
+  const beginEditMessage = useCallback((message: MessageBubble) => {
+    if (!message.isMe || message.deleted) return;
+    setEditingMessage(message);
+    setMessageInput(message.content);
+    requestAnimationFrame(() => messageInputRef.current?.focus());
+  }, []);
+
+  const openMessageActions = useCallback((message: MessageBubble) => {
+    if (!message.isMe || message.deleted) return;
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Edit Message', 'Delete Message', 'Cancel'],
+          destructiveButtonIndex: 1,
+          cancelButtonIndex: 2,
+          userInterfaceStyle: 'light',
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) beginEditMessage(message);
+          if (buttonIndex === 1) void handleDeleteMessage(message);
+        }
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Message options',
+      undefined,
+      [
+        { text: 'Edit Message', onPress: () => beginEditMessage(message) },
+        { text: 'Delete Message', style: 'destructive', onPress: () => void handleDeleteMessage(message) },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }, [beginEditMessage, handleDeleteMessage]);
+
   const handleSend = async () => {
     if (!messageInput.trim() || !selectedChat || sending || !hasValidUserId) return;
     const content = messageInput.trim();
     setSending(true);
+    messageInputRef.current?.focus();
+
+    if (editingMessage) {
+      const messageToEdit = editingMessage;
+      const previousInput = messageInput;
+      setEditingMessage(null);
+      setMessageInput('');
+
+      const { data, error } = await supabase
+        .from('conversation_messages')
+        .update({ content })
+        .eq('id', messageToEdit.id)
+        .eq('sender_id', userId)
+        .is('deleted_at', null)
+        .select('id, conversation_id, sender_id, content, created_at, deleted_at')
+        .single();
+
+      setSending(false);
+      requestAnimationFrame(() => messageInputRef.current?.focus());
+
+      if (error) {
+        setEditingMessage(messageToEdit);
+        setMessageInput(previousInput);
+        Alert.alert('Could not edit message', error.message);
+        return;
+      }
+
+      if (data) {
+        const row = data as ConversationMessageRow;
+        setMessages((current) => current.map((item) => (
+          item.id === row.id ? mapMessageRow(row) : item
+        )));
+      }
+      void fetchConversations({ silent: true });
+      settleMessagesAtEnd(true);
+      return;
+    }
 
     let conversationId = selectedChat.conversationId;
     if (!conversationId) {
-      const { data: conversationData, error: conversationError } = await supabase.rpc('get_or_create_conversation', {
-        p_target_user_id: selectedChat.partnerId,
-        p_conversation_kind: selectedChat.kind,
-        p_source_post_id: selectedChat.sourcePostId ?? null,
-        p_conversation_school: school,
-      });
+      let conversationData: string | null = null;
+      let conversationError: any = null;
+
+      if (selectedChat.kind === 'course') {
+        try {
+          conversationData = await getOrCreateCourseConversationId(selectedChat);
+        } catch (error) {
+          conversationError = error;
+        }
+      } else {
+        const result = await supabase.rpc('get_or_create_conversation', {
+          p_target_user_id: selectedChat.partnerId,
+          p_conversation_kind: selectedChat.kind,
+          p_source_post_id: selectedChat.sourcePostId ?? null,
+          p_conversation_school: school,
+        });
+        conversationData = result.data as string | null;
+        conversationError = result.error;
+      }
 
       if (conversationError) {
         setSending(false);
+        requestAnimationFrame(() => messageInputRef.current?.focus());
         Alert.alert(
           'Could not start chat',
           messageTableMissing(conversationError)
@@ -531,7 +867,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         return;
       }
 
-      conversationId = conversationData as string;
+      conversationId = conversationData;
+      if (!conversationId) {
+        setSending(false);
+        requestAnimationFrame(() => messageInputRef.current?.focus());
+        Alert.alert('Could not start chat', 'Please try again.');
+        return;
+      }
       setSelectedChat((current) => (
         current && current.partnerId === selectedChat.partnerId
           ? { ...current, conversationId }
@@ -551,6 +893,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     if (error) {
       setSending(false);
+      requestAnimationFrame(() => messageInputRef.current?.focus());
       Alert.alert(
         'Could not send message',
         messageTableMissing(error)
@@ -562,6 +905,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     setSending(false);
     setMessageInput('');
+    requestAnimationFrame(() => messageInputRef.current?.focus());
     if (data) {
       const row = data as ConversationMessageRow;
       setMessages((current) => {
@@ -569,7 +913,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         return [...current, mapMessageRow(row)];
       });
     }
+    settleMessagesAtEnd(true);
     await fetchConversations({ silent: true });
+    settleMessagesAtEnd(true);
   };
 
   const filteredChats = useMemo(() => {
@@ -611,37 +957,60 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={0}
         >
+          {(() => {
+            const memberCountLabel = selectedChat.kind === 'course'
+              ? formatMemberCount(selectedChat.participantCount)
+              : null;
+            const headerLabel = memberCountLabel
+              ? `${selectedChat.label} · ${memberCountLabel}`
+              : selectedChat.label;
+            return (
           <View style={{
             flexDirection: 'row', alignItems: 'center',
-            paddingHorizontal: 16, paddingTop: insets.top + 10, paddingBottom: 12,
-            borderBottomWidth: 1, borderBottomColor: colors.border, gap: 12,
+            paddingHorizontal: 16,
+            paddingTop: insets.top + 8,
+            paddingBottom: 10,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.borderSubtle,
+            backgroundColor: colors.card,
+            gap: 10,
           }}>
-            <TouchableOpacity onPress={() => { setSelectedChat(null); setMessageInput(''); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="chevron-back" size={26} color={colors.text} />
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedChat(null);
+                setMessageInput('');
+                setEditingMessage(null);
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="chevron-back" size={24} color={colors.text} />
             </TouchableOpacity>
             <View style={{
-              width: 40, height: 40, borderRadius: 20,
-              backgroundColor: selectedChat.kind === 'friend' ? colors.brand : '#111827',
+              width: 36, height: 36, borderRadius: 18,
+            backgroundColor: conversationAccent(selectedChat.kind, colors.brand),
               alignItems: 'center', justifyContent: 'center',
             }}>
-              <Text style={{ color: 'white', fontWeight: '700', fontSize: 13 }}>{selectedChat.avatar}</Text>
+              <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>{selectedChat.avatar}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{selectedChat.name}</Text>
-              <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{selectedChat.label}</Text>
+              <Text numberOfLines={1} style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{selectedChat.name}</Text>
+              <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2, fontWeight: '700' }}>
+                {headerLabel}
+              </Text>
             </View>
           </View>
+            );
+          })()}
 
           {selectedChat.kind === 'board_anonymous' && selectedChat.sourcePost ? (
             <View
               style={{
                 marginHorizontal: 16,
-                marginTop: 12,
-                marginBottom: 2,
-                borderRadius: 14,
-                padding: 10,
+                marginTop: 10,
+                marginBottom: 0,
+                borderRadius: 12,
+                padding: 9,
                 backgroundColor: colors.card,
                 borderWidth: 1,
                 borderColor: colors.borderSubtle,
@@ -657,13 +1026,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               {selectedChat.sourcePost.imageUrl ? (
                 <Image
                   source={{ uri: selectedChat.sourcePost.imageUrl }}
-                  style={{ width: 54, height: 54, borderRadius: 10, backgroundColor: colors.bgTertiary }}
+                  style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: colors.bgTertiary }}
                 />
               ) : (
                 <View
                   style={{
-                    width: 54,
-                    height: 54,
+                    width: 48,
+                    height: 48,
                     borderRadius: 10,
                     backgroundColor: colors.bgTertiary,
                     alignItems: 'center',
@@ -678,10 +1047,10 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 </View>
               )}
               <View style={{ flex: 1, justifyContent: 'center' }}>
-                <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
+                <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>
                   {selectedChat.sourcePost.title}
                 </Text>
-                <Text numberOfLines={2} style={{ marginTop: 3, fontSize: 12, lineHeight: 17, color: colors.textSecondary }}>
+                <Text numberOfLines={2} style={{ marginTop: 2, fontSize: 11, lineHeight: 16, color: colors.textSecondary }}>
                   {selectedChat.sourcePost.deleted
                     ? 'The original board post is no longer available.'
                     : truncateText(selectedChat.sourcePost.body, 88) || selectedChat.sourcePost.category || 'Board post'}
@@ -699,11 +1068,18 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
             </View>
           ) : (
             <FlatList
+              ref={messageListRef}
               data={messages}
               keyExtractor={(m) => m.id}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16, gap: 12, flexGrow: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: messageListBottomPadding, gap: 10, flexGrow: 1 }}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              onLayout={() => {
+                if (messages.length > 0) settleMessagesAtEnd(false);
+              }}
+              onContentSizeChange={() => {
+                if (messages.length > 0) settleMessagesAtEnd(true);
+              }}
               ListEmptyComponent={() => (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
                   <Text style={{ fontSize: 14, color: colors.textTertiary }}>Start the conversation.</Text>
@@ -711,54 +1087,100 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               )}
               renderItem={({ item: msg }) => (
                 <View style={{ flexDirection: 'row', justifyContent: msg.isMe ? 'flex-end' : 'flex-start' }}>
-                  <View style={{
-                    maxWidth: '78%',
-                    backgroundColor: msg.isMe ? colors.brand : colors.bgTertiary,
-                    borderRadius: 18,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    opacity: msg.deleted ? 0.68 : 1,
-                  }}>
+                  <TouchableOpacity
+                    activeOpacity={msg.isMe && !msg.deleted ? 0.78 : 1}
+                    onLongPress={() => openMessageActions(msg)}
+                    delayLongPress={260}
+                    style={{
+                      maxWidth: '78%',
+                      backgroundColor: msg.isMe ? colors.brand : colors.bgTertiary,
+                      borderRadius: 18,
+                      borderBottomRightRadius: msg.isMe ? 6 : 18,
+                      borderBottomLeftRadius: msg.isMe ? 18 : 6,
+                      paddingHorizontal: 13,
+                      paddingVertical: 9,
+                      opacity: msg.deleted ? 0.68 : 1,
+                    }}
+                  >
                     <Text style={{ fontSize: 14, color: msg.isMe ? 'white' : colors.text, lineHeight: 19 }}>
                       {msg.content}
                     </Text>
                     <Text style={{ fontSize: 10, color: msg.isMe ? 'rgba(255,255,255,0.65)' : colors.textTertiary, marginTop: 3 }}>
                       {msg.timestamp}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 </View>
               )}
             />
           )}
 
           <View style={{
-            flexDirection: 'row', alignItems: 'center',
-            paddingHorizontal: 16, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 8) + 8,
-            borderTopWidth: 1, borderTopColor: colors.border, gap: 10,
+            flexDirection: 'row',
+            alignItems: 'flex-end',
+            paddingHorizontal: 12,
+            paddingTop: 9,
+            paddingBottom: composerBottomPadding,
+            borderTopWidth: 1,
+            borderTopColor: colors.borderSubtle,
+            backgroundColor: colors.card,
+            gap: 8,
           }}>
+            {editingMessage ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  right: 12,
+                  bottom: 58 + composerBottomPadding,
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  backgroundColor: colors.brandBg,
+                  borderWidth: 1,
+                  borderColor: `${colors.brand}30`,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <Ionicons name="create-outline" size={15} color={colors.brand} />
+                <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, fontWeight: '700', color: colors.brand }}>
+                  Editing message
+                </Text>
+                <TouchableOpacity onPress={cancelMessageEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={17} color={colors.brand} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <TextInput
+              ref={messageInputRef}
               value={messageInput}
               onChangeText={setMessageInput}
-              placeholder="Type a message..."
+              onFocus={() => settleMessagesAtEnd(true)}
+              placeholder={editingMessage ? 'Edit message...' : 'Type a message...'}
               placeholderTextColor={colors.placeholder}
               multiline
+              blurOnSubmit={false}
               maxLength={2000}
               style={{
                 flex: 1,
-                maxHeight: 112,
+                minHeight: 40,
+                maxHeight: 104,
                 backgroundColor: colors.inputBg,
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 22,
-                paddingHorizontal: 16,
-                paddingVertical: 10,
+                borderRadius: 20,
+                paddingHorizontal: 14,
+                paddingTop: 10,
+                paddingBottom: 10,
                 fontSize: 14,
+                lineHeight: 19,
                 color: colors.text,
               }}
             />
             <TouchableOpacity
+              onPressIn={() => messageInputRef.current?.focus()}
               onPress={() => {
-                Keyboard.dismiss();
                 void handleSend();
               }}
               disabled={!messageInput.trim() || sending}
@@ -769,7 +1191,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 opacity: sending ? 0.7 : 1,
               }}
             >
-              {sending ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="send" size={16} color="white" />}
+              {sending
+                ? <ActivityIndicator size="small" color="white" />
+                : <Ionicons name={editingMessage ? 'checkmark' : 'send'} size={editingMessage ? 19 : 16} color="white" />}
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -829,7 +1253,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               <Ionicons name="chatbubble-ellipses-outline" size={42} color={colors.border} />
               <Text style={{ marginTop: 12, fontSize: 15, fontWeight: '700', color: colors.text }}>No messages yet</Text>
               <Text style={{ marginTop: 6, fontSize: 13, lineHeight: 19, color: colors.textTertiary, textAlign: 'center' }}>
-                Friend chats use real names. Board chats stay anonymous.
+                Friend chats use real names. Board chats stay anonymous. Course chats open from your timetable.
               </Text>
             </View>
           )}
@@ -845,7 +1269,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               <View style={{ position: 'relative' }}>
                 <View style={{
                   width: 48, height: 48, borderRadius: 24,
-                  backgroundColor: chat.kind === 'friend' ? colors.brand : '#111827',
+                  backgroundColor: conversationAccent(chat.kind, colors.brand),
                   alignItems: 'center', justifyContent: 'center',
                 }}>
                   <Text style={{ color: 'white', fontWeight: '700', fontSize: 13 }}>{chat.avatar}</Text>
@@ -871,13 +1295,20 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                     width: 7,
                     height: 7,
                     borderRadius: 4,
-                    backgroundColor: chat.kind === 'friend' ? colors.brand : '#111827',
+                    backgroundColor: conversationAccent(chat.kind, colors.brand),
                   }} />
                   <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: '700' }}>{chat.label}</Text>
                 </View>
                 {chat.kind === 'board_anonymous' && chat.sourcePost ? (
                   <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 3 }} numberOfLines={1}>
                     From: {chat.sourcePost.title}
+                  </Text>
+                ) : null}
+                {chat.kind === 'course' ? (
+                  <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 3 }} numberOfLines={1}>
+                    {[chat.courseTitle || chat.quarterKey?.replace('-', ' ') || 'Course chat', formatMemberCount(chat.participantCount)]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </Text>
                 ) : null}
                 <Text style={{ fontSize: 13, color: colors.textSecondary }} numberOfLines={1}>{chat.lastMessage}</Text>

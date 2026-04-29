@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
@@ -612,7 +612,24 @@ export default function BoardScreen({
   const postsCacheKey = `board_posts_${school}_${userId}`;
   const boardsCacheKey = `board_catalog_${school}`;
   const boardListScrollRef = useRef<ScrollView>(null);
+  const selectedPostScrollRef = useRef<ScrollView>(null);
+  const commentInputRef = useRef<TextInput>(null);
   const postsRef = useRef<Post[]>([]);
+  const [boardKeyboardVisible, setBoardKeyboardVisible] = useState(false);
+  const commentComposerBottomPadding = boardKeyboardVisible ? 8 : 12;
+  const commentComposerBottomMargin = boardKeyboardVisible ? 0 : bottomInset + BOARD_TAB_BAR_CLEARANCE;
+  const selectedPostScrollBottomPadding = boardKeyboardVisible ? 88 : 20;
+  const scrollSelectedPostToComposer = useCallback((animated = true, delay = 0) => {
+    const run = () => selectedPostScrollRef.current?.scrollToEnd({ animated });
+    if (delay > 0) {
+      setTimeout(run, delay);
+      return;
+    }
+    requestAnimationFrame(run);
+  }, []);
+  const settleSelectedPostComposer = useCallback((animated = true) => {
+    [0, 80, 180, 340].forEach((delay) => scrollSelectedPostToComposer(animated, delay));
+  }, [scrollSelectedPostToComposer]);
   const departmentBoards = useMemo(() => UCI_DEPARTMENTS.map(departmentBoardFor), []);
   const hotPosts = useMemo(() => {
     return posts
@@ -661,6 +678,21 @@ export default function BoardScreen({
   useEffect(() => {
     if (scrollToTopTrigger > 0) boardListScrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [scrollToTopTrigger]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => {
+      setBoardKeyboardVisible(true);
+      if (selectedPost) settleSelectedPostComposer(true);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => setBoardKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [selectedPost, settleSelectedPostComposer]);
 
   function resetComposer() {
     setEditingPostId(null);
@@ -1288,7 +1320,7 @@ export default function BoardScreen({
   async function handleAddComment() {
     if (!commentInput.trim() || !selectedPost) return;
 
-    Keyboard.dismiss();
+    commentInputRef.current?.focus();
     if (editingComment) {
       const editedAt = new Date().toISOString();
       const content = commentInput.trim();
@@ -1321,6 +1353,8 @@ export default function BoardScreen({
       );
       setEditingComment(null);
       setCommentInput('');
+      requestAnimationFrame(() => commentInputRef.current?.focus());
+      settleSelectedPostComposer(true);
       return;
     }
 
@@ -1350,7 +1384,10 @@ export default function BoardScreen({
     );
     setCommentInput('');
     setReplyingToComment(null);
+    requestAnimationFrame(() => commentInputRef.current?.focus());
+    settleSelectedPostComposer(true);
     await loadCommentsForPost(selectedPost.id);
+    settleSelectedPostComposer(true);
   }
 
   async function handleCreatePost() {
@@ -2402,10 +2439,19 @@ export default function BoardScreen({
               {(() => {
                 const post = posts.find((entry) => entry.id === selectedPost.id) ?? selectedPost;
                 return (
+                  <>
                   <ScrollView
+                    ref={selectedPostScrollRef}
                     style={{ flex: 1 }}
-                    contentContainerStyle={{ paddingBottom: bottomInset + 24 }}
+                    contentContainerStyle={{ paddingBottom: selectedPostScrollBottomPadding }}
                     keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                    onLayout={() => {
+                      if (boardKeyboardVisible) settleSelectedPostComposer(false);
+                    }}
+                    onContentSizeChange={() => {
+                      if (boardKeyboardVisible) settleSelectedPostComposer(true);
+                    }}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={colors.brand} />}
                   >
                     <View style={{ paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
@@ -2574,104 +2620,121 @@ export default function BoardScreen({
                       ) : (
                         <Text style={{ fontSize: 14, color: colors.textTertiary, marginBottom: 18 }}>No comments yet.</Text>
                       )}
-
-                      {editingComment ? (
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            backgroundColor: colors.bgTertiary,
-                            borderRadius: 12,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
-                            marginBottom: 10,
-                          }}
-                        >
-                          <Text style={{ fontSize: 13, color: colors.textSecondary, fontWeight: '600', flex: 1 }}>
-                            Editing your comment
-                          </Text>
-                          <TouchableOpacity
-                            onPress={() => {
-                              setEditingComment(null);
-                              setCommentInput('');
-                            }}
-                          >
-                            <Ionicons name="close" size={18} color={colors.textSecondary} />
-                          </TouchableOpacity>
-                        </View>
-                      ) : null}
-
-                      {replyingToComment ? (
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            backgroundColor: colors.brandBg,
-                            borderRadius: 12,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
-                            marginBottom: 10,
-                          }}
-                        >
-                          <Text style={{ fontSize: 13, color: colors.brand, fontWeight: '600', flex: 1 }}>
-                            Replying to {replyingToComment.authorName}
-                          </Text>
-                          <TouchableOpacity onPress={() => setReplyingToComment(null)}>
-                            <Ionicons name="close" size={18} color={colors.brand} />
-                          </TouchableOpacity>
-                        </View>
-                      ) : null}
-
+                    </View>
+                  </ScrollView>
+                  <View
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingTop: 8,
+                      paddingBottom: commentComposerBottomPadding,
+                      borderTopWidth: 1,
+                      borderTopColor: colors.borderSubtle,
+                      backgroundColor: colors.card,
+                      marginBottom: commentComposerBottomMargin,
+                    }}
+                  >
+                    {editingComment ? (
                       <View
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
-                          gap: 10,
-                          paddingTop: 12,
-                          paddingBottom: Platform.OS === 'ios' ? 14 : 10,
-                          borderTopWidth: 1,
-                          borderTopColor: colors.border,
-                          marginBottom: bottomInset + BOARD_TAB_BAR_CLEARANCE,
+                          justifyContent: 'space-between',
+                          backgroundColor: colors.bgTertiary,
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          marginBottom: 8,
                         }}
                       >
-                        <TextInput
-                          value={commentInput}
-                          onChangeText={setCommentInput}
-                          placeholder={editingComment ? 'Edit your comment...' : replyingToComment ? 'Write a reply...' : 'Add a comment...'}
-                          placeholderTextColor={colors.placeholder}
-                          style={{
-                            flex: 1,
-                            backgroundColor: colors.inputBg,
-                            borderWidth: 1,
-                            borderColor: colors.border,
-                            borderRadius: 22,
-                            paddingHorizontal: 16,
-                            paddingVertical: 10,
-                            fontSize: 14,
-                            color: colors.text,
-                          }}
-                          onSubmitEditing={() => void handleAddComment()}
-                          returnKeyType="send"
-                        />
+                        <Text style={{ fontSize: 13, color: colors.textSecondary, fontWeight: '600', flex: 1 }}>
+                          Editing your comment
+                        </Text>
                         <TouchableOpacity
-                          onPress={() => void handleAddComment()}
-                          disabled={!commentInput.trim()}
-                          style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 20,
-                            backgroundColor: commentInput.trim() ? colors.brand : colors.border,
-                            alignItems: 'center',
-                            justifyContent: 'center',
+                          onPress={() => {
+                            setEditingComment(null);
+                            setCommentInput('');
                           }}
                         >
-                          <Ionicons name="send" size={16} color="white" />
+                          <Ionicons name="close" size={18} color={colors.textSecondary} />
                         </TouchableOpacity>
                       </View>
+                    ) : null}
+
+                    {replyingToComment ? (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          backgroundColor: colors.brandBg,
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, color: colors.brand, fontWeight: '600', flex: 1 }}>
+                          Replying to {replyingToComment.authorName}
+                        </Text>
+                        <TouchableOpacity onPress={() => setReplyingToComment(null)}>
+                          <Ionicons name="close" size={18} color={colors.brand} />
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'flex-end',
+                        gap: 8,
+                      }}
+                    >
+                      <TextInput
+                        ref={commentInputRef}
+                        value={commentInput}
+                        onChangeText={setCommentInput}
+                        onFocus={() => settleSelectedPostComposer(true)}
+                        placeholder={editingComment ? 'Edit your comment...' : replyingToComment ? 'Write a reply...' : 'Add a comment...'}
+                        placeholderTextColor={colors.placeholder}
+                        multiline
+                        blurOnSubmit={false}
+                        maxLength={1000}
+                        style={{
+                          flex: 1,
+                          minHeight: 40,
+                          maxHeight: 104,
+                          backgroundColor: colors.inputBg,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 20,
+                          paddingHorizontal: 14,
+                          paddingTop: 10,
+                          paddingBottom: 10,
+                          fontSize: 14,
+                          lineHeight: 19,
+                          color: colors.text,
+                        }}
+                        onSubmitEditing={() => void handleAddComment()}
+                        returnKeyType="send"
+                      />
+                      <TouchableOpacity
+                        onPressIn={() => commentInputRef.current?.focus()}
+                        onPress={() => void handleAddComment()}
+                        disabled={!commentInput.trim()}
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 20,
+                          backgroundColor: commentInput.trim() ? colors.brand : colors.border,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Ionicons name="send" size={16} color="white" />
+                      </TouchableOpacity>
                     </View>
-                  </ScrollView>
+                  </View>
+                  </>
                 );
               })()}
             </KeyboardAvoidingView>

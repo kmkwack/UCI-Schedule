@@ -21,7 +21,6 @@ import AppErrorBoundary from './src/components/AppErrorBoundary';
 import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
-import ProfileEditorScreen from './src/components/ProfileEditorScreen';
 import { Course, Quarter, QUARTERS, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey, getAcademicQuarterForDate, resolveCurrentQuarter } from './src/data/courses';
 import {
   buildDisplayName,
@@ -106,6 +105,12 @@ const DEFAULT_UNIVERSITY: University = {
   location: 'Irvine, CA',
   logo: 'UCI',
 };
+
+const REVIEW_ACCOUNT_EMAILS = new Set(['review@classmate.app']);
+
+function isReviewAccountEmail(email: string | null | undefined) {
+  return REVIEW_ACCOUNT_EMAILS.has((email ?? '').trim().toLowerCase());
+}
 
 type AppContentProps = { themePreference: ThemePreference; onThemeChange: (v: ThemePreference) => void };
 
@@ -663,6 +668,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       settingsDetails =
         (settingsRow as Record<string, any> | null | undefined)?.profile_details as Record<string, any> | null | undefined;
+      const forceFeatureOnboarding = isReviewAccountEmail(userEmail);
 
       setUserProfile(
         profileFromSources(
@@ -673,23 +679,23 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       );
 
       if (!profileRow && !settingsRow) {
-        setNeedsProfileSetup(true);
-        setNeedsFeatureOnboarding(false);
+        setNeedsProfileSetup(false);
+        setNeedsFeatureOnboarding(true);
         setShowNotificationPermissionPrompt(false);
         setShowBrandIntro(false);
       } else if (!settingsRow) {
-        setNeedsProfileSetup(true);
-        setNeedsFeatureOnboarding(false);
+        setNeedsProfileSetup(false);
+        setNeedsFeatureOnboarding(true);
         setShowNotificationPermissionPrompt(false);
         setShowBrandIntro(false);
       } else if (settingsDetails?.profileSetupComplete === false) {
-        setNeedsProfileSetup(true);
-        setNeedsFeatureOnboarding(false);
+        setNeedsProfileSetup(false);
+        setNeedsFeatureOnboarding(true);
         setShowNotificationPermissionPrompt(false);
         setShowBrandIntro(false);
       } else if (hasCompletedProfileSetup(settingsDetails)) {
         setNeedsProfileSetup(false);
-        if (needsInitialOnboarding(settingsDetails)) {
+        if (forceFeatureOnboarding || needsInitialOnboarding(settingsDetails)) {
           setNeedsFeatureOnboarding(true);
           setShowNotificationPermissionPrompt(false);
           setShowBrandIntro(false);
@@ -1599,9 +1605,44 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
   };
 
+  const handleSaveOnboardingProfile = async (nextProfile: EditableProfile): Promise<boolean> => {
+    if (!userId) return false;
+
+    setSavingOnboarding(true);
+    const safeEmail = userEmail || nextProfile.email;
+    const next = { ...nextProfile, email: safeEmail };
+    const nextName = buildDisplayName(next);
+
+    const { error } = await supabase.from('profiles').upsert({
+      id: userId,
+      email: safeEmail,
+      name: nextName,
+      major: next.major,
+      year: next.year,
+      school: currentSchool,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      setSavingOnboarding(false);
+      Alert.alert('Could not save profile', error.message);
+      return false;
+    }
+
+    try {
+      await saveUserSettingsRow(userSettings, next, expoPushToken, true, false);
+      setUserProfile(next);
+      setNeedsProfileSetup(false);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setSavingOnboarding(false);
+    }
+  };
+
   const handleCompleteFeatureOnboarding = () => {
-    setNeedsFeatureOnboarding(false);
-    setShowNotificationPermissionPrompt(true);
+    void handleCompleteNotificationPrompt(false);
   };
 
   const handleCompleteNotificationPrompt = async (enabled: boolean) => {
@@ -1642,6 +1683,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       await saveUserSettingsRow(nextSettings, userProfile, nextToken, true, true);
       setUserSettings(nextSettings);
+      setNeedsFeatureOnboarding(false);
       setShowNotificationPermissionPrompt(false);
       setShowBrandIntro(true);
     } catch {
@@ -1827,8 +1869,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               setUserId(id);
               setUserEmail(email);
               setUserProfile(fallbackProfileFromEmail(email));
-              setNeedsProfileSetup(true);
-              setNeedsFeatureOnboarding(false);
+              setNeedsProfileSetup(false);
+              setNeedsFeatureOnboarding(true);
               setShowNotificationPermissionPrompt(false);
               setShowBrandIntro(false);
             }}
@@ -1857,25 +1899,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     return <AuthNavigator stack={authStack} onPop={popAuth} renderScreen={renderAuthScreen} />;
   }
 
-  if (needsProfileSetup) {
-    return (
-      <ProfileEditorScreen
-        title="Set Up Your Profile"
-        subtitle="Tell ClassMate a little about yourself before you jump into your campus dashboard."
-        showBackButton={false}
-        userEmail={userEmail}
-        initialProfile={userProfile}
-        onSave={handleSaveProfile}
-        saving={savingProfile}
-        saveLabel="Continue to ClassMate"
-      />
-    );
-  }
-
-  if (showBrandIntro) {
-    return <ClassMateIntroScreen onComplete={() => setShowBrandIntro(false)} />;
-  }
-
   if (showNotificationPermissionPrompt) {
     return (
       <NotificationPermissionScreen
@@ -1886,8 +1909,21 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     );
   }
 
+  if (showBrandIntro) {
+    return <ClassMateIntroScreen onComplete={() => setShowBrandIntro(false)} />;
+  }
+
   if (needsFeatureOnboarding) {
-    return <FeatureOnboardingScreen onFinish={handleCompleteFeatureOnboarding} finishing={savingOnboarding} />;
+    return (
+      <FeatureOnboardingScreen
+        onFinish={handleCompleteFeatureOnboarding}
+        onCompleteNotifications={handleCompleteNotificationPrompt}
+        finishing={savingOnboarding}
+        initialProfile={userProfile}
+        userEmail={userEmail}
+        onSaveProfile={handleSaveOnboardingProfile}
+      />
+    );
   }
 
   // ── main app ──────────────────────────────────────────────────────────────────

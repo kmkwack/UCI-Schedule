@@ -1,75 +1,463 @@
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  Easing,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { fallbackProfileFromEmail, type EditableProfile } from '../data/userPreferences';
 
 type Props = {
   onFinish: () => Promise<void> | void;
+  onCompleteNotifications?: (enabled: boolean) => Promise<void> | void;
   finishing?: boolean;
+  initialProfile?: EditableProfile;
+  userEmail?: string;
+  onSaveProfile?: (profile: EditableProfile) => Promise<boolean>;
 };
 
 type Slide = {
+  eyebrow: string;
   title: string;
   body: string;
-  eyebrow: string;
   accent: string;
+  kind: 'arrival' | 'names' | 'profile' | 'personal' | 'tour' | 'notifications';
 };
+
+const PALETTE = {
+  bg: '#f4f7ff',
+  bgDark: '#09111d',
+  ink: '#16285b',
+  inkSoft: '#5e73a8',
+  inkMuted: '#8b97b4',
+  brand: '#4169E1',
+  border: '#e4eaff',
+  borderDark: 'rgba(255,255,255,0.08)',
+};
+
+const YEARS = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'Grad'];
+const GENDER_OPTIONS = ['Prefer not to say', 'Female', 'Male', 'Non-binary', 'Other'];
+const NOTIFICATION_BENEFITS = [
+  {
+    icon: 'notifications-outline' as const,
+    title: 'Class reminders that actually help',
+    copy: 'Get a heads-up before class, not after you already forgot.',
+  },
+  {
+    icon: 'chatbubble-ellipses-outline' as const,
+    title: 'Messages and friend requests',
+    copy: 'Know when classmates reach out instead of checking manually.',
+  },
+  {
+    icon: 'calendar-clear-outline' as const,
+    title: "Today's classes at 8 AM",
+    copy: 'Start the day with a quick summary of what is coming up.',
+  },
+];
+const COMMON_MAJORS = [
+  'Undeclared',
+  'Biological Sciences',
+  'Business Administration',
+  'Business Economics',
+  'Computer Science',
+  'Computer Science and Engineering',
+  'Data Science',
+  'Economics',
+  'Education Sciences',
+  'Engineering',
+  'Informatics',
+  'International Studies',
+  'Mathematics',
+  'Mechanical Engineering',
+  'Philosophy',
+  'Political Science',
+  'Psychology',
+  'Public Health Policy',
+  'Public Health Science',
+  'Quantitative Economics',
+  'Software Engineering',
+];
 
 const SLIDES: Slide[] = [
   {
-    eyebrow: 'HOME',
-    title: 'Start with today’s live class card',
-    body: 'Home opens on the Apple-style class card you swipe through, with current, completed, and upcoming classes plus quick quarter and weather context below.',
-    accent: '#3D6CFF',
-  },
-  {
-    eyebrow: 'TIMETABLE',
-    title: 'Build your week in My Schedule',
-    body: 'Add real classes first, then drop in custom blocks for the rest of your life.',
+    eyebrow: '01 · Arrival',
+    title: 'Welcome, Anteater.',
+    body: "Let's set up the campus app built around your schedule, classmates, and UCI life.",
     accent: '#4169E1',
+    kind: 'arrival',
   },
   {
-    eyebrow: 'CLASSMATES',
-    title: 'See which friends share your classes',
-    body: 'ClassMates now starts with search, requests, and a shared-classes block that shows which courses overlap this quarter before the friend list.',
-    accent: '#5B7CFA',
+    eyebrow: '02 · Roll Call',
+    title: 'What should we call you?',
+    body: 'Your full name keeps your account clear. Your nickname is what classmates see day to day.',
+    accent: '#4169E1',
+    kind: 'names',
   },
   {
-    eyebrow: 'BOARDS',
-    title: 'Find the right board faster',
-    body: 'Browse Hot Board, department boards, and community boards, then open posts with inline images, native file previews, likes, replies, and reports.',
-    accent: '#FF6B6B',
+    eyebrow: '03 · About You',
+    title: 'Where do you fit in?',
+    body: 'Your year and major help ClassMate surface better classmates, boards, and course context.',
+    accent: '#4169E1',
+    kind: 'profile',
+  },
+  {
+    eyebrow: '04 · Optional',
+    title: 'A little more about you?',
+    body: 'These details are optional. Add them now, or leave them blank and update your profile later.',
+    accent: '#4169E1',
+    kind: 'personal',
+  },
+  {
+    eyebrow: '05 · App Tour',
+    title: 'Meet ClassMate.',
+    body: 'Scroll through the core pieces of the app: today, your timetable, classmates, and boards.',
+    accent: '#4169E1',
+    kind: 'tour',
+  },
+  {
+    eyebrow: '06 · Notifications',
+    title: 'Turn on notifications for the good stuff',
+    body: 'ClassMate can remind you about classes, messages, comments, and friend requests right when they matter.',
+    accent: '#4169E1',
+    kind: 'notifications',
   },
 ];
 
-function HomePreview() {
+function ProgressBar({ index, accent, isDark }: { index: number; accent: string; isDark: boolean }) {
   return (
-    <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View>
-          <Text style={{ fontSize: 18, fontWeight: '800', color: '#16285b' }}>Today</Text>
-          <Text style={{ fontSize: 12, color: '#7a859c', marginTop: 2 }}>April 27 Monday · Week 5</Text>
-        </View>
-        <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#eef3ff', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="person-outline" size={16} color="#4169E1" />
-        </View>
+    <View style={{ flexDirection: 'row', gap: 4, marginTop: 12 }}>
+      {SLIDES.map((slide, i) => (
+        <View
+          key={slide.eyebrow}
+          style={{
+            flex: 1,
+            height: 3,
+            borderRadius: 2,
+            backgroundColor: i <= index ? accent : isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.08)',
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+function PrimaryButton({
+  children,
+  onPress,
+  accent,
+  disabled,
+  loading,
+}: {
+  children: string;
+  onPress: () => void;
+  accent: string;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      disabled={disabled || loading}
+      onPress={onPress}
+      activeOpacity={0.9}
+      style={{
+        minHeight: 56,
+        borderRadius: 16,
+        backgroundColor: disabled ? '#d9dee8' : accent,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row',
+        gap: 8,
+        shadowColor: accent,
+        shadowOffset: { width: 0, height: 14 },
+        shadowOpacity: disabled ? 0 : 0.26,
+        shadowRadius: 24,
+        elevation: disabled ? 0 : 8,
+        opacity: loading ? 0.75 : 1,
+      }}
+    >
+      {loading ? <ActivityIndicator size="small" color="white" /> : null}
+      <Text style={{ color: 'white', fontSize: 16, fontWeight: '800', letterSpacing: -0.2 }}>
+        {children}
+      </Text>
+      {!loading ? <Ionicons name="arrow-forward" size={17} color="white" /> : null}
+    </TouchableOpacity>
+  );
+}
+
+function OnboardingField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  optional,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+  optional?: boolean;
+}) {
+  return (
+    <View style={{ marginBottom: 13 }}>
+      <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.6, color: PALETTE.inkMuted, textTransform: 'uppercase', marginBottom: 6 }}>
+        {label}
+        {optional ? <Text style={{ color: '#b7bfcd', fontWeight: '600' }}> optional</Text> : null}
+      </Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#b7bfcd"
+        autoCorrect={false}
+        style={{
+          minHeight: 52,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: PALETTE.border,
+          backgroundColor: '#ffffff',
+          paddingHorizontal: 16,
+          fontSize: 16,
+          fontWeight: '600',
+          color: PALETTE.ink,
+        }}
+      />
+    </View>
+  );
+}
+
+function PhotoBackdrop({ isDark }: { isDark: boolean }) {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
+      <Image
+        source={require('../../assets/uci-anthill-plaza.jpg')}
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' }}
+        resizeMode="cover"
+        blurRadius={3}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          backgroundColor: isDark ? 'rgba(9,17,29,0.64)' : 'rgba(244,247,255,0.72)',
+        }}
+      />
+    </View>
+  );
+}
+
+function SoftBlueBackdrop({ isDark }: { isDark: boolean }) {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
+      <View style={{ position: 'absolute', top: -40, right: -50, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(65,105,225,0.14)' }} />
+      <View style={{ position: 'absolute', bottom: 60, left: -60, width: 160, height: 160, borderRadius: 80, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.26)' }} />
+    </View>
+  );
+}
+
+function NamesForm({
+  profile,
+  updateProfile,
+}: {
+  profile: EditableProfile;
+  updateProfile: (patch: Partial<EditableProfile>) => void;
+}) {
+  return (
+    <View style={{ marginTop: 22 }}>
+      <OnboardingField label="First name" value={profile.firstName} onChangeText={(firstName) => updateProfile({ firstName })} placeholder="Alex" />
+      <OnboardingField label="Middle name" value={profile.middleName} onChangeText={(middleName) => updateProfile({ middleName })} optional />
+      <OnboardingField label="Last name" value={profile.lastName} onChangeText={(lastName) => updateProfile({ lastName })} placeholder="Park" />
+      <OnboardingField label="Nickname" value={profile.nickname} onChangeText={(nickname) => updateProfile({ nickname })} placeholder="What friends call you" />
+    </View>
+  );
+}
+
+function ProfileFitForm({
+  profile,
+  updateProfile,
+}: {
+  profile: EditableProfile;
+  updateProfile: (patch: Partial<EditableProfile>) => void;
+}) {
+  const [majorQuery, setMajorQuery] = useState(profile.major || '');
+  const suggestions = COMMON_MAJORS
+    .filter((major) => major.toLowerCase().includes(majorQuery.trim().toLowerCase()))
+    .slice(0, 8);
+
+  useEffect(() => {
+    setMajorQuery(profile.major || '');
+  }, [profile.major]);
+
+  return (
+    <View style={{ marginTop: 22 }}>
+      <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.6, color: PALETTE.inkMuted, textTransform: 'uppercase', marginBottom: 8 }}>
+        Year
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+        {YEARS.map((year) => {
+          const active = profile.year === year;
+          return (
+            <TouchableOpacity
+              key={year}
+              onPress={() => updateProfile({ year })}
+              activeOpacity={0.85}
+              style={{
+                paddingHorizontal: 15,
+                paddingVertical: 10,
+                borderRadius: 999,
+                borderWidth: 1.5,
+                borderColor: active ? PALETTE.brand : PALETTE.border,
+                backgroundColor: active ? PALETTE.brand : '#ffffff',
+              }}
+            >
+              <Text style={{ color: active ? 'white' : PALETTE.ink, fontSize: 13, fontWeight: '800' }}>{year}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      <View style={{ backgroundColor: '#ffffff', borderRadius: 24, padding: 16, borderWidth: 1, borderColor: '#e7ecfb' }}>
+      <OnboardingField
+        label="Major"
+        value={majorQuery}
+        onChangeText={(major) => {
+          setMajorQuery(major);
+          updateProfile({ major });
+        }}
+        placeholder="Search or type your major"
+      />
+      {majorQuery.trim().length > 0 ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: -3 }}>
+          {suggestions.map((major) => {
+            const active = profile.major === major;
+            return (
+              <TouchableOpacity
+                key={major}
+                onPress={() => {
+                  setMajorQuery(major);
+                  updateProfile({ major });
+                }}
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: 11,
+                  paddingVertical: 7,
+                  backgroundColor: active ? PALETTE.brand : '#eef3ff',
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '800', color: active ? 'white' : PALETTE.brand }}>
+                  {major}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function formatBirthDate(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length > 4) return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+  if (digits.length > 2) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return digits;
+}
+
+function PersonalDetailsForm({
+  profile,
+  updateProfile,
+}: {
+  profile: EditableProfile;
+  updateProfile: (patch: Partial<EditableProfile>) => void;
+}) {
+  return (
+    <View style={{ marginTop: 22 }}>
+      <View style={{ marginBottom: 13 }}>
+        <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.6, color: PALETTE.inkMuted, textTransform: 'uppercase', marginBottom: 6 }}>
+          Date of birth <Text style={{ color: '#b7bfcd', fontWeight: '600' }}>optional</Text>
+        </Text>
+        <TextInput
+          value={profile.dateOfBirth}
+          onChangeText={(dateOfBirth) => updateProfile({ dateOfBirth: formatBirthDate(dateOfBirth) })}
+          placeholder="MM/DD/YYYY"
+          placeholderTextColor="#b7bfcd"
+          keyboardType="number-pad"
+          style={{
+            minHeight: 52,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: PALETTE.border,
+            backgroundColor: '#ffffff',
+            paddingHorizontal: 16,
+            fontSize: 16,
+            fontWeight: '600',
+            color: PALETTE.ink,
+          }}
+        />
+      </View>
+
+      <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.6, color: PALETTE.inkMuted, textTransform: 'uppercase', marginBottom: 8 }}>
+        Gender <Text style={{ color: '#b7bfcd', fontWeight: '600' }}>optional</Text>
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {GENDER_OPTIONS.map((gender) => {
+          const active = profile.gender === gender;
+          return (
+            <TouchableOpacity
+              key={gender}
+              onPress={() => updateProfile({ gender })}
+              activeOpacity={0.85}
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderRadius: 999,
+                borderWidth: 1.5,
+                borderColor: active ? PALETTE.brand : PALETTE.border,
+                backgroundColor: active ? PALETTE.brand : '#ffffff',
+              }}
+            >
+              <Text style={{ color: active ? 'white' : PALETTE.ink, fontSize: 13, fontWeight: '800' }}>{gender}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <View style={{ marginTop: 20, borderRadius: 18, backgroundColor: '#eef3ff', padding: 15 }}>
+        <Text style={{ fontSize: 13, lineHeight: 19, color: PALETTE.inkSoft, fontWeight: '600' }}>
+          You can edit this later in Settings. Leaving this empty will not limit any core ClassMate features.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function TodayPreview() {
+  return (
+    <View style={{ gap: 12, marginTop: 24 }}>
+      <View style={{ backgroundColor: '#ffffff', borderRadius: 24, padding: 17, borderWidth: 1, borderColor: '#e7ecfb' }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#5eead4' }} />
-              <Text style={{ fontSize: 12, fontWeight: '800', color: '#7a859c' }}>Current class</Text>
+              <Text style={{ fontSize: 12, fontWeight: '900', color: '#7a859c' }}>Current class</Text>
             </View>
-            <Text style={{ fontSize: 26, lineHeight: 30, fontWeight: '900', color: '#16285b' }}>Ends in</Text>
-            <Text style={{ fontSize: 26, lineHeight: 30, fontWeight: '900', color: '#16285b' }}>22 min</Text>
-            <Text numberOfLines={1} style={{ fontSize: 17, fontWeight: '800', color: '#16285b', marginTop: 12 }}>ECON 129</Text>
+            <Text style={{ fontSize: 27, lineHeight: 31, fontWeight: '900', color: '#16203a' }}>Ends in</Text>
+            <Text style={{ fontSize: 27, lineHeight: 31, fontWeight: '900', color: '#16203a' }}>22 min</Text>
+            <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: '900', color: '#16203a', marginTop: 13 }}>ECON 129</Text>
             <Text style={{ fontSize: 13, color: '#7a859c', marginTop: 5 }}>1:00-1:50 PM · SSTR 103</Text>
           </View>
           <View style={{ width: 64, height: 64, borderRadius: 32, borderWidth: 7, borderColor: '#e7ecfb', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 16, fontWeight: '900', color: '#16285b' }}>1/3</Text>
+            <Text style={{ fontSize: 16, fontWeight: '900', color: '#16203a' }}>1/3</Text>
             <Text style={{ fontSize: 11, color: '#7a859c' }}>done</Text>
           </View>
         </View>
@@ -83,238 +471,245 @@ function HomePreview() {
           </View>
         </View>
       </View>
-
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
-        <View style={{ width: 16, height: 6, borderRadius: 3, backgroundColor: '#5eead4' }} />
-        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#dbe4f6' }} />
-        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#dbe4f6' }} />
-      </View>
-
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1, backgroundColor: '#eef3ff', borderRadius: 18, padding: 14 }}>
-          <Text style={{ fontSize: 12, fontWeight: '800', color: '#4169E1', marginBottom: 8 }}>Spring 2026</Text>
-          <Text style={{ fontSize: 22, fontWeight: '900', color: '#16285b' }}>38%</Text>
-          <Text style={{ fontSize: 12, color: '#60708e' }}>47 days left</Text>
-        </View>
-        <View style={{ flex: 1, backgroundColor: '#fff4ea', borderRadius: 18, padding: 14 }}>
-          <Text style={{ fontSize: 12, fontWeight: '800', color: '#f97316', marginBottom: 8 }}>Weather</Text>
-          <Text style={{ fontSize: 22, fontWeight: '900', color: '#9a3412' }}>19°</Text>
-          <Text style={{ fontSize: 12, color: '#c26f40' }}>Clear Sky</Text>
-        </View>
-      </View>
     </View>
   );
 }
 
-function TimetablePreview() {
-  const blocks = [
-    { dept: 'ECON', num: '129', day: 0, color: '#dbeafe', text: '#1d4ed8', top: 22, height: 46 },
-    { dept: 'COMPSCI', num: '161', day: 2, color: '#dcfce7', text: '#15803d', top: 72, height: 56 },
-    { dept: 'MATH', num: '2B', day: 4, color: '#ffedd5', text: '#c2410c', top: 34, height: 42 },
+function SchedulePreview() {
+  const rows = [
+    ['9:30', 'ECON 100A · Microeconomics', 'SSL 100', '#3b82f6'],
+    ['11:00', 'ICS 33 · Programming Concepts', 'DBH 1100', '#a855f7'],
+    ['1:00', 'PHIL 5 · Critical Reasoning', 'HH 1010', '#22c55e'],
+    ['3:30', 'KOR 1B · Korean II', 'HIB 110', '#f97316'],
   ];
 
   return (
-    <View style={{ backgroundColor: '#ffffff', borderRadius: 22, padding: 14 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <Text style={{ fontSize: 18, fontWeight: '900', color: '#16285b' }}>Timetable</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={{ backgroundColor: '#eef3ff', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-            <Text style={{ color: '#4169E1', fontSize: 11, fontWeight: '900' }}>Spring 2026</Text>
+    <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 15, borderWidth: 1, borderColor: '#edf1ff', gap: 10, marginTop: 24 }}>
+      <Text style={{ paddingLeft: 60, fontSize: 11, fontWeight: '900', color: PALETTE.inkMuted, letterSpacing: 0.8 }}>
+        TUE · APR 14
+      </Text>
+      {rows.map(([time, code, room, color]) => (
+        <View key={code} style={{ flexDirection: 'row', alignItems: 'stretch', gap: 12 }}>
+          <Text style={{ width: 48, paddingTop: 8, textAlign: 'right', fontSize: 11, fontWeight: '800', color: PALETTE.inkMuted }}>{time}</Text>
+          <View style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: `${color}14`, borderLeftWidth: 3, borderLeftColor: color }}>
+            <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '800', color: PALETTE.ink, marginBottom: 2 }}>{code}</Text>
+            <Text style={{ fontSize: 11, color: PALETTE.inkMuted }}>{room}</Text>
           </View>
-          <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: '#f4f6fb', alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="settings-outline" size={15} color="#7a859c" />
-          </View>
         </View>
-      </View>
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <View style={{ backgroundColor: '#4169E1', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 }}>
-          <Text style={{ color: 'white', fontSize: 11, fontWeight: '900' }}>My Schedule</Text>
-        </View>
-        <View style={{ backgroundColor: '#eef3ff', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 }}>
-          <Text style={{ color: '#4169E1', fontSize: 11, fontWeight: '800' }}>Plan B</Text>
-        </View>
-        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#eef3ff', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="add" size={15} color="#4169E1" />
-        </View>
-      </View>
-
-      <View style={{ height: 190, borderRadius: 18, backgroundColor: '#f5f5f7', overflow: 'hidden' }}>
-        <View style={{ position: 'absolute', left: 34, top: 0, right: 0, height: 26, flexDirection: 'row' }}>
-          {['M', 'T', 'W', 'Th', 'F'].map((day, index) => (
-            <View
-              key={day}
-              style={{
-                flex: 1,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#ffffff',
-                borderLeftWidth: index === 0 ? 0 : 1,
-                borderLeftColor: '#e1e5ee',
-              }}
-            >
-              <Text style={{ fontSize: 10, fontWeight: '900', color: '#64748b' }}>{day}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={{ position: 'absolute', left: 34, right: 0, top: 26, bottom: 0, flexDirection: 'row' }}>
-          {['M', 'T', 'W', 'Th', 'F'].map((day, index) => (
-            <View
-              key={`${day}-column`}
-              style={{
-                flex: 1,
-                position: 'relative',
-                backgroundColor: '#ffffff',
-                borderLeftWidth: index === 0 ? 0 : 1,
-                borderLeftColor: '#e1e5ee',
-              }}
-            >
-              {blocks
-                .filter((block) => block.day === index)
-                .map((block) => (
-                  <View
-                    key={`${block.dept}-${block.num}`}
-                    style={{
-                      position: 'absolute',
-                      left: 5,
-                      right: 5,
-                      top: block.top,
-                      height: block.height,
-                      borderRadius: 8,
-                      backgroundColor: block.color,
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      paddingHorizontal: 2,
-                      borderWidth: 1,
-                      borderColor: 'rgba(15, 23, 42, 0.05)',
-                    }}
-                  >
-                    <Text style={{ color: block.text, fontSize: 7, fontWeight: '900' }} numberOfLines={1}>
-                      {block.dept}
-                    </Text>
-                    <Text style={{ color: block.text, fontSize: 8, fontWeight: '900' }} numberOfLines={1}>
-                      {block.num}
-                    </Text>
-                  </View>
-                ))}
-            </View>
-          ))}
-        </View>
-
-        {[0, 1, 2, 3].map((row) => (
-          <View key={row} style={{ position: 'absolute', left: 34, right: 0, top: 26 + row * 40, height: 1, backgroundColor: '#edf0f6' }} />
-        ))}
-
-        {['9 AM', '11 AM', '1 PM', '3 PM'].map((time, index) => (
-          <Text
-            key={time}
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: 29 + index * 40,
-              width: 28,
-              fontSize: 8,
-              color: '#8892a7',
-              textAlign: 'right',
-            }}
-          >
-            {time}
-          </Text>
-        ))}
-
-      </View>
+      ))}
     </View>
   );
 }
 
-function FriendsPreview() {
+function ClassMatesPreview() {
+  const mates = [
+    { name: 'Sienna', initials: 'S', color: '#f97316', shared: 'ECON 100A', x: -86, y: -76 },
+    { name: 'Marcus', initials: 'M', color: '#3b82f6', shared: 'ICS 33', x: 88, y: -60 },
+    { name: 'Aria', initials: 'A', color: '#a855f7', shared: 'PHIL 5', x: -96, y: 70 },
+    { name: 'Daniel', initials: 'D', color: '#22c55e', shared: 'KOR 1B', x: 94, y: 78 },
+  ];
+
   return (
-    <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 12, gap: 8 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <View>
-          <Text style={{ fontSize: 16, fontWeight: '900', color: '#16285b' }}>ClassMates</Text>
-          <Text style={{ fontSize: 11, color: '#7a859c', marginTop: 1 }}>Search, requests, shared classes</Text>
+    <View style={{ height: 292, alignItems: 'center', justifyContent: 'center', marginTop: 10 }}>
+      <View style={{ position: 'absolute', width: 230, height: 230, borderRadius: 115, borderWidth: 1, borderColor: '#e7ecfb' }} />
+      <View style={{ position: 'absolute', width: 148, height: 148, borderRadius: 74, borderWidth: 1, borderColor: '#eef3ff' }} />
+      <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: PALETTE.brand, alignItems: 'center', justifyContent: 'center', zIndex: 5 }}>
+        <Text style={{ color: 'white', fontSize: 18, fontWeight: '900' }}>You</Text>
+      </View>
+      {mates.map((mate) => (
+        <View key={mate.name} style={{ position: 'absolute', left: '50%', top: '50%', marginLeft: mate.x - 34, marginTop: mate.y - 34, alignItems: 'center', gap: 4 }}>
+          <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: mate.color, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: 'white', fontSize: 18, fontWeight: '900' }}>{mate.initials}</Text>
+          </View>
+          <Text style={{ fontSize: 11, fontWeight: '900', color: PALETTE.ink }}>{mate.name}</Text>
+          <View style={{ borderRadius: 999, backgroundColor: `${mate.color}18`, paddingHorizontal: 7, paddingVertical: 2 }}>
+            <Text style={{ fontSize: 9, fontWeight: '800', color: mate.color }}>{mate.shared}</Text>
+          </View>
         </View>
+      ))}
+    </View>
+  );
+}
+
+function BoardsPreview() {
+  const boards = [
+    { code: 'ECON 100A', topic: 'Anyone have notes from Tue?', replies: 14, color: '#3b82f6' },
+    { code: 'ICS 33', topic: 'Project 2 study group · Thu 7pm DBH', replies: 8, color: '#a855f7' },
+    { code: 'PHIL 5', topic: 'Final paper Q&A', replies: 23, color: '#22c55e' },
+  ];
+
+  return (
+    <View style={{ gap: 10, marginTop: 24 }}>
+      {boards.map((board) => (
+        <View key={board.code} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 15, padding: 13, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#edf1ff' }}>
+          <View style={{ width: 4, height: 38, borderRadius: 2, backgroundColor: board.color }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 10, fontWeight: '900', color: board.color, letterSpacing: 0.6, marginBottom: 3 }}>{board.code}</Text>
+            <Text numberOfLines={2} style={{ fontSize: 13, lineHeight: 18, fontWeight: '800', color: PALETTE.ink }}>{board.topic}</Text>
+          </View>
+          <View style={{ borderRadius: 999, backgroundColor: '#f4f4f1', paddingHorizontal: 9, paddingVertical: 5 }}>
+            <Text style={{ fontSize: 11, fontWeight: '900', color: PALETTE.inkMuted }}>{board.replies}</Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const TOUR_SECTION_HEIGHT = 500;
+
+type TourKey = 'today' | 'schedule' | 'classmates' | 'boards';
+
+const TOUR_ITEMS: { key: TourKey; label: string; title: string; body: string; accent: string }[] = [
+  {
+    key: 'today',
+    label: '01 · Today',
+    title: 'Your day, in order.',
+    body: 'Open to a live class card, then swipe through completed and upcoming classes without digging through your schedule.',
+    accent: '#4169E1',
+  },
+  {
+    key: 'schedule',
+    label: '02 · Schedule',
+    title: 'Build the week you actually live.',
+    body: 'Add real UCI sections, compare plans, customize blocks, and keep every quarter organized.',
+    accent: '#4169E1',
+  },
+  {
+    key: 'classmates',
+    label: '03 · ClassMates',
+    title: 'The people in the room.',
+    body: "See which friends share your classes and open their timetable when they choose to share it.",
+    accent: '#4169E1',
+  },
+  {
+    key: 'boards',
+    label: '04 · Boards',
+    title: 'Every class has a place to talk.',
+    body: 'Use hot posts, department boards, marketplace posts, replies, images, and anonymous class conversations.',
+    accent: '#4169E1',
+  },
+];
+
+function TourPreview({ item }: { item: TourKey }) {
+  if (item === 'today') return <TodayPreview />;
+  if (item === 'schedule') return <SchedulePreview />;
+  if (item === 'classmates') return <ClassMatesPreview />;
+  return <BoardsPreview />;
+}
+
+function AppTourSequence({ scrollY }: { scrollY: Animated.Value }) {
+  return (
+    <View style={{ marginTop: 18 }}>
+      {TOUR_ITEMS.map((item, itemIndex) => {
+        const inputRange = [
+          (itemIndex - 1) * TOUR_SECTION_HEIGHT,
+          itemIndex * TOUR_SECTION_HEIGHT,
+          (itemIndex + 1) * TOUR_SECTION_HEIGHT,
+        ];
+        const opacity = scrollY.interpolate({
+          inputRange,
+          outputRange: [0.08, 1, 0.08],
+          extrapolate: 'clamp',
+        });
+        const translateY = scrollY.interpolate({
+          inputRange,
+          outputRange: [46, 0, -46],
+          extrapolate: 'clamp',
+        });
+        const scale = scrollY.interpolate({
+          inputRange,
+          outputRange: [0.96, 1, 0.96],
+          extrapolate: 'clamp',
+        });
+
+        return (
+          <Animated.View
+            key={item.key}
+            style={{
+              minHeight: TOUR_SECTION_HEIGHT,
+              justifyContent: 'flex-start',
+              paddingTop: 0,
+              paddingBottom: 38,
+              opacity,
+              transform: [{ translateY }, { scale }],
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '900', letterSpacing: 1.3, color: item.accent, textTransform: 'uppercase', marginBottom: 7 }}>
+              {item.label}
+            </Text>
+            <Text style={{ fontSize: 30, lineHeight: 34, fontWeight: '900', color: PALETTE.ink, letterSpacing: -0.9 }}>
+              {item.title}
+            </Text>
+            <Text style={{ fontSize: 14, lineHeight: 21, color: PALETTE.inkSoft, marginTop: 9, fontWeight: '600' }}>
+              {item.body}
+            </Text>
+            <TourPreview item={item.key} />
+          </Animated.View>
+        );
+      })}
+    </View>
+  );
+}
+
+function NotificationsStepContent({ isDark }: { isDark: boolean }) {
+  return (
+    <View style={{ marginTop: 24 }}>
+      <View
+        style={{
+          alignSelf: 'center',
+          width: 82,
+          height: 82,
+          borderRadius: 27,
+          backgroundColor: PALETTE.brand,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 24,
+          shadowColor: PALETTE.brand,
+          shadowOffset: { width: 0, height: 14 },
+          shadowOpacity: 0.26,
+          shadowRadius: 18,
+          elevation: 9,
+        }}
+      >
+        <Ionicons name="notifications" size={32} color="white" />
       </View>
 
-      <View style={{ backgroundColor: '#f8faff', borderRadius: 13, paddingHorizontal: 12, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Ionicons name="search-outline" size={14} color="#7a859c" />
-        <Text style={{ color: '#94a3b8', fontSize: 12 }}>Search classmates...</Text>
-      </View>
-
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <View style={{ flex: 1, backgroundColor: '#4169E1', borderRadius: 999, paddingVertical: 6, alignItems: 'center' }}>
-          <Text style={{ color: 'white', fontSize: 11, fontWeight: '900' }}>ClassMates (3)</Text>
-        </View>
-        <View style={{ flex: 1, backgroundColor: '#eef3ff', borderRadius: 999, paddingVertical: 6, alignItems: 'center' }}>
-          <Text style={{ color: '#4169E1', fontSize: 11, fontWeight: '900' }}>Requests</Text>
-        </View>
-      </View>
-
-      <View style={{ backgroundColor: '#f8faff', borderRadius: 16, padding: 10, borderWidth: 1, borderColor: '#edf1ff' }}>
-        <Text style={{ fontSize: 9, fontWeight: '900', letterSpacing: 0.9, color: '#9aa7c2', marginBottom: 5 }}>
-          SHARED CLASSES THIS QUARTER
-        </Text>
-        {[
-          ['ECON 129', ['M', 'S'], 2],
-          ['COMPSCI 161', ['M', 'D'], 2],
-        ].map(([course, initials, count], index) => (
+      <View style={{ gap: 14 }}>
+        {NOTIFICATION_BENEFITS.map((benefit) => (
           <View
-            key={course as string}
+            key={benefit.title}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingVertical: 5,
-              borderBottomWidth: index < 1 ? 1 : 0,
-              borderBottomColor: '#edf1ff',
+              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.72)',
+              borderRadius: 20,
+              paddingHorizontal: 16,
+              paddingVertical: 16,
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(65,105,225,0.08)',
             }}
           >
-            <View style={{ minWidth: 78, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#edf8e8' }}>
-              <Text style={{ fontSize: 10, fontWeight: '900', color: '#4b7f28' }}>{course as string}</Text>
-            </View>
-            <View style={{ flex: 1, flexDirection: 'row', marginLeft: 10 }}>
-              {(initials as string[]).map((letter, avatarIndex) => (
-                <View
-                  key={`${course}-${letter}`}
-                  style={{
-                    width: 23,
-                    height: 23,
-                    borderRadius: 12,
-                    backgroundColor: avatarIndex === 0 ? '#ff6b14' : '#20b9aa',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginLeft: avatarIndex === 0 ? 0 : -5,
-                    borderWidth: 2,
-                    borderColor: '#f8faff',
-                  }}
-                >
-                  <Text style={{ color: 'white', fontSize: 10, fontWeight: '900' }}>{letter}</Text>
-                </View>
-              ))}
-            </View>
-            <Text style={{ fontSize: 11, color: '#94a3b8', fontWeight: '900' }}>{count as number}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={{ backgroundColor: '#ffffff', borderRadius: 16, borderWidth: 1, borderColor: '#edf1ff', overflow: 'hidden' }}>
-        {[
-          ['M', 'Mina Kim', '2 shared · ECON 129 · COMPSCI 161'],
-        ].map(([initial, name, meta]) => (
-          <View
-            key={name}
-            style={{ flexDirection: 'row', alignItems: 'center', padding: 8 }}
-          >
-            <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: '#ff6b14', alignItems: 'center', justifyContent: 'center', marginRight: 9 }}>
-              <Text style={{ color: 'white', fontSize: 13, fontWeight: '900' }}>{initial}</Text>
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 14,
+                backgroundColor: isDark ? 'rgba(65,105,225,0.18)' : '#eef3ff',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 14,
+              }}
+            >
+              <Ionicons name={benefit.icon} size={20} color={PALETTE.brand} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 12, fontWeight: '900', color: '#16285b' }}>{name}</Text>
-              <Text numberOfLines={1} style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>{meta}</Text>
-            </View>
-            <View style={{ backgroundColor: '#eef3ff', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
-              <Text style={{ color: '#4169E1', fontSize: 10, fontWeight: '900' }}>View</Text>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: isDark ? '#f6f8ff' : PALETTE.ink, marginBottom: 3 }}>
+                {benefit.title}
+              </Text>
+              <Text style={{ fontSize: 13, lineHeight: 18, color: isDark ? 'rgba(255,255,255,0.52)' : PALETTE.inkMuted }}>
+                {benefit.copy}
+              </Text>
             </View>
           </View>
         ))}
@@ -323,173 +718,249 @@ function FriendsPreview() {
   );
 }
 
-function CommunityPreview() {
-  return (
-    <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 12, gap: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View>
-          <Text style={{ fontSize: 16, fontWeight: '900', color: '#16285b' }}>Board</Text>
-          <Text style={{ fontSize: 11, color: '#7a859c', marginTop: 1 }}>Hot, departments, community</Text>
-        </View>
-        <View style={{ backgroundColor: '#4169E1', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-          <Ionicons name="add" size={12} color="white" />
-          <Text style={{ color: 'white', fontSize: 10, fontWeight: '900' }}>Post</Text>
-        </View>
-      </View>
-
-      <View style={{ backgroundColor: '#f8faff', borderRadius: 13, paddingHorizontal: 12, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Ionicons name="search-outline" size={14} color="#7a859c" />
-        <Text style={{ color: '#94a3b8', fontSize: 12 }}>Search all board posts...</Text>
-      </View>
-
-      {[
-        ['flame-outline', '#F97316', '#fff7ed', 'TRENDING NOW', 'Hot Board', 'Posts over 10 likes'],
-        ['school-outline', '#4169E1', '#eef3ff', 'SCHOOL BOARDS', 'Department Boards', 'Browse 140+ departments'],
-      ].map(([icon, color, bg, eyebrow, title, subtitle]) => (
-        <View
-          key={title}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            borderRadius: 15,
-            padding: 9,
-            backgroundColor: '#ffffff',
-            borderWidth: 1,
-            borderColor: '#edf1ff',
-          }}
-        >
-          <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: bg as string, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-            <Ionicons name={icon as any} size={17} color={color as string} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 8, fontWeight: '900', letterSpacing: 0.6, color: '#94a3b8', marginBottom: 2 }}>{eyebrow as string}</Text>
-            <Text style={{ fontSize: 12, fontWeight: '900', color: '#16285b' }}>{title as string}</Text>
-            <Text style={{ fontSize: 10, color: '#7a859c', marginTop: 1 }}>{subtitle as string}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={14} color={color as string} />
-        </View>
-      ))}
-
-      <View style={{ backgroundColor: '#fff8f8', borderRadius: 16, padding: 10, borderWidth: 1, borderColor: '#ffe1e1' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-          <Text style={{ fontSize: 10, fontWeight: '900', color: '#FF6B6B' }}>General</Text>
-          <Text style={{ fontSize: 10, color: '#c9a0a0' }}>·</Text>
-          <Text style={{ fontSize: 10, color: '#c9a0a0' }}>Anteater 12</Text>
-        </View>
-        <Text style={{ fontSize: 12, fontWeight: '900', color: '#16285b', marginBottom: 6 }}>
-          Anyone selling a used iPad?
-        </Text>
-        <View style={{ height: 42, borderRadius: 12, backgroundColor: '#ffd6d6', marginBottom: 7, overflow: 'hidden' }}>
-          <View style={{ position: 'absolute', left: 9, top: 8, width: 56, height: 26, borderRadius: 8, backgroundColor: '#ff8a8a' }} />
-          <View style={{ position: 'absolute', right: 12, top: 10, width: 76, height: 8, borderRadius: 4, backgroundColor: '#fff1f2' }} />
-          <View style={{ position: 'absolute', right: 12, top: 24, width: 52, height: 8, borderRadius: 4, backgroundColor: '#fff1f2' }} />
-        </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ backgroundColor: '#fff1f2', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name="thumbs-up" size={12} color="#FF6B6B" />
-            <Text style={{ color: '#d9475d', fontSize: 11, fontWeight: '900' }}>12</Text>
-          </View>
-          <View style={{ backgroundColor: '#eef3ff', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name="chatbubble-ellipses" size={12} color="#4169E1" />
-            <Text style={{ color: '#4169E1', fontSize: 11, fontWeight: '900' }}>4</Text>
-          </View>
-        </View>
-      </View>
-    </View>
-  );
+function PreviewForSlide({
+  slide,
+  profile,
+  updateProfile,
+  tourScrollY,
+  isDark,
+}: {
+  slide: Slide;
+  profile: EditableProfile;
+  updateProfile: (patch: Partial<EditableProfile>) => void;
+  tourScrollY: Animated.Value;
+  isDark: boolean;
+}) {
+  if (slide.kind === 'arrival') return null;
+  if (slide.kind === 'names') return <NamesForm profile={profile} updateProfile={updateProfile} />;
+  if (slide.kind === 'profile') return <ProfileFitForm profile={profile} updateProfile={updateProfile} />;
+  if (slide.kind === 'personal') return <PersonalDetailsForm profile={profile} updateProfile={updateProfile} />;
+  if (slide.kind === 'tour') return <AppTourSequence scrollY={tourScrollY} />;
+  if (slide.kind === 'notifications') return <NotificationsStepContent isDark={isDark} />;
+  return null;
 }
 
-function PreviewForSlide({ index }: { index: number }) {
-  if (index === 0) return <HomePreview />;
-  if (index === 1) return <TimetablePreview />;
-  if (index === 2) return <FriendsPreview />;
-  return <CommunityPreview />;
-}
-
-export default function FeatureOnboardingScreen({ onFinish, finishing = false }: Props) {
+export default function FeatureOnboardingScreen({
+  onFinish,
+  onCompleteNotifications,
+  finishing = false,
+  initialProfile,
+  userEmail,
+  onSaveProfile,
+}: Props) {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const [index, setIndex] = useState(0);
-  const contentAnim = useRef(new Animated.Value(1)).current;
+  const [profile, setProfile] = useState<EditableProfile>(() => initialProfile ?? fallbackProfileFromEmail(userEmail || 'student@uci.edu'));
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+  const anim = useRef(new Animated.Value(1)).current;
+  const tourScrollY = useRef(new Animated.Value(0)).current;
   const slide = SLIDES[index];
+  const isPhotoSlide = slide.kind === 'arrival';
+  const backgroundColor = isDark ? PALETTE.bgDark : PALETTE.bg;
+  const canContinueNames = !!profile.firstName.trim() && !!profile.lastName.trim() && !!profile.nickname.trim();
+  const canContinueProfile = !!profile.year.trim() && !!profile.major.trim();
+  const isBlocked = (slide.kind === 'names' && !canContinueNames) || (slide.kind === 'profile' && !canContinueProfile);
+  const canSkip = profileSaved && index >= 4;
 
   useEffect(() => {
-    contentAnim.setValue(0);
-    Animated.timing(contentAnim, {
+    if (initialProfile) setProfile(initialProfile);
+  }, [initialProfile]);
+
+  useEffect(() => {
+    anim.setValue(0);
+    tourScrollY.setValue(0);
+    Animated.timing(anim, {
       toValue: 1,
-      duration: 260,
+      duration: 280,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [contentAnim, index]);
+  }, [anim, index, tourScrollY]);
 
-  const goNext = () => {
+  const animatedStyle = useMemo(() => ({
+    opacity: anim,
+    transform: [{
+      translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [32, 0] }),
+    }],
+  }), [anim]);
+
+  const heroTitleStyle = useMemo(() => ({
+    opacity: anim,
+    transform: [{
+      translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [34, 0] }),
+    }],
+  }), [anim]);
+
+  const heroBodyStyle = useMemo(() => ({
+    opacity: anim.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0, 0, 1] }),
+    transform: [{
+      translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [46, 0] }),
+    }],
+  }), [anim]);
+
+  const updateProfile = (patch: Partial<EditableProfile>) => {
+    setProfile((current) => ({ ...current, ...patch, email: userEmail || current.email }));
+    setProfileSaved(false);
+  };
+
+  const saveOnboardingProfile = async () => {
+    if (!onSaveProfile || profileSaved) return true;
+    setSavingProfile(true);
+    const ok = await onSaveProfile({ ...profile, email: userEmail || profile.email });
+    setSavingProfile(false);
+    if (ok) setProfileSaved(true);
+    return ok;
+  };
+
+  const completeNotifications = async (enabled: boolean) => {
+    if (savingProfile || finishing) return;
+    if (onCompleteNotifications) {
+      await onCompleteNotifications(enabled);
+      return;
+    }
+    void onFinish();
+  };
+
+  const goNext = async () => {
+    if (isBlocked || savingProfile || finishing) return;
+    if (slide.kind === 'personal') {
+      const saved = await saveOnboardingProfile();
+      if (!saved) return;
+    }
+    if (slide.kind === 'notifications') {
+      await completeNotifications(true);
+      return;
+    }
     if (index === SLIDES.length - 1) {
       void onFinish();
       return;
     }
-    setIndex((current) => current + 1);
+    setIndex((current) => Math.min(SLIDES.length - 1, current + 1));
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#08111d' : '#f7f8ff' }} edges={['top', 'left', 'right', 'bottom']}>
-      <View style={{ position: 'absolute', top: -40, right: -30, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(61,108,255,0.16)' }} />
-      <View style={{ position: 'absolute', top: 170, left: -60, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,107,107,0.10)' }} />
-      <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 8, paddingBottom: 28 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <View>
-            <Text style={{ fontSize: 12, fontWeight: '800', letterSpacing: 0.8, color: slide.accent }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor }} edges={['top', 'left', 'right', 'bottom']}>
+      {slide.kind === 'arrival' ? <PhotoBackdrop isDark={isDark} /> : <SoftBlueBackdrop isDark={isDark} />}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={{ paddingHorizontal: 24, paddingTop: 8 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 11, fontWeight: '900', letterSpacing: 1.4, color: slide.accent, textTransform: 'uppercase' }}>
               {slide.eyebrow}
             </Text>
-            <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 4 }}>
-              {index + 1} of {SLIDES.length}
-            </Text>
+            {canSkip ? (
+              <TouchableOpacity
+                disabled={finishing || savingProfile}
+                onPress={() => {
+                  if (slide.kind === 'tour') {
+                    setIndex(SLIDES.length - 1);
+                    return;
+                  }
+                  if (slide.kind === 'notifications') {
+                    void completeNotifications(false);
+                    return;
+                  }
+                  void onFinish();
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? 'rgba(255,255,255,0.55)' : PALETTE.inkMuted, opacity: finishing ? 0.5 : 1 }}>
+                  Skip
+                </Text>
+              </TouchableOpacity>
+            ) : <View style={{ width: 34 }} />}
           </View>
-          <TouchableOpacity disabled={finishing} onPress={() => void onFinish()}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textSecondary, opacity: finishing ? 0.5 : 1 }}>
-              Skip
-            </Text>
-          </TouchableOpacity>
+          <ProgressBar index={index} accent={slide.accent} isDark={isDark} />
         </View>
 
-        <Animated.View style={{ opacity: contentAnim, transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }] }}>
-          <View
-            style={{
-              backgroundColor: isDark ? '#0f1726' : '#ffffff',
-              borderRadius: 30,
-              padding: 18,
-              shadowColor: '#0f172a',
-              shadowOffset: { width: 0, height: 18 },
-              shadowOpacity: 0.06,
-              shadowRadius: 22,
-              elevation: 6,
-              marginBottom: 24,
-            }}
-          >
-            <View style={{ marginBottom: 18 }}>
-              <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
-                {slide.title}
-              </Text>
-              <Text style={{ fontSize: 15, lineHeight: 23, color: colors.textSecondary, marginTop: 10 }}>
-                {slide.body}
-              </Text>
-            </View>
-            <PreviewForSlide index={index} />
-          </View>
-        </Animated.View>
+        <Animated.ScrollView
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: tourScrollY } } }],
+            { useNativeDriver: true }
+          )}
+          contentContainerStyle={{
+            flexGrow: isPhotoSlide ? 1 : undefined,
+            justifyContent: isPhotoSlide ? 'center' : undefined,
+            paddingHorizontal: 24,
+            paddingTop: isPhotoSlide ? 0 : 18,
+            paddingBottom: isPhotoSlide ? 0 : slide.kind === 'tour' ? 96 : 24,
+          }}
+        >
+          <Animated.View style={animatedStyle}>
+            {isPhotoSlide ? (
+              <>
+                <Animated.Text
+                  style={{
+                    fontSize: 44,
+                    lineHeight: 48,
+                    fontWeight: '900',
+                    color: colors.text,
+                    letterSpacing: -1.4,
+                    ...heroTitleStyle,
+                  }}
+                >
+                  {slide.title}
+                </Animated.Text>
+                <Animated.Text style={{ fontSize: 16, lineHeight: 24, color: colors.textSecondary, marginTop: 14, fontWeight: '600', ...heroBodyStyle }}>
+                  {slide.body}
+                </Animated.Text>
+                <Animated.View
+                  style={{
+                    marginTop: 24,
+                    alignSelf: 'flex-start',
+                    borderRadius: 999,
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.64)',
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(65,105,225,0.12)',
+                    paddingHorizontal: 13,
+                    paddingVertical: 8,
+                    ...heroBodyStyle,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '900', color: slide.accent, letterSpacing: 0.7 }}>
+                    UC IRVINE
+                  </Text>
+                </Animated.View>
+              </>
+            ) : (
+              <>
+                <Text style={{ fontSize: 29, lineHeight: 34, fontWeight: '900', color: colors.text, letterSpacing: -0.8 }}>
+                  {slide.title}
+                </Text>
+                <Text style={{ fontSize: 15, lineHeight: 23, color: colors.textSecondary, marginTop: 12 }}>
+                  {slide.body}
+                </Text>
+                <PreviewForSlide slide={slide} profile={profile} updateProfile={updateProfile} tourScrollY={tourScrollY} isDark={isDark} />
+              </>
+            )}
+          </Animated.View>
+        </Animated.ScrollView>
 
-        <View style={{ marginTop: 'auto' }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 20 }}>
+        <View style={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 7, marginBottom: 18 }}>
             {SLIDES.map((item, dotIndex) => {
               const active = dotIndex === index;
+              const disabled = dotIndex > index && (
+                (dotIndex >= 2 && !canContinueNames) ||
+                (dotIndex >= 3 && !canContinueProfile) ||
+                (dotIndex >= 4 && !profileSaved)
+              );
               return (
                 <TouchableOpacity
-                  key={item.title}
+                  key={item.eyebrow}
+                  disabled={finishing || savingProfile || disabled}
                   onPress={() => setIndex(dotIndex)}
                   style={{
-                    width: active ? 28 : 8,
-                    height: 8,
+                    width: active ? 24 : 7,
+                    height: 7,
                     borderRadius: 999,
-                    backgroundColor: active ? slide.accent : 'rgba(148, 163, 184, 0.35)',
+                    backgroundColor: active ? slide.accent : isDark ? 'rgba(255,255,255,0.16)' : 'rgba(134,148,178,0.32)',
+                    opacity: disabled ? 0.35 : 1,
                   }}
                 />
               );
@@ -499,53 +970,56 @@ export default function FeatureOnboardingScreen({ onFinish, finishing = false }:
           <View style={{ flexDirection: 'row', gap: 12 }}>
             {index > 0 ? (
               <TouchableOpacity
-                disabled={finishing}
+                disabled={finishing || savingProfile}
                 onPress={() => setIndex((current) => Math.max(0, current - 1))}
                 style={{
-                  flex: 0.42,
-                  borderRadius: 18,
+                  flex: 0.38,
+                  minHeight: 56,
+                  borderRadius: 16,
                   borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: isDark ? '#101826' : '#ffffff',
+                  borderColor: isDark ? PALETTE.borderDark : PALETTE.border,
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  paddingVertical: 16,
-                  opacity: finishing ? 0.5 : 1,
+                  opacity: finishing || savingProfile ? 0.5 : 1,
                 }}
               >
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Back</Text>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Back</Text>
               </TouchableOpacity>
             ) : null}
 
-            <TouchableOpacity
-              disabled={finishing}
-              onPress={goNext}
-              style={{
-                flex: index > 0 ? 0.58 : 1,
-                borderRadius: 18,
-                backgroundColor: slide.accent,
-                alignItems: 'center',
-                justifyContent: 'center',
-                paddingVertical: 16,
-                flexDirection: 'row',
-                gap: 8,
-                shadowColor: slide.accent,
-                shadowOffset: { width: 0, height: 12 },
-                shadowOpacity: 0.24,
-                shadowRadius: 18,
-                elevation: 8,
-                opacity: finishing ? 0.7 : 1,
-              }}
-            >
-              {finishing ? <ActivityIndicator size="small" color="white" /> : null}
-              <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>
-                {index === SLIDES.length - 1 ? 'Start Exploring' : 'Next'}
-              </Text>
-              {!finishing ? <Ionicons name="arrow-forward" size={17} color="white" /> : null}
-            </TouchableOpacity>
+            <View style={{ flex: index > 0 ? 0.62 : 1 }}>
+              <PrimaryButton
+                onPress={() => { void goNext(); }}
+                accent={slide.accent}
+                loading={finishing || savingProfile}
+                disabled={isBlocked}
+              >
+                {savingProfile
+                  ? 'Saving...'
+                  : slide.kind === 'names' && !canContinueNames
+                    ? 'Fill required fields'
+                    : slide.kind === 'profile' && !canContinueProfile
+                      ? 'Choose year and major'
+                      : slide.kind === 'notifications'
+                        ? 'Enable Notifications'
+                        : index === 0
+                          ? 'Walk in'
+                          : 'Continue'}
+              </PrimaryButton>
+              {slide.kind === 'notifications' ? (
+                <TouchableOpacity
+                  disabled={finishing || savingProfile}
+                  onPress={() => { void completeNotifications(false); }}
+                  style={{ alignItems: 'center', paddingTop: 14, opacity: finishing || savingProfile ? 0.5 : 1 }}
+                >
+                  <Text style={{ color: colors.textTertiary, fontSize: 14, fontWeight: '700' }}>Not now</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

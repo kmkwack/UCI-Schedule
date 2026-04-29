@@ -1511,3 +1511,34 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64jl (Show upcoming UC campus support)
 - **`src/screens/UniversitySelectionScreen.tsx`** — Added all UC campuses to the university picker. UC Irvine remains the only selectable school, while the other UC campuses render as muted `Coming Soon` rows with explanatory copy and a tap alert so users understand expansion is planned but not active yet.
+
+### Session 64jm (Claude-inspired onboarding refresh)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Rebuilt the feature onboarding flow with a six-step UCI arrival, Today, Schedule, ClassMates, Boards, and Welcome sequence inspired by the provided Claude mockup, while keeping the existing profile and notification permission flows separate.
+- **`assets/uci-anthill-plaza.jpg` / `assets/uci-team-huddle.webp`** — Added the provided UCI campus and team-huddle photos so the refreshed onboarding uses real campus imagery instead of placeholder graphics.
+
+### Session 64jn (Force review account onboarding)
+- **`App.tsx`** — Added a review-account email allowlist and forces `review@classmate.app` through the feature onboarding flow on every login, regardless of the saved `onboardingComplete` flag, so App Review always sees the guided introduction.
+
+### Session 64jo (Move profile setup into onboarding)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Added Roll Call and About You onboarding steps for first/middle/last/nickname plus year and major, removed the UC Irvine Day 1 photo badge, and switched the campus image to contain mode so the provided photo is not cropped.
+- **`App.tsx`** — Removed the separate post-signup profile setup screen from the first-run flow. New and incomplete-profile users now go directly into the onboarding sequence, which saves profile details before continuing to the feature tour and notification prompt.
+
+### Session 64jp (Add optional profile and scroll tour onboarding)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Added an optional personal-info onboarding step for date of birth and gender, then moved the app feature introduction into one Apple-style scroll tour where Today, Schedule, ClassMates, and Boards fade between sections. Profile saving now happens after the optional step so all onboarding profile fields persist together before the tour.
+
+### Session 64jq (Polish onboarding copy and full-page tour)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Changed the arrival copy to `Welcome, Anteater.`, fixed the UCI masthead image to use its real 1440:500 aspect ratio, removed the boxed inner tour scroller, and made the feature tour animate through the main onboarding scroll area. Also removed team/huddle wording and dark image overlays from the final welcome step so the onboarding tone stays ClassMate-focused and consistently blue.
+
+### Session 64jr (Photo-backdrop onboarding hero polish)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Converted the first and final onboarding screens from inline image cards to full-screen blurred photo backdrops with light shading, tightened the tour section spacing below the `Scroll` label, and kept the feature tour aligned to the main onboarding scroll instead of an inner box.
+- **`App.tsx`** — Moved the notification permission prompt ahead of the brand intro in the onboarding render order so the opt-in screen cannot appear to be skipped when both onboarding follow-up states are active.
+
+### Session 64js (Tighten onboarding typography and tour chrome)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Added a stronger rise-in animation for the photo-backed welcome screens, vertically centered those hero messages, reduced regular step title sizing so Roll Call/About You/Optional fit more cleanly, shortened the tour heading to `Meet ClassMate.`, and removed the extra `Scroll` label/progress hairline from the tour.
+
+### Session 64jt (Fold notifications into onboarding)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Removed the final welcome slide and replaced it with an in-flow notification permission step styled after the existing notification prompt, using the app’s blue tone, benefit rows, and `Enable Notifications` / `Not now` actions inside the onboarding progress.
+- **`App.tsx`** — Connected the new onboarding notification step to the existing push-permission persistence logic and marks feature onboarding complete after the notification choice so users do not bounce back into onboarding.
+
+### Session 64ju (Even out onboarding photo shade)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Removed the extra bottom-only overlay from the photo-backed arrival screen so the background shade stays uniform instead of forming a different colored band behind the dots and button.

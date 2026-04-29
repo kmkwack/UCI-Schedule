@@ -37,29 +37,6 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <View
         style={{
-          position: 'absolute',
-          top: -46,
-          right: -32,
-          width: 238,
-          height: 238,
-          borderRadius: 119,
-          backgroundColor: isDark ? 'rgba(65,105,225,0.14)' : 'rgba(65,105,225,0.12)',
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          bottom: -34,
-          left: -86,
-          width: 188,
-          height: 188,
-          borderRadius: 94,
-          backgroundColor: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.44)',
-        }}
-      />
-
-      <View
-        style={{
           flex: 1,
           paddingHorizontal: 24,
           paddingTop: 14,
@@ -96,29 +73,6 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
               paddingHorizontal: 6,
             }}
           >
-            <View
-              style={{
-                position: 'absolute',
-                top: 2,
-                right: 12,
-                width: 144,
-                height: 144,
-                borderRadius: 72,
-                backgroundColor: isDark ? 'rgba(65,105,225,0.12)' : 'rgba(65,105,225,0.09)',
-              }}
-            />
-            <View
-              style={{
-                position: 'absolute',
-                top: 190,
-                left: -18,
-                width: 96,
-                height: 96,
-                borderRadius: 48,
-                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,122,145,0.10)',
-              }}
-            />
-
             <View style={{ alignItems: 'center', marginBottom: 22 }}>
               <View
                 style={{

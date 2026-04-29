@@ -1542,3 +1542,58 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64ju (Even out onboarding photo shade)
 - **`src/components/FeatureOnboardingScreen.tsx`** — Removed the extra bottom-only overlay from the photo-backed arrival screen so the background shade stays uniform instead of forming a different colored band behind the dots and button.
+
+### Session 64jv (Limit review onboarding to explicit sign-in)
+- **`App.tsx`** — Scoped the `review@classmate.app` forced onboarding behavior to explicit sign-in only. Restored sessions no longer force the review account back into onboarding on app relaunch, while signing in with the review account still opens the onboarding flow for testing.
+
+### Session 64jw (Prevent onboarding completion flicker)
+- **`App.tsx`** — Sets the ClassMate entry animation flag before clearing the onboarding flag after notification choice, preventing the app from briefly rendering Home before the entry screen. Also turns on review-account onboarding immediately in the explicit sign-in callback so Home does not flash before onboarding.
+- **`src/components/FeatureOnboardingScreen.tsx`** — Shortened tour section height so the next tour item peeks into view, making it clearer that more content is available below.
+
+### Session 64jx (Back to university from onboarding)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Added a back chevron to the first `Welcome, Anteater.` onboarding step so users can return to school selection before continuing.
+- **`App.tsx`** — Added an onboarding back handler that signs out, clears onboarding/session state, and restores the auth stack directly to the university selection screen.
+
+### Session 64jy (Add onboarding background geometry)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Added deterministic decorative geometry layers to each onboarding step, using soft blue/white rounded rectangles and outline shapes in varied positions so the backgrounds feel fuller without changing between renders.
+
+### Session 64jz (Make onboarding arrival school-aware)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Changed the arrival body copy from `UCI life` to `college life` and added a school-brand helper so the first onboarding title/badge can use the selected university’s mascot and school label instead of hardcoding Anteater/UCI for every future school.
+- **`App.tsx`** — Passes the selected university name into the onboarding screen so school-specific arrival branding can be resolved from the login school context.
+
+### Session 64ka (Match sports going count to saved chips)
+- **`src/screens/HomeScreen.tsx`** — Moved the sports-event `0 going` count from a separate right-side badge into a compact `people` metadata chip under the event time, matching the Course Picker `saved` chip style so event rows feel calmer and more consistent.
+
+### Session 64kb (Simplify sports RSVP to Going)
+- **`src/screens/HomeScreen.tsx`** — Removed the separate `Interested` sports-event action from the event detail sheet and collapsed RSVP behavior into a single `Going` toggle/count, while still ignoring legacy `interested` rows from existing stored data.
+
+### Session 64kc (Make sports comments visibly submit)
+- **`src/screens/HomeScreen.tsx`** — Made sports-event comments submit optimistically, clear the input immediately, replace the local row with the saved Supabase row, and show an alert with the real database error if posting fails.
+- **`supabase/sql/sports_event_social.sql`** — Added explicit authenticated grants for sports RSVP/comment tables so the SQL migration gives logged-in users the table privileges needed for the existing RLS policies to work.
+
+### Session 64kd (Remove arrival onboarding geometry)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Removed the decorative geometry from the first photo-backed onboarding screen so the `Welcome, Anteater.` arrival view stays cleaner while later onboarding steps keep their background shapes.
+
+### Session 64ke (Make app tour scroll cue visible)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Pulled app-tour sections upward with a controlled overlap and increased off-center section opacity so the next tour item peeks above the bottom controls, making the vertical scroll affordance visible in the actual Expo simulator.
+
+### Session 64kf (Remove welcome and onboarding decorations)
+- **`src/screens/WelcomeScreen.tsx`** — Removed the floating decorative background circles from the pre-login welcome screen so the first app entry view is cleaner.
+- **`src/components/FeatureOnboardingScreen.tsx`** — Removed all onboarding background shape layers from Roll Call, About You, Optional, App Tour, and Notifications while keeping the actual onboarding content unchanged.
+- **`src/components/ClassMateIntroScreen.tsx`** — Removed the floating background circles from the post-onboarding ClassMate intro animation for consistency with the simplified visual direction.
+
+### Session 64kg (Compact notification onboarding buttons)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Gave the notification permission step its own compact footer layout: Back and Enable Notifications stay as large side-by-side buttons, while `Not now` is centered beneath them as a smaller text action so the controls take less vertical space and cover less content.
+
+### Session 64kh (Preserve post-notification intro)
+- **`App.tsx`** — Stopped the user-preferences loading effect from clearing `showBrandIntro`. This prevents the ClassMate intro screen from being immediately dismissed after finishing onboarding notifications, especially when the review-account onboarding flag is reset.
+
+### Session 64ki (Lower notification onboarding footer)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Reduced only the notification-step footer bottom padding so the Back / Enable Notifications / Not now controls sit closer to the bottom safe area instead of floating high and crowding the content.
+
+### Session 64kj (Harden explicit sign-out routing)
+- **`App.tsx`** — Added a short suppression guard for the next Supabase `SIGNED_OUT` event after explicit logout or onboarding back-to-university actions. This prevents the auth callback from clearing state a second time and overriding the intended return-to-university auth stack.
+
+### Session 64kk (Guard sports event stale updates)
+- **`src/screens/HomeScreen.tsx`** — Added a selected-event ref and close helper for the sports event sheet so delayed RSVP/comment fetches from a previous event cannot overwrite the currently open event after users switch or close the detail view.
+- **`src/components/FeatureOnboardingScreen.tsx`** — Removed the leftover no-op onboarding backdrop component so the “no extra decorative shapes” direction is reflected directly in the render tree.

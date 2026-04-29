@@ -310,6 +310,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   // Ref so the onAuthStateChange closure (created once) always sees current userId.
   const userIdRef = useRef<string | null>(null);
   userIdRef.current = userId;
+  const returnToUniversityAfterSignOutRef = useRef(false);
+  const suppressNextSignedOutClearRef = useRef(false);
 
   const hydrateUserFromSession = (sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> }) => {
     setUserId(sessionUser.id);
@@ -339,8 +341,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setShowNotificationPermissionPrompt(false);
     setShowBrandIntro(false);
     setSavingOnboarding(false);
+    setForceReviewOnboardingOnce(false);
     setDeletingAccount(false);
-    setAuthStack(['welcome']);
+    setAuthStack(returnToUniversityAfterSignOutRef.current ? ['welcome', 'university'] : ['welcome']);
+    returnToUniversityAfterSignOutRef.current = false;
   };
 
   const validateAndHydrateSession = async (
@@ -401,6 +405,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         return;
       }
 
+      if (event === 'SIGNED_OUT' && suppressNextSignedOutClearRef.current) {
+        suppressNextSignedOutClearRef.current = false;
+        return;
+      }
+
       if (event === 'SIGNED_OUT' && userIdRef.current !== null) {
         clearSignedOutState();
       }
@@ -422,6 +431,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [showNotificationPermissionPrompt, setShowNotificationPermissionPrompt] = useState(false);
   const [showBrandIntro, setShowBrandIntro] = useState(false);
   const [savingOnboarding, setSavingOnboarding] = useState(false);
+  const [forceReviewOnboardingOnce, setForceReviewOnboardingOnce] = useState(false);
   const pushAuth = (s: AuthScreen) => setAuthStack((prev) => prev[prev.length - 1] === s ? prev : [...prev, s]);
   const popAuth = () => setAuthStack((prev) => prev.length > 1 ? prev.slice(0, -1) : prev);
   const replaceAuth = (s: AuthScreen) =>
@@ -668,7 +678,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       settingsDetails =
         (settingsRow as Record<string, any> | null | undefined)?.profile_details as Record<string, any> | null | undefined;
-      const forceFeatureOnboarding = isReviewAccountEmail(userEmail);
+      const forceFeatureOnboarding = forceReviewOnboardingOnce && isReviewAccountEmail(userEmail);
 
       setUserProfile(
         profileFromSources(
@@ -682,27 +692,22 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         setNeedsProfileSetup(false);
         setNeedsFeatureOnboarding(true);
         setShowNotificationPermissionPrompt(false);
-        setShowBrandIntro(false);
       } else if (!settingsRow) {
         setNeedsProfileSetup(false);
         setNeedsFeatureOnboarding(true);
         setShowNotificationPermissionPrompt(false);
-        setShowBrandIntro(false);
       } else if (settingsDetails?.profileSetupComplete === false) {
         setNeedsProfileSetup(false);
         setNeedsFeatureOnboarding(true);
         setShowNotificationPermissionPrompt(false);
-        setShowBrandIntro(false);
       } else if (hasCompletedProfileSetup(settingsDetails)) {
         setNeedsProfileSetup(false);
         if (forceFeatureOnboarding || needsInitialOnboarding(settingsDetails)) {
           setNeedsFeatureOnboarding(true);
           setShowNotificationPermissionPrompt(false);
-          setShowBrandIntro(false);
         } else {
           setNeedsFeatureOnboarding(false);
           setShowNotificationPermissionPrompt(false);
-          setShowBrandIntro(false);
         }
       }
 
@@ -727,7 +732,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     return () => {
       active = false;
     };
-  }, [userEmail, userId]);
+  }, [forceReviewOnboardingOnce, userEmail, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -1401,7 +1406,24 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   }, [pickerTranslateY, showCoursePicker]);
 
   const handleLogout = () => {
-    void supabase.auth.signOut();
+    suppressNextSignedOutClearRef.current = true;
+    void supabase.auth.signOut().finally(() => {
+      setTimeout(() => {
+        suppressNextSignedOutClearRef.current = false;
+      }, 1000);
+    });
+    void Notifications.cancelAllScheduledNotificationsAsync();
+    clearSignedOutState();
+  };
+
+  const handleBackToUniversityFromOnboarding = () => {
+    returnToUniversityAfterSignOutRef.current = true;
+    suppressNextSignedOutClearRef.current = true;
+    void supabase.auth.signOut().finally(() => {
+      setTimeout(() => {
+        suppressNextSignedOutClearRef.current = false;
+      }, 1000);
+    });
     void Notifications.cancelAllScheduledNotificationsAsync();
     clearSignedOutState();
   };
@@ -1683,9 +1705,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       await saveUserSettingsRow(nextSettings, userProfile, nextToken, true, true);
       setUserSettings(nextSettings);
-      setNeedsFeatureOnboarding(false);
       setShowNotificationPermissionPrompt(false);
       setShowBrandIntro(true);
+      setNeedsFeatureOnboarding(false);
+      setForceReviewOnboardingOnce(false);
     } catch {
       return;
     } finally {
@@ -1871,6 +1894,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               setUserProfile(fallbackProfileFromEmail(email));
               setNeedsProfileSetup(false);
               setNeedsFeatureOnboarding(true);
+              setForceReviewOnboardingOnce(false);
               setShowNotificationPermissionPrompt(false);
               setShowBrandIntro(false);
             }}
@@ -1883,11 +1907,13 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           university={selectedUniversity ?? DEFAULT_UNIVERSITY}
           onBack={goBack}
           onSignedIn={(id, email) => {
+            const shouldForceReviewOnboarding = isReviewAccountEmail(email);
             setUserId(id);
             setUserEmail(email);
             setUserProfile(fallbackProfileFromEmail(email));
             setNeedsProfileSetup(false);
-            setNeedsFeatureOnboarding(false);
+            setForceReviewOnboardingOnce(shouldForceReviewOnboarding);
+            setNeedsFeatureOnboarding(shouldForceReviewOnboarding);
             setShowNotificationPermissionPrompt(false);
             setShowBrandIntro(false);
           }}
@@ -1918,9 +1944,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       <FeatureOnboardingScreen
         onFinish={handleCompleteFeatureOnboarding}
         onCompleteNotifications={handleCompleteNotificationPrompt}
+        onBackToUniversity={handleBackToUniversityFromOnboarding}
         finishing={savingOnboarding}
         initialProfile={userProfile}
         userEmail={userEmail}
+        schoolName={selectedUniversity?.name ?? DEFAULT_UNIVERSITY.name}
         onSaveProfile={handleSaveOnboardingProfile}
       />
     );

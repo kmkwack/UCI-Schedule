@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, Animated, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
@@ -50,7 +50,8 @@ type ClassmateMatch = {
   sharedCourseCodes: string[];
 };
 
-type SportsEventRsvpStatus = 'going' | 'interested';
+type SportsEventRsvpStatus = 'going';
+type StoredSportsEventRsvpStatus = SportsEventRsvpStatus | 'interested';
 
 type SportsEventComment = {
   id: string;
@@ -71,7 +72,7 @@ type SportsEventCommentRow = {
 type SportsEventRsvpRow = {
   event_id?: string;
   user_id: string;
-  status: SportsEventRsvpStatus;
+  status: StoredSportsEventRsvpStatus;
 };
 
 type SportsVenue = {
@@ -442,8 +443,9 @@ export default function HomeScreen({
   const [classmateMatches, setClassmateMatches] = useState<ClassmateMatch[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [selectedSportsEvent, setSelectedSportsEvent] = useState<SportsEvent | null>(null);
+  const selectedSportsEventRef = useRef<SportsEvent | null>(null);
   const [sportsEventRsvp, setSportsEventRsvp] = useState<SportsEventRsvpStatus | null>(null);
-  const [sportsEventRsvpCounts, setSportsEventRsvpCounts] = useState<Record<SportsEventRsvpStatus, number>>({ going: 0, interested: 0 });
+  const [sportsEventGoingCount, setSportsEventGoingCount] = useState(0);
   const [sportsEventComments, setSportsEventComments] = useState<SportsEventComment[]>([]);
   const [sportsEventCommentInput, setSportsEventCommentInput] = useState('');
   const [sportsEventListParticipation, setSportsEventListParticipation] = useState<Record<string, number>>({});
@@ -453,6 +455,10 @@ export default function HomeScreen({
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const { start: quarterStart, end: quarterEnd } = getQuarterBounds(selectedQuarter);
+
+  useEffect(() => {
+    selectedSportsEventRef.current = selectedSportsEvent;
+  }, [selectedSportsEvent]);
 
   useEffect(() => {
     async function loadTempUnit() {
@@ -766,17 +772,18 @@ export default function HomeScreen({
         .limit(50),
     ]);
 
+    if (selectedSportsEventRef.current?.id !== event.id) {
+      return;
+    }
+
     if (!rsvpResult.error) {
       const rows = (rsvpResult.data ?? []) as SportsEventRsvpRow[];
-      const nextCounts = {
-        going: rows.filter((row) => row.status === 'going').length,
-        interested: rows.filter((row) => row.status === 'interested').length,
-      };
-      setSportsEventRsvp(rows.find((row) => row.user_id === userId)?.status ?? null);
-      setSportsEventRsvpCounts(nextCounts);
+      const nextGoingCount = rows.filter((row) => row.status === 'going').length;
+      setSportsEventRsvp(rows.some((row) => row.user_id === userId && row.status === 'going') ? 'going' : null);
+      setSportsEventGoingCount(nextGoingCount);
       setSportsEventListParticipation((current) => ({
         ...current,
-        [event.id]: nextCounts.going,
+        [event.id]: nextGoingCount,
       }));
     } else if (rsvpResult.error.code !== 'PGRST205') {
       console.error('Failed to load sports event RSVPs:', rsvpResult.error);
@@ -802,6 +809,10 @@ export default function HomeScreen({
         }
       }
 
+      if (selectedSportsEventRef.current?.id !== event.id) {
+        return;
+      }
+
       setSportsEventComments(rows.map((row) => ({
         id: row.id,
         userId: row.user_id,
@@ -817,29 +828,40 @@ export default function HomeScreen({
   }
 
   function openSportsEvent(event: SportsEvent) {
+    selectedSportsEventRef.current = event;
     setSelectedSportsEvent(event);
     setSportsEventCommentInput('');
     setSportsEventRsvp(null);
-    setSportsEventRsvpCounts({ going: 0, interested: 0 });
+    setSportsEventGoingCount(0);
     setSportsEventComments([]);
     void loadSportsEventSocial(event);
   }
 
-  async function handleSportsEventRsvp(status: SportsEventRsvpStatus) {
+  function closeSportsEvent() {
+    selectedSportsEventRef.current = null;
+    setSelectedSportsEvent(null);
+    setSportsEventCommentInput('');
+    setSportsEventComments([]);
+    setSportsEventDetailLoading(false);
+    setSavingSportsEventRsvp(false);
+    setSubmittingSportsEventComment(false);
+  }
+
+  async function handleSportsEventRsvp() {
     if (!selectedSportsEvent || savingSportsEventRsvp) return;
     const event = selectedSportsEvent;
     const previousStatus = sportsEventRsvp;
-    const previousCounts = sportsEventRsvpCounts;
-    const nextStatus = sportsEventRsvp === status ? null : status;
-    const nextCounts = { ...sportsEventRsvpCounts };
-    if (previousStatus) nextCounts[previousStatus] = Math.max(0, nextCounts[previousStatus] - 1);
-    if (nextStatus) nextCounts[nextStatus] += 1;
+    const previousGoingCount = sportsEventGoingCount;
+    const nextStatus: SportsEventRsvpStatus | null = sportsEventRsvp === 'going' ? null : 'going';
+    let nextGoingCount = previousGoingCount;
+    if (previousStatus === 'going') nextGoingCount = Math.max(0, nextGoingCount - 1);
+    if (nextStatus === 'going') nextGoingCount += 1;
 
     setSportsEventRsvp(nextStatus);
-    setSportsEventRsvpCounts(nextCounts);
+    setSportsEventGoingCount(nextGoingCount);
     setSportsEventListParticipation((current) => ({
       ...current,
-      [event.id]: nextCounts.going,
+      [event.id]: nextGoingCount,
     }));
     setSavingSportsEventRsvp(true);
 
@@ -858,14 +880,16 @@ export default function HomeScreen({
           .eq('event_id', event.id)
           .eq('user_id', userId);
 
+    if (selectedSportsEventRef.current?.id !== event.id) return;
+
     if (result.error) {
       if (result.error.code !== 'PGRST205') console.error('Failed to save sports event RSVP:', result.error);
       if (result.error.code !== 'PGRST205') {
         setSportsEventRsvp(previousStatus);
-        setSportsEventRsvpCounts(previousCounts);
+        setSportsEventGoingCount(previousGoingCount);
         setSportsEventListParticipation((current) => ({
           ...current,
-          [event.id]: previousCounts.going,
+          [event.id]: previousGoingCount,
         }));
       }
       setSavingSportsEventRsvp(false);
@@ -878,25 +902,66 @@ export default function HomeScreen({
 
   async function handleSubmitSportsEventComment() {
     if (!selectedSportsEvent || !sportsEventCommentInput.trim() || submittingSportsEventComment) return;
+    if (!userId) {
+      Alert.alert('Sign in required', 'Please sign in to comment on sports events.');
+      return;
+    }
+    const event = selectedSportsEvent;
     const content = sportsEventCommentInput.trim();
+    const optimisticId = `local-${Date.now()}`;
     setSubmittingSportsEventComment(true);
+    setSportsEventCommentInput('');
+    setSportsEventComments((current) => [
+      ...current,
+      {
+        id: optimisticId,
+        userId,
+        authorName: 'You',
+        content,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('sports_event_comments')
       .insert({
-        event_id: selectedSportsEvent.id,
+        event_id: event.id,
         user_id: userId,
         content,
-      });
+      })
+      .select('id, event_id, user_id, content, created_at')
+      .single();
+
+    if (selectedSportsEventRef.current?.id !== event.id) return;
 
     if (error) {
-      if (error.code !== 'PGRST205') console.error('Failed to post sports event comment:', error);
+      console.error('Failed to post sports event comment:', error);
+      setSportsEventComments((current) => current.filter((comment) => comment.id !== optimisticId));
+      setSportsEventCommentInput(content);
       setSubmittingSportsEventComment(false);
+      Alert.alert(
+        'Comment failed',
+        error.code === 'PGRST205'
+          ? 'Sports event comments are not set up yet. Run the sports_event_social.sql migration.'
+          : error.message
+      );
       return;
     }
 
-    setSportsEventCommentInput('');
-    await loadSportsEventSocial(selectedSportsEvent);
+    if (data) {
+      const savedComment = data as SportsEventCommentRow;
+      setSportsEventComments((current) => current.map((comment) => (
+        comment.id === optimisticId
+          ? {
+              id: savedComment.id,
+              userId: savedComment.user_id,
+              authorName: 'You',
+              content: savedComment.content,
+              createdAt: savedComment.created_at,
+            }
+          : comment
+      )));
+    }
     setSubmittingSportsEventComment(false);
   }
 
@@ -1390,26 +1455,22 @@ export default function HomeScreen({
                         <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
                           {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
                         </Text>
-                      </View>
-                      <View
-                        style={{
-                          minWidth: 60,
+                        <View style={{
+                          flexDirection: 'row',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                          paddingHorizontal: 7,
-                          paddingVertical: 4,
+                          gap: 4,
+                          alignSelf: 'flex-start',
                           borderRadius: 999,
-                          backgroundColor: colors.bgTertiary,
-                          borderWidth: 1,
-                          borderColor: colors.borderSubtle,
-                        }}
-                      >
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary }}>
-                          {participationCount > 99 ? '99+' : participationCount}
-                        </Text>
-                        <Text style={{ fontSize: 9, fontWeight: '700', color: colors.textTertiary, marginTop: -1 }}>
-                          going
-                        </Text>
+                          backgroundColor: '#eef1fb',
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                          marginTop: 7,
+                        }}>
+                          <Ionicons name="people-outline" size={11} color="#4169E1" />
+                          <Text style={{ color: '#4169E1', fontSize: 10, fontWeight: '800' }}>
+                            {participationCount > 99 ? '99+' : participationCount} going
+                          </Text>
+                        </View>
                       </View>
                       <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
                     </TouchableOpacity>
@@ -1430,7 +1491,7 @@ export default function HomeScreen({
         visible={!!selectedSportsEvent}
         transparent
         animationType="slide"
-        onRequestClose={() => setSelectedSportsEvent(null)}
+        onRequestClose={closeSportsEvent}
       >
         <KeyboardAvoidingView
           style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}
@@ -1438,7 +1499,7 @@ export default function HomeScreen({
         >
           <TouchableOpacity
             activeOpacity={1}
-            onPress={() => setSelectedSportsEvent(null)}
+            onPress={closeSportsEvent}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}
           />
           {selectedSportsEvent ? (
@@ -1486,7 +1547,7 @@ export default function HomeScreen({
                     </Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => setSelectedSportsEvent(null)}
+                    onPress={closeSportsEvent}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={{
                       width: 34,
@@ -1501,42 +1562,35 @@ export default function HomeScreen({
                   </TouchableOpacity>
                 </View>
 
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-                  {([
-                    { status: 'going' as const, label: 'Going', icon: 'checkmark-circle-outline' as const, count: sportsEventRsvpCounts.going },
-                    { status: 'interested' as const, label: 'Interested', icon: 'star-outline' as const, count: sportsEventRsvpCounts.interested },
-                  ]).map((item) => {
-                    const active = sportsEventRsvp === item.status;
-                    return (
-                      <TouchableOpacity
-                        key={item.status}
-                        onPress={() => void handleSportsEventRsvp(item.status)}
-                        disabled={savingSportsEventRsvp}
-                        activeOpacity={0.78}
-                        style={{
-                          flex: 1,
-                          minHeight: 50,
-                          borderRadius: 16,
-                          backgroundColor: active ? selectedSportsEvent.color : colors.card,
-                          borderWidth: 1,
-                          borderColor: active ? selectedSportsEvent.color : colors.border,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexDirection: 'row',
-                          gap: 7,
-                        }}
-                      >
-                        <Ionicons name={item.icon} size={17} color={active ? 'white' : colors.textSecondary} />
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: active ? 'white' : colors.text }}>
-                          {item.label}
-                        </Text>
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? 'rgba(255,255,255,0.78)' : colors.textTertiary }}>
-                          {item.count}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                <TouchableOpacity
+                  onPress={() => void handleSportsEventRsvp()}
+                  disabled={savingSportsEventRsvp}
+                  activeOpacity={0.78}
+                  style={{
+                    minHeight: 52,
+                    borderRadius: 16,
+                    backgroundColor: sportsEventRsvp === 'going' ? selectedSportsEvent.color : colors.card,
+                    borderWidth: 1,
+                    borderColor: sportsEventRsvp === 'going' ? selectedSportsEvent.color : colors.border,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: 7,
+                    marginTop: 18,
+                  }}
+                >
+                  <Ionicons
+                    name={sportsEventRsvp === 'going' ? 'checkmark-circle' : 'checkmark-circle-outline'}
+                    size={18}
+                    color={sportsEventRsvp === 'going' ? 'white' : colors.textSecondary}
+                  />
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: sportsEventRsvp === 'going' ? 'white' : colors.text }}>
+                    Going
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: sportsEventRsvp === 'going' ? 'rgba(255,255,255,0.78)' : colors.textTertiary }}>
+                    {sportsEventGoingCount}
+                  </Text>
+                </TouchableOpacity>
 
                 <View
                   style={{

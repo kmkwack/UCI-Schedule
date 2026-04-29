@@ -19,9 +19,11 @@ import { fallbackProfileFromEmail, type EditableProfile } from '../data/userPref
 type Props = {
   onFinish: () => Promise<void> | void;
   onCompleteNotifications?: (enabled: boolean) => Promise<void> | void;
+  onBackToUniversity?: () => Promise<void> | void;
   finishing?: boolean;
   initialProfile?: EditableProfile;
   userEmail?: string;
+  schoolName?: string;
   onSaveProfile?: (profile: EditableProfile) => Promise<boolean>;
 };
 
@@ -91,7 +93,7 @@ const SLIDES: Slide[] = [
   {
     eyebrow: '01 · Arrival',
     title: 'Welcome, Anteater.',
-    body: "Let's set up the campus app built around your schedule, classmates, and UCI life.",
+    body: "Let's set up the campus app built around your schedule, classmates, and college life.",
     accent: '#4169E1',
     kind: 'arrival',
   },
@@ -131,6 +133,38 @@ const SLIDES: Slide[] = [
     kind: 'notifications',
   },
 ];
+
+type SchoolOnboardingBrand = {
+  badge: string;
+  backgroundSource?: number;
+  mascot: string;
+};
+
+function getOnboardingSchoolBrand(schoolName?: string): SchoolOnboardingBrand {
+  const normalized = (schoolName ?? 'UC Irvine').trim().toLowerCase();
+
+  if (normalized.includes('irvine')) {
+    return {
+      badge: 'UC IRVINE',
+      backgroundSource: require('../../assets/uci-anthill-plaza.jpg'),
+      mascot: 'Anteater',
+    };
+  }
+
+  if (normalized.includes('berkeley')) return { badge: 'UC BERKELEY', mascot: 'Golden Bear' };
+  if (normalized.includes('los angeles') || normalized.includes('ucla')) return { badge: 'UCLA', mascot: 'Bruin' };
+  if (normalized.includes('san diego')) return { badge: 'UC SAN DIEGO', mascot: 'Triton' };
+  if (normalized.includes('davis')) return { badge: 'UC DAVIS', mascot: 'Aggie' };
+  if (normalized.includes('santa barbara')) return { badge: 'UC SANTA BARBARA', mascot: 'Gaucho' };
+  if (normalized.includes('santa cruz')) return { badge: 'UC SANTA CRUZ', mascot: 'Banana Slug' };
+  if (normalized.includes('riverside')) return { badge: 'UC RIVERSIDE', mascot: 'Highlander' };
+  if (normalized.includes('merced')) return { badge: 'UC MERCED', mascot: 'Bobcat' };
+
+  return {
+    badge: schoolName ? schoolName.toUpperCase() : 'COLLEGE',
+    mascot: 'student',
+  };
+}
 
 function ProgressBar({ index, accent, isDark }: { index: number; accent: string; isDark: boolean }) {
   return (
@@ -234,15 +268,17 @@ function OnboardingField({
   );
 }
 
-function PhotoBackdrop({ isDark }: { isDark: boolean }) {
+function PhotoBackdrop({ backgroundSource, isDark }: { backgroundSource?: number; isDark: boolean }) {
   return (
     <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
-      <Image
-        source={require('../../assets/uci-anthill-plaza.jpg')}
-        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' }}
-        resizeMode="cover"
-        blurRadius={3}
-      />
+      {backgroundSource ? (
+        <Image
+          source={backgroundSource}
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' }}
+          resizeMode="cover"
+          blurRadius={3}
+        />
+      ) : null}
       <View
         style={{
           position: 'absolute',
@@ -250,18 +286,11 @@ function PhotoBackdrop({ isDark }: { isDark: boolean }) {
           right: 0,
           bottom: 0,
           left: 0,
-          backgroundColor: isDark ? 'rgba(9,17,29,0.64)' : 'rgba(244,247,255,0.72)',
+          backgroundColor: backgroundSource
+            ? isDark ? 'rgba(9,17,29,0.64)' : 'rgba(244,247,255,0.72)'
+            : isDark ? PALETTE.bgDark : PALETTE.bg,
         }}
       />
-    </View>
-  );
-}
-
-function SoftBlueBackdrop({ isDark }: { isDark: boolean }) {
-  return (
-    <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
-      <View style={{ position: 'absolute', top: -40, right: -50, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(65,105,225,0.14)' }} />
-      <View style={{ position: 'absolute', bottom: 60, left: -60, width: 160, height: 160, borderRadius: 80, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.26)' }} />
     </View>
   );
 }
@@ -556,7 +585,8 @@ function BoardsPreview() {
   );
 }
 
-const TOUR_SECTION_HEIGHT = 500;
+const TOUR_SECTION_HEIGHT = 420;
+const TOUR_SECTION_OVERLAP = 56;
 
 type TourKey = 'today' | 'schedule' | 'classmates' | 'boards';
 
@@ -609,12 +639,12 @@ function AppTourSequence({ scrollY }: { scrollY: Animated.Value }) {
         ];
         const opacity = scrollY.interpolate({
           inputRange,
-          outputRange: [0.08, 1, 0.08],
+          outputRange: [0.18, 1, 0.12],
           extrapolate: 'clamp',
         });
         const translateY = scrollY.interpolate({
           inputRange,
-          outputRange: [46, 0, -46],
+          outputRange: [16, 0, -34],
           extrapolate: 'clamp',
         });
         const scale = scrollY.interpolate({
@@ -630,7 +660,8 @@ function AppTourSequence({ scrollY }: { scrollY: Animated.Value }) {
               minHeight: TOUR_SECTION_HEIGHT,
               justifyContent: 'flex-start',
               paddingTop: 0,
-              paddingBottom: 38,
+              paddingBottom: 22,
+              marginBottom: itemIndex === TOUR_ITEMS.length - 1 ? 0 : -TOUR_SECTION_OVERLAP,
               opacity,
               transform: [{ translateY }, { scale }],
             }}
@@ -743,9 +774,11 @@ function PreviewForSlide({
 export default function FeatureOnboardingScreen({
   onFinish,
   onCompleteNotifications,
+  onBackToUniversity,
   finishing = false,
   initialProfile,
   userEmail,
+  schoolName,
   onSaveProfile,
 }: Props) {
   const { colors, isDark } = useTheme();
@@ -757,6 +790,11 @@ export default function FeatureOnboardingScreen({
   const anim = useRef(new Animated.Value(1)).current;
   const tourScrollY = useRef(new Animated.Value(0)).current;
   const slide = SLIDES[index];
+  const schoolBrand = useMemo(() => getOnboardingSchoolBrand(schoolName), [schoolName]);
+  const slideTitle = slide.kind === 'arrival' ? `Welcome, ${schoolBrand.mascot}.` : slide.title;
+  const slideBody = slide.kind === 'arrival'
+    ? "Let's set up the campus app built around your schedule, classmates, and college life."
+    : slide.body;
   const isPhotoSlide = slide.kind === 'arrival';
   const backgroundColor = isDark ? PALETTE.bgDark : PALETTE.bg;
   const canContinueNames = !!profile.firstName.trim() && !!profile.lastName.trim() && !!profile.nickname.trim();
@@ -842,13 +880,33 @@ export default function FeatureOnboardingScreen({
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor }} edges={['top', 'left', 'right', 'bottom']}>
-      {slide.kind === 'arrival' ? <PhotoBackdrop isDark={isDark} /> : <SoftBlueBackdrop isDark={isDark} />}
+      {slide.kind === 'arrival' ? <PhotoBackdrop backgroundSource={schoolBrand.backgroundSource} isDark={isDark} /> : null}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={{ paddingHorizontal: 24, paddingTop: 8 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontSize: 11, fontWeight: '900', letterSpacing: 1.4, color: slide.accent, textTransform: 'uppercase' }}>
-              {slide.eyebrow}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              {slide.kind === 'arrival' && onBackToUniversity ? (
+                <TouchableOpacity
+                  disabled={finishing || savingProfile}
+                  onPress={() => { void onBackToUniversity(); }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 15,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.56)',
+                    opacity: finishing || savingProfile ? 0.5 : 1,
+                  }}
+                >
+                  <Ionicons name="chevron-back" size={18} color={slide.accent} />
+                </TouchableOpacity>
+              ) : null}
+              <Text style={{ fontSize: 11, fontWeight: '900', letterSpacing: 1.4, color: slide.accent, textTransform: 'uppercase' }}>
+                {slide.eyebrow}
+              </Text>
+            </View>
             {canSkip ? (
               <TouchableOpacity
                 disabled={finishing || savingProfile}
@@ -904,10 +962,10 @@ export default function FeatureOnboardingScreen({
                     ...heroTitleStyle,
                   }}
                 >
-                  {slide.title}
+                  {slideTitle}
                 </Animated.Text>
                 <Animated.Text style={{ fontSize: 16, lineHeight: 24, color: colors.textSecondary, marginTop: 14, fontWeight: '600', ...heroBodyStyle }}>
-                  {slide.body}
+                  {slideBody}
                 </Animated.Text>
                 <Animated.View
                   style={{
@@ -923,17 +981,17 @@ export default function FeatureOnboardingScreen({
                   }}
                 >
                   <Text style={{ fontSize: 12, fontWeight: '900', color: slide.accent, letterSpacing: 0.7 }}>
-                    UC IRVINE
+                    {schoolBrand.badge}
                   </Text>
                 </Animated.View>
               </>
             ) : (
               <>
                 <Text style={{ fontSize: 29, lineHeight: 34, fontWeight: '900', color: colors.text, letterSpacing: -0.8 }}>
-                  {slide.title}
+                  {slideTitle}
                 </Text>
                 <Text style={{ fontSize: 15, lineHeight: 23, color: colors.textSecondary, marginTop: 12 }}>
-                  {slide.body}
+                  {slideBody}
                 </Text>
                 <PreviewForSlide slide={slide} profile={profile} updateProfile={updateProfile} tourScrollY={tourScrollY} isDark={isDark} />
               </>
@@ -941,8 +999,14 @@ export default function FeatureOnboardingScreen({
           </Animated.View>
         </Animated.ScrollView>
 
-        <View style={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16) }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 7, marginBottom: 18 }}>
+        <View
+          style={{
+            paddingHorizontal: 24,
+            paddingTop: slide.kind === 'notifications' ? 8 : 12,
+            paddingBottom: slide.kind === 'notifications' ? 4 : Math.max(insets.bottom, 16),
+          }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 7, marginBottom: slide.kind === 'notifications' ? 10 : 18 }}>
             {SLIDES.map((item, dotIndex) => {
               const active = dotIndex === index;
               const disabled = dotIndex > index && (
@@ -967,57 +1031,87 @@ export default function FeatureOnboardingScreen({
             })}
           </View>
 
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            {index > 0 ? (
+          {slide.kind === 'notifications' ? (
+            <>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  disabled={finishing || savingProfile}
+                  onPress={() => setIndex((current) => Math.max(0, current - 1))}
+                  style={{
+                    flex: 0.38,
+                    minHeight: 56,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: isDark ? PALETTE.borderDark : PALETTE.border,
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: finishing || savingProfile ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Back</Text>
+                </TouchableOpacity>
+                <View style={{ flex: 0.62 }}>
+                  <PrimaryButton
+                    onPress={() => { void goNext(); }}
+                    accent={slide.accent}
+                    loading={finishing || savingProfile}
+                    disabled={isBlocked}
+                  >
+                    Enable Notifications
+                  </PrimaryButton>
+                </View>
+              </View>
               <TouchableOpacity
                 disabled={finishing || savingProfile}
-                onPress={() => setIndex((current) => Math.max(0, current - 1))}
-                style={{
-                  flex: 0.38,
-                  minHeight: 56,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: isDark ? PALETTE.borderDark : PALETTE.border,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: finishing || savingProfile ? 0.5 : 1,
-                }}
+                onPress={() => { void completeNotifications(false); }}
+                style={{ alignItems: 'center', paddingTop: 9, opacity: finishing || savingProfile ? 0.5 : 1 }}
               >
-                <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Back</Text>
+                <Text style={{ color: colors.textTertiary, fontSize: 13, fontWeight: '700' }}>Not now</Text>
               </TouchableOpacity>
-            ) : null}
+            </>
+          ) : (
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              {index > 0 ? (
+                <TouchableOpacity
+                  disabled={finishing || savingProfile}
+                  onPress={() => setIndex((current) => Math.max(0, current - 1))}
+                  style={{
+                    flex: 0.38,
+                    minHeight: 56,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: isDark ? PALETTE.borderDark : PALETTE.border,
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: finishing || savingProfile ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Back</Text>
+                </TouchableOpacity>
+              ) : null}
 
-            <View style={{ flex: index > 0 ? 0.62 : 1 }}>
-              <PrimaryButton
-                onPress={() => { void goNext(); }}
-                accent={slide.accent}
-                loading={finishing || savingProfile}
-                disabled={isBlocked}
-              >
-                {savingProfile
-                  ? 'Saving...'
-                  : slide.kind === 'names' && !canContinueNames
-                    ? 'Fill required fields'
-                    : slide.kind === 'profile' && !canContinueProfile
-                      ? 'Choose year and major'
-                      : slide.kind === 'notifications'
-                        ? 'Enable Notifications'
+              <View style={{ flex: index > 0 ? 0.62 : 1 }}>
+                <PrimaryButton
+                  onPress={() => { void goNext(); }}
+                  accent={slide.accent}
+                  loading={finishing || savingProfile}
+                  disabled={isBlocked}
+                >
+                  {savingProfile
+                    ? 'Saving...'
+                    : slide.kind === 'names' && !canContinueNames
+                      ? 'Fill required fields'
+                      : slide.kind === 'profile' && !canContinueProfile
+                        ? 'Choose year and major'
                         : index === 0
                           ? 'Walk in'
                           : 'Continue'}
-              </PrimaryButton>
-              {slide.kind === 'notifications' ? (
-                <TouchableOpacity
-                  disabled={finishing || savingProfile}
-                  onPress={() => { void completeNotifications(false); }}
-                  style={{ alignItems: 'center', paddingTop: 14, opacity: finishing || savingProfile ? 0.5 : 1 }}
-                >
-                  <Text style={{ color: colors.textTertiary, fontSize: 14, fontWeight: '700' }}>Not now</Text>
-                </TouchableOpacity>
-              ) : null}
+                </PrimaryButton>
+              </View>
             </View>
-          </View>
+          )}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

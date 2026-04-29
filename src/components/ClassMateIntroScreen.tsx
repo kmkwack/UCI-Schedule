@@ -93,10 +93,6 @@ export default function ClassMateIntroScreen({ onComplete }: Props) {
   return (
     <Animated.View style={{ flex: 1, opacity: overlayOpacity }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#08111d' : '#f3f7ff' }}>
-        <View style={{ position: 'absolute', top: -50, right: -40, width: 240, height: 240, borderRadius: 120, backgroundColor: 'rgba(61,108,255,0.22)' }} />
-        <View style={{ position: 'absolute', top: 150, left: -80, width: 210, height: 210, borderRadius: 105, backgroundColor: 'rgba(255,98,118,0.15)' }} />
-        <View style={{ position: 'absolute', bottom: 130, right: -50, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(80,191,255,0.16)' }} />
-
         <View style={{ flex: 1, paddingHorizontal: 28, justifyContent: 'center', alignItems: 'center' }}>
           <Animated.View
             style={{

@@ -23,6 +23,9 @@ create index if not exists sports_event_rsvps_event_idx
 create index if not exists sports_event_comments_event_created_idx
   on public.sports_event_comments (event_id, created_at);
 
+grant select, insert, update, delete on public.sports_event_rsvps to authenticated;
+grant select, insert on public.sports_event_comments to authenticated;
+
 alter table public.sports_event_rsvps enable row level security;
 alter table public.sports_event_comments enable row level security;
 

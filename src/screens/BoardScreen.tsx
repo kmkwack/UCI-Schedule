@@ -14,6 +14,7 @@ import {
   Alert,
   Animated,
   Easing,
+  LayoutAnimation,
   PanResponder,
   Dimensions,
   Linking,
@@ -216,6 +217,15 @@ function attachmentUri(attachment: BoardAttachment) {
   return attachment.localUri ?? attachment.url ?? '';
 }
 
+function isNetworkRequestError(error: unknown) {
+  const message = String((error as { message?: unknown } | null | undefined)?.message ?? error ?? '').toLowerCase();
+  return (
+    message.includes('network request failed') ||
+    message.includes('failed to fetch') ||
+    message.includes('fetch failed')
+  );
+}
+
 function BoardAttachmentImage({
   uri,
   style,
@@ -255,8 +265,7 @@ function BoardAttachmentImage({
       contentFit={contentFit}
       cachePolicy="memory-disk"
       transition={120}
-      onError={(event) => {
-        console.warn('Board image failed to load:', event);
+      onError={() => {
         setFailed(true);
       }}
       style={style}
@@ -362,7 +371,7 @@ async function cacheImageAttachment(attachment: BoardAttachment, remoteUrl: stri
     }
     return { ...attachment, localUri: downloaded.uri, url: remoteUrl };
   } catch (error) {
-    console.warn('Failed to cache board image attachment:', error);
+    if (!isNetworkRequestError(error)) console.warn('Failed to cache board image attachment:', error);
     return { ...attachment, url: remoteUrl };
   }
 }
@@ -558,7 +567,7 @@ export default function BoardScreen({
 }: Props) {
   const { colors, isDark } = useTheme();
   const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<CommentNode[]>([]);
@@ -566,6 +575,7 @@ export default function BoardScreen({
   const [commentInput, setCommentInput] = useState('');
   const [replyingToComment, setReplyingToComment] = useState<{ id: string; authorName: string } | null>(null);
   const [editingComment, setEditingComment] = useState<{ id: string; authorName: string } | null>(null);
+  const [activeCommentActionsId, setActiveCommentActionsId] = useState<string | null>(null);
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostBody, setNewPostBody] = useState('');
@@ -597,7 +607,9 @@ export default function BoardScreen({
   const SCREEN_W = Dimensions.get('window').width;
   const boardSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
   const postsCacheKey = `board_posts_${school}_${userId}`;
+  const boardsCacheKey = `board_catalog_${school}`;
   const boardListScrollRef = useRef<ScrollView>(null);
+  const postsRef = useRef<Post[]>([]);
   const departmentBoards = useMemo(() => UCI_DEPARTMENTS.map(departmentBoardFor), []);
   const hotPosts = useMemo(() => {
     return posts
@@ -640,6 +652,10 @@ export default function BoardScreen({
   }, [boardAuthorName, boardProfileVisible, school, userId]);
 
   useEffect(() => {
+    postsRef.current = posts;
+  }, [posts]);
+
+  useEffect(() => {
     if (scrollToTopTrigger > 0) boardListScrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [scrollToTopTrigger]);
 
@@ -676,7 +692,7 @@ export default function BoardScreen({
       .select('id, major, year')
       .in('id', validIds);
 
-    if (profilesError) console.error('Failed to load board profiles:', profilesError);
+    if (profilesError && !isNetworkRequestError(profilesError)) console.error('Failed to load board profiles:', profilesError);
 
     const profilesById = Object.fromEntries(
       ((profilesData ?? []) as Array<{ id: string; major: string | null; year: string | null }>).map((row) => [row.id, row])
@@ -920,66 +936,77 @@ export default function BoardScreen({
         return attachments ? { ...prev, attachments } : prev;
       });
     }).catch((error) => {
-      console.warn('Failed to hydrate board attachment URLs:', error);
+      if (!isNetworkRequestError(error)) console.warn('Failed to hydrate board attachment URLs:', error);
     });
   }
 
   async function fetchPosts() {
-    const cached = await AsyncStorage.getItem(postsCacheKey);
-    if (cached) {
-      try {
-        const cachedPosts = (JSON.parse(cached) as Post[]).map((post) => ({
-          ...post,
-          attachments: normalizeAttachments(post.attachments),
-        }));
-        setPosts(cachedPosts);
-        setLoading(false);
-        hydrateAttachmentUrlsForPosts(cachedPosts);
-      } catch {
+    const hadPosts = postsRef.current.length > 0;
+
+    try {
+      const cached = await AsyncStorage.getItem(postsCacheKey);
+      if (cached) {
+        try {
+          const cachedPosts = (JSON.parse(cached) as Post[]).map((post) => ({
+            ...post,
+            attachments: normalizeAttachments(post.attachments),
+          }));
+          postsRef.current = cachedPosts;
+          setPosts(cachedPosts);
+          setLoading(false);
+          hydrateAttachmentUrlsForPosts(cachedPosts);
+        } catch {
+          if (!hadPosts) setLoading(true);
+        }
+      } else if (!hadPosts) {
         setLoading(true);
       }
-    } else {
-      setLoading(true);
+    } catch (error) {
+      if (!hadPosts) setLoading(true);
+      if (!isNetworkRequestError(error)) console.warn('Failed to read cached board posts:', error);
     }
 
-    const { data: postsData, error } = await supabase
-      .from('posts')
-      .select('*')
-      .eq('school', school)
-      .order('created_at', { ascending: false });
+    try {
+      const { data: postsData, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('school', school)
+        .order('created_at', { ascending: false });
 
-    if (error || !postsData) {
-      setLoading(false);
-      return;
-    }
+      if (error || !postsData) {
+        setLoading(false);
+        if (error && !isNetworkRequestError(error)) console.warn('Failed to refresh board posts:', error);
+        return;
+      }
 
-    if (postsData.length === 0) {
-      setPosts([]);
-      setLoading(false);
-      await AsyncStorage.setItem(postsCacheKey, JSON.stringify([]));
-      return;
-    }
+      if (postsData.length === 0) {
+        postsRef.current = [];
+        setPosts([]);
+        setLoading(false);
+        await AsyncStorage.setItem(postsCacheKey, JSON.stringify([]));
+        return;
+      }
 
-    const postIds = postsData.map((post: any) => post.id);
-    const [{ data: votesData }, { data: commentsData }, authorSummaries] = await Promise.all([
-      supabase.from('post_votes').select('post_id, user_id').in('post_id', postIds),
-      supabase.from('post_comments').select('id, post_id').in('post_id', postIds),
-      resolveAuthorSummaries(postsData.map((post: any) => post.user_id)),
-    ]);
+      const postIds = postsData.map((post: any) => post.id);
+      const [{ data: votesData }, { data: commentsData }, authorSummaries] = await Promise.all([
+        supabase.from('post_votes').select('post_id, user_id').in('post_id', postIds),
+        supabase.from('post_comments').select('id, post_id').in('post_id', postIds),
+        resolveAuthorSummaries(postsData.map((post: any) => post.user_id)),
+      ]);
 
-    const likeCountMap: Record<string, number> = {};
-    const userLikedSet = new Set<string>();
-    (votesData ?? []).forEach((vote: any) => {
-      likeCountMap[vote.post_id] = (likeCountMap[vote.post_id] ?? 0) + 1;
-      if (vote.user_id === userId) userLikedSet.add(vote.post_id);
-    });
+      const likeCountMap: Record<string, number> = {};
+      const userLikedSet = new Set<string>();
+      (votesData ?? []).forEach((vote: any) => {
+        likeCountMap[vote.post_id] = (likeCountMap[vote.post_id] ?? 0) + 1;
+        if (vote.user_id === userId) userLikedSet.add(vote.post_id);
+      });
 
-    const commentCountMap: Record<string, number> = {};
-    (commentsData ?? []).forEach((comment: any) => {
-      commentCountMap[comment.post_id] = (commentCountMap[comment.post_id] ?? 0) + 1;
-    });
+      const commentCountMap: Record<string, number> = {};
+      (commentsData ?? []).forEach((comment: any) => {
+        commentCountMap[comment.post_id] = (commentCountMap[comment.post_id] ?? 0) + 1;
+      });
 
-    const freshPosts = postsData.map((post: any) => ({
+      const freshPosts = postsData.map((post: any) => ({
         id: post.id,
         user_id: post.user_id,
         author_name: authorSummaries[post.user_id]?.displayName ?? anteaterAliasForId(post.user_id),
@@ -996,22 +1023,44 @@ export default function BoardScreen({
         is_locked: !!post.is_locked,
       }));
 
-    setPosts(freshPosts);
-    setLoading(false);
-    await AsyncStorage.setItem(postsCacheKey, JSON.stringify(freshPosts));
-    hydrateAttachmentUrlsForPosts(freshPosts);
+      postsRef.current = freshPosts;
+      setPosts(freshPosts);
+      setLoading(false);
+      await AsyncStorage.setItem(postsCacheKey, JSON.stringify(freshPosts));
+      hydrateAttachmentUrlsForPosts(freshPosts);
+    } catch (error) {
+      setLoading(false);
+      if (!isNetworkRequestError(error)) console.warn('Failed to refresh board posts:', error);
+    }
   }
 
   async function fetchBoards() {
-    const { data, error } = await supabase
-      .from('boards')
-      .select('*')
-      .eq('school', school)
-      .order('created_at', { ascending: true });
+    try {
+      const cached = await AsyncStorage.getItem(boardsCacheKey);
+      if (cached) {
+        const cachedBoards = JSON.parse(cached) as Board[];
+        if (Array.isArray(cachedBoards) && cachedBoards.length > 0) {
+          setBoards(cachedBoards);
+        }
+      }
+    } catch (error) {
+      if (!isNetworkRequestError(error)) console.warn('Failed to read cached boards:', error);
+    }
 
-    if (!error && data && data.length > 0) {
-      setBoards(
-        (data as Array<{
+    try {
+      const { data, error } = await supabase
+        .from('boards')
+        .select('*')
+        .eq('school', school)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        if (!isNetworkRequestError(error)) console.warn('Failed to refresh boards:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const freshBoards = (data as Array<{
           id: string;
           name: string;
           description: string | null;
@@ -1026,8 +1075,12 @@ export default function BoardScreen({
           icon: row.icon as React.ComponentProps<typeof Ionicons>['name'],
           color: row.color,
           iconBg: row.icon_bg,
-        }))
-      );
+        }));
+        setBoards(freshBoards);
+        await AsyncStorage.setItem(boardsCacheKey, JSON.stringify(freshBoards));
+      }
+    } catch (error) {
+      if (!isNetworkRequestError(error)) console.warn('Failed to refresh boards:', error);
     }
   }
 
@@ -1629,43 +1682,110 @@ export default function BoardScreen({
 
   const selectedPostCommentCount = useMemo(() => countComments(comments), [comments]);
 
-  function openCommentActions(comment: CommentNode) {
-    const buttons: Array<{
-      text: string;
-      onPress?: () => void;
-      style?: 'default' | 'cancel' | 'destructive';
-    }> = [];
+  function toggleCommentActions(commentId: string) {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setActiveCommentActionsId((current) => (current === commentId ? null : commentId));
+  }
 
-    if (comment.user_id === userId) {
-      buttons.push(
-        { text: 'Edit', onPress: () => startEditComment(comment) },
-        { text: 'Delete', style: 'destructive', onPress: () => void handleDeleteComment(comment) }
-      );
-    } else {
-      if (selectedPost && onOpenChat) {
-        buttons.push({
-          text: 'Message',
-          onPress: () => onOpenChat({
-            id: comment.user_id,
-            kind: 'board_anonymous',
-            name: comment.author_name,
-            sourcePostId: selectedPost.id,
-            sourceLabel: selectedPost.title,
-          }),
-        });
-      }
-      buttons.push({
-        text: 'Report',
-        onPress: () => openReport({
-          id: comment.id,
-          type: 'comment',
-          label: `Comment by ${comment.author_name}`,
-        }),
-      });
-    }
+  function handleMessageCommentAuthor(comment: CommentNode) {
+    if (!selectedPost || !onOpenChat) return;
+    setActiveCommentActionsId(null);
+    onOpenChat({
+      id: comment.user_id,
+      kind: 'board_anonymous',
+      name: comment.author_name,
+      sourcePostId: selectedPost.id,
+      sourceLabel: selectedPost.title,
+    });
+  }
 
-    buttons.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert('Comment actions', undefined, buttons);
+  function renderCommentActionMenu(comment: CommentNode) {
+    if (activeCommentActionsId !== comment.id) return null;
+    const isOwnComment = comment.user_id === userId;
+    const optionStyle = {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      paddingHorizontal: 11,
+      paddingVertical: 9,
+      borderRadius: 10,
+    };
+
+    return (
+      <View
+        style={{
+          alignSelf: 'flex-start',
+          marginTop: 6,
+          marginLeft: 78,
+          padding: 4,
+          minWidth: isOwnComment ? 160 : 178,
+          borderRadius: 14,
+          backgroundColor: colors.card,
+          borderWidth: 1,
+          borderColor: colors.borderSubtle,
+          shadowColor: '#0f172a',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: isDark ? 0.16 : 0.07,
+          shadowRadius: 12,
+          elevation: 4,
+        }}
+      >
+        {isOwnComment ? (
+          <>
+            <TouchableOpacity
+              onPress={() => {
+                setActiveCommentActionsId(null);
+                startEditComment(comment);
+              }}
+              activeOpacity={0.78}
+              style={optionStyle}
+            >
+              <Ionicons name="create-outline" size={17} color={colors.textSecondary} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setActiveCommentActionsId(null);
+                void handleDeleteComment(comment);
+              }}
+              activeOpacity={0.78}
+              style={optionStyle}
+            >
+              <Ionicons name="trash-outline" size={17} color="#dc2626" />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#dc2626' }}>Delete</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            {selectedPost && onOpenChat ? (
+              <TouchableOpacity
+                onPress={() => handleMessageCommentAuthor(comment)}
+                activeOpacity={0.78}
+              style={optionStyle}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={17} color={colors.brand} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Message</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              onPress={() => {
+                setActiveCommentActionsId(null);
+                openReport({
+                  id: comment.id,
+                  type: 'comment',
+                  label: `Comment by ${comment.author_name}`,
+                });
+              }}
+              activeOpacity={0.78}
+              style={optionStyle}
+            >
+              <Ionicons name="flag-outline" size={17} color={colors.textSecondary} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Report</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    );
   }
 
   const renderComment = (comment: CommentNode, depth = 0): React.ReactNode => {
@@ -1727,6 +1847,7 @@ export default function BoardScreen({
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
+                  setActiveCommentActionsId(null);
                   setEditingComment(null);
                   setCommentInput('');
                   setReplyingToComment({ id: comment.id, authorName: comment.author_name });
@@ -1737,13 +1858,22 @@ export default function BoardScreen({
                 <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>Reply</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => openCommentActions(comment)}
+                onPress={() => toggleCommentActions(comment.id)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                  paddingHorizontal: 4,
+                  paddingVertical: 2,
+                  borderRadius: 999,
+                  backgroundColor: activeCommentActionsId === comment.id ? colors.bgTertiary : 'transparent',
+                }}
               >
                 <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
             </View>
+            {renderCommentActionMenu(comment)}
           </View>
         </View>
         {comment.replies.length > 0 ? (

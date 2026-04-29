@@ -27,13 +27,34 @@ export type NotificationPreferences = {
 };
 
 export type PushPermissionStatus = 'granted' | 'denied' | 'undetermined' | 'unavailable';
+export type LanguagePreference = 'en';
+export type DateFormatPreference = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 
 export type UserSettingsState = {
   timetableVisibility: TimetableVisibility;
   boardProfileVisible: boolean;
   notifications: NotificationPreferences;
   pushPermissionStatus: PushPermissionStatus;
+  language: LanguagePreference;
+  timeZone: string;
+  dateFormat: DateFormatPreference;
 };
+
+export function deviceTimeZoneFallback() {
+  return 'America/Los_Angeles';
+}
+
+export function normalizeLanguagePreference(value: unknown): LanguagePreference {
+  return 'en';
+}
+
+export function normalizeDateFormatPreference(value: unknown): DateFormatPreference {
+  return value === 'DD/MM/YYYY' || value === 'YYYY-MM-DD' || value === 'MM/DD/YYYY' ? value : 'MM/DD/YYYY';
+}
+
+export function normalizeTimeZonePreference(value: unknown): string {
+  return 'America/Los_Angeles';
+}
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   pushNotifications: false,
@@ -54,6 +75,9 @@ export const DEFAULT_USER_SETTINGS: UserSettingsState = {
   boardProfileVisible: false,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   pushPermissionStatus: 'undetermined',
+  language: 'en',
+  timeZone: 'America/Los_Angeles',
+  dateFormat: 'MM/DD/YYYY',
 };
 
 function prettifyNamePart(part: string) {

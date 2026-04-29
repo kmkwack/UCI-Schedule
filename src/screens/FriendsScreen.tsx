@@ -268,7 +268,7 @@ export default function FriendsScreen({
     [friends, searchQuery]
   );
 
-  const selectedQuarterKey = quarterKey(selectedQuarter);
+  const sharedQuarterKey = quarterKey(selectedQuarter);
   const userQuarterCourses = useMemo(
     () => Array.from(new Map(userActiveCourses.map((course) => [buildSharedCourseKey(course), course])).values()),
     [userActiveCourses]
@@ -279,7 +279,7 @@ export default function FriendsScreen({
       const matchingFriends = friends
         .filter((friendRow) => friendRow.timetableVisibility !== 'private')
         .filter((friendRow) => {
-          const friendCourses = friendRow.timetables[selectedQuarterKey] ?? [];
+          const friendCourses = friendRow.timetables[sharedQuarterKey] ?? [];
           return friendCourses.some((friendCourse) => coursesMatch(course, friendCourse));
         });
 
@@ -289,7 +289,7 @@ export default function FriendsScreen({
       if (right.friends.length !== left.friends.length) return right.friends.length - left.friends.length;
       return left.course.code.localeCompare(right.course.code);
     });
-  }, [friends, selectedQuarterKey, userQuarterCourses]);
+  }, [friends, sharedQuarterKey, userQuarterCourses]);
 
   const sharedCoursesByFriendId = useMemo(() => {
     const map: Record<string, Course[]> = {};
@@ -749,7 +749,6 @@ export default function FriendsScreen({
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* ClassMates list — always rendered so it shows behind the sliding overlay */}
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View style={{ flex: 1 }}>
         <Modal
           transparent
@@ -1023,6 +1022,7 @@ export default function FriendsScreen({
         <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 12 }} />
 
         {activeTab === 'friends' ? (
+          <ScrollView ref={friendsScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: bottomInset + 70 }}>
           <View style={{ paddingHorizontal: 18, marginTop: 12, marginBottom: 12 }}>
             <View style={{
               borderRadius: 18,
@@ -1174,21 +1174,19 @@ export default function FriendsScreen({
               )}
             </View>
           </View>
-        ) : null}
 
-        {activeTab === 'friends' ? (
-          friendsLoading ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          {friendsLoading ? (
+            <View style={{ minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
               <Text style={{ fontSize: 15, color: colors.textTertiary }}>Loading classmates...</Text>
             </View>
           ) : filteredFriends.length === 0 ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <View style={{ minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 18 }}>
               <Ionicons name="people-outline" size={60} color={colors.border} />
               <Text style={{ fontSize: 16, color: colors.textTertiary, fontWeight: '500' }}>No friends yet</Text>
               <Text style={{ fontSize: 13, color: colors.border }}>Tap the icon above to search by name or email</Text>
             </View>
           ) : (
-            <ScrollView ref={friendsScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: bottomInset + 70 }}>
+            <>
               {filteredFriends.map((f, index) => (
                 <View key={f.id}>
                   <View style={{
@@ -1286,8 +1284,9 @@ export default function FriendsScreen({
                   )}
                 </View>
               ))}
-            </ScrollView>
-          )
+            </>
+          )}
+          </ScrollView>
         ) : friendsLoading ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
             <Text style={{ fontSize: 15, color: colors.textTertiary }}>Loading requests...</Text>
@@ -1375,7 +1374,6 @@ export default function FriendsScreen({
           </ScrollView>
         )}
       </View>
-      </TouchableWithoutFeedback>
 
       {/* Friend timetable overlay — slides in from the right over the classmates list */}
       {friend && (

@@ -1401,3 +1401,54 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`App.tsx`** — Unmounts the Messages screen when its modal closes so stale selected-thread state does not persist, and renamed in-app message notification payloads to `conversation-message`.
 - **`src/screens/MessagesScreen.tsx` / `supabase/sql/conversation_messages.sql`** — Removed client-side conversation timestamp updates and added a database trigger that touches `conversations.updated_at` after each inserted message, keeping clients from needing direct conversation update access.
 - **`src/screens/BoardScreen.tsx`** — Relaxed UUID validation for board author profile lookup so valid Supabase UUIDs are not accidentally treated as anonymous legacy ids.
+
+### Session 64ii (Custom comment action menu)
+- **`src/screens/BoardScreen.tsx`** — Replaced the native comment action alert with an in-app expanding action panel so comments and replies keep a cleaner visible action row while still offering anonymous message/report for other users and edit/delete for the author.
+
+### Session 64ij (Reduce network noise and cache boards)
+- **`App.tsx`** — Gated social notification polling behind enabled push permissions, throttled repeated network-failure logs, and slowed the foreground polling interval so transient offline states do not flood the console.
+- **`src/screens/BoardScreen.tsx`** — Added cached board catalog loading, stopped treating cached board posts as a blocking loading state, kept network refreshes in the background, and suppressed expected image/network fallback warnings so reopening Boards feels instant without console spam.
+- **`src/screens/FriendsScreen.tsx`** — Removed the full-screen keyboard-dismiss touch wrapper that could intercept ClassMates list scroll gestures.
+
+### Session 64ik (Make timetable style block-only)
+- **`src/data/courses.ts`** — Replaced the old timetable-level dark theme with block-only styles (`Pastel`, `Soft`, `Minimal`, `Outline`, `Colorful`) and added a normalizer so old `default`/`dark` values safely fall back to `Pastel`.
+- **`src/screens/TimetableScreen.tsx`** — Renamed the settings section to `Block Style`, removed the Dark option, made the timetable grid/background follow the app-wide dark mode, and applied style options only to course blocks.
+
+### Session 64il (Persist language and region settings)
+- **`src/data/userPreferences.ts`** — Added persisted language, time zone, and date-format preferences with safe defaults and normalizers.
+- **`App.tsx`** — Loads and saves language/region preferences through `user_settings.profile_details` so no new Supabase columns are required.
+- **`src/screens/SettingsScreen.tsx`** — Wired the existing `Language & Region` screen to real settings, added language options, expanded time zone choices, and added a save action.
+
+### Session 64im (Differentiate Soft blocks and polish GPA chart)
+- **`src/data/courses.ts`** — Increased the Soft block style color fill and border strength so it is visually distinct from Pastel while remaining gentler than Colorful.
+- **`src/screens/GradesScreen.tsx`** — Reworked the GPA trend chart to use measured width, line-aligned y-axis labels, a gradient area fill, larger data markers, and latest/best summary pills.
+
+### Session 64in (Scroll ClassMates shared summary with list)
+- **`src/screens/FriendsScreen.tsx`** — Moved the `Shared Classes This Quarter` block into the ClassMates list `ScrollView` so the shared-class summary scrolls together with the friend list instead of staying fixed above it.
+
+### Session 64io (Current-quarter ClassMates and single-point GPA)
+- **`src/screens/GradesScreen.tsx`** — Removed the synthetic short line for single-quarter GPA history so a one-quarter trend renders as just the data point.
+- **`App.tsx` / `src/screens/FriendsScreen.tsx`** — Made ClassMates shared-course matching use the current academic quarter and current-quarter courses instead of whichever timetable quarter is currently selected elsewhere in the app.
+
+### Session 64ip (Add day filters to course search)
+- **`src/screens/CoursePickerScreen.tsx`** — Added horizontal day filter chips (`Any day`, weekdays, weekend) to the course picker. Course results now require at least one matching section on the selected days, and expanded course rows only show sections that match the active day filter.
+
+### Session 64iq (Pad customize sheet above home indicator)
+- **`src/screens/CoursePickerScreen.tsx`** — Added safe-area-aware bottom padding to the custom block sheet and scroll content so the primary action button no longer sits under the iPhone home indicator/bottom edge.
+
+### Session 64ir (Clear selected course category chip)
+- **`src/screens/CoursePickerScreen.tsx`** — Added a selected department/GE chip beside the day filters with an inline `x` action. This lets students quickly clear a category like `ECON` while keeping any active day filters in place.
+
+### Session 64is (Center picker quarter and compact custom blocks)
+- **`src/screens/CoursePickerScreen.tsx`** — Centered the course-picker quarter title against the full screen width instead of between uneven side controls. Compressed the custom-block sheet by reducing input height, tightening spacing, and grouping secondary fields into two-column rows so the whole form is easier to scan at once.
+
+### Session 64it (Scale GPA trend quarter labels)
+- **`src/screens/GradesScreen.tsx`** — Replaced full x-axis quarter names with compact labels like `Sp '26` and dynamically limits how many labels render based on chart width. This keeps the GPA trend readable when many quarters are present while preserving every data point.
+
+### Session 64iu (Multi-select department course filters)
+- **`src/screens/CoursePickerScreen.tsx`** — Replaced the single department filter with multi-select department filters. Department rows now toggle in place, selected departments load together from Supabase, each selected department appears as a removable chip beside the day filters, and GE selection remains a single exclusive category.
+
+### Session 64iv (Board chat source cards and simplified locale)
+- **`src/screens/BoardScreen.tsx`** — Tightened the comment overflow menu into a smaller inline popover with shorter action labels so it no longer reads like a large detached card under the comment.
+- **`src/screens/MessagesScreen.tsx`** — Hydrates anonymous board conversations with their source post and shows a persistent source-post card in the chat thread plus a `From:` line in the messages list, so both participants can see which post started the chat.
+- **`src/data/userPreferences.ts` / `src/screens/SettingsScreen.tsx`** — Reduced language and time-zone preferences back to English and Pacific Time only, and normalizes older saved values to those defaults.

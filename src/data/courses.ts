@@ -6,7 +6,7 @@ export type Timetable = {
   order: number;      // display order within the quarter (0-based)
 };
 
-export type TimetableTheme = 'default' | 'minimal' | 'colorful' | 'dark';
+export type TimetableTheme = 'pastel' | 'minimal' | 'colorful' | 'soft' | 'outline';
 
 export type TimetableSettings = {
   theme: TimetableTheme;
@@ -18,7 +18,7 @@ export type TimetableSettings = {
 };
 
 export const DEFAULT_TIMETABLE_SETTINGS: TimetableSettings = {
-  theme: 'default',
+  theme: 'pastel',
   showCode: true,
   showClassName: true,
   showRoomNumber: true,
@@ -200,7 +200,14 @@ function relativeLuminance(hex: string) {
   return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
 }
 
-function customBlockColors(color: string, theme: TimetableTheme) {
+export function normalizeTimetableTheme(theme: TimetableTheme | string | null | undefined): TimetableTheme {
+  if (theme === 'minimal' || theme === 'colorful' || theme === 'soft' || theme === 'outline') return theme;
+  return 'pastel';
+}
+
+function customBlockColors(color: string, themeInput: TimetableTheme | string) {
+  const theme = normalizeTimetableTheme(themeInput);
+
   if (theme === 'colorful') {
     return {
       bg: color,
@@ -209,11 +216,19 @@ function customBlockColors(color: string, theme: TimetableTheme) {
     };
   }
 
-  if (theme === 'dark') {
+  if (theme === 'outline') {
     return {
-      bg: mixHex(color, '#0f172a', 0.78),
-      text: '#f8fafc',
-      border: mixHex(color, '#ffffff', 0.2),
+      bg: '#ffffff',
+      text: mixHex(color, '#111827', 0.26),
+      border: mixHex(color, '#ffffff', 0.18),
+    };
+  }
+
+  if (theme === 'soft') {
+    return {
+      bg: mixHex(color, '#ffffff', 0.76),
+      text: mixHex(color, '#111827', 0.22),
+      border: mixHex(color, '#ffffff', 0.34),
     };
   }
 
@@ -226,9 +241,9 @@ function customBlockColors(color: string, theme: TimetableTheme) {
   }
 
   return {
-    bg: mixHex(color, '#ffffff', 0.84),
-    text: mixHex(color, '#111827', 0.42),
-    border: mixHex(color, '#ffffff', 0.45),
+    bg: mixHex(color, '#ffffff', 0.86),
+    text: mixHex(color, '#111827', 0.4),
+    border: mixHex(color, '#ffffff', 0.46),
   };
 }
 
@@ -248,8 +263,10 @@ export function blockColorKey(course: Course): string {
   return type ? `${course.code}-${type}` : course.code;
 }
 
-/** Returns block bg/text/border for a given course and theme. */
-export function getBlockColors(course: Course, theme: TimetableTheme): { bg: string; text: string; border: string } {
+/** Returns block bg/text/border for a given course and block style. */
+export function getBlockColors(course: Course, themeInput: TimetableTheme | string): { bg: string; text: string; border: string } {
+  const theme = normalizeTimetableTheme(themeInput);
+
   if (course.customColor) {
     return customBlockColors(course.customColor, theme);
   }
@@ -259,11 +276,23 @@ export function getBlockColors(course: Course, theme: TimetableTheme): { bg: str
       return { bg: '#f5f6f8', text: '#4b5563', border: '#d1d5db' };
     case 'colorful': {
       const color = colorForCourse(blockColorKey(course));
-      return { bg: color, text: 'white', border: color };
+      return { bg: color, text: relativeLuminance(color) > 0.55 ? '#111827' : '#ffffff', border: color };
     }
-    case 'dark': {
-      const { border } = pastelForCourse(blockColorKey(course));
-      return { bg: '#1e293b', text: '#f1f5f9', border };
+    case 'soft': {
+      const color = colorForCourse(blockColorKey(course));
+      return {
+        bg: mixHex(color, '#ffffff', 0.76),
+        text: mixHex(color, '#111827', 0.22),
+        border: mixHex(color, '#ffffff', 0.34),
+      };
+    }
+    case 'outline': {
+      const color = colorForCourse(blockColorKey(course));
+      return {
+        bg: '#ffffff',
+        text: mixHex(color, '#111827', 0.2),
+        border: mixHex(color, '#ffffff', 0.1),
+      };
     }
     default:
       return pastelForCourse(blockColorKey(course));

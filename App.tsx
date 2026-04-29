@@ -30,6 +30,9 @@ import {
   fallbackProfileFromEmail,
   hasCompletedProfileSetup,
   needsInitialOnboarding,
+  normalizeDateFormatPreference,
+  normalizeLanguagePreference,
+  normalizeTimeZonePreference,
   profileDetailsFromProfile,
   profileFromSources,
 } from './src/data/userPreferences';
@@ -37,7 +40,7 @@ import { parseSportsCalendar } from './src/data/sportsEvents';
 import { supabase } from './src/lib/supabase';
 import type { University } from './src/screens/UniversitySelectionScreen';
 import type { ChatTarget } from './src/data/messages';
-import type { EditableProfile, NotificationPreferences, PushPermissionStatus, TimetableVisibility, UserSettingsState } from './src/data/userPreferences';
+import type { DateFormatPreference, EditableProfile, LanguagePreference, NotificationPreferences, PushPermissionStatus, TimetableVisibility, UserSettingsState } from './src/data/userPreferences';
 
 type ConversationMessageNotificationRow = {
   id: string;
@@ -137,6 +140,15 @@ function weekdayIndex(day: string) {
 function truncateNotificationText(value: string, maxLength = 64) {
   if (value.length <= maxLength) return value;
   return `${value.slice(0, maxLength - 1)}…`;
+}
+
+function isNetworkRequestError(error: unknown) {
+  const message = String((error as { message?: unknown } | null | undefined)?.message ?? error ?? '').toLowerCase();
+  return (
+    message.includes('network request failed') ||
+    message.includes('failed to fetch') ||
+    message.includes('fetch failed')
+  );
 }
 
 function buildUpcomingClassReminderDates(courses: Course[], reminderMinutes: number, daysAhead = 14) {
@@ -382,6 +394,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingVisibility, setSavingVisibility] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
+  const [savingRegion, setSavingRegion] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [useCelsius, setUseCelsius] = useState(true);
   const [authStack, setAuthStack] = useState<AuthScreen[]>(['welcome']);
@@ -478,6 +491,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
   const seenCommentIdsRef = useRef<Set<string>>(new Set());
   const seenLikeKeysRef = useRef<Set<string>>(new Set());
+  const lastSocialNotificationErrorRef = useRef(0);
 
   const activeKey = quarterKey(selectedQuarter);
   const quarterTimetables = timetables.filter((t) => t.quarterKey === activeKey);
@@ -587,6 +601,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           messages: true,
         },
         pushPermissionStatus: ((settingsRow as Record<string, any> | null | undefined)?.push_permission_status as PushPermissionStatus | undefined) ?? DEFAULT_USER_SETTINGS.pushPermissionStatus,
+        language: normalizeLanguagePreference(settingsDetails?.language),
+        timeZone: normalizeTimeZonePreference(settingsDetails?.timeZone),
+        dateFormat: normalizeDateFormatPreference(settingsDetails?.dateFormat),
       });
       setExpoPushToken(((settingsRow as Record<string, any> | null | undefined)?.expo_push_token as string | undefined) ?? null);
     }
@@ -607,6 +624,24 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     const buildLikeKey = (like: LikeNotificationRow) => `${like.target_type}:${like.target_id}:${like.user_id}`;
     const notificationEnabled =
       userSettings.notifications.pushNotifications && userSettings.pushPermissionStatus === 'granted';
+
+    if (!notificationEnabled) return;
+
+    function logSocialNotificationError(label: string, error: unknown) {
+      const now = Date.now();
+      if (isNetworkRequestError(error)) {
+        if (now - lastSocialNotificationErrorRef.current < 60000) return;
+        lastSocialNotificationErrorRef.current = now;
+        console.warn(`${label}: network unavailable, will retry quietly.`);
+        return;
+      }
+      console.error(label, error);
+    }
+
+    function logSnapshotQueryError(label: string, error: unknown) {
+      if (!error) return;
+      logSocialNotificationError(label, error);
+    }
 
     async function presentInAppNotification(title: string, body: string, data: Record<string, string>) {
       if (!notificationEnabled) return;
@@ -649,9 +684,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           .eq('user_id', userId),
       ]);
 
-      if (friendRequestError) console.error('Failed to load friend request notifications:', friendRequestError);
-      if (postsError) console.error('Failed to load post ids for notifications:', postsError);
-      if (myCommentsError) console.error('Failed to load my comment ids for notifications:', myCommentsError);
+      logSnapshotQueryError('Failed to load friend request notifications:', friendRequestError);
+      logSnapshotQueryError('Failed to load post ids for notifications:', postsError);
+      logSnapshotQueryError('Failed to load my comment ids for notifications:', myCommentsError);
 
       let messageRows: ConversationMessageNotificationRow[] = [];
       const { data: myConversationRows, error: myConversationError } = await supabase
@@ -661,7 +696,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       if (myConversationError) {
         if (myConversationError.code !== 'PGRST205') {
-          console.error('Failed to load conversation notification participants:', myConversationError);
+          logSnapshotQueryError('Failed to load conversation notification participants:', myConversationError);
         }
       } else {
         const conversationIds = ((myConversationRows ?? []) as Array<{ conversation_id: string }>)
@@ -677,7 +712,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
           if (messageError) {
             if (messageError.code !== 'PGRST205') {
-              console.error('Failed to load message notifications:', messageError);
+              logSnapshotQueryError('Failed to load message notifications:', messageError);
             }
           } else {
             messageRows = (messageData ?? []) as ConversationMessageNotificationRow[];
@@ -729,7 +764,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const mergedComments = new Map<string, CommentNotificationRow>();
       commentResults.forEach(({ data, error }) => {
         if (error) {
-          console.error('Failed to load comment notifications:', error);
+          logSnapshotQueryError('Failed to load comment notifications:', error);
           return;
         }
         ((data ?? []) as CommentNotificationRow[]).forEach((row) => mergedComments.set(row.id, row));
@@ -759,7 +794,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const mergedLikes = new Map<string, LikeNotificationRow>();
       likeResults.forEach(({ data, error }, index) => {
         if (error) {
-          console.error('Failed to load like notifications:', error);
+          logSnapshotQueryError('Failed to load like notifications:', error);
           return;
         }
 
@@ -800,7 +835,13 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
 
     async function bootstrapSocialNotificationState() {
-      const snapshot = await loadSocialNotificationSnapshot();
+      let snapshot: SocialNotificationSnapshot;
+      try {
+        snapshot = await loadSocialNotificationSnapshot();
+      } catch (error) {
+        logSocialNotificationError('Failed to bootstrap social notifications:', error);
+        return;
+      }
       if (cancelled) return;
 
       seenFriendRequestIdsRef.current = new Set(snapshot.friendRequests.map((request) => request.id));
@@ -810,7 +851,13 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
 
     async function pollSocialNotifications() {
-      const snapshot = await loadSocialNotificationSnapshot();
+      let snapshot: SocialNotificationSnapshot;
+      try {
+        snapshot = await loadSocialNotificationSnapshot();
+      } catch (error) {
+        logSocialNotificationError('Failed to poll social notifications:', error);
+        return;
+      }
       if (cancelled) return;
 
       const previousFriendRequestIds = seenFriendRequestIdsRef.current;
@@ -895,10 +942,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
 
     void bootstrapSocialNotificationState().then(() => {
-      if (cancelled || !notificationEnabled) return;
+      if (cancelled) return;
       intervalId = setInterval(() => {
         void pollSocialNotifications();
-      }, 15000);
+      }, 30000);
     });
 
     return () => {
@@ -1348,12 +1395,17 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       notification_settings: nextSettings.notifications,
       push_permission_status: nextSettings.pushPermissionStatus,
       expo_push_token: nextExpoPushToken,
-      profile_details: profileDetailsFromProfile(
-        nextProfile,
-        nextSettings.boardProfileVisible,
-        profileSetupComplete,
-        onboardingComplete
-      ),
+      profile_details: {
+        ...profileDetailsFromProfile(
+          nextProfile,
+          nextSettings.boardProfileVisible,
+          profileSetupComplete,
+          onboardingComplete
+        ),
+        language: nextSettings.language,
+        timeZone: nextSettings.timeZone,
+        dateFormat: nextSettings.dateFormat,
+      },
       updated_at: new Date().toISOString(),
     };
 
@@ -1508,6 +1560,33 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       return false;
     } finally {
       setSavingVisibility(false);
+    }
+  };
+
+  const handleSaveRegion = async ({
+    language,
+    timeZone,
+    dateFormat,
+  }: {
+    language: LanguagePreference;
+    timeZone: string;
+    dateFormat: DateFormatPreference;
+  }): Promise<boolean> => {
+    setSavingRegion(true);
+    const nextSettings = {
+      ...userSettings,
+      language,
+      timeZone,
+      dateFormat,
+    };
+    try {
+      await saveUserSettingsRow(nextSettings);
+      setUserSettings(nextSettings);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setSavingRegion(false);
     }
   };
 
@@ -1768,8 +1847,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           userId={USER_ID}
           userEmail={userEmail}
           school={selectedUniversity?.name ?? 'UC Irvine'}
-          activeCourses={activeCourses}
-          selectedQuarter={selectedQuarter}
+          activeCourses={homeQuarterKey === academicQuarterKey ? homeQuarterCourses : []}
+          selectedQuarter={academicQuarter}
           bottomInset={insets.bottom}
           scrollToTopTrigger={friendsTabTapCount}
           onOpenMessages={() => openMessages(null)}
@@ -1930,10 +2009,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               onSaveProfile={handleSaveProfile}
               onSaveVisibility={handleSaveVisibility}
               onSaveNotifications={handleSaveNotifications}
+              onSaveRegion={handleSaveRegion}
               onRequestPushPermissions={handleRequestPushPermissions}
               savingProfile={savingProfile}
               savingVisibility={savingVisibility}
               savingNotifications={savingNotifications}
+              savingRegion={savingRegion}
             />
           </Animated.View>
         </Animated.View>

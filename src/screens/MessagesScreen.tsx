@@ -34,10 +34,18 @@ type ConversationPreview = {
   label: string;
   sourcePostId: string | null;
   sourceLabel: string | null;
+  sourcePost: SourcePostPreview | null;
   lastMessage: string;
   timestamp: string;
   unread: number;
   sortStamp: number;
+};
+
+type SourcePostPreview = {
+  id: string;
+  title: string;
+  category: string | null;
+  body: string | null;
 };
 
 type MessageBubble = {
@@ -78,6 +86,12 @@ function conversationLabel(kind: ChatKind) {
 
 function messageTableMissing(error: any) {
   return error?.code === 'PGRST205' || String(error?.message ?? '').includes('conversation');
+}
+
+function truncateText(value: string | null | undefined, maxLength = 96) {
+  const text = (value ?? '').replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trim()}…`;
 }
 
 export default function MessagesScreen({ onClose, openChatWith, userId, school }: Props) {
@@ -121,7 +135,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     myParticipant: ConversationParticipantRow,
     participants: ConversationParticipantRow[],
     namesById: Record<string, string>,
-    messagesByConversation: Record<string, ConversationMessageRow[]>
+    messagesByConversation: Record<string, ConversationMessageRow[]>,
+    sourcePostsById: Record<string, SourcePostPreview>
   ): ConversationPreview | null => {
     const partner = participants.find((row) => row.conversation_id === conversation.id && row.user_id !== userId);
     if (!partner) return null;
@@ -138,6 +153,14 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       ? partner.alias_snapshot || anteaterAliasForId(partner.user_id)
       : namesById[partner.user_id] || anteaterAliasForId(partner.user_id);
     const sortStamp = new Date(lastMessage?.created_at ?? conversation.updated_at ?? conversation.created_at).getTime();
+    const sourcePost = isAnonymous && conversation.source_post_id
+      ? sourcePostsById[conversation.source_post_id] ?? {
+          id: conversation.source_post_id,
+          title: 'Board post',
+          category: null,
+          body: null,
+        }
+      : null;
 
     return {
       conversationId: conversation.id,
@@ -147,7 +170,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       avatar: getInitials(name),
       label: conversationLabel(conversation.kind),
       sourcePostId: conversation.source_post_id,
-      sourceLabel: isAnonymous && conversation.source_post_id ? 'From Board' : null,
+      sourceLabel: sourcePost?.title ?? null,
+      sourcePost,
       lastMessage: lastMessage?.deleted_at ? 'Message deleted' : lastMessage?.content || 'Start the conversation.',
       timestamp: formatMessageTime(lastMessage?.created_at ?? conversation.updated_at ?? conversation.created_at),
       unread,
@@ -208,6 +232,26 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     const conversationsRows = (conversationsData ?? []) as ConversationRow[];
     const participantsRows = (allParticipantsData ?? []) as ConversationParticipantRow[];
     const messageRows = (messagesData ?? []) as ConversationMessageRow[];
+    const sourcePostIds = Array.from(new Set(
+      conversationsRows
+        .map((conversation) => conversation.source_post_id)
+        .filter((id): id is string => !!id)
+    ));
+    let sourcePostsById: Record<string, SourcePostPreview> = {};
+    if (sourcePostIds.length > 0) {
+      const { data: sourcePostsData, error: sourcePostsError } = await supabase
+        .from('posts')
+        .select('id, title, category, body')
+        .in('id', sourcePostIds);
+
+      if (sourcePostsError) {
+        console.error('Failed to load message source posts:', sourcePostsError);
+      } else {
+        sourcePostsById = Object.fromEntries(
+          ((sourcePostsData ?? []) as SourcePostPreview[]).map((post) => [post.id, post])
+        );
+      }
+    }
     const namesById = await resolveProfileNames(participantsRows.map((row) => row.user_id));
     const myParticipantByConversation = Object.fromEntries(myParticipants.map((row) => [row.conversation_id, row]));
     const messagesByConversation: Record<string, ConversationMessageRow[]> = {};
@@ -227,7 +271,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
           myParticipant,
           participantsRows,
           namesById,
-          messagesByConversation
+          messagesByConversation,
+          sourcePostsById
         );
       })
       .filter((preview): preview is ConversationPreview => !!preview)
@@ -314,6 +359,14 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       const name = target.kind === 'board_anonymous'
         ? anteaterAliasForId(target.id)
         : target.name?.trim() || anteaterAliasForId(target.id);
+      const sourcePost = target.kind === 'board_anonymous' && target.sourcePostId
+        ? {
+            id: target.sourcePostId,
+            title: target.sourceLabel?.trim() || 'Board post',
+            category: null,
+            body: null,
+          }
+        : null;
       const preview: ConversationPreview = {
         conversationId,
         partnerId: target.id,
@@ -322,7 +375,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         avatar: getInitials(name),
         label: conversationLabel(target.kind),
         sourcePostId: target.sourcePostId ?? null,
-        sourceLabel: target.kind === 'board_anonymous' ? (target.sourceLabel ?? 'From Board') : null,
+        sourceLabel: sourcePost?.title ?? null,
+        sourcePost,
         lastMessage: 'Start the conversation.',
         timestamp: '',
         unread: 0,
@@ -397,6 +451,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     return conversations.filter((chat) => (
       chat.name.toLowerCase().includes(query) ||
       chat.label.toLowerCase().includes(query) ||
+      (chat.sourcePost?.title ?? '').toLowerCase().includes(query) ||
+      (chat.sourcePost?.category ?? '').toLowerCase().includes(query) ||
+      (chat.sourcePost?.body ?? '').toLowerCase().includes(query) ||
       chat.lastMessage.toLowerCase().includes(query)
     ));
   }, [conversations, searchQuery]);
@@ -445,6 +502,57 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{selectedChat.label}</Text>
             </View>
           </View>
+
+          {selectedChat.kind === 'board_anonymous' && selectedChat.sourcePost ? (
+            <View
+              style={{
+                marginHorizontal: 16,
+                marginTop: 12,
+                marginBottom: 2,
+                borderRadius: 16,
+                padding: 12,
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: colors.borderSubtle,
+                shadowColor: '#0f172a',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.06,
+                shadowRadius: 12,
+                elevation: 2,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <View
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 8,
+                    backgroundColor: colors.brandBg,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons name="clipboard-outline" size={14} color={colors.brand} />
+                </View>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textTertiary, textTransform: 'uppercase' }}>
+                  Started from board post
+                </Text>
+              </View>
+              <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
+                {selectedChat.sourcePost.title}
+              </Text>
+              {selectedChat.sourcePost.body ? (
+                <Text numberOfLines={2} style={{ marginTop: 3, fontSize: 12, lineHeight: 17, color: colors.textSecondary }}>
+                  {truncateText(selectedChat.sourcePost.body)}
+                </Text>
+              ) : null}
+              {selectedChat.sourcePost.category ? (
+                <Text style={{ marginTop: 6, fontSize: 11, fontWeight: '700', color: colors.textTertiary }}>
+                  {selectedChat.sourcePost.category}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
 
           {loadingMessages || openingConversation ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
@@ -625,6 +733,11 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                   }} />
                   <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: '700' }}>{chat.label}</Text>
                 </View>
+                {chat.kind === 'board_anonymous' && chat.sourcePost ? (
+                  <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 3 }} numberOfLines={1}>
+                    From: {chat.sourcePost.title}
+                  </Text>
+                ) : null}
                 <Text style={{ fontSize: 13, color: colors.textSecondary }} numberOfLines={1}>{chat.lastMessage}</Text>
               </View>
             </TouchableOpacity>

@@ -5,7 +5,7 @@ import {
   Animated, Easing, Dimensions, LayoutAnimation,
   Platform, UIManager,
 } from 'react-native';
-import Svg, { Path, Circle, Line, Defs, ClipPath, G } from 'react-native-svg';
+import Svg, { Path, Circle, Line, Defs, ClipPath, G, LinearGradient, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, quarterKey, quarterLabel, resolveCurrentQuarter } from '../data/courses';
 import { supabase } from '../lib/supabase';
@@ -76,13 +76,45 @@ function buildMonotonePath(pts: { x: number; y: number }[]): string {
   return d;
 }
 
+function compactQuarterLabel(label: string) {
+  const yearMatch = label.match(/\b(\d{4})\b/);
+  const year = yearMatch ? `'${yearMatch[1].slice(-2)}` : '';
+  const normalized = label.replace(/\b\d{4}\b/g, '').replace(/\s+/g, '').toLowerCase();
+  const term =
+    normalized.includes('winter') ? 'W' :
+    normalized.includes('spring') ? 'Sp' :
+    normalized.includes('fall') ? 'F' :
+    normalized.includes('summer2') || normalized.includes('summersession2') ? 'S2' :
+    normalized.includes('summer1') || normalized.includes('summersession1') ? 'S1' :
+    normalized.includes('summer') ? 'Su' :
+    label.replace(/\s+/g, ' ').trim().slice(0, 5);
+  return year ? `${term} ${year}` : term;
+}
+
+function visibleXAxisIndices(pointCount: number, chartWidth: number) {
+  if (pointCount <= 1) return [0];
+  const maxLabels = Math.max(2, Math.min(pointCount, Math.floor(chartWidth / 64)));
+  if (pointCount <= maxLabels) {
+    return Array.from({ length: pointCount }, (_, i) => i);
+  }
+  const indices = new Set<number>();
+  for (let i = 0; i < maxLabels; i++) {
+    indices.add(Math.round((i * (pointCount - 1)) / (maxLabels - 1)));
+  }
+  indices.add(0);
+  indices.add(pointCount - 1);
+  return Array.from(indices).sort((a, b) => a - b);
+}
+
 function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
   const { colors } = useTheme();
   const screenWidth = Dimensions.get('window').width;
-  const chartWidth  = screenWidth - 64 - 36;
-  const chartHeight = 140;
-  const vPad = 8; // vertical padding so top/bottom dots aren't clipped
-  const pad = 8;
+  const [containerWidth, setContainerWidth] = useState(0);
+  const yAxisWidth = 46;
+  const chartWidth = Math.max(220, (containerWidth || screenWidth - 72) - yAxisWidth);
+  const chartHeight = 150;
+  const vPad = 12; // vertical padding so top/bottom dots aren't clipped
+  const hPad = 10;
 
   const dataMin = history.length > 0 ? Math.min(...history.map(d => d.gpa)) : 0;
   const dataMax = history.length > 0 ? Math.max(...history.map(d => d.gpa)) : 4;
@@ -103,7 +135,7 @@ function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
     animWidth.setValue(0);
     const id = animWidth.addListener(({ value }) => setClipW(value));
     Animated.timing(animWidth, {
-      toValue: chartWidth + pad,
+      toValue: chartWidth + hPad,
       duration: 1600,
       delay: 300,
       easing: Easing.out(Easing.cubic),
@@ -123,27 +155,80 @@ function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
   const pts = history.map((d, i) => ({
     x: history.length === 1
       ? chartWidth / 2
-      : pad + i * ((chartWidth - pad * 2) / (history.length - 1)),
+      : hPad + i * ((chartWidth - hPad * 2) / (history.length - 1)),
     y: vPad + (1 - (d.gpa - minY) / (maxY - minY)) * (chartHeight - vPad * 2),
     label: d.label,
     gpa: d.gpa,
   }));
+  const xLabelIndices = visibleXAxisIndices(pts.length, chartWidth);
+  const xLabelWidth = 48;
 
   const pathD = buildMonotonePath(pts);
+  const baselineY = chartHeight - vPad;
+  const areaD = pts.length > 1
+    ? `${pathD} L ${pts[pts.length - 1].x} ${baselineY} L ${pts[0].x} ${baselineY} Z`
+    : '';
+  const latest = history[history.length - 1];
+  const best = history.reduce((winner, item) => (item.gpa > winner.gpa ? item : winner), history[0]);
 
   return (
-    <View>
+    <View onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}>
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        {[
+          { label: 'Latest', value: latest.gpa.toFixed(2) },
+          { label: 'Best', value: best.gpa.toFixed(2) },
+        ].map(item => (
+          <View
+            key={item.label}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              backgroundColor: colors.brandBg,
+              borderWidth: 1,
+              borderColor: colors.borderSubtle,
+            }}
+          >
+            <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: '700' }}>{item.label}</Text>
+            <Text style={{ fontSize: 12, color: colors.brand, fontWeight: '800' }}>{item.value}</Text>
+          </View>
+        ))}
+      </View>
+
       <View style={{ flexDirection: 'row' }}>
         {/* Y axis */}
-        <View style={{ width: 36, height: chartHeight, justifyContent: 'space-between' }}>
-          {yLabels.map(l => (
-            <Text key={l} style={{ fontSize: 10, color: colors.textTertiary, marginTop: -4 }}>{l}</Text>
-          ))}
+        <View style={{ width: yAxisWidth, height: chartHeight, position: 'relative' }}>
+          {yLabels.map(l => {
+            const y = vPad + (1 - (l - minY) / (maxY - minY)) * (chartHeight - vPad * 2);
+            return (
+              <Text
+                key={l}
+                style={{
+                  position: 'absolute',
+                  top: y - 7,
+                  right: 12,
+                  fontSize: 11,
+                  lineHeight: 14,
+                  color: colors.textTertiary,
+                  fontWeight: '600',
+                }}
+              >
+                {Number.isInteger(l) ? l.toFixed(0) : l.toFixed(2).replace(/0$/, '')}
+              </Text>
+            );
+          })}
         </View>
 
         {/* Chart */}
         <Svg width={chartWidth} height={chartHeight}>
           <Defs>
+            <LinearGradient id="gpaFill" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#4169E1" stopOpacity="0.22" />
+              <Stop offset="1" stopColor="#4169E1" stopOpacity="0.02" />
+            </LinearGradient>
             <ClipPath id="revealClip">
               {/* plain Rect — not animated, updated via state */}
               <Path d={`M 0 -10 H ${clipW} V ${chartHeight + 10} H 0 Z`} />
@@ -158,28 +243,40 @@ function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
 
           {/* Animated line + dots */}
           <G clipPath="url(#revealClip)">
-            <Path d={pathD} fill="none" stroke="#4169E1" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-            {pts.map(p => (
-              <Circle key={p.label} cx={p.x} cy={p.y} r={5} fill="#4169E1" stroke={colors.card} strokeWidth={2} />
+            {areaD ? <Path d={areaD} fill="url(#gpaFill)" /> : null}
+            {pathD ? (
+              <Path d={pathD} fill="none" stroke="#4169E1" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+            ) : null}
+            {pts.map((p, index) => (
+              <Circle key={`${p.label}-${index}`} cx={p.x} cy={p.y} r={6} fill="#4169E1" stroke={colors.card} strokeWidth={2.5} />
             ))}
           </G>
         </Svg>
       </View>
 
       {/* X labels */}
-      <View style={{ flexDirection: 'row', marginLeft: 36, marginTop: 8, paddingHorizontal: pad }}>
-        {pts.map((p, i) => (
-          <View key={p.label} style={{
+      <View style={{ marginLeft: yAxisWidth, marginTop: 9, height: 22, position: 'relative' }}>
+        {xLabelIndices.map((index) => {
+          const p = pts[index];
+          return (
+          <View key={`${p.label}-${index}`} style={{
             position: 'absolute',
-            left: p.x - 22,
-            width: 44,
+            left: Math.max(0, Math.min(p.x - xLabelWidth / 2, chartWidth - xLabelWidth)),
+            width: xLabelWidth,
             alignItems: 'center',
           }}>
-            <Text style={{ fontSize: 10, color: colors.textTertiary }}>{p.label}</Text>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+              style={{ fontSize: 10.5, lineHeight: 14, color: colors.textTertiary, textAlign: 'center', fontWeight: '700' }}
+            >
+              {compactQuarterLabel(p.label)}
+            </Text>
           </View>
-        ))}
+          );
+        })}
       </View>
-      <View style={{ height: 20 }} />
     </View>
   );
 }

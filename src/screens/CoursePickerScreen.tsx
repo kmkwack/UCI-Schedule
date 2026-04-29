@@ -20,6 +20,7 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, UCI_DEPARTMENTS, quarterLabel, quarterKey } from '../data/courses';
 import PreviewTimetable from '../components/PreviewTimetable';
 import { supabase } from '../lib/supabase';
@@ -69,6 +70,16 @@ const CUSTOM_DAY_OPTIONS = [
   { key: 'F', label: 'F' },
   { key: 'Sa', label: 'Sa' },
   { key: 'Su', label: 'Su' },
+];
+
+const DAY_FILTER_OPTIONS = [
+  { key: 'M', label: 'Mon' },
+  { key: 'T', label: 'Tue' },
+  { key: 'W', label: 'Wed' },
+  { key: 'Th', label: 'Thu' },
+  { key: 'F', label: 'Fri' },
+  { key: 'Sa', label: 'Sat' },
+  { key: 'Su', label: 'Sun' },
 ];
 
 const CUSTOM_COLOR_OPTIONS = [
@@ -214,12 +225,14 @@ export default function CoursePickerScreen({
   onReplaceCourse,
   onEditingHandled,
 }: Props) {
+  const insets = useSafeAreaInsets();
   if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
   }
   const [searchText, setSearchText] = useState('');
-  const [selectedDept, setSelectedDept] = useState('');
+  const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
   const [selectedGE, setSelectedGE] = useState('');
+  const [selectedDayFilters, setSelectedDayFilters] = useState<string[]>([]);
   const [deptDropdownOpen, setDeptDropdownOpen] = useState(false);
   const deptSheetSlideAnim = useRef(new Animated.Value(600)).current;
   const deptBackdropAnim = useRef(new Animated.Value(0)).current;
@@ -364,9 +377,13 @@ export default function CoursePickerScreen({
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  // Global search: fires when search text >= 2 and no dept selected
+  const hasSelectedDepartments = selectedDepts.length > 0;
+  const hasSelectedCategory = hasSelectedDepartments || !!selectedGE;
+  const selectedDeptKey = selectedDepts.join('|');
+
+  // Global search: fires when search text >= 2 and no category selected
   useEffect(() => {
-    if (selectedDept || selectedGE || searchText.trim().length < 2) {
+    if (hasSelectedCategory || searchText.trim().length < 2) {
       setGlobalCatalog([]);
       setGlobalSectionsMap({});
       return;
@@ -400,7 +417,7 @@ export default function CoursePickerScreen({
     }, 400);
 
     return () => { clearTimeout(timer); setGlobalSearchLoading(false); };
-  }, [searchText, selectedDept, selectedQuarter]);
+  }, [searchText, hasSelectedCategory, selectedQuarter]);
 
   useEffect(() => {
     const qk = quarterKey(selectedQuarter);
@@ -444,9 +461,9 @@ export default function CoursePickerScreen({
     };
   }, [selectedQuarter]);
 
-  // Fetch courses from Supabase when a department is selected
+  // Fetch courses from Supabase when one or more departments are selected
   useEffect(() => {
-    if (!selectedDept) {
+    if (!hasSelectedDepartments) {
       if (!selectedGE) {
         setCatalogCourses([]);
         setSectionsMap({});
@@ -463,27 +480,32 @@ export default function CoursePickerScreen({
     setPreviewCourse(null);
 
     const qk = quarterKey(selectedQuarter);
+    let cancelled = false;
     void (async () => {
       try {
         const { data, error } = await supabase
           .from('sections')
           .select('*')
-          .eq('department', selectedDept)
+          .in('department', selectedDepts)
           .eq('quarter_key', qk);
+        if (cancelled) return;
         if (error) { console.error('Supabase fetch failed:', error); return; }
         const { catalog, sections } = buildCatalogFromRows(data ?? []);
         setCatalogCourses(catalog);
         setSectionsMap(sections);
       } finally {
-        setCatalogLoading(false);
+        if (!cancelled) setCatalogLoading(false);
       }
     })();
-  }, [selectedDept, selectedQuarter]);
+    return () => {
+      cancelled = true;
+    };
+  }, [hasSelectedDepartments, selectedDeptKey, selectedGE, selectedQuarter]);
 
   // Fetch GE courses from Supabase when a GE category is selected
   useEffect(() => {
     if (!selectedGE) {
-      if (!selectedDept) {
+      if (!hasSelectedDepartments) {
         setCatalogCourses([]);
         setSectionsMap({});
         setExpandedCourseIds({});
@@ -499,6 +521,7 @@ export default function CoursePickerScreen({
     setPreviewCourse(null);
 
     const qk = quarterKey(selectedQuarter);
+    let cancelled = false;
     void (async () => {
       try {
         const { data, error } = await supabase
@@ -506,20 +529,24 @@ export default function CoursePickerScreen({
           .select('*')
           .eq('quarter_key', qk)
           .contains('ge_categories', [selectedGE]);
+        if (cancelled) return;
         if (error) { console.error('GE fetch failed:', error); return; }
         const { catalog, sections } = buildCatalogFromRows(data ?? []);
         setCatalogCourses(catalog);
         setSectionsMap(sections);
       } finally {
-        setCatalogLoading(false);
+        if (!cancelled) setCatalogLoading(false);
       }
     })();
-  }, [selectedGE, selectedQuarter]);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGE, hasSelectedDepartments, selectedQuarter]);
 
   const fetchEnrollment = async (course: CatalogCourse) => {
     if (enrollmentLoadingIds.has(course.id)) return;
     // Check if all sections for this course are already cached
-    const sections = sectionsMap[course.id] ?? [];
+    const sections = (isGlobalSearch ? globalSectionsMap : sectionsMap)[course.id] ?? [];
     if (sections.length > 0 && sections.every((s) => s.id in enrollmentCache)) return;
 
     setEnrollmentLoadingIds((prev) => new Set(prev).add(course.id));
@@ -726,6 +753,25 @@ export default function CoursePickerScreen({
     });
   };
 
+  const toggleDayFilter = (dayKey: string) => {
+    setSelectedDayFilters((prev) => {
+      const exists = prev.includes(dayKey);
+      if (exists) return prev.filter((day) => day !== dayKey);
+      return [...prev, dayKey].sort(
+        (a, b) =>
+          DAY_FILTER_OPTIONS.findIndex((option) => option.key === a) -
+          DAY_FILTER_OPTIONS.findIndex((option) => option.key === b)
+      );
+    });
+  };
+
+  const sectionMatchesDayFilter = (course: Course) => {
+    if (selectedDayFilters.length === 0) return true;
+    if (course.days === 'TBA') return false;
+    const courseDays = getDaysArray(course.days);
+    return selectedDayFilters.some((day) => courseDays.includes(day));
+  };
+
   const handleCreateCustomCourse = () => {
     const trimmedName = customCourseDraft.name.trim();
     if (!trimmedName) {
@@ -762,14 +808,14 @@ export default function CoursePickerScreen({
     resetCustomCourseDraft();
   };
 
-  const isGlobalSearch = !selectedDept && !selectedGE && searchText.trim().length >= 2;
+  const isGlobalSearch = !hasSelectedCategory && searchText.trim().length >= 2;
 
   const filteredCatalog = useMemo(() => {
     const stripH = (s: string) => s.replace(/^H/i, '');
+    const shouldGroupByDepartment = isGlobalSearch || selectedDepts.length > 1;
     const sortCatalog = (list: CatalogCourse[]) =>
       [...list].sort((a, b) => {
-        // In global search, sort by department first, then course number
-        if (isGlobalSearch && a.department !== b.department)
+        if (shouldGroupByDepartment && a.department !== b.department)
           return a.department.localeCompare(b.department);
         const numA = parseInt(stripH(a.courseNumber)) || 0;
         const numB = parseInt(stripH(b.courseNumber)) || 0;
@@ -779,7 +825,13 @@ export default function CoursePickerScreen({
         return suffixA.localeCompare(suffixB);
       });
 
-    if (isGlobalSearch) return sortCatalog(globalCatalog);
+    const activeSectionsMap = isGlobalSearch ? globalSectionsMap : sectionsMap;
+    const applyDayFilter = (list: CatalogCourse[]) => {
+      if (selectedDayFilters.length === 0) return list;
+      return list.filter((course) => (activeSectionsMap[course.id] ?? []).some(sectionMatchesDayFilter));
+    };
+
+    if (isGlobalSearch) return sortCatalog(applyDayFilter(globalCatalog));
 
     const list = !searchText
       ? catalogCourses
@@ -797,8 +849,8 @@ export default function CoursePickerScreen({
           );
         });
 
-    return sortCatalog(list);
-  }, [catalogCourses, searchText, sectionsMap, isGlobalSearch, globalCatalog]);
+    return sortCatalog(applyDayFilter(list));
+  }, [catalogCourses, searchText, sectionsMap, isGlobalSearch, globalCatalog, globalSectionsMap, selectedDayFilters, selectedDepts.length]);
 
   const filteredDepts = useMemo(() => {
     if (!deptSearch) return UCI_DEPARTMENTS;
@@ -812,6 +864,58 @@ export default function CoursePickerScreen({
     return GE_CATEGORIES.filter((g) => g.label.toLowerCase().includes(q) || g.code.toLowerCase().includes(q));
   }, [deptSearch]);
 
+  const selectedGELabel = selectedGE ? GE_CATEGORIES.find((g) => g.code === selectedGE)?.label ?? selectedGE : '';
+  const selectedCategorySummary = hasSelectedDepartments
+    ? selectedDepts.length === 1
+      ? selectedDepts[0]
+      : `${selectedDepts.length} departments selected`
+    : selectedGELabel;
+
+  const clearSelectedCategory = () => {
+    setSelectedDepts([]);
+    setSelectedGE('');
+    setCatalogCourses([]);
+    setSectionsMap({});
+    setExpandedCourseIds({});
+    setPreviewCourse(null);
+  };
+
+  const toggleSelectedDept = (dept: string) => {
+    setSelectedGE('');
+    setSelectedDepts((prev) => {
+      const exists = prev.includes(dept);
+      if (exists) return prev.filter((item) => item !== dept);
+      return [...prev, dept].sort((a, b) => UCI_DEPARTMENTS.indexOf(a) - UCI_DEPARTMENTS.indexOf(b));
+    });
+    setExpandedCourseIds({});
+    setPreviewCourse(null);
+  };
+
+  const removeSelectedDept = (dept: string) => {
+    setSelectedDepts((prev) => prev.filter((item) => item !== dept));
+    setExpandedCourseIds({});
+    setPreviewCourse(null);
+  };
+
+  const customFieldLabelStyle = {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 5,
+  } as const;
+
+  const customInputStyle = {
+    height: 42,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 0,
+    color: '#111827',
+    fontSize: 14,
+  } as const;
+
   return (
     <View style={{ flex: 1, backgroundColor: '#f7f8fa', paddingTop: 54 }}>
       <View
@@ -819,15 +923,27 @@ export default function CoursePickerScreen({
           paddingHorizontal: 16,
           paddingBottom: 10,
           flexDirection: 'row',
-          justifyContent: 'space-between',
           alignItems: 'center',
+          justifyContent: 'space-between',
+          position: 'relative',
         }}
       >
-        <TouchableOpacity onPress={onClose}>
+        <TouchableOpacity onPress={onClose} style={{ width: 44, height: 36, justifyContent: 'center', zIndex: 1 }}>
           <Text style={{ color: '#111827', fontSize: 30 }}>×</Text>
         </TouchableOpacity>
 
-        <Text style={{ fontWeight: '700', fontSize: 15, color: '#374151' }}>
+        <Text
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            textAlign: 'center',
+            fontWeight: '700',
+            fontSize: 15,
+            color: '#374151',
+          }}
+        >
           {quarterLabel(selectedQuarter)}
         </Text>
 
@@ -840,6 +956,7 @@ export default function CoursePickerScreen({
             backgroundColor: '#eef2ff',
             borderWidth: 1,
             borderColor: '#c7d2fe',
+            zIndex: 1,
           }}
         >
           <Text style={{ color: '#4169E1', fontSize: 12, fontWeight: '700' }}>Customize</Text>
@@ -888,20 +1005,121 @@ export default function CoursePickerScreen({
               flexDirection: 'row',
               justifyContent: 'space-between',
               alignItems: 'center',
-              backgroundColor: (selectedDept || selectedGE) ? '#eef1fb' : '#f3f4f6',
+              backgroundColor: hasSelectedCategory ? '#eef1fb' : '#f3f4f6',
               borderRadius: 14,
               paddingHorizontal: 14,
               paddingVertical: 13,
               marginBottom: 10,
               borderWidth: 1,
-              borderColor: (selectedDept || selectedGE) ? '#3b82f6' : '#e5e7eb',
+              borderColor: hasSelectedCategory ? '#3b82f6' : '#e5e7eb',
             }}
           >
-            <Text style={{ color: (selectedDept || selectedGE) ? '#4169E1' : '#9ca3af', fontSize: 15, fontWeight: (selectedDept || selectedGE) ? '600' : '400' }}>
-              {selectedDept || (selectedGE ? GE_CATEGORIES.find(g => g.code === selectedGE)?.label : null) || 'Department or GE category…'}
+            <Text
+              numberOfLines={1}
+              style={{ flex: 1, color: hasSelectedCategory ? '#4169E1' : '#9ca3af', fontSize: 15, fontWeight: hasSelectedCategory ? '600' : '400' }}
+            >
+              {selectedCategorySummary || 'Department or GE category…'}
             </Text>
             <Text style={{ color: '#9ca3af', fontSize: 12 }}>▼</Text>
           </TouchableOpacity>
+
+          <View style={{ marginBottom: 10 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 8 }}>
+              {selectedDepts.map((dept) => (
+                <TouchableOpacity
+                  key={dept}
+                  onPress={() => removeSelectedDept(dept)}
+                  activeOpacity={0.8}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    maxWidth: 210,
+                    paddingLeft: 12,
+                    paddingRight: 9,
+                    paddingVertical: 8,
+                    borderRadius: 999,
+                    backgroundColor: '#eef1fb',
+                    borderWidth: 1,
+                    borderColor: '#4169E1',
+                  }}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: '#4169E1' }}
+                  >
+                    {dept}
+                  </Text>
+                  <Ionicons name="close" size={14} color="#4169E1" />
+                </TouchableOpacity>
+              ))}
+              {!!selectedGELabel && (
+                <TouchableOpacity
+                  onPress={clearSelectedCategory}
+                  activeOpacity={0.8}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    maxWidth: 210,
+                    paddingLeft: 12,
+                    paddingRight: 9,
+                    paddingVertical: 8,
+                    borderRadius: 999,
+                    backgroundColor: '#eef1fb',
+                    borderWidth: 1,
+                    borderColor: '#4169E1',
+                  }}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: '#4169E1' }}
+                  >
+                    {selectedGELabel}
+                  </Text>
+                  <Ionicons name="close" size={14} color="#4169E1" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => setSelectedDayFilters([])}
+                activeOpacity={0.8}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  backgroundColor: selectedDayFilters.length === 0 ? '#4169E1' : '#f3f4f6',
+                  borderWidth: 1,
+                  borderColor: selectedDayFilters.length === 0 ? '#4169E1' : '#e5e7eb',
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: selectedDayFilters.length === 0 ? 'white' : '#6b7280' }}>
+                  Any day
+                </Text>
+              </TouchableOpacity>
+              {DAY_FILTER_OPTIONS.map((day) => {
+                const selected = selectedDayFilters.includes(day.key);
+                return (
+                  <TouchableOpacity
+                    key={day.key}
+                    onPress={() => toggleDayFilter(day.key)}
+                    activeOpacity={0.8}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 999,
+                      backgroundColor: selected ? '#eef1fb' : '#f3f4f6',
+                      borderWidth: 1,
+                      borderColor: selected ? '#4169E1' : '#e5e7eb',
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: selected ? '#4169E1' : '#6b7280' }}>
+                      {day.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
 
           {/* Department / GE picker modal */}
           <Modal
@@ -927,10 +1145,15 @@ export default function CoursePickerScreen({
                     </TouchableOpacity>
                   ) : null}
                   <Text style={{ flex: 1, fontSize: 17, fontWeight: '700' }}>
-                    {showGESublist ? 'GE Categories' : 'Department or GE'}
+                    {showGESublist ? 'GE Categories' : 'Department filters'}
                   </Text>
-                  <TouchableOpacity onPress={() => closeDeptModal(() => { setSelectedDept(''); setSelectedGE(''); })}>
-                    <Text style={{ fontSize: 26, color: '#9ca3af' }}>×</Text>
+                  {hasSelectedCategory && (
+                    <TouchableOpacity onPress={clearSelectedCategory} style={{ marginRight: 14 }}>
+                      <Text style={{ fontSize: 14, color: '#9ca3af', fontWeight: '700' }}>Clear</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity onPress={() => closeDeptModal()}>
+                    <Text style={{ fontSize: 14, color: '#4169E1', fontWeight: '800' }}>Done</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -957,13 +1180,14 @@ export default function CoursePickerScreen({
                   <FlatList
                     data={filteredGECategories}
                     keyExtractor={(item) => item.code}
+                    extraData={selectedGE}
                     keyboardShouldPersistTaps="handled"
                     contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
                     renderItem={({ item: ge }) => {
                       const isSelected = selectedGE === ge.code;
                       return (
                         <TouchableOpacity
-                          onPress={() => { Keyboard.dismiss(); closeDeptModal(() => { setSelectedGE(ge.code); setSelectedDept(''); setDeptSearch(''); }); }}
+                          onPress={() => { Keyboard.dismiss(); closeDeptModal(() => { setSelectedGE(ge.code); setSelectedDepts([]); setDeptSearch(''); }); }}
                           style={{
                             paddingVertical: 14,
                             borderBottomWidth: 1,
@@ -986,18 +1210,19 @@ export default function CoursePickerScreen({
                   <FlatList
                     data={filteredDepts}
                     keyExtractor={(item) => `dept-${item}`}
+                    extraData={`${selectedDeptKey}|${selectedGE}`}
                     keyboardShouldPersistTaps="handled"
                     contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
                     ListHeaderComponent={
                       <>
                         <TouchableOpacity
-                          onPress={() => { Keyboard.dismiss(); closeDeptModal(() => { setSelectedDept(''); setSelectedGE(''); }); }}
+                          onPress={() => { Keyboard.dismiss(); closeDeptModal(clearSelectedCategory); }}
                           style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
                         >
-                          <Text style={{ fontSize: 15, color: (!selectedDept && !selectedGE) ? '#4169E1' : '#111827', fontWeight: (!selectedDept && !selectedGE) ? '700' : '400' }}>
+                          <Text style={{ fontSize: 15, color: !hasSelectedCategory ? '#4169E1' : '#111827', fontWeight: !hasSelectedCategory ? '700' : '400' }}>
                             All Departments
                           </Text>
-                          {(!selectedDept && !selectedGE) && <Ionicons name="checkmark" size={18} color="#4169E1" />}
+                          {!hasSelectedCategory && <Ionicons name="checkmark" size={18} color="#4169E1" />}
                         </TouchableOpacity>
                         {!deptSearch && (
                           <TouchableOpacity
@@ -1023,10 +1248,10 @@ export default function CoursePickerScreen({
                       </>
                     }
                     renderItem={({ item }) => {
-                      const isSelected = selectedDept === item;
+                      const isSelected = selectedDepts.includes(item);
                       return (
                         <TouchableOpacity
-                          onPress={() => { Keyboard.dismiss(); closeDeptModal(() => { setSelectedDept(item); setSelectedGE(''); }); }}
+                          onPress={() => { Keyboard.dismiss(); toggleSelectedDept(item); }}
                           style={{
                             paddingVertical: 14,
                             borderBottomWidth: 1,
@@ -1051,14 +1276,14 @@ export default function CoursePickerScreen({
         </View>
 
         {/* Content */}
-        {!selectedDept && !selectedGE && !isGlobalSearch ? (
+        {!hasSelectedCategory && !isGlobalSearch ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
             <Ionicons name="search-outline" size={32} color="#d1d5db" style={{ marginBottom: 10 }} />
             <Text style={{ color: '#9ca3af', fontSize: 15, textAlign: 'center', paddingHorizontal: 24 }}>
-              Search by course name, code, or professor — or select a department below
+              Search by course name, code, or professor — or select departments below
             </Text>
           </View>
-        ) : (catalogLoading && selectedDept) || (globalSearchLoading && isGlobalSearch) ? (
+        ) : (catalogLoading && hasSelectedCategory) || (globalSearchLoading && isGlobalSearch) ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
             <ActivityIndicator size="large" color="#4169E1" />
             <Text style={{ color: '#9ca3af', marginTop: 12 }}>
@@ -1066,7 +1291,9 @@ export default function CoursePickerScreen({
                 ? `Searching "${searchText.trim()}"…`
                 : selectedGE
                 ? `Loading ${GE_CATEGORIES.find(g => g.code === selectedGE)?.label ?? selectedGE} for ${quarterLabel(selectedQuarter)}…`
-                : `Loading ${selectedDept} courses for ${quarterLabel(selectedQuarter)}…`}
+                : selectedDepts.length === 1
+                ? `Loading ${selectedDepts[0]} courses for ${quarterLabel(selectedQuarter)}…`
+                : `Loading ${selectedDepts.length} departments for ${quarterLabel(selectedQuarter)}…`}
             </Text>
           </View>
         ) : filteredCatalog.length === 0 ? (
@@ -1081,7 +1308,7 @@ export default function CoursePickerScreen({
             renderItem={({ item }) => {
               const isExpanded = !!expandedCourseIds[item.id];
               const activeSectionsMap = isGlobalSearch ? globalSectionsMap : sectionsMap;
-              const sections = activeSectionsMap[item.id] ?? [];
+              const sections = (activeSectionsMap[item.id] ?? []).filter(sectionMatchesDayFilter);
 
               return (
                 <TouchableOpacity
@@ -1113,7 +1340,9 @@ export default function CoursePickerScreen({
                     <View style={{ marginTop: 10 }}>
                       {sections.length === 0 ? (
                         <Text style={{ color: '#9ca3af', fontSize: 13, paddingVertical: 8 }}>
-                          No sections found for {quarterLabel(selectedQuarter)}
+                          {selectedDayFilters.length > 0
+                            ? 'No sections match selected days'
+                            : `No sections found for ${quarterLabel(selectedQuarter)}`}
                         </Text>
                       ) : (
                         sections.map((course) => {
@@ -1267,71 +1496,74 @@ export default function CoursePickerScreen({
           <Animated.View
             style={{
               backgroundColor: 'white',
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              paddingHorizontal: 18,
-              paddingTop: 18,
-              paddingBottom: 26,
-              maxHeight: Dimensions.get('window').height * 0.82,
+              borderTopLeftRadius: 26,
+              borderTopRightRadius: 26,
+              paddingHorizontal: 16,
+              paddingTop: 14,
+              paddingBottom: Math.max(insets.bottom + 8, 18),
+              maxHeight: Dimensions.get('window').height * 0.9,
               transform: [{ translateY: customizeSheetAnim }],
             }}
           >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
               <View>
-                <Text style={{ fontSize: 20, fontWeight: '800', color: '#111827' }}>Customize Block</Text>
-                <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: '#111827' }}>Customize Block</Text>
+                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>
                   Add any custom class, event, shift, or study block.
                 </Text>
               </View>
               <TouchableOpacity onPress={confirmCloseCustomizeModal}>
-                <Text style={{ fontSize: 28, color: '#9ca3af' }}>×</Text>
+                <Text style={{ fontSize: 26, color: '#9ca3af' }}>×</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-              <View style={{ gap: 12 }}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
+              contentContainerStyle={{ paddingBottom: 8 }}
+            >
+              <View style={{ gap: 8 }}>
                 <View>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Name</Text>
                   <TextInput
                     value={customCourseDraft.name}
                     onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, name: value }))}
                     placeholder="Club Meeting"
                     placeholderTextColor="#9ca3af"
                     clearButtonMode="while-editing"
-                    style={{
-                      backgroundColor: '#f8fafc',
-                      borderWidth: 1,
-                      borderColor: '#e5e7eb',
-                      borderRadius: 14,
-                      paddingHorizontal: 14,
-                      paddingVertical: 12,
-                      color: '#111827',
-                    }}
+                    style={customInputStyle}
                   />
                 </View>
 
-                <View>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Short Label</Text>
-                  <TextInput
-                    value={customCourseDraft.shortLabel}
-                    onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, shortLabel: value }))}
-                    placeholder="Optional"
-                    placeholderTextColor="#9ca3af"
-                    clearButtonMode="while-editing"
-                    style={{
-                      backgroundColor: '#f8fafc',
-                      borderWidth: 1,
-                      borderColor: '#e5e7eb',
-                      borderRadius: 14,
-                      paddingHorizontal: 14,
-                      paddingVertical: 12,
-                      color: '#111827',
-                    }}
-                  />
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={customFieldLabelStyle}>Short Label</Text>
+                    <TextInput
+                      value={customCourseDraft.shortLabel}
+                      onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, shortLabel: value }))}
+                      placeholder="Optional"
+                      placeholderTextColor="#9ca3af"
+                      clearButtonMode="while-editing"
+                      style={customInputStyle}
+                    />
+                  </View>
+                  <View style={{ width: 92 }}>
+                    <Text style={customFieldLabelStyle}>Units</Text>
+                    <TextInput
+                      value={customCourseDraft.units}
+                      onChangeText={(value) =>
+                        setCustomCourseDraft((prev) => ({ ...prev, units: value.replace(/[^0-9.]/g, '').slice(0, 4) }))
+                      }
+                      placeholder="Optional"
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="decimal-pad"
+                      style={customInputStyle}
+                    />
+                  </View>
                 </View>
 
                 <View>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 8 }}>Days</Text>
+                  <Text style={customFieldLabelStyle}>Days</Text>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 6 }}>
                     {CUSTOM_DAY_OPTIONS.map((option) => {
                       const isSelected = customCourseDraft.selectedDays.includes(option.key);
@@ -1340,10 +1572,10 @@ export default function CoursePickerScreen({
                           key={option.key}
                           onPress={() => toggleCustomDay(option.key)}
                           style={{
-                            minWidth: 40,
+                            minWidth: 36,
                             paddingHorizontal: 0,
-                            paddingVertical: 9,
-                            borderRadius: 12,
+                            paddingVertical: 7,
+                            borderRadius: 11,
                             backgroundColor: isSelected ? '#4169E1' : '#f3f4f6',
                             borderWidth: 1,
                             borderColor: isSelected ? '#4169E1' : '#e5e7eb',
@@ -1362,8 +1594,8 @@ export default function CoursePickerScreen({
                 </View>
 
                 <View>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 8 }}>Color</Text>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                  <Text style={customFieldLabelStyle}>Color</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 6 }}>
                     {CUSTOM_COLOR_OPTIONS.map((color) => {
                       const isSelected = customCourseDraft.customColor === color;
                       return (
@@ -1371,8 +1603,8 @@ export default function CoursePickerScreen({
                           key={color}
                           onPress={() => setCustomCourseDraft((prev) => ({ ...prev, customColor: color }))}
                           style={{
-                            width: 30,
-                            height: 30,
+                            width: 27,
+                            height: 27,
                             borderRadius: 999,
                             backgroundColor: color,
                             borderWidth: isSelected ? 3 : 1.5,
@@ -1391,7 +1623,7 @@ export default function CoursePickerScreen({
 
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Start Time</Text>
+                    <Text style={customFieldLabelStyle}>Start Time</Text>
                     <TextInput
                       value={customCourseDraft.startTime}
                       onChangeText={(value) =>
@@ -1401,19 +1633,11 @@ export default function CoursePickerScreen({
                       placeholderTextColor="#9ca3af"
                       keyboardType="number-pad"
                       maxLength={5}
-                      style={{
-                        backgroundColor: '#f8fafc',
-                        borderWidth: 1,
-                        borderColor: '#e5e7eb',
-                        borderRadius: 14,
-                        paddingHorizontal: 14,
-                        paddingVertical: 12,
-                        color: '#111827',
-                      }}
+                      style={customInputStyle}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>End Time</Text>
+                    <Text style={customFieldLabelStyle}>End Time</Text>
                     <TextInput
                       value={customCourseDraft.endTime}
                       onChangeText={(value) =>
@@ -1423,89 +1647,45 @@ export default function CoursePickerScreen({
                       placeholderTextColor="#9ca3af"
                       keyboardType="number-pad"
                       maxLength={5}
-                      style={{
-                        backgroundColor: '#f8fafc',
-                        borderWidth: 1,
-                        borderColor: '#e5e7eb',
-                        borderRadius: 14,
-                        paddingHorizontal: 14,
-                        paddingVertical: 12,
-                        color: '#111827',
-                      }}
+                      style={customInputStyle}
                     />
                   </View>
                 </View>
 
-                <View>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Location</Text>
-                  <TextInput
-                    value={customCourseDraft.location}
-                    onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, location: value }))}
-                    placeholder="Optional"
-                    placeholderTextColor="#9ca3af"
-                    clearButtonMode="while-editing"
-                    style={{
-                      backgroundColor: '#f8fafc',
-                      borderWidth: 1,
-                      borderColor: '#e5e7eb',
-                      borderRadius: 14,
-                      paddingHorizontal: 14,
-                      paddingVertical: 12,
-                      color: '#111827',
-                    }}
-                  />
-                </View>
-
-                <View>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Instructor</Text>
-                  <TextInput
-                    value={customCourseDraft.professor}
-                    onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, professor: value }))}
-                    placeholder="Optional"
-                    placeholderTextColor="#9ca3af"
-                    clearButtonMode="while-editing"
-                    style={{
-                      backgroundColor: '#f8fafc',
-                      borderWidth: 1,
-                      borderColor: '#e5e7eb',
-                      borderRadius: 14,
-                      paddingHorizontal: 14,
-                      paddingVertical: 12,
-                      color: '#111827',
-                    }}
-                  />
-                </View>
-
-                <View>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 }}>Units</Text>
-                  <TextInput
-                    value={customCourseDraft.units}
-                    onChangeText={(value) =>
-                      setCustomCourseDraft((prev) => ({ ...prev, units: value.replace(/[^0-9.]/g, '').slice(0, 4) }))
-                    }
-                    placeholder="Optional"
-                    placeholderTextColor="#9ca3af"
-                    keyboardType="decimal-pad"
-                    style={{
-                      backgroundColor: '#f8fafc',
-                      borderWidth: 1,
-                      borderColor: '#e5e7eb',
-                      borderRadius: 14,
-                      paddingHorizontal: 14,
-                      paddingVertical: 12,
-                      color: '#111827',
-                    }}
-                  />
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={customFieldLabelStyle}>Location</Text>
+                    <TextInput
+                      value={customCourseDraft.location}
+                      onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, location: value }))}
+                      placeholder="Optional"
+                      placeholderTextColor="#9ca3af"
+                      clearButtonMode="while-editing"
+                      style={customInputStyle}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={customFieldLabelStyle}>Instructor</Text>
+                    <TextInput
+                      value={customCourseDraft.professor}
+                      onChangeText={(value) => setCustomCourseDraft((prev) => ({ ...prev, professor: value }))}
+                      placeholder="Optional"
+                      placeholderTextColor="#9ca3af"
+                      clearButtonMode="while-editing"
+                      style={customInputStyle}
+                    />
+                  </View>
                 </View>
               </View>
 
               <TouchableOpacity
                 onPress={handleCreateCustomCourse}
                 style={{
-                  marginTop: 18,
+                  marginTop: 10,
+                  marginBottom: 0,
                   backgroundColor: '#4169E1',
-                  borderRadius: 16,
-                  paddingVertical: 14,
+                  borderRadius: 14,
+                  paddingVertical: 12,
                   alignItems: 'center',
                 }}
               >

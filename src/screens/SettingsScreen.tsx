@@ -7,7 +7,9 @@ import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalD
 import ProfileEditorScreen from '../components/ProfileEditorScreen';
 import { supabase } from '../lib/supabase';
 import type {
+  DateFormatPreference,
   EditableProfile,
+  LanguagePreference,
   NotificationPreferences,
   PushPermissionStatus,
   TimetableVisibility,
@@ -31,10 +33,12 @@ type Props = {
   onSaveProfile: (profile: EditableProfile) => Promise<boolean>;
   onSaveVisibility: (privacy: { timetableVisibility: TimetableVisibility; boardProfileVisible: boolean }) => Promise<boolean>;
   onSaveNotifications: (notifications: NotificationPreferences, pushPermissionStatus: PushPermissionStatus) => Promise<boolean>;
+  onSaveRegion: (region: { language: LanguagePreference; timeZone: string; dateFormat: DateFormatPreference }) => Promise<boolean>;
   onRequestPushPermissions: () => Promise<PushPermissionStatus>;
   savingProfile?: boolean;
   savingVisibility?: boolean;
   savingNotifications?: boolean;
+  savingRegion?: boolean;
 };
 
 type Screen = 'main' | 'profile' | 'privacy' | 'notifications' | 'appearance' | 'language' | 'help' | 'about' | 'moderation' | 'board_requests';
@@ -647,43 +651,78 @@ function AppearanceScreen({ onBack, useCelsius, onUseCelsiusChange, themePrefere
 }
 
 // ─── Sub-screen: Language & Region ───────────────────────────────────────────
-function LanguageRegionScreen({ onBack }: { onBack: () => void }) {
+function LanguageRegionScreen({
+  onBack,
+  initialLanguage,
+  initialTimeZone,
+  initialDateFormat,
+  onSave,
+  saving,
+}: {
+  onBack: () => void;
+  initialLanguage: LanguagePreference;
+  initialTimeZone: string;
+  initialDateFormat: DateFormatPreference;
+  onSave: (region: { language: LanguagePreference; timeZone: string; dateFormat: DateFormatPreference }) => Promise<boolean>;
+  saving?: boolean;
+}) {
   const { colors } = useTheme();
-  const [language, setLanguage] = useState('English');
-  const [timezone, setTimezone] = useState('America/Los_Angeles');
-  const [dateFormat, setDateFormat] = useState('MM/DD/YYYY');
+  const [language, setLanguage] = useState<LanguagePreference>(initialLanguage);
+  const [timezone, setTimezone] = useState(initialTimeZone);
+  const [dateFormat, setDateFormat] = useState<DateFormatPreference>(initialDateFormat);
 
-  const languages = ['English'];
+  useEffect(() => {
+    setLanguage(initialLanguage);
+  }, [initialLanguage]);
+
+  useEffect(() => {
+    setTimezone(initialTimeZone);
+  }, [initialTimeZone]);
+
+  useEffect(() => {
+    setDateFormat(initialDateFormat);
+  }, [initialDateFormat]);
+
+  const languages: Array<{ value: LanguagePreference; label: string }> = [
+    { value: 'en', label: 'English' },
+  ];
   const timezones = [
     { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
   ];
-  const dateFormats = [
+  const dateFormats: Array<{ value: DateFormatPreference; example: string }> = [
     { value: 'MM/DD/YYYY', example: '04/21/2026' },
     { value: 'DD/MM/YYYY', example: '21/04/2026' },
     { value: 'YYYY-MM-DD', example: '2026-04-21' },
   ];
 
-  const timezoneLabel = timezones.find(tz => tz.value === timezone)?.label ?? '';
+  const languageLabel = languages.find(lang => lang.value === language)?.label ?? languages[0].label;
+  const timezoneLabel = timezones.find(tz => tz.value === timezone)?.label ?? timezone;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.card }}>
       <SubHeader title="Language & Region" onBack={onBack} />
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
 
         <View style={{ marginBottom: 20 }}>
           <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Language</Text>
           <DropdownPicker
-            label="" value={language}
-            options={languages}
-            onSelect={setLanguage}
+            label="App Language"
+            value={languageLabel}
+            options={languages.map(lang => lang.label)}
+            onSelect={v => {
+              const found = languages.find(lang => lang.label === v);
+              if (found) setLanguage(found.value);
+            }}
           />
         </View>
 
         <View style={{ marginBottom: 20 }}>
           <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Time Zone</Text>
           <DropdownPicker
-            label="" value={timezoneLabel}
+            label="Time Zone"
+            value={timezoneLabel}
             options={timezones.map(tz => tz.label)}
+            searchable
             onSelect={v => {
               const found = timezones.find(tz => tz.label === v);
               if (found) setTimezone(found.value);
@@ -721,6 +760,25 @@ function LanguageRegionScreen({ onBack }: { onBack: () => void }) {
         </View>
 
       </ScrollView>
+      <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
+        <TouchableOpacity
+          disabled={saving}
+          onPress={async () => {
+            const ok = await onSave({ language, timeZone: timezone, dateFormat });
+            if (ok) onBack();
+          }}
+          style={{
+            backgroundColor: saving ? colors.bgTertiary : colors.brand,
+            borderRadius: 14,
+            paddingVertical: 14,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: saving ? colors.textTertiary : 'white', fontSize: 15, fontWeight: '700' }}>
+            {saving ? 'Saving...' : 'Save Language & Region'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -1803,10 +1861,12 @@ export default function SettingsScreen({
   onSaveProfile,
   onSaveVisibility,
   onSaveNotifications,
+  onSaveRegion,
   onRequestPushPermissions,
   savingProfile,
   savingVisibility,
   savingNotifications,
+  savingRegion,
 }: Props) {
   const { colors } = useTheme();
   const [screen, setScreen] = useState<Screen>('main');
@@ -1896,7 +1956,17 @@ export default function SettingsScreen({
           />
         );
       case 'appearance': return <AppearanceScreen onBack={goBack} useCelsius={useCelsius} onUseCelsiusChange={onUseCelsiusChange} themePreference={themePreference} onThemeChange={onThemeChange} />;
-      case 'language': return <LanguageRegionScreen onBack={goBack} />;
+      case 'language':
+        return (
+          <LanguageRegionScreen
+            onBack={goBack}
+            initialLanguage={userSettings.language}
+            initialTimeZone={userSettings.timeZone}
+            initialDateFormat={userSettings.dateFormat}
+            onSave={onSaveRegion}
+            saving={savingRegion}
+          />
+        );
       case 'help': return <HelpCenterScreen onBack={goBack} />;
       case 'about': return <AboutScreen onBack={goBack} />;
       case 'moderation': return <ModerationScreen onBack={goBack} />;

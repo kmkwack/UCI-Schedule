@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing, LayoutAnimation, PanResponder, Platform, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, QUARTERS, quarterKey, quarterLabel, getBlockColors } from '../data/courses';
+import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, QUARTERS, quarterKey, quarterLabel, getBlockColors, normalizeTimetableTheme } from '../data/courses';
 import { getUciMapLocation, type UciMapLocation } from '../data/uciLocations';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -367,7 +367,7 @@ export default function TimetableScreen({
   const skipDetailAnimRef = useRef(false);
 
   // Pending settings (in the modal, before Apply is tapped)
-  const [pendingTheme, setPendingTheme] = useState<TimetableTheme>('default');
+  const [pendingTheme, setPendingTheme] = useState<TimetableTheme>('pastel');
   const [pendingShowCode, setPendingShowCode] = useState(true);
   const [pendingShowClassName, setPendingShowClassName] = useState(true);
   const [pendingShowRoomNumber, setPendingShowRoomNumber] = useState(true);
@@ -375,7 +375,8 @@ export default function TimetableScreen({
   const [pendingShowTime, setPendingShowTime] = useState(true);
 
   // Destructure applied settings from props
-  const { theme, showCode, showClassName, showRoomNumber, showInstructor, showTime } = settings;
+  const { showCode, showClassName, showRoomNumber, showInstructor, showTime } = settings;
+  const blockTheme = normalizeTimetableTheme(settings.theme);
 
   const exportCaptureRef = useRef<View>(null);
   const screenWidth = Dimensions.get('window').width;
@@ -631,7 +632,7 @@ export default function TimetableScreen({
 
   function openSettings() {
     // Sync pending state from currently applied settings
-    setPendingTheme(settings.theme);
+    setPendingTheme(blockTheme);
     setPendingShowCode(settings.showCode);
     setPendingShowClassName(settings.showClassName);
     setPendingShowRoomNumber(settings.showRoomNumber);
@@ -687,10 +688,11 @@ export default function TimetableScreen({
   }
 
   const THEMES: { key: TimetableTheme; label: string }[] = [
-    { key: 'default', label: 'Default' },
+    { key: 'pastel', label: 'Pastel' },
+    { key: 'soft', label: 'Soft' },
     { key: 'minimal', label: 'Minimal' },
+    { key: 'outline', label: 'Outline' },
     { key: 'colorful', label: 'Colorful' },
-    { key: 'dark', label: 'Dark' },
   ];
 
   const DISPLAY_OPTIONS: { key: string; label: string }[] = [
@@ -756,11 +758,11 @@ export default function TimetableScreen({
     else if (key === 'time')       setPendingShowTime((v) => !v);
   }
 
-  const gridFrameBg = theme === 'dark' ? '#0f172a' : '#ffffff';
-  const gridFrameBorder = theme === 'dark' ? '#243041' : '#d9dee8';
-  const gridHeaderBg = theme === 'dark' ? '#0a1628' : '#f5f5f7';
-  const gridLine = theme === 'dark' ? '#1e293b' : '#e0e0e5';
-  const gridLabel = theme === 'dark' ? '#475569' : '#6b7280';
+  const gridFrameBg = isDark ? '#0f172a' : '#ffffff';
+  const gridFrameBorder = isDark ? '#243041' : '#d9dee8';
+  const gridHeaderBg = isDark ? '#0a1628' : '#f5f5f7';
+  const gridLine = isDark ? '#1e293b' : '#e0e0e5';
+  const gridLabel = isDark ? '#64748b' : '#6b7280';
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -1012,10 +1014,10 @@ export default function TimetableScreen({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
-              {/* Timetable Theme */}
+              {/* Block Style */}
               <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Timetable Theme
+                  Block Style
                 </Text>
                 <View style={{ marginTop: 4 }}>
                   {THEMES.map((t) => {
@@ -1495,9 +1497,9 @@ export default function TimetableScreen({
               borderWidth: 1,
               borderColor: gridFrameBorder,
               overflow: 'hidden',
-              shadowColor: theme === 'dark' ? '#000' : '#cfd6e4',
+              shadowColor: isDark ? '#000' : '#cfd6e4',
               shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: theme === 'dark' ? 0.18 : 0.18,
+              shadowOpacity: isDark ? 0.24 : 0.18,
               shadowRadius: 18,
               elevation: 4,
             }}
@@ -1597,7 +1599,7 @@ export default function TimetableScreen({
                         const endHour = getCourseEndHour(course.time);
                         const top = (startHour - displayStartHour) * hourHeight;
                         const height = (endHour - startHour) * hourHeight;
-                        const { bg, text, border } = getBlockColors(course, theme);
+                        const { bg, text, border } = getBlockColors(course, blockTheme);
 
                         return courseDays.map((day) => {
                           const dayIndex = visibleDays.indexOf(day);
@@ -1683,7 +1685,7 @@ export default function TimetableScreen({
           }}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {tbaCourses.map((course) => {
-                const { bg, text, border } = getBlockColors(course, theme);
+                const { bg, text, border } = getBlockColors(course, blockTheme);
                 return (
                   <TouchableOpacity
                     key={course.id}
@@ -1754,9 +1756,9 @@ export default function TimetableScreen({
               borderWidth: 1,
               borderColor: gridFrameBorder,
               padding: exportCardPadding,
-              shadowColor: theme === 'dark' ? '#000' : '#cfd6e4',
+              shadowColor: isDark ? '#000' : '#cfd6e4',
               shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: theme === 'dark' ? 0.16 : 0.16,
+              shadowOpacity: isDark ? 0.22 : 0.16,
               shadowRadius: 18,
               elevation: 4,
             }}
@@ -1889,7 +1891,7 @@ export default function TimetableScreen({
                       const endHour = getCourseEndHour(course.time);
                       const top = (startHour - displayStartHour) * exportHourHeight;
                       const height = (endHour - startHour) * exportHourHeight;
-                      const { bg, text, border } = getBlockColors(course, theme);
+                      const { bg, text, border } = getBlockColors(course, blockTheme);
 
                       return courseDays.map((day) => {
                         const dayIndex = visibleDays.indexOf(day);
@@ -1955,7 +1957,7 @@ export default function TimetableScreen({
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {tbaCourses.map((course) => {
-                    const { bg, text, border } = getBlockColors(course, theme);
+                    const { bg, text, border } = getBlockColors(course, blockTheme);
                     return (
                       <View
                         key={`export-tba-${course.id}`}

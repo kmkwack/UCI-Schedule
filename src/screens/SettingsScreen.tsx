@@ -15,6 +15,7 @@ import type {
   TimetableVisibility,
   UserSettingsState,
 } from '../data/userPreferences';
+import { abbreviateMajor } from '../data/userPreferences';
 
 type Props = {
   visible: boolean;
@@ -2007,7 +2008,7 @@ export default function SettingsScreen({
               <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>{userName}</Text>
               <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>{userEmail}</Text>
               <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>
-                {userProfile.major} · {userProfile.year}
+                {abbreviateMajor(userProfile.major) || 'UNDECL'} · {userProfile.year}
               </Text>
             </View>
           </View>

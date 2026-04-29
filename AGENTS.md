@@ -1449,6 +1449,65 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/screens/CoursePickerScreen.tsx`** — Replaced the single department filter with multi-select department filters. Department rows now toggle in place, selected departments load together from Supabase, each selected department appears as a removable chip beside the day filters, and GE selection remains a single exclusive category.
 
 ### Session 64iv (Board chat source cards and simplified locale)
-- **`src/screens/BoardScreen.tsx`** — Tightened the comment overflow menu into a smaller inline popover with shorter action labels so it no longer reads like a large detached card under the comment.
-- **`src/screens/MessagesScreen.tsx`** — Hydrates anonymous board conversations with their source post and shows a persistent source-post card in the chat thread plus a `From:` line in the messages list, so both participants can see which post started the chat.
+- **`src/screens/BoardScreen.tsx`** — Reverted comment overflow actions to the native iOS action sheet / default platform alert so edit, delete, message, and report no longer rely on a custom inline menu.
+- **`src/screens/MessagesScreen.tsx`** — Hydrates anonymous board conversations with their source post and shows a compact source-post preview with title, body, and image when available. Deleted source posts now render a deleted-post state, and message/search inputs have clearer bordered fields with keyboard-friendly list behavior.
 - **`src/data/userPreferences.ts` / `src/screens/SettingsScreen.tsx`** — Reduced language and time-zone preferences back to English and Pacific Time only, and normalizes older saved values to those defaults.
+
+### Session 64iw (Clarify board comment composer)
+- **`src/screens/BoardScreen.tsx`** — Added a visible border around the board comment input field so the comment composer clearly reads as an editable text area.
+
+### Session 64ix (Abbreviate displayed majors)
+- **`src/data/userPreferences.ts`** — Added a shared `abbreviateMajor()` helper with UCI major mappings and an acronym fallback.
+- **`src/screens/BoardScreen.tsx` / `src/screens/FriendsScreen.tsx` / `src/screens/SettingsScreen.tsx`** — Switched user-facing major labels beside people to short abbreviations like `ECON`, `CS`, and `CSE` so profile metadata stays compact.
+
+### Session 64iy (Stop message refresh flicker)
+- **`src/screens/MessagesScreen.tsx`** — Changed message polling to silent background refreshes and slowed the interval from 7 seconds to 15 seconds. Message lists now keep their current content visible while new data is fetched, so the thread no longer flashes back to a loading state.
+
+### Session 64iz (Realtime message threads)
+- **`src/screens/MessagesScreen.tsx`** — Replaced open-thread message polling with a Supabase Realtime subscription for `conversation_messages` inserts and updates. Sent messages are added from the returned insert row, and the conversation list keeps only a slow silent fallback refresh so the chat no longer constantly reloads.
+- **`supabase/sql/conversation_messages.sql`** — Added `conversation_messages` to the `supabase_realtime` publication so deployed databases can emit live chat events for the new message subscription.
+
+### Session 64ja (Unread message badges)
+- **`App.tsx`** — Added global unread-message counting from `conversation_participants.last_read_at` and incoming `conversation_messages`, with Realtime refresh hooks and a quiet polling fallback so the app knows when chat activity needs a badge.
+- **`src/screens/BoardScreen.tsx` / `src/screens/FriendsScreen.tsx`** — Added red unread badges to the Messages entry buttons so users can see when new chats arrived before opening the message list.
+- **`supabase/sql/conversation_messages.sql`** — Added `conversation_participants` to the Realtime publication as well, allowing read-state changes to clear unread badges promptly.
+
+### Session 64jb (Hide empty chat drafts)
+- **`src/screens/MessagesScreen.tsx`** — Changed the conversation list preview builder to skip conversations with no messages. Opening a chat and backing out without sending no longer leaves an empty `Start the conversation` thread in the Messages list.
+
+### Session 64jc (Lazy-create chat conversations)
+- **`src/screens/MessagesScreen.tsx`** — Changed new chat entry points to open a local draft thread first and only call `get_or_create_conversation` when the first message is actually sent. This prevents opening and backing out of a chat from writing unused conversation rows.
+- **`supabase/sql/cleanup_empty_conversations.sql`** — Added a cleanup SQL script that deletes old empty conversation rows from previous builds, with participant rows removed through cascade.
+
+### Session 64jd (Sports event detail sheet)
+- **`src/screens/HomeScreen.tsx`** — Renamed `Campus Events` to `Sports Events`, removed the inline gray venue/source text from event rows, and made sports event rows open a lightweight detail sheet with game summary, Going/Interested actions, event comments, and an in-app venue map for home games.
+- **`supabase/sql/sports_event_social.sql`** — Added Supabase tables and RLS policies for sports-event RSVPs and comments so event detail interactions can persist per game.
+
+### Session 64je (Sports event participation badges)
+- **`src/screens/HomeScreen.tsx`** — Loads RSVP counts for visible sports events and shows a small people-count badge on each event row when students have marked Going or Interested. Detail-sheet RSVP changes now update the outer list count too.
+
+### Session 64jf (Compact course section metadata)
+- **`src/screens/CoursePickerScreen.tsx`** — Confirmed saved-section counts are app-wide unique users for the selected quarter, then compressed section enrollment, waitlist, and saved counts into small metadata chips so expanded course rows no longer spend separate lines on enrollment and ClassMate saved-count copy.
+
+### Session 64jg (Sports event gender labels and venue trust)
+- **`src/data/sportsEvents.ts`** — Preserved `Men's` / `Women's` sport prefixes in sports event titles and detail metadata instead of stripping them during calendar parsing.
+- **`src/screens/HomeScreen.tsx`** — Stopped inferring volleyball home venues from sport type alone. Venue maps now render only when the source location names a specific known UCI venue, and generic calendar rows show `Venue TBA` rather than incorrectly mapping to Bren Events Center.
+
+### Session 64jh (Enrich sports venues and show zero going counts)
+- **`src/data/sportsEvents.ts`** — Added sport-specific UCI Athletics schedule-page enrichment so events parsed from the composite calendar can pick up venue/city details from each team's schedule page when the composite list omits them.
+- **`src/screens/HomeScreen.tsx`** — Enriched sports events before caching, changed the outside event-row badge to always show the number of students marked `going` including `0 going`, and made detail labels show the actual event location instead of assuming every `vs` event is a home game.
+
+### Session 64ji (Tighten sports venue parsing and going label)
+- **`src/data/sportsEvents.ts`** — Restricted schedule venue enrichment to the actual yearly schedule section and rejected page chrome/filter text as a venue candidate, preventing `Track & Field` filter copy from being mistaken for a location.
+- **`src/screens/HomeScreen.tsx`** — Added display-time cleanup for bad cached sports locations and moved the `0 going` count into the event metadata line as quieter secondary text instead of a large centered pill.
+
+### Session 64jj (Make sports RSVP taps responsive)
+- **`src/screens/HomeScreen.tsx`** — Made sports-event Going/Interested actions update optimistically on tap so the buttons visibly respond before Supabase persistence finishes, and kept the local response when the social table is missing in development.
+- **`src/screens/HomeScreen.tsx`** — Repositioned the event-list going count into a compact fixed badge on the right edge, making `0 going` visible without sitting awkwardly in the middle of each row.
+
+### Session 64jk (Harden sports venue enrichment and friend timetable header)
+- **`src/data/sportsEvents.ts`** — Added a timeout-wrapped schedule fetch and only enriches generic sports locations, so venue lookup failures or slow UCI Athletics pages do not block or overwrite already-specific event locations.
+- **`src/screens/FriendsScreen.tsx`** — Removed the chat shortcut from the friend timetable viewing header while keeping messaging available from the main friends list.
+
+### Session 64jl (Show upcoming UC campus support)
+- **`src/screens/UniversitySelectionScreen.tsx`** — Added all UC campuses to the university picker. UC Irvine remains the only selectable school, while the other UC campuses render as muted `Coming Soon` rows with explanatory copy and a tap alert so users understand expansion is planned but not active yet.

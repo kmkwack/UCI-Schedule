@@ -30,7 +30,7 @@ import {
   quarterLabel,
   getAcademicQuarterForDate,
 } from '../data/courses';
-import type { TimetableVisibility } from '../data/userPreferences';
+import { abbreviateMajor, type TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import type { ChatTarget } from '../data/messages';
@@ -169,7 +169,7 @@ function mapProfileToFriend(
     id: profile.id,
     name: profile.name?.trim() || profile.email.split('@')[0],
     email: profile.email,
-    major: profile.major?.trim() || 'Undeclared',
+    major: abbreviateMajor(profile.major) || 'UNDECL',
     year: profile.year?.trim() || 'Student',
     timetableVisibility,
     timetables,
@@ -186,6 +186,7 @@ type Props = {
   scrollToTopTrigger?: number;
   onOpenMessages?: () => void;
   onOpenChat?: (target: ChatTarget) => void;
+  unreadMessageCount?: number;
 };
 
 export default function FriendsScreen({
@@ -198,6 +199,7 @@ export default function FriendsScreen({
   scrollToTopTrigger = 0,
   onOpenMessages,
   onOpenChat,
+  unreadMessageCount = 0,
 }: Props) {
   const { colors } = useTheme();
   const friendsScrollRef = useRef<ScrollView>(null);
@@ -433,7 +435,7 @@ export default function FriendsScreen({
           id: profile.id,
           name: profile.name?.trim() || profile.email.split('@')[0],
           email: profile.email,
-          major: profile.major?.trim() || 'Undeclared',
+          major: abbreviateMajor(profile.major) || 'UNDECL',
           year: profile.year?.trim() || 'Student',
         }));
       const freshSent = outgoingPendingIds
@@ -443,7 +445,7 @@ export default function FriendsScreen({
           id: profile.id,
           name: profile.name?.trim() || profile.email.split('@')[0],
           email: profile.email,
-          major: profile.major?.trim() || 'Undeclared',
+          major: abbreviateMajor(profile.major) || 'UNDECL',
           year: profile.year?.trim() || 'Student',
         }));
 
@@ -919,8 +921,34 @@ export default function FriendsScreen({
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             {onOpenMessages ? (
-              <TouchableOpacity onPress={onOpenMessages} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={onOpenMessages}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ position: 'relative' }}
+              >
                 <Ionicons name="chatbubble-ellipses-outline" size={24} color={colors.text} />
+                {unreadMessageCount > 0 ? (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      top: -7,
+                      right: -10,
+                      minWidth: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      paddingHorizontal: 4,
+                      backgroundColor: colors.destructive,
+                      borderWidth: 2,
+                      borderColor: colors.bg,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: 'white', fontSize: 9, fontWeight: '800' }}>
+                      {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                    </Text>
+                  </View>
+                ) : null}
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity onPress={() => setShowAddModal(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -1459,23 +1487,6 @@ export default function FriendsScreen({
                 </View>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {onOpenChat ? (
-                  <TouchableOpacity
-                    onPress={() => onOpenChat({ id: friend.id, kind: 'friend', name: friend.name })}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      backgroundColor: colors.card,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Ionicons name="chatbubble-ellipses-outline" size={17} color={colors.text} />
-                  </TouchableOpacity>
-                ) : null}
                 <TouchableOpacity
                   onPress={openQuarterDropdown}
                   style={{

@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  ActionSheetIOS,
   Animated,
   Easing,
   LayoutAnimation,
@@ -35,6 +36,7 @@ import { useTheme } from '../context/ThemeContext';
 import { anteaterAliasForId } from '../data/anonymousAliases';
 import { UCI_DEPARTMENTS, colorForDepartment } from '../data/courses';
 import type { ChatTarget } from '../data/messages';
+import { abbreviateMajor } from '../data/userPreferences';
 
 type CommentRow = {
   id: string;
@@ -540,7 +542,7 @@ type AuthorSummary = {
 };
 
 function formatAuthorMeta(major?: string | null, year?: string | null) {
-  const parts = [major?.trim(), year?.trim()].filter(Boolean);
+  const parts = [abbreviateMajor(major), year?.trim()].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
@@ -553,6 +555,7 @@ type Props = {
   scrollToTopTrigger?: number;
   onOpenMessages?: () => void;
   onOpenChat?: (target: ChatTarget) => void;
+  unreadMessageCount?: number;
 };
 
 export default function BoardScreen({
@@ -564,6 +567,7 @@ export default function BoardScreen({
   scrollToTopTrigger = 0,
   onOpenMessages,
   onOpenChat,
+  unreadMessageCount = 0,
 }: Props) {
   const { colors, isDark } = useTheme();
   const [posts, setPosts] = useState<Post[]>([]);
@@ -575,7 +579,6 @@ export default function BoardScreen({
   const [commentInput, setCommentInput] = useState('');
   const [replyingToComment, setReplyingToComment] = useState<{ id: string; authorName: string } | null>(null);
   const [editingComment, setEditingComment] = useState<{ id: string; authorName: string } | null>(null);
-  const [activeCommentActionsId, setActiveCommentActionsId] = useState<string | null>(null);
   const [showNewPost, setShowNewPost] = useState(false);
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostBody, setNewPostBody] = useState('');
@@ -1682,14 +1685,8 @@ export default function BoardScreen({
 
   const selectedPostCommentCount = useMemo(() => countComments(comments), [comments]);
 
-  function toggleCommentActions(commentId: string) {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setActiveCommentActionsId((current) => (current === commentId ? null : commentId));
-  }
-
   function handleMessageCommentAuthor(comment: CommentNode) {
     if (!selectedPost || !onOpenChat) return;
-    setActiveCommentActionsId(null);
     onOpenChat({
       id: comment.user_id,
       kind: 'board_anonymous',
@@ -1699,92 +1696,51 @@ export default function BoardScreen({
     });
   }
 
-  function renderCommentActionMenu(comment: CommentNode) {
-    if (activeCommentActionsId !== comment.id) return null;
+  function openCommentActions(comment: CommentNode) {
     const isOwnComment = comment.user_id === userId;
-    const optionStyle = {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 8,
-      paddingHorizontal: 11,
-      paddingVertical: 9,
-      borderRadius: 10,
-    };
+    const actions = isOwnComment
+      ? [
+          { label: 'Edit Comment', action: () => startEditComment(comment) },
+          { label: 'Delete Comment', destructive: true, action: () => void handleDeleteComment(comment) },
+        ]
+      : [
+          ...(selectedPost && onOpenChat ? [{ label: 'Message Anonymously', action: () => handleMessageCommentAuthor(comment) }] : []),
+          {
+            label: 'Report Comment',
+            action: () => openReport({
+              id: comment.id,
+              type: 'comment',
+              label: `Comment by ${comment.author_name}`,
+            }),
+          },
+        ];
 
-    return (
-      <View
-        style={{
-          alignSelf: 'flex-start',
-          marginTop: 6,
-          marginLeft: 78,
-          padding: 4,
-          minWidth: isOwnComment ? 160 : 178,
-          borderRadius: 14,
-          backgroundColor: colors.card,
-          borderWidth: 1,
-          borderColor: colors.borderSubtle,
-          shadowColor: '#0f172a',
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: isDark ? 0.16 : 0.07,
-          shadowRadius: 12,
-          elevation: 4,
-        }}
-      >
-        {isOwnComment ? (
-          <>
-            <TouchableOpacity
-              onPress={() => {
-                setActiveCommentActionsId(null);
-                startEditComment(comment);
-              }}
-              activeOpacity={0.78}
-              style={optionStyle}
-            >
-              <Ionicons name="create-outline" size={17} color={colors.textSecondary} />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Edit</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                setActiveCommentActionsId(null);
-                void handleDeleteComment(comment);
-              }}
-              activeOpacity={0.78}
-              style={optionStyle}
-            >
-              <Ionicons name="trash-outline" size={17} color="#dc2626" />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#dc2626' }}>Delete</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            {selectedPost && onOpenChat ? (
-              <TouchableOpacity
-                onPress={() => handleMessageCommentAuthor(comment)}
-                activeOpacity={0.78}
-              style={optionStyle}
-            >
-              <Ionicons name="chatbubble-ellipses-outline" size={17} color={colors.brand} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Message</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity
-              onPress={() => {
-                setActiveCommentActionsId(null);
-                openReport({
-                  id: comment.id,
-                  type: 'comment',
-                  label: `Comment by ${comment.author_name}`,
-                });
-              }}
-              activeOpacity={0.78}
-              style={optionStyle}
-            >
-              <Ionicons name="flag-outline" size={17} color={colors.textSecondary} />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Report</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
+    if (Platform.OS === 'ios') {
+      const destructiveButtonIndex = actions.findIndex((action) => action.destructive);
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [...actions.map((action) => action.label), 'Cancel'],
+          cancelButtonIndex: actions.length,
+          destructiveButtonIndex: destructiveButtonIndex >= 0 ? destructiveButtonIndex : undefined,
+        },
+        (buttonIndex) => {
+          if (buttonIndex < actions.length) actions[buttonIndex].action();
+        }
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Comment options',
+      undefined,
+      [
+        ...actions.map((action) => ({
+          text: action.label,
+          style: action.destructive ? 'destructive' as const : 'default' as const,
+          onPress: action.action,
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]
     );
   }
 
@@ -1847,7 +1803,6 @@ export default function BoardScreen({
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
-                  setActiveCommentActionsId(null);
                   setEditingComment(null);
                   setCommentInput('');
                   setReplyingToComment({ id: comment.id, authorName: comment.author_name });
@@ -1858,7 +1813,7 @@ export default function BoardScreen({
                 <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>Reply</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => toggleCommentActions(comment.id)}
+                onPress={() => openCommentActions(comment)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{
                   flexDirection: 'row',
@@ -1867,13 +1822,12 @@ export default function BoardScreen({
                   paddingHorizontal: 4,
                   paddingVertical: 2,
                   borderRadius: 999,
-                  backgroundColor: activeCommentActionsId === comment.id ? colors.bgTertiary : 'transparent',
+                  backgroundColor: 'transparent',
                 }}
               >
                 <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
             </View>
-            {renderCommentActionMenu(comment)}
           </View>
         </View>
         {comment.replies.length > 0 ? (
@@ -1909,6 +1863,7 @@ export default function BoardScreen({
               <TouchableOpacity
                 onPress={onOpenMessages}
                 style={{
+                  position: 'relative',
                   width: 40,
                   height: 40,
                   borderRadius: 20,
@@ -1920,6 +1875,28 @@ export default function BoardScreen({
                 }}
               >
                 <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.text} />
+                {unreadMessageCount > 0 ? (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      top: -6,
+                      right: -6,
+                      minWidth: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      paddingHorizontal: 4,
+                      backgroundColor: colors.destructive,
+                      borderWidth: 2,
+                      borderColor: colors.bgSecondary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: 'white', fontSize: 9, fontWeight: '800' }}>
+                      {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                    </Text>
+                  </View>
+                ) : null}
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity
@@ -2667,6 +2644,8 @@ export default function BoardScreen({
                           style={{
                             flex: 1,
                             backgroundColor: colors.inputBg,
+                            borderWidth: 1,
+                            borderColor: colors.border,
                             borderRadius: 22,
                             paddingHorizontal: 16,
                             paddingVertical: 10,

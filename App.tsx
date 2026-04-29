@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Easing, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -82,6 +82,19 @@ type SocialNotificationSnapshot = {
   likes: LikeNotificationRow[];
   postTitlesById: Record<string, string>;
   myCommentIds: Set<string>;
+};
+
+type ConversationParticipantUnreadRow = {
+  conversation_id: string;
+  last_read_at: string | null;
+};
+
+type ConversationUnreadMessageRow = {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  created_at: string;
+  deleted_at: string | null;
 };
 
 type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
@@ -309,6 +322,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setUserEmail('');
     setSelectedUniversity(null);
     setExpoPushToken(null);
+    setUnreadMessageCount(0);
     setUserProfile(fallbackProfileFromEmail('student@uci.edu'));
     setUserSettings(DEFAULT_USER_SETTINGS);
     setTimetables([]);
@@ -416,6 +430,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [friendsTabTapCount, setFriendsTabTapCount] = useState(0);
   const [showMessages, setShowMessages] = useState(false);
   const [messageTarget, setMessageTarget] = useState<ChatTarget | null>(null);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
 
   const TABS = ['home', 'timetable', 'grades', 'board', 'friends'] as const;
   const tabBarWidthRef = useRef(0);
@@ -512,6 +527,99 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const USER_ID = userId ?? '';
   const displayUserName = buildDisplayName({ ...userProfile, email: userEmail || userProfile.email });
   const currentSchool = selectedUniversity?.name ?? 'UC Irvine';
+
+  const loadUnreadMessageCount = useCallback(async () => {
+    if (!USER_ID) return 0;
+
+    const { data: participantData, error: participantError } = await supabase
+      .from('conversation_participants')
+      .select('conversation_id, last_read_at')
+      .eq('user_id', USER_ID);
+
+    if (participantError) {
+      if (participantError.code !== 'PGRST205') {
+        console.warn('Failed to load unread message participants:', participantError);
+      }
+      return 0;
+    }
+
+    const participants = (participantData ?? []) as ConversationParticipantUnreadRow[];
+    const conversationIds = participants.map((row) => row.conversation_id);
+    if (conversationIds.length === 0) return 0;
+
+    const { data: messageData, error: messageError } = await supabase
+      .from('conversation_messages')
+      .select('id, conversation_id, sender_id, created_at, deleted_at')
+      .in('conversation_id', conversationIds)
+      .neq('sender_id', USER_ID)
+      .is('deleted_at', null);
+
+    if (messageError) {
+      if (messageError.code !== 'PGRST205') {
+        console.warn('Failed to load unread messages:', messageError);
+      }
+      return 0;
+    }
+
+    const lastReadByConversation = Object.fromEntries(
+      participants.map((row) => [row.conversation_id, row.last_read_at])
+    );
+
+    return ((messageData ?? []) as ConversationUnreadMessageRow[]).filter((message) => {
+      const lastReadAt = lastReadByConversation[message.conversation_id];
+      return !lastReadAt || new Date(message.created_at) > new Date(lastReadAt);
+    }).length;
+  }, [USER_ID]);
+
+  useEffect(() => {
+    if (!USER_ID) {
+      setUnreadMessageCount(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    const refreshUnreadMessages = async () => {
+      const count = await loadUnreadMessageCount();
+      if (!cancelled) setUnreadMessageCount(count);
+    };
+
+    void refreshUnreadMessages();
+    const interval = setInterval(() => {
+      void refreshUnreadMessages();
+    }, 30000);
+
+    const channel = supabase
+      .channel(`message-badge:${USER_ID}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'conversation_messages' },
+        () => {
+          void refreshUnreadMessages();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'conversation_messages' },
+        () => {
+          void refreshUnreadMessages();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'conversation_participants', filter: `user_id=eq.${USER_ID}` },
+        () => {
+          void refreshUnreadMessages();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [USER_ID, loadUnreadMessageCount]);
 
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -1688,6 +1796,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const closeMessages = () => {
     setShowMessages(false);
     setMessageTarget(null);
+    void loadUnreadMessageCount().then(setUnreadMessageCount);
   };
 
   // ── auth screens ─────────────────────────────────────────────────────────────
@@ -1838,6 +1947,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         scrollToTopTrigger={boardTabTapCount}
         onOpenMessages={() => openMessages(null)}
         onOpenChat={openMessages}
+        unreadMessageCount={unreadMessageCount}
       />
     );
   } else if (currentTab === 'friends') {
@@ -1853,6 +1963,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           scrollToTopTrigger={friendsTabTapCount}
           onOpenMessages={() => openMessages(null)}
           onOpenChat={openMessages}
+          unreadMessageCount={unreadMessageCount}
         />
       </View>
     );

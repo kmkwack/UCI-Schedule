@@ -47,6 +47,22 @@ alter table public.conversations enable row level security;
 alter table public.conversation_participants enable row level security;
 alter table public.conversation_messages enable row level security;
 
+do $$
+begin
+  alter publication supabase_realtime add table public.conversation_messages;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.conversation_participants;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end $$;
+
 create or replace function public.is_conversation_participant(p_conversation_id uuid)
 returns boolean
 language sql

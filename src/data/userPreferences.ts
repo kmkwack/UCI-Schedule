@@ -56,6 +56,111 @@ export function normalizeTimeZonePreference(value: unknown): string {
   return 'America/Los_Angeles';
 }
 
+const MAJOR_ABBREVIATIONS: Record<string, string> = {
+  'Aerospace Engineering': 'AE',
+  'African American Studies': 'AAS',
+  Anthropology: 'ANTH',
+  'Applied Physics': 'AP',
+  'Applied and Computational Mathematics': 'ACM',
+  'Art History': 'ARTH',
+  Art: 'ART',
+  'Asian American Studies': 'AAS',
+  'Biochemistry and Molecular Biology': 'BMB',
+  'Biological Sciences': 'BIO SCI',
+  'Biology/Education': 'BIO ED',
+  'Biomedical Engineering': 'BME',
+  'Biomedical Engineering: Premedical': 'BME PRE',
+  'Business Administration': 'BA',
+  'Business Economics': 'BUS ECON',
+  'Business Information Management': 'BIM',
+  'Chemical Engineering': 'CHE',
+  Chemistry: 'CHEM',
+  'Chicano/Latino Studies': 'CLS',
+  'Chinese Studies': 'CHN',
+  'Civil Engineering': 'CE',
+  Classics: 'CLASS',
+  'Cognitive Sciences': 'COGS',
+  'Comparative Literature': 'C LIT',
+  'Computer Engineering': 'CE',
+  'Computer Science and Engineering': 'CSE',
+  'Computer Science': 'CS',
+  'Criminology, Law and Society': 'CLS',
+  Dance: 'DANCE',
+  'Data Science': 'DATA',
+  'Developmental and Cell Biology': 'DCB',
+  Drama: 'DRAMA',
+  'East Asian Cultures': 'EAS',
+  'Ecology and Evolutionary Biology': 'EEB',
+  Economics: 'ECON',
+  'Education Sciences': 'EDUC',
+  'Electrical Engineering': 'EE',
+  English: 'ENG',
+  'Environmental Engineering': 'ENV ENG',
+  'Environmental Science and Policy': 'ESP',
+  'Environmental and Earth System Science': 'EESS',
+  'European Studies': 'EURO',
+  'Film and Media Studies': 'FMS',
+  French: 'FR',
+  'Game Design and Interactive Media': 'GDIM',
+  'Gender and Sexuality Studies': 'GSS',
+  Genetics: 'GEN',
+  'German Studies': 'GER',
+  'Global Cultures': 'GC',
+  History: 'HIST',
+  'Human Biology': 'H BIO',
+  Informatics: 'IN4MATX',
+  'Information and Computer Science': 'ICS',
+  'International Studies': 'INTL',
+  'Japanese Language and Literature': 'JAPAN',
+  'Korean Literature and Culture': 'KOREAN',
+  'Language Science': 'LSCI',
+  'Literary Journalism': 'LIT JRN',
+  'Materials Science and Engineering': 'MSE',
+  Mathematics: 'MATH',
+  'Mechanical Engineering': 'ME',
+  'Microbiology and Immunology': 'MICRO',
+  'Music Theatre': 'MT',
+  Music: 'MUSIC',
+  Neurobiology: 'NEURO',
+  'Nursing Science': 'NURS',
+  'Pharmaceutical Sciences': 'PHARM',
+  Philosophy: 'PHIL',
+  Physics: 'PHYS',
+  'Physiology and Exercise Science': 'PES',
+  'Political Science': 'POL SCI',
+  Psychology: 'PSYCH',
+  'Public Health Policy': 'PHP',
+  'Public Health Science': 'PHS',
+  'Quantitative Economics': 'Q ECON',
+  'Religious Studies': 'REL STD',
+  'Social Ecology': 'SOC ECOL',
+  'Social Policy and Public Service': 'SPPS',
+  Sociology: 'SOC',
+  'Software Engineering': 'SWE',
+  Spanish: 'SPAN',
+  'Undergraduate/Undeclared': 'UNDECL',
+  Undeclared: 'UNDECL',
+  'Urban Studies': 'URB ST',
+};
+
+export function abbreviateMajor(major?: string | null) {
+  const trimmed = major?.trim();
+  if (!trimmed) return '';
+  const mapped = MAJOR_ABBREVIATIONS[trimmed];
+  if (mapped) return mapped;
+  if (/undeclared/i.test(trimmed)) return 'UNDECL';
+  if (/^[A-Z0-9 &/.-]{2,10}$/.test(trimmed)) return trimmed;
+
+  const words = trimmed
+    .replace(/[:/,&-]+/g, ' ')
+    .replace(/\band\b/gi, ' ')
+    .split(/\s+/)
+    .filter((word) => word && !/^(of|the|and)$/i.test(word));
+
+  if (words.length <= 1) return trimmed.length <= 8 ? trimmed.toUpperCase() : trimmed.slice(0, 8).toUpperCase();
+  return words.map((word) => word[0]).join('').toUpperCase().slice(0, 6);
+}
+
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   pushNotifications: false,
   emailNotifications: true,

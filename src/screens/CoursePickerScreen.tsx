@@ -1361,6 +1361,12 @@ export default function CoursePickerScreen({
                             : enroll.status === 'Waitl' ? 'Waitlist'
                             : enroll.status === 'NewOnly' ? 'New Only'
                             : 'Full';
+                          const enrollmentLabel = enroll
+                            ? `${enroll.enrolled}/${enroll.capacity} enrolled`
+                            : null;
+                          const waitlistLabel = enroll?.status === 'Waitl'
+                            ? `${enroll.waitlist}/${enroll.waitlistCap} waitlist`
+                            : null;
 
                           return (
                             <TouchableOpacity
@@ -1395,17 +1401,53 @@ export default function CoursePickerScreen({
                                   <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 1 }}>
                                     {[course.days, course.time, course.location].filter(Boolean).join(' · ')}
                                   </Text>
-                                  {enroll && (
-                                    <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 1 }}>
-                                      {enroll.enrolled}/{enroll.capacity} enrolled
-                                      {enroll.status === 'Waitl' ? ` · ${enroll.waitlist}/${enroll.waitlistCap} waitlist` : ''}
-                                    </Text>
-                                  )}
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                                    <Ionicons name="people-outline" size={12} color="#6b7280" />
-                                    <Text style={{ color: '#6b7280', fontSize: 11 }}>
-                                      {savedCount} ClassMate {savedCount === 1 ? 'student has' : 'students have'} saved this
-                                    </Text>
+                                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                                    {enrollmentLabel ? (
+                                      <View style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        borderRadius: 999,
+                                        backgroundColor: '#eef2f7',
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 4,
+                                      }}>
+                                        <Ionicons name="person-outline" size={11} color="#64748b" />
+                                        <Text style={{ color: '#64748b', fontSize: 10, fontWeight: '700' }}>
+                                          {enrollmentLabel}
+                                        </Text>
+                                      </View>
+                                    ) : null}
+                                    {waitlistLabel ? (
+                                      <View style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        borderRadius: 999,
+                                        backgroundColor: '#fff7ed',
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 4,
+                                      }}>
+                                        <Ionicons name="time-outline" size={11} color="#d97706" />
+                                        <Text style={{ color: '#d97706', fontSize: 10, fontWeight: '700' }}>
+                                          {waitlistLabel}
+                                        </Text>
+                                      </View>
+                                    ) : null}
+                                    <View style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      borderRadius: 999,
+                                      backgroundColor: '#eef1fb',
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 4,
+                                    }}>
+                                      <Ionicons name="people-outline" size={11} color="#4169E1" />
+                                      <Text style={{ color: '#4169E1', fontSize: 10, fontWeight: '800' }}>
+                                        {savedCount} saved
+                                      </Text>
+                                    </View>
                                   </View>
                                 </View>
 

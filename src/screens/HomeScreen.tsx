@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Animated, PanResponder, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Animated, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, blockColorKey, pastelForCourse, quarterKey, quarterLabel } from '../data/courses';
-import { formatSportsEventTime, parseSportsCalendar, type SportsEvent } from '../data/sportsEvents';
+import { enrichSportsEventsWithScheduleVenues, formatSportsEventTime, parseSportsCalendar, type SportsEvent } from '../data/sportsEvents';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -47,6 +48,36 @@ type ClassmateMatch = {
   email: string;
   sharedCourseIds: string[];
   sharedCourseCodes: string[];
+};
+
+type SportsEventRsvpStatus = 'going' | 'interested';
+
+type SportsEventComment = {
+  id: string;
+  userId: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+};
+
+type SportsEventCommentRow = {
+  id: string;
+  event_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+};
+
+type SportsEventRsvpRow = {
+  event_id?: string;
+  user_id: string;
+  status: SportsEventRsvpStatus;
+};
+
+type SportsVenue = {
+  name: string;
+  latitude: number;
+  longitude: number;
 };
 
 type HeroCardItem =
@@ -150,6 +181,67 @@ function formatRelativeEventDayLabel(date: Date, now: Date) {
   if (target.getTime() === today.getTime()) return 'Today';
   if (target.getTime() === tomorrow.getTime()) return 'Tomorrow';
   return formatEventDayLabel(date);
+}
+
+function formatSportsEventDetailDate(event: SportsEvent) {
+  return `${formatEventDayLabel(event.date)} · ${formatSportsEventTime(event.date, event.timeLabel)}`;
+}
+
+function sportsEventVenueFor(event: SportsEvent): SportsVenue | null {
+  if (!event.isHome) return null;
+  const sport = event.sport.toLowerCase();
+  const location = event.location.toLowerCase();
+  const hasSpecificVenue = !!location.trim()
+    && !['uci athletics', 'uci campus', 'venue tba', 'tba'].includes(location.trim())
+    && location !== 'away';
+
+  if (!hasSpecificVenue) return null;
+
+  if (location.includes('bren')) {
+    return { name: 'Bren Events Center', latitude: 33.64979, longitude: -117.84678 };
+  }
+  if (sport.includes('baseball') || location.includes('ballpark') || location.includes('cicerone')) {
+    return { name: 'Cicerone Field at Anteater Ballpark', latitude: 33.65087, longitude: -117.85047 };
+  }
+  if (sport.includes('soccer') || sport.includes('track') || location.includes('stadium')) {
+    return { name: "Anteater Stadium & Vince O'Boyle Track", latitude: 33.64996, longitude: -117.84872 };
+  }
+  if (sport.includes('water polo') || location.includes('aquatics')) {
+    return { name: 'Anteater Aquatics Complex', latitude: 33.65027, longitude: -117.84633 };
+  }
+  if (sport.includes('tennis') || location.includes('tennis')) {
+    return { name: 'Anteater Tennis Stadium', latitude: 33.65098, longitude: -117.84835 };
+  }
+  if (location.includes('crawford')) {
+    return { name: 'Crawford Court', latitude: 33.65035, longitude: -117.84676 };
+  }
+
+  return null;
+}
+
+function normalizeSportsEventForDisplay(event: SportsEvent): SportsEvent {
+  const lower = event.location.toLowerCase();
+  const looksLikePageChrome =
+    lower.includes('select sport') ||
+    lower.includes('all sports') ||
+    lower.includes('no filter selected') ||
+    lower.includes('upcoming event') ||
+    event.location.length > 90;
+
+  if (!looksLikePageChrome) return event;
+
+  return {
+    ...event,
+    location: event.isHome ? 'Venue TBA' : 'Away',
+  };
+}
+
+async function openSportsVenueInMaps(venue: SportsVenue) {
+  const query = encodeURIComponent(`UC Irvine ${venue.name}`);
+  const appleMapsUrl = `https://maps.apple.com/?ll=${venue.latitude},${venue.longitude}&q=${query}`;
+  try {
+    await Linking.openURL(appleMapsUrl);
+  } catch {}
 }
 
 function getTodayDayCode(): string | null {
@@ -349,6 +441,15 @@ export default function HomeScreen({
   const [weatherCode, setWeatherCode] = useState<number | null>(null);
   const [classmateMatches, setClassmateMatches] = useState<ClassmateMatch[]>([]);
   const [now, setNow] = useState(() => new Date());
+  const [selectedSportsEvent, setSelectedSportsEvent] = useState<SportsEvent | null>(null);
+  const [sportsEventRsvp, setSportsEventRsvp] = useState<SportsEventRsvpStatus | null>(null);
+  const [sportsEventRsvpCounts, setSportsEventRsvpCounts] = useState<Record<SportsEventRsvpStatus, number>>({ going: 0, interested: 0 });
+  const [sportsEventComments, setSportsEventComments] = useState<SportsEventComment[]>([]);
+  const [sportsEventCommentInput, setSportsEventCommentInput] = useState('');
+  const [sportsEventListParticipation, setSportsEventListParticipation] = useState<Record<string, number>>({});
+  const [sportsEventDetailLoading, setSportsEventDetailLoading] = useState(false);
+  const [savingSportsEventRsvp, setSavingSportsEventRsvp] = useState(false);
+  const [submittingSportsEventComment, setSubmittingSportsEventComment] = useState(false);
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const { start: quarterStart, end: quarterEnd } = getQuarterBounds(selectedQuarter);
@@ -396,15 +497,19 @@ export default function HomeScreen({
     async function loadSports() {
       const cached = await AsyncStorage.getItem('sports_cache');
       if (cached) {
-        setSportsEvents(JSON.parse(cached).map((event: any) => ({ ...event, date: new Date(event.date) })));
+        setSportsEvents(JSON.parse(cached).map((event: any) => (
+          normalizeSportsEventForDisplay({ ...event, date: new Date(event.date) })
+        )));
         setSportsLoading(false);
       }
       try {
         const response = await fetch('https://ucirvinesports.com/calendar');
         const text = await response.text();
-        const events = parseSportsCalendar(text, { maxDaysAhead: 7, includePastDays: 0 });
-        setSportsEvents(events);
-        void AsyncStorage.setItem('sports_cache', JSON.stringify(events));
+        const parsedEvents = parseSportsCalendar(text, { maxDaysAhead: 7, includePastDays: 0 });
+        const events = await enrichSportsEventsWithScheduleVenues(parsedEvents);
+        const normalizedEvents = events.map(normalizeSportsEventForDisplay);
+        setSportsEvents(normalizedEvents);
+        void AsyncStorage.setItem('sports_cache', JSON.stringify(normalizedEvents));
       } catch {}
       setSportsLoading(false);
     }
@@ -578,6 +683,10 @@ export default function HomeScreen({
     () => sportsEvents.slice(0, 12),
     [sportsEvents]
   );
+  const visibleSportsEventIds = useMemo(
+    () => visibleCampusEvents.map((event) => event.id).join('|'),
+    [visibleCampusEvents]
+  );
 
   const raisedCardStyle = {
     borderRadius: 28,
@@ -598,6 +707,198 @@ export default function HomeScreen({
     : activeHeroItem?.type === 'upcomingSummary'
       ? colors.brand
     : colors.brand;
+  const selectedSportsVenue = selectedSportsEvent ? sportsEventVenueFor(selectedSportsEvent) : null;
+  const selectedSportsEventLocationLabel = selectedSportsEvent?.location === 'Venue TBA'
+    ? 'Venue TBA'
+    : selectedSportsEvent?.location === 'Away'
+      ? 'Away game'
+      : selectedSportsEvent?.location;
+
+  useEffect(() => {
+    const eventIds = visibleSportsEventIds.split('|').filter(Boolean);
+    if (eventIds.length === 0) {
+      setSportsEventListParticipation({});
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadSportsEventParticipation() {
+      const { data, error } = await supabase
+        .from('sports_event_rsvps')
+        .select('event_id, user_id, status')
+        .in('event_id', eventIds);
+
+      if (cancelled) return;
+      if (error) {
+        if (error.code !== 'PGRST205') console.error('Failed to load sports event participation:', error);
+        return;
+      }
+
+      const counts: Record<string, number> = {};
+      ((data ?? []) as SportsEventRsvpRow[]).forEach((row) => {
+        if (!row.event_id) return;
+        if (row.status !== 'going') return;
+        counts[row.event_id] = (counts[row.event_id] ?? 0) + 1;
+      });
+      setSportsEventListParticipation(counts);
+    }
+
+    void loadSportsEventParticipation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleSportsEventIds]);
+
+  async function loadSportsEventSocial(event: SportsEvent) {
+    setSportsEventDetailLoading(true);
+    const [rsvpResult, commentsResult] = await Promise.all([
+      supabase
+        .from('sports_event_rsvps')
+        .select('user_id, status')
+        .eq('event_id', event.id),
+      supabase
+        .from('sports_event_comments')
+        .select('id, event_id, user_id, content, created_at')
+        .eq('event_id', event.id)
+        .order('created_at', { ascending: true })
+        .limit(50),
+    ]);
+
+    if (!rsvpResult.error) {
+      const rows = (rsvpResult.data ?? []) as SportsEventRsvpRow[];
+      const nextCounts = {
+        going: rows.filter((row) => row.status === 'going').length,
+        interested: rows.filter((row) => row.status === 'interested').length,
+      };
+      setSportsEventRsvp(rows.find((row) => row.user_id === userId)?.status ?? null);
+      setSportsEventRsvpCounts(nextCounts);
+      setSportsEventListParticipation((current) => ({
+        ...current,
+        [event.id]: nextCounts.going,
+      }));
+    } else if (rsvpResult.error.code !== 'PGRST205') {
+      console.error('Failed to load sports event RSVPs:', rsvpResult.error);
+    }
+
+    if (!commentsResult.error) {
+      const rows = (commentsResult.data ?? []) as SportsEventCommentRow[];
+      const authorIds = Array.from(new Set(rows.map((row) => row.user_id)));
+      let namesById: Record<string, string> = {};
+
+      if (authorIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, name, email')
+          .in('id', authorIds);
+        if (!profilesError) {
+          namesById = Object.fromEntries(
+            ((profilesData ?? []) as ProfileRow[]).map((profile) => [
+              profile.id,
+              profile.name?.trim() || profile.email?.split('@')[0] || 'ClassMate',
+            ])
+          );
+        }
+      }
+
+      setSportsEventComments(rows.map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        authorName: namesById[row.user_id] ?? 'ClassMate',
+        content: row.content,
+        createdAt: row.created_at,
+      })));
+    } else if (commentsResult.error.code !== 'PGRST205') {
+      console.error('Failed to load sports event comments:', commentsResult.error);
+    }
+
+    setSportsEventDetailLoading(false);
+  }
+
+  function openSportsEvent(event: SportsEvent) {
+    setSelectedSportsEvent(event);
+    setSportsEventCommentInput('');
+    setSportsEventRsvp(null);
+    setSportsEventRsvpCounts({ going: 0, interested: 0 });
+    setSportsEventComments([]);
+    void loadSportsEventSocial(event);
+  }
+
+  async function handleSportsEventRsvp(status: SportsEventRsvpStatus) {
+    if (!selectedSportsEvent || savingSportsEventRsvp) return;
+    const event = selectedSportsEvent;
+    const previousStatus = sportsEventRsvp;
+    const previousCounts = sportsEventRsvpCounts;
+    const nextStatus = sportsEventRsvp === status ? null : status;
+    const nextCounts = { ...sportsEventRsvpCounts };
+    if (previousStatus) nextCounts[previousStatus] = Math.max(0, nextCounts[previousStatus] - 1);
+    if (nextStatus) nextCounts[nextStatus] += 1;
+
+    setSportsEventRsvp(nextStatus);
+    setSportsEventRsvpCounts(nextCounts);
+    setSportsEventListParticipation((current) => ({
+      ...current,
+      [event.id]: nextCounts.going,
+    }));
+    setSavingSportsEventRsvp(true);
+
+    const result = nextStatus
+      ? await supabase
+          .from('sports_event_rsvps')
+          .upsert({
+            event_id: event.id,
+            user_id: userId,
+            status: nextStatus,
+            updated_at: new Date().toISOString(),
+          })
+      : await supabase
+          .from('sports_event_rsvps')
+          .delete()
+          .eq('event_id', event.id)
+          .eq('user_id', userId);
+
+    if (result.error) {
+      if (result.error.code !== 'PGRST205') console.error('Failed to save sports event RSVP:', result.error);
+      if (result.error.code !== 'PGRST205') {
+        setSportsEventRsvp(previousStatus);
+        setSportsEventRsvpCounts(previousCounts);
+        setSportsEventListParticipation((current) => ({
+          ...current,
+          [event.id]: previousCounts.going,
+        }));
+      }
+      setSavingSportsEventRsvp(false);
+      return;
+    }
+
+    await loadSportsEventSocial(event);
+    setSavingSportsEventRsvp(false);
+  }
+
+  async function handleSubmitSportsEventComment() {
+    if (!selectedSportsEvent || !sportsEventCommentInput.trim() || submittingSportsEventComment) return;
+    const content = sportsEventCommentInput.trim();
+    setSubmittingSportsEventComment(true);
+
+    const { error } = await supabase
+      .from('sports_event_comments')
+      .insert({
+        event_id: selectedSportsEvent.id,
+        user_id: userId,
+        content,
+      });
+
+    if (error) {
+      if (error.code !== 'PGRST205') console.error('Failed to post sports event comment:', error);
+      setSubmittingSportsEventComment(false);
+      return;
+    }
+
+    setSportsEventCommentInput('');
+    await loadSportsEventSocial(selectedSportsEvent);
+    setSubmittingSportsEventComment(false);
+  }
 
   useEffect(() => {
     if (heroItems.length === 0) {
@@ -665,12 +966,13 @@ export default function HomeScreen({
   );
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ paddingTop: 62, paddingHorizontal: 18, paddingBottom: bottomInset + 84 }}
-      showsVerticalScrollIndicator={false}
-    >
+    <>
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1, backgroundColor: colors.bg }}
+        contentContainerStyle={{ paddingTop: 62, paddingHorizontal: 18, paddingBottom: bottomInset + 84 }}
+        showsVerticalScrollIndicator={false}
+      >
       <View style={{ marginBottom: 14 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>Today</Text>
@@ -1045,7 +1347,7 @@ export default function HomeScreen({
 
       <View>
         <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 10 }}>
-          Campus Events
+          Sports Events
         </Text>
         <View style={{
           ...raisedCardStyle,
@@ -1055,48 +1357,335 @@ export default function HomeScreen({
           {visibleCampusEvents.length > 0 ? (
             <View style={{ gap: 14 }}>
               {visibleCampusEvents.map((event, index) => (
-                <View
-                  key={`${event.id}-${event.location}-${index}`}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'flex-start',
-                    gap: 12,
-                    paddingTop: index === 0 ? 0 : 14,
-                    borderTopWidth: index === 0 ? 0 : 1,
-                    borderTopColor: colors.borderSubtle,
-                  }}
-                >
-                  <View style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 21,
-                    backgroundColor: event.bg,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
-                    <Ionicons name={event.icon} size={20} color={event.color} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
-                      {event.title}
-                    </Text>
-                    <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-                      {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
-                    </Text>
-                    <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 3 }}>
-                      {event.location}
-                    </Text>
-                  </View>
-                </View>
+                (() => {
+                  const participationCount = sportsEventListParticipation[event.id] ?? 0;
+                  return (
+                    <TouchableOpacity
+                      key={`${event.id}-${event.location}-${index}`}
+                      onPress={() => openSportsEvent(event)}
+                      activeOpacity={0.78}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 12,
+                        paddingTop: index === 0 ? 0 : 14,
+                        borderTopWidth: index === 0 ? 0 : 1,
+                        borderTopColor: colors.borderSubtle,
+                      }}
+                    >
+                      <View style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 21,
+                        backgroundColor: event.bg,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <Ionicons name={event.icon} size={20} color={event.color} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
+                          {event.title}
+                        </Text>
+                        <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                          {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          minWidth: 60,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          paddingHorizontal: 7,
+                          paddingVertical: 4,
+                          borderRadius: 999,
+                          backgroundColor: colors.bgTertiary,
+                          borderWidth: 1,
+                          borderColor: colors.borderSubtle,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary }}>
+                          {participationCount > 99 ? '99+' : participationCount}
+                        </Text>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: colors.textTertiary, marginTop: -1 }}>
+                          going
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  );
+                })()
               ))}
             </View>
           ) : (
             <Text style={{ fontSize: 14, color: colors.textSecondary }}>
-              {sportsLoading ? 'Loading campus events...' : 'No upcoming campus events right now.'}
+              {sportsLoading ? 'Loading sports events...' : 'No upcoming sports events right now.'}
             </Text>
           )}
         </View>
       </View>
-    </ScrollView>
+      </ScrollView>
+
+      <Modal
+        visible={!!selectedSportsEvent}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedSportsEvent(null)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setSelectedSportsEvent(null)}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}
+          />
+          {selectedSportsEvent ? (
+            <View
+              style={{
+                zIndex: 1,
+                elevation: 1,
+                maxHeight: '88%',
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
+                backgroundColor: colors.bg,
+                paddingTop: 10,
+                paddingBottom: Math.max(bottomInset, 12) + 10,
+                overflow: 'hidden',
+              }}
+            >
+              <View style={{ alignItems: 'center', paddingBottom: 8 }}>
+                <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+              </View>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 10 }}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+                  <View style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 24,
+                    backgroundColor: selectedSportsEvent.bg,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <Ionicons name={selectedSportsEvent.icon} size={23} color={selectedSportsEvent.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
+                      {selectedSportsEvent.title}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 5 }}>
+                      {formatSportsEventDetailDate(selectedSportsEvent)}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 3 }}>
+                      {selectedSportsEventLocationLabel} · {selectedSportsEvent.sport}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setSelectedSportsEvent(null)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      backgroundColor: colors.bgTertiary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="close" size={20} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+                  {([
+                    { status: 'going' as const, label: 'Going', icon: 'checkmark-circle-outline' as const, count: sportsEventRsvpCounts.going },
+                    { status: 'interested' as const, label: 'Interested', icon: 'star-outline' as const, count: sportsEventRsvpCounts.interested },
+                  ]).map((item) => {
+                    const active = sportsEventRsvp === item.status;
+                    return (
+                      <TouchableOpacity
+                        key={item.status}
+                        onPress={() => void handleSportsEventRsvp(item.status)}
+                        disabled={savingSportsEventRsvp}
+                        activeOpacity={0.78}
+                        style={{
+                          flex: 1,
+                          minHeight: 50,
+                          borderRadius: 16,
+                          backgroundColor: active ? selectedSportsEvent.color : colors.card,
+                          borderWidth: 1,
+                          borderColor: active ? selectedSportsEvent.color : colors.border,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexDirection: 'row',
+                          gap: 7,
+                        }}
+                      >
+                        <Ionicons name={item.icon} size={17} color={active ? 'white' : colors.textSecondary} />
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: active ? 'white' : colors.text }}>
+                          {item.label}
+                        </Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? 'rgba(255,255,255,0.78)' : colors.textTertiary }}>
+                          {item.count}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View
+                  style={{
+                    marginTop: 18,
+                    borderRadius: 20,
+                    overflow: 'hidden',
+                    backgroundColor: colors.card,
+                    borderWidth: 1,
+                    borderColor: colors.borderSubtle,
+                  }}
+                >
+                  {selectedSportsVenue && Platform.OS !== 'web' ? (
+                    <MapView
+                      style={{ height: 178 }}
+                      initialRegion={{
+                        latitude: selectedSportsVenue.latitude,
+                        longitude: selectedSportsVenue.longitude,
+                        latitudeDelta: 0.006,
+                        longitudeDelta: 0.006,
+                      }}
+                      scrollEnabled={false}
+                      zoomEnabled={false}
+                      rotateEnabled={false}
+                      pitchEnabled={false}
+                    >
+                      <Marker
+                        coordinate={{ latitude: selectedSportsVenue.latitude, longitude: selectedSportsVenue.longitude }}
+                        title={selectedSportsVenue.name}
+                      />
+                    </MapView>
+                  ) : (
+                    <View style={{ height: 118, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgTertiary }}>
+                      <Ionicons name={selectedSportsEvent.isHome ? 'map-outline' : 'airplane-outline'} size={28} color={colors.textTertiary} />
+                      <Text style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>
+                        {selectedSportsEvent.isHome ? 'Venue map unavailable' : 'Away game'}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={{ padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
+                        {selectedSportsVenue?.name ?? selectedSportsEvent.location}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 3 }}>
+                        {selectedSportsVenue
+                          ? 'UC Irvine venue'
+                          : selectedSportsEvent.location === 'Venue TBA'
+                            ? 'Venue not listed yet'
+                            : 'Event location'}
+                      </Text>
+                    </View>
+                    {selectedSportsVenue ? (
+                      <TouchableOpacity
+                        onPress={() => void openSportsVenueInMaps(selectedSportsVenue)}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          borderRadius: 999,
+                          backgroundColor: colors.brandBg,
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Map</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 20 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: 10 }}>
+                    Comments
+                  </Text>
+                  {sportsEventDetailLoading ? (
+                    <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                      <ActivityIndicator size="small" color={colors.brand} />
+                    </View>
+                  ) : sportsEventComments.length > 0 ? (
+                    <View style={{ gap: 10 }}>
+                      {sportsEventComments.map((comment) => (
+                        <View
+                          key={comment.id}
+                          style={{
+                            padding: 12,
+                            borderRadius: 16,
+                            backgroundColor: colors.card,
+                            borderWidth: 1,
+                            borderColor: colors.borderSubtle,
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>
+                            {comment.authorName}
+                          </Text>
+                          <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 18, marginTop: 4 }}>
+                            {comment.content}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textTertiary }}>
+                      No comments yet. Start the game thread.
+                    </Text>
+                  )}
+
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 12 }}>
+                    <TextInput
+                      value={sportsEventCommentInput}
+                      onChangeText={setSportsEventCommentInput}
+                      placeholder="Add a comment..."
+                      placeholderTextColor={colors.placeholder}
+                      multiline
+                      maxLength={500}
+                      style={{
+                        flex: 1,
+                        minHeight: 42,
+                        maxHeight: 96,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.inputBg,
+                        paddingHorizontal: 13,
+                        paddingVertical: 10,
+                        fontSize: 13,
+                        color: colors.text,
+                      }}
+                    />
+                    <TouchableOpacity
+                      onPress={() => void handleSubmitSportsEventComment()}
+                      disabled={!sportsEventCommentInput.trim() || submittingSportsEventComment}
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 21,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: sportsEventCommentInput.trim() ? colors.brand : colors.border,
+                        opacity: submittingSportsEventComment ? 0.7 : 1,
+                      }}
+                    >
+                      {submittingSportsEventComment
+                        ? <ActivityIndicator size="small" color="white" />
+                        : <Ionicons name="send" size={16} color="white" />}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            </View>
+          ) : null}
+        </KeyboardAvoidingView>
+      </Modal>
+    </>
   );
 }

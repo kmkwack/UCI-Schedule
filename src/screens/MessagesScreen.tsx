@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -26,7 +27,7 @@ import { formatMessageTime } from '../data/messages';
 import { anteaterAliasForId } from '../data/anonymousAliases';
 
 type ConversationPreview = {
-  conversationId: string;
+  conversationId: string | null;
   partnerId: string;
   kind: ChatKind;
   name: string;
@@ -46,6 +47,15 @@ type SourcePostPreview = {
   title: string;
   category: string | null;
   body: string | null;
+  imageUrl: string | null;
+  deleted?: boolean;
+};
+
+type SourcePostAttachment = {
+  type?: string | null;
+  url?: string | null;
+  path?: string | null;
+  mimeType?: string | null;
 };
 
 type MessageBubble = {
@@ -94,6 +104,14 @@ function truncateText(value: string | null | undefined, maxLength = 96) {
   return `${text.slice(0, maxLength - 1).trim()}…`;
 }
 
+function sourcePostImageAttachment(attachments: SourcePostAttachment[] | null | undefined) {
+  return (attachments ?? []).find((attachment) => (
+    attachment?.type === 'image' ||
+    String(attachment?.mimeType ?? '').toLowerCase().startsWith('image/') ||
+    /\.(png|jpe?g|gif|webp|heic)$/i.test(String(attachment?.path ?? attachment?.url ?? ''))
+  ));
+}
+
 export default function MessagesScreen({ onClose, openChatWith, userId, school }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -107,6 +125,53 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   const [openingConversation, setOpeningConversation] = useState(false);
   const [sending, setSending] = useState(false);
   const hasValidUserId = !!userId && isUuid(userId);
+  const selectedConversationId = selectedChat?.conversationId ?? null;
+
+  const mapMessageRow = useCallback((row: ConversationMessageRow): MessageBubble => ({
+    id: row.id,
+    content: row.deleted_at ? 'Message deleted' : row.content,
+    timestamp: formatMessageTime(row.created_at),
+    isMe: row.sender_id === userId,
+    deleted: !!row.deleted_at,
+  }), [userId]);
+
+  const loadSourcePostsById = useCallback(async (sourcePostIds: string[]) => {
+    const ids = Array.from(new Set(sourcePostIds.filter(Boolean)));
+    if (ids.length === 0) return {};
+
+    const { data, error } = await supabase
+      .from('posts')
+      .select('id, title, category, body, attachments')
+      .in('id', ids);
+
+    if (error) {
+      console.error('Failed to load message source posts:', error);
+      return {};
+    }
+
+    const entries = await Promise.all(
+      ((data ?? []) as Array<SourcePostPreview & { attachments?: SourcePostAttachment[] | null }>).map(async (post) => {
+        const imageAttachment = sourcePostImageAttachment(post.attachments);
+        let imageUrl = imageAttachment?.url ?? null;
+        if (!imageUrl && imageAttachment?.path) {
+          const { data: signedData } = await supabase.storage
+            .from('board-attachments')
+            .createSignedUrl(imageAttachment.path, 60 * 60);
+          imageUrl = signedData?.signedUrl ?? null;
+        }
+
+        return [post.id, {
+          id: post.id,
+          title: post.title,
+          category: post.category,
+          body: post.body,
+          imageUrl,
+        }] as const;
+      })
+    );
+
+    return Object.fromEntries(entries);
+  }, []);
 
   const resolveProfileNames = useCallback(async (partnerIds: string[]) => {
     const validIds = Array.from(new Set(partnerIds.filter(isUuid)));
@@ -143,6 +208,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     const threadMessages = messagesByConversation[conversation.id] ?? [];
     const lastMessage = threadMessages[0];
+    if (!lastMessage) return null;
+
     const unread = threadMessages.filter((message) => (
       message.sender_id !== userId &&
       !message.deleted_at &&
@@ -152,13 +219,15 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     const name = isAnonymous
       ? partner.alias_snapshot || anteaterAliasForId(partner.user_id)
       : namesById[partner.user_id] || anteaterAliasForId(partner.user_id);
-    const sortStamp = new Date(lastMessage?.created_at ?? conversation.updated_at ?? conversation.created_at).getTime();
+    const sortStamp = new Date(lastMessage.created_at).getTime();
     const sourcePost = isAnonymous && conversation.source_post_id
       ? sourcePostsById[conversation.source_post_id] ?? {
           id: conversation.source_post_id,
-          title: 'Board post',
+          title: 'This post was deleted',
           category: null,
           body: null,
+          imageUrl: null,
+          deleted: true,
         }
       : null;
 
@@ -172,16 +241,16 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       sourcePostId: conversation.source_post_id,
       sourceLabel: sourcePost?.title ?? null,
       sourcePost,
-      lastMessage: lastMessage?.deleted_at ? 'Message deleted' : lastMessage?.content || 'Start the conversation.',
-      timestamp: formatMessageTime(lastMessage?.created_at ?? conversation.updated_at ?? conversation.created_at),
+      lastMessage: lastMessage.deleted_at ? 'Message deleted' : lastMessage.content,
+      timestamp: formatMessageTime(lastMessage.created_at),
       unread,
       sortStamp,
     };
   }, [userId]);
 
-  const fetchConversations = useCallback(async () => {
+  const fetchConversations = useCallback(async (options: { silent?: boolean } = {}) => {
     if (!hasValidUserId) return;
-    setLoadingChats(true);
+    if (!options.silent) setLoadingChats(true);
 
     const { data: myParticipantsData, error: myParticipantsError } = await supabase
       .from('conversation_participants')
@@ -190,7 +259,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     if (myParticipantsError) {
       console.error('Failed to load conversations:', myParticipantsError);
-      setLoadingChats(false);
+      if (!options.silent) setLoadingChats(false);
       return;
     }
 
@@ -198,7 +267,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     const conversationIds = myParticipants.map((row) => row.conversation_id);
     if (conversationIds.length === 0) {
       setConversations([]);
-      setLoadingChats(false);
+      if (!options.silent) setLoadingChats(false);
       return;
     }
 
@@ -225,7 +294,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     if (conversationsError || participantsError || messagesError) {
       console.error('Failed to load message previews:', conversationsError ?? participantsError ?? messagesError);
-      setLoadingChats(false);
+      if (!options.silent) setLoadingChats(false);
       return;
     }
 
@@ -237,21 +306,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         .map((conversation) => conversation.source_post_id)
         .filter((id): id is string => !!id)
     ));
-    let sourcePostsById: Record<string, SourcePostPreview> = {};
-    if (sourcePostIds.length > 0) {
-      const { data: sourcePostsData, error: sourcePostsError } = await supabase
-        .from('posts')
-        .select('id, title, category, body')
-        .in('id', sourcePostIds);
-
-      if (sourcePostsError) {
-        console.error('Failed to load message source posts:', sourcePostsError);
-      } else {
-        sourcePostsById = Object.fromEntries(
-          ((sourcePostsData ?? []) as SourcePostPreview[]).map((post) => [post.id, post])
-        );
-      }
-    }
+    const sourcePostsById = await loadSourcePostsById(sourcePostIds);
     const namesById = await resolveProfileNames(participantsRows.map((row) => row.user_id));
     const myParticipantByConversation = Object.fromEntries(myParticipants.map((row) => [row.conversation_id, row]));
     const messagesByConversation: Record<string, ConversationMessageRow[]> = {};
@@ -279,8 +334,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       .sort((a, b) => b.sortStamp - a.sortStamp);
 
     setConversations(previews);
-    setLoadingChats(false);
-  }, [buildPreview, hasValidUserId, resolveProfileNames, userId]);
+    if (!options.silent) setLoadingChats(false);
+  }, [buildPreview, hasValidUserId, loadSourcePostsById, resolveProfileNames, userId]);
 
   const markThreadRead = useCallback(async (conversationId: string) => {
     if (!hasValidUserId) return;
@@ -291,13 +346,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       .eq('user_id', userId);
   }, [hasValidUserId, userId]);
 
-  const fetchMessages = useCallback(async (conversation: ConversationPreview) => {
-    if (!hasValidUserId) {
+  const fetchMessages = useCallback(async (conversation: ConversationPreview, options: { silent?: boolean } = {}) => {
+    if (!hasValidUserId || !conversation.conversationId) {
       setMessages([]);
       return;
     }
 
-    setLoadingMessages(true);
+    if (!options.silent) setLoadingMessages(true);
     const { data, error } = await supabase
       .from('conversation_messages')
       .select('id, conversation_id, sender_id, content, created_at, deleted_at')
@@ -306,28 +361,20 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     if (error) {
       console.error('Failed to load conversation messages:', error);
-      setLoadingMessages(false);
+      if (!options.silent) setLoadingMessages(false);
       return;
     }
 
-    setMessages(
-      ((data ?? []) as ConversationMessageRow[]).map((row) => ({
-        id: row.id,
-        content: row.deleted_at ? 'Message deleted' : row.content,
-        timestamp: formatMessageTime(row.created_at),
-        isMe: row.sender_id === userId,
-        deleted: !!row.deleted_at,
-      }))
-    );
+    setMessages(((data ?? []) as ConversationMessageRow[]).map(mapMessageRow));
 
-    setLoadingMessages(false);
+    if (!options.silent) setLoadingMessages(false);
     await markThreadRead(conversation.conversationId);
-  }, [hasValidUserId, markThreadRead, userId]);
+  }, [hasValidUserId, mapMessageRow, markThreadRead]);
 
   const openExistingConversation = useCallback(async (conversation: ConversationPreview) => {
     setSelectedChat(conversation);
     await fetchMessages(conversation);
-    await fetchConversations();
+    await fetchConversations({ silent: true });
   }, [fetchConversations, fetchMessages]);
 
   const openTargetConversation = useCallback(async (target: ChatTarget) => {
@@ -341,30 +388,23 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       return;
     }
 
-    setOpeningConversation(true);
+    const conversationId = target.conversationId ?? null;
+    setOpeningConversation(!!conversationId);
     try {
-      let conversationId = target.conversationId ?? null;
-      if (!conversationId) {
-        const { data, error } = await supabase.rpc('get_or_create_conversation', {
-          p_target_user_id: target.id,
-          p_conversation_kind: target.kind,
-          p_source_post_id: target.sourcePostId ?? null,
-          p_conversation_school: school,
-        });
-
-        if (error) throw error;
-        conversationId = data as string;
-      }
-
       const name = target.kind === 'board_anonymous'
         ? anteaterAliasForId(target.id)
         : target.name?.trim() || anteaterAliasForId(target.id);
+      const sourcePostsById = target.kind === 'board_anonymous' && target.sourcePostId
+        ? await loadSourcePostsById([target.sourcePostId])
+        : {};
       const sourcePost = target.kind === 'board_anonymous' && target.sourcePostId
-        ? {
+        ? sourcePostsById[target.sourcePostId] ?? {
             id: target.sourcePostId,
-            title: target.sourceLabel?.trim() || 'Board post',
+            title: target.sourceLabel?.trim() || 'This post was deleted',
             category: null,
             body: null,
+            imageUrl: null,
+            deleted: !target.sourceLabel?.trim(),
           }
         : null;
       const preview: ConversationPreview = {
@@ -384,8 +424,12 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       };
 
       setSelectedChat(preview);
-      await fetchMessages(preview);
-      await fetchConversations();
+      if (conversationId) {
+        await fetchMessages(preview);
+        await fetchConversations({ silent: true });
+      } else {
+        setMessages([]);
+      }
     } catch (error: any) {
       Alert.alert(
         'Could not open chat',
@@ -396,7 +440,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     } finally {
       setOpeningConversation(false);
     }
-  }, [fetchConversations, fetchMessages, hasValidUserId, school]);
+  }, [fetchConversations, fetchMessages, hasValidUserId, loadSourcePostsById, school]);
 
   useEffect(() => {
     void fetchConversations();
@@ -410,23 +454,100 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   useEffect(() => {
     if (!hasValidUserId) return;
     const interval = setInterval(() => {
-      void fetchConversations();
-      if (selectedChat) void fetchMessages(selectedChat);
-    }, 7000);
+      void fetchConversations({ silent: true });
+    }, 60000);
 
     return () => clearInterval(interval);
-  }, [fetchConversations, fetchMessages, hasValidUserId, selectedChat]);
+  }, [fetchConversations, hasValidUserId]);
+
+  useEffect(() => {
+    if (!hasValidUserId || !selectedConversationId) return;
+
+    const channel = supabase
+      .channel(`conversation-messages:${selectedConversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'conversation_messages',
+          filter: `conversation_id=eq.${selectedConversationId}`,
+        },
+        (payload) => {
+          const row = payload.new as ConversationMessageRow;
+          setMessages((current) => {
+            if (current.some((message) => message.id === row.id)) return current;
+            return [...current, mapMessageRow(row)];
+          });
+          void markThreadRead(selectedConversationId);
+          void fetchConversations({ silent: true });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversation_messages',
+          filter: `conversation_id=eq.${selectedConversationId}`,
+        },
+        (payload) => {
+          const row = payload.new as ConversationMessageRow;
+          setMessages((current) => current.map((message) => (
+            message.id === row.id ? mapMessageRow(row) : message
+          )));
+          void fetchConversations({ silent: true });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchConversations, hasValidUserId, mapMessageRow, markThreadRead, selectedConversationId]);
 
   const handleSend = async () => {
     if (!messageInput.trim() || !selectedChat || sending || !hasValidUserId) return;
     const content = messageInput.trim();
     setSending(true);
 
-    const { error } = await supabase.from('conversation_messages').insert({
-      conversation_id: selectedChat.conversationId,
-      sender_id: userId,
-      content,
-    });
+    let conversationId = selectedChat.conversationId;
+    if (!conversationId) {
+      const { data: conversationData, error: conversationError } = await supabase.rpc('get_or_create_conversation', {
+        p_target_user_id: selectedChat.partnerId,
+        p_conversation_kind: selectedChat.kind,
+        p_source_post_id: selectedChat.sourcePostId ?? null,
+        p_conversation_school: school,
+      });
+
+      if (conversationError) {
+        setSending(false);
+        Alert.alert(
+          'Could not start chat',
+          messageTableMissing(conversationError)
+            ? 'The conversation chat SQL is not installed yet. Run supabase/sql/conversation_messages.sql in Supabase first.'
+            : conversationError.message ?? 'Please try again.'
+        );
+        return;
+      }
+
+      conversationId = conversationData as string;
+      setSelectedChat((current) => (
+        current && current.partnerId === selectedChat.partnerId
+          ? { ...current, conversationId }
+          : current
+      ));
+    }
+
+    const { data, error } = await supabase
+      .from('conversation_messages')
+      .insert({
+        conversation_id: conversationId,
+        sender_id: userId,
+        content,
+      })
+      .select('id, conversation_id, sender_id, content, created_at, deleted_at')
+      .single();
 
     if (error) {
       setSending(false);
@@ -441,8 +562,14 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     setSending(false);
     setMessageInput('');
-    await fetchMessages(selectedChat);
-    await fetchConversations();
+    if (data) {
+      const row = data as ConversationMessageRow;
+      setMessages((current) => {
+        if (current.some((message) => message.id === row.id)) return current;
+        return [...current, mapMessageRow(row)];
+      });
+    }
+    await fetchConversations({ silent: true });
   };
 
   const filteredChats = useMemo(() => {
@@ -481,7 +608,11 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   if (selectedChat) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}
+        >
           <View style={{
             flexDirection: 'row', alignItems: 'center',
             paddingHorizontal: 16, paddingTop: insets.top + 10, paddingBottom: 12,
@@ -509,11 +640,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 marginHorizontal: 16,
                 marginTop: 12,
                 marginBottom: 2,
-                borderRadius: 16,
-                padding: 12,
+                borderRadius: 14,
+                padding: 10,
                 backgroundColor: colors.card,
                 borderWidth: 1,
                 borderColor: colors.borderSubtle,
+                flexDirection: 'row',
+                gap: 10,
                 shadowColor: '#0f172a',
                 shadowOffset: { width: 0, height: 6 },
                 shadowOpacity: 0.06,
@@ -521,36 +654,39 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 elevation: 2,
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              {selectedChat.sourcePost.imageUrl ? (
+                <Image
+                  source={{ uri: selectedChat.sourcePost.imageUrl }}
+                  style={{ width: 54, height: 54, borderRadius: 10, backgroundColor: colors.bgTertiary }}
+                />
+              ) : (
                 <View
                   style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: 8,
-                    backgroundColor: colors.brandBg,
+                    width: 54,
+                    height: 54,
+                    borderRadius: 10,
+                    backgroundColor: colors.bgTertiary,
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Ionicons name="clipboard-outline" size={14} color={colors.brand} />
+                  <Ionicons
+                    name={selectedChat.sourcePost.deleted ? 'trash-outline' : 'document-text-outline'}
+                    size={22}
+                    color={colors.textTertiary}
+                  />
                 </View>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textTertiary, textTransform: 'uppercase' }}>
-                  Started from board post
+              )}
+              <View style={{ flex: 1, justifyContent: 'center' }}>
+                <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
+                  {selectedChat.sourcePost.title}
+                </Text>
+                <Text numberOfLines={2} style={{ marginTop: 3, fontSize: 12, lineHeight: 17, color: colors.textSecondary }}>
+                  {selectedChat.sourcePost.deleted
+                    ? 'The original board post is no longer available.'
+                    : truncateText(selectedChat.sourcePost.body, 88) || selectedChat.sourcePost.category || 'Board post'}
                 </Text>
               </View>
-              <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
-                {selectedChat.sourcePost.title}
-              </Text>
-              {selectedChat.sourcePost.body ? (
-                <Text numberOfLines={2} style={{ marginTop: 3, fontSize: 12, lineHeight: 17, color: colors.textSecondary }}>
-                  {truncateText(selectedChat.sourcePost.body)}
-                </Text>
-              ) : null}
-              {selectedChat.sourcePost.category ? (
-                <Text style={{ marginTop: 6, fontSize: 11, fontWeight: '700', color: colors.textTertiary }}>
-                  {selectedChat.sourcePost.category}
-                </Text>
-              ) : null}
             </View>
           ) : null}
 
@@ -566,6 +702,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               data={messages}
               keyExtractor={(m) => m.id}
               contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16, gap: 12, flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
               ListEmptyComponent={() => (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
                   <Text style={{ fontSize: 14, color: colors.textTertiary }}>Start the conversation.</Text>
@@ -609,6 +747,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 flex: 1,
                 maxHeight: 112,
                 backgroundColor: colors.inputBg,
+                borderWidth: 1,
+                borderColor: colors.border,
                 borderRadius: 22,
                 paddingHorizontal: 16,
                 paddingVertical: 10,
@@ -656,6 +796,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
           flexDirection: 'row',
           alignItems: 'center',
           backgroundColor: colors.inputBg,
+          borderWidth: 1,
+          borderColor: colors.border,
           borderRadius: 12,
           paddingHorizontal: 12,
           paddingVertical: 10,
@@ -680,7 +822,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       ) : (
         <FlatList
           data={filteredChats}
-          keyExtractor={(c) => c.conversationId}
+          keyExtractor={(c) => c.conversationId ?? `draft-${c.kind}-${c.partnerId}`}
           contentContainerStyle={{ paddingBottom: 24 }}
           ListEmptyComponent={() => (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingHorizontal: 24 }}>

@@ -529,7 +529,7 @@ export default function TimetableScreen({
     if (!discordLinkCourse) return;
     const normalizedUrl = normalizeDiscordInviteUrl(discordInviteInput);
     if (!normalizedUrl) {
-      setDiscordInviteError('Enter a valid Discord invite: discord.gg/... or discord.com/invite/...');
+      setDiscordInviteError('Use a Discord invite link like discord.gg/your-class.');
       return;
     }
     setDiscordInviteError(null);

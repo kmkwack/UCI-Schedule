@@ -5,6 +5,7 @@ import {
   Alert,
   FlatList,
   Image,
+  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -133,17 +134,23 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   const [openingConversation, setOpeningConversation] = useState(false);
   const [sending, setSending] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const messageListRef = useRef<FlatList<MessageBubble>>(null);
   const messageInputRef = useRef<TextInput>(null);
   const hasValidUserId = !!userId && isUuid(userId);
   const selectedConversationId = selectedChat?.conversationId ?? null;
   const composerBottomPadding = keyboardVisible ? 8 : Math.max(insets.bottom, 8);
+  const keyboardListSpacer = keyboardVisible ? Math.max(keyboardHeight, Platform.OS === 'ios' ? 320 : 260) : 0;
   const messageListBottomPadding = keyboardVisible
-    ? editingMessage ? 132 : 92
+    ? (editingMessage ? 132 : 92) + keyboardListSpacer
     : editingMessage ? 64 : 22;
 
   const scrollMessagesToEnd = useCallback((animated = true, delay = 0) => {
-    const run = () => messageListRef.current?.scrollToEnd({ animated });
+    const run = () => {
+      InteractionManager.runAfterInteractions(() => {
+        messageListRef.current?.scrollToEnd({ animated });
+      });
+    };
     if (delay > 0) {
       setTimeout(run, delay);
       return;
@@ -152,7 +159,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   }, []);
 
   const settleMessagesAtEnd = useCallback((animated = true) => {
-    [0, 60, 160, 320].forEach((delay) => scrollMessagesToEnd(animated, delay));
+    [0, 80, 180, 340, 560, 780].forEach((delay) => scrollMessagesToEnd(animated, delay));
   }, [scrollMessagesToEnd]);
 
   const mapMessageRow = useCallback((row: ConversationMessageRow): MessageBubble => ({
@@ -554,16 +561,22 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   }, [fetchConversations, hasValidUserId]);
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const showEvents = Platform.OS === 'ios'
+      ? (['keyboardWillShow', 'keyboardDidShow'] as const)
+      : (['keyboardDidShow'] as const);
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, () => {
+    const showSubs = showEvents.map((eventName) => Keyboard.addListener(eventName, (event) => {
+      setKeyboardHeight(event.endCoordinates?.height ?? (Platform.OS === 'ios' ? 320 : 260));
       setKeyboardVisible(true);
       settleMessagesAtEnd(true);
+    }));
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
     });
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
 
     return () => {
-      showSub.remove();
+      showSubs.forEach((sub) => sub.remove());
       hideSub.remove();
     };
   }, [settleMessagesAtEnd]);
@@ -875,7 +888,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior="height"
         >
           <View style={{
             flexDirection: 'row', alignItems: 'center',
@@ -978,9 +991,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
           ) : (
             <FlatList
               ref={messageListRef}
+              style={{ flex: 1 }}
               data={messages}
               keyExtractor={(m) => m.id}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: messageListBottomPadding, gap: 10, flexGrow: 1 }}
+              contentContainerStyle={[
+                { paddingHorizontal: 16, paddingTop: 16, paddingBottom: messageListBottomPadding, gap: 10 },
+                messages.length === 0 ? { flexGrow: 1 } : null,
+              ]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
               onLayout={() => {
@@ -1065,12 +1082,20 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               ref={messageInputRef}
               value={messageInput}
               onChangeText={setMessageInput}
-              onFocus={() => settleMessagesAtEnd(true)}
               placeholder={editingMessage ? 'Edit message...' : 'Type a message...'}
               placeholderTextColor={colors.placeholder}
               multiline
               blurOnSubmit={false}
               maxLength={2000}
+              onBlur={() => {
+                setKeyboardVisible(false);
+                setKeyboardHeight(0);
+              }}
+              onFocus={() => {
+                setKeyboardHeight((height) => height || (Platform.OS === 'ios' ? 320 : 260));
+                setKeyboardVisible(true);
+                settleMessagesAtEnd(true);
+              }}
               style={{
                 flex: 1,
                 minHeight: 40,

@@ -1664,3 +1664,9 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64lc (Validate Discord invite input)
 - **`src/screens/TimetableScreen.tsx`** — Tightened Discord invite validation to only accept `discord.gg/...` and `discord.com/invite/...` style links, normalizing them to `https://discord.gg/...`. Invalid entries now keep the sheet open, turn the input border red, and show an inline warning instead of silently failing.
 - **`supabase/sql/conversation_messages.sql`** — Made the post-course-chat `conversations_kind_check` constraint strict again now that course-chat rows are expected to be cleaned from Supabase.
+
+### Session 64ld (Shorten Discord invalid-link warning)
+- **`src/screens/TimetableScreen.tsx`** — Shortened the invalid Discord invite warning so it fits more cleanly in the compact keyboard sheet.
+
+### Session 64le (Settle chat list after keyboard animation)
+- **`src/screens/MessagesScreen.tsx`** — Delayed chat scroll-to-end corrections until after keyboard/layout interactions, listens to both iOS keyboard show phases, pins the message list to `flex: 1`, and adds keyboard-height bottom padding so FlatList has enough scroll range even when Expo keeps the list viewport behind the keyboard. This keeps the latest message visible above the composer when the keyboard opens.

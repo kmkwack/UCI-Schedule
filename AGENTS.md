@@ -1670,3 +1670,11 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64le (Settle chat list after keyboard animation)
 - **`src/screens/MessagesScreen.tsx`** — Delayed chat scroll-to-end corrections until after keyboard/layout interactions, listens to both iOS keyboard show phases, pins the message list to `flex: 1`, and adds keyboard-height bottom padding so FlatList has enough scroll range even when Expo keeps the list viewport behind the keyboard. This keeps the latest message visible above the composer when the keyboard opens.
+
+### Session 64lf (Timetable share formats)
+- **`src/screens/TimetableScreen.tsx`** — Replaced the one-tap schedule share action with a format picker for Instagram Story, Square Post, and Clean Timetable exports. The hidden capture canvas now adjusts aspect ratio, spacing, and ClassMate branding per format so shared schedules can double as organic app promotion.
+
+### Session 64lg (Direct Instagram timetable sharing)
+- **`package.json` / `package-lock.json`** — Added `react-native-share` so schedule snapshots can target Instagram directly instead of only opening the generic system share sheet.
+- **`app.json`** — Added Instagram URL query schemes to the iOS plist so the app can check/open Instagram from native builds.
+- **`src/screens/TimetableScreen.tsx`** — Changed the Story/Post share choices to call Instagram directly with the generated schedule image. The clean option remains a normal share-sheet fallback, and direct Instagram failures offer a share-sheet fallback for Expo Go or devices without Instagram installed.

@@ -95,6 +95,34 @@ type CourseDiscordLinkRow = {
   updated_at: string;
 };
 
+type ScheduleShareFormat = 'story' | 'square' | 'clean';
+
+const SHARE_FORMATS: {
+  key: ScheduleShareFormat;
+  label: string;
+  description: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  {
+    key: 'story',
+    label: 'Instagram Story',
+    description: 'Open Instagram with a 9:16 schedule image.',
+    icon: 'logo-instagram',
+  },
+  {
+    key: 'square',
+    label: 'Instagram Post',
+    description: 'Open Instagram with a square feed image.',
+    icon: 'logo-instagram',
+  },
+  {
+    key: 'clean',
+    label: 'More Sharing Options',
+    description: 'Use AirDrop, Messages, Files, or other apps.',
+    icon: 'share-outline',
+  },
+];
+
 function courseDiscordKey(quarterKeyValue: string, courseCode: string) {
   return `${quarterKeyValue}:${courseCode}`;
 }
@@ -392,6 +420,9 @@ export default function TimetableScreen({
   })).current;
 
   const [showSettings, setShowSettings] = useState(false);
+  const [showShareFormatModal, setShowShareFormatModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ScheduleShareFormat>('clean');
+  const [sharingFormat, setSharingFormat] = useState<ScheduleShareFormat | null>(null);
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -620,11 +651,31 @@ export default function TimetableScreen({
   const codeFontSize = compactGrid ? 9 : 10;
   const metaFontSize = compactGrid ? 8 : 9;
   const timeFontSize = compactGrid ? 7 : 8;
-  const exportSnapshotWidth = Math.min(screenWidth - 28, 420);
-  const exportCardPadding = 16;
-  // outer padding 14×2=28 + card padding 16×2=32 + card border 1×2=2 + grid border 1×2=2 = 64
-  const exportDayColumnWidth = (exportSnapshotWidth - 64) / (visibleDays.length + 1);
-  const exportHourHeight = Math.max(22, Math.min(34, (screenHeight * 0.5) / Math.max(totalHours, 1)));
+  const exportSnapshotWidth = exportFormat === 'clean' ? Math.min(screenWidth - 28, 420) : 390;
+  const exportCanvasHeight = exportFormat === 'story'
+    ? Math.round(exportSnapshotWidth * 16 / 9)
+    : exportFormat === 'square'
+      ? exportSnapshotWidth
+      : undefined;
+  const exportOuterPadding = exportFormat === 'clean' ? 14 : exportFormat === 'story' ? 18 : 14;
+  const exportCardPadding = exportFormat === 'square' ? 13 : 16;
+  const exportHeaderMargin = exportFormat === 'square' ? 10 : 14;
+  const exportAvailableGridHeight = exportFormat === 'story'
+    ? 366
+    : exportFormat === 'square'
+      ? 158
+      : screenHeight * 0.5;
+  // outer padding, card padding, card border, and grid border are removed from the capture width.
+  const exportDayColumnWidth = (
+    exportSnapshotWidth -
+    exportOuterPadding * 2 -
+    exportCardPadding * 2 -
+    4
+  ) / (visibleDays.length + 1);
+  const exportHourHeight = Math.max(
+    exportFormat === 'square' ? 18 : 22,
+    Math.min(exportFormat === 'square' ? 26 : 34, exportAvailableGridHeight / Math.max(totalHours, 1))
+  );
   const exportTimetableHeight = exportHourHeight * totalHours;
   const exportCompactGrid = visibleDays.length >= 6 || totalHours >= 9;
   const exportCodeFontSize = exportCompactGrid ? 8 : 9;
@@ -886,7 +937,10 @@ export default function TimetableScreen({
     time:       pendingShowTime,
   };
 
-  async function createScheduleExportImage() {
+  async function createScheduleExportImage(format: ScheduleShareFormat = 'clean') {
+    setExportFormat(format);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => setTimeout(resolve, 80));
     return captureRef(exportCaptureRef, { format: 'png', quality: 1 });
   }
 
@@ -899,7 +953,7 @@ export default function TimetableScreen({
         Alert.alert('Permission required', 'Please allow access to your photo library to save the schedule.');
         return;
       }
-      const uri = await createScheduleExportImage();
+      const uri = await createScheduleExportImage('clean');
       await MediaLibrary.saveToLibraryAsync(uri);
       Alert.alert('Saved!', 'Your schedule has been saved to your photo library.');
     } catch {
@@ -907,21 +961,63 @@ export default function TimetableScreen({
     }
   }
 
-  async function shareSchedule() {
+  function openShareFormatPicker() {
+    closeSettings(() => setShowShareFormatModal(true));
+  }
+
+  async function shareSchedule(format: ScheduleShareFormat) {
+    setSharingFormat(format);
     try {
-      const isSharingAvailable = await Sharing.isAvailableAsync();
-      if (!isSharingAvailable) {
-        Alert.alert('Sharing unavailable', 'Sharing is not available on this device right now.');
+      setShowShareFormatModal(false);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const uri = await createScheduleExportImage(format);
+
+      if (format === 'story' || format === 'square') {
+        await shareScheduleToInstagram(uri, format);
         return;
       }
 
-      const uri = await createScheduleExportImage();
-      await Sharing.shareAsync(uri, {
-        mimeType: 'image/png',
-        dialogTitle: `${quarterLabel(selectedQuarter)} schedule`,
-      });
+      await shareScheduleWithSystemSheet(uri, format);
     } catch {
       Alert.alert('Error', 'Could not share the schedule. Please try again.');
+    } finally {
+      setSharingFormat(null);
+      setExportFormat('clean');
+    }
+  }
+
+  async function shareScheduleWithSystemSheet(uri: string, format: ScheduleShareFormat) {
+    const isSharingAvailable = await Sharing.isAvailableAsync();
+    if (!isSharingAvailable) {
+      Alert.alert('Sharing unavailable', 'Sharing is not available on this device right now.');
+      return;
+    }
+
+    await Sharing.shareAsync(uri, {
+      mimeType: 'image/png',
+      dialogTitle: `${quarterLabel(selectedQuarter)} schedule · ${SHARE_FORMATS.find((item) => item.key === format)?.label ?? 'Share'}`,
+    });
+  }
+
+  async function shareScheduleToInstagram(uri: string, format: ScheduleShareFormat) {
+    try {
+      const RNShare = require('react-native-share').default as typeof import('react-native-share').default;
+      await RNShare.shareSingle({
+        social: RNShare.Social.INSTAGRAM as any,
+        url: uri,
+        type: 'image/png',
+        filename: `classmate-${format}-schedule`,
+      });
+    } catch (error) {
+      console.warn('Instagram direct share failed:', error);
+      Alert.alert(
+        'Could not open Instagram',
+        'Make sure Instagram is installed. Direct Instagram sharing also requires a native/TestFlight build, not Expo Go.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Use Share Sheet', onPress: () => { void shareScheduleWithSystemSheet(uri, format); } },
+        ]
+      );
     }
   }
 
@@ -1307,7 +1403,7 @@ export default function TimetableScreen({
                   <Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '600' }}>Save</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={shareSchedule}
+                  onPress={openShareFormatPicker}
                   style={{
                     flex: 1,
                     borderRadius: 12,
@@ -1347,6 +1443,107 @@ export default function TimetableScreen({
             </ScrollView>
           </Animated.View>
         </Animated.View>
+      </Modal>
+
+      {/* Share format picker */}
+      <Modal
+        animationType="slide"
+        transparent
+        visible={showShareFormatModal}
+        onRequestClose={() => setShowShareFormatModal(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.38)' }}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setShowShareFormatModal(false)}
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+          />
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingTop: 12,
+              paddingHorizontal: 20,
+              paddingBottom: Math.max(bottomInset + 18, 28),
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: -8 },
+              shadowOpacity: 0.14,
+              shadowRadius: 20,
+              elevation: 10,
+            }}
+          >
+            <View style={{ alignItems: 'center', paddingBottom: 12 }}>
+              <View style={{ width: 38, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <View>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Share timetable</Text>
+                <Text style={{ marginTop: 3, fontSize: 13, color: colors.textTertiary }}>
+                  Pick a format for Instagram, Messages, or anywhere else.
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowShareFormatModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ gap: 10 }}>
+              {SHARE_FORMATS.map((format) => {
+                const isSharing = sharingFormat === format.key;
+                return (
+                  <TouchableOpacity
+                    key={format.key}
+                    activeOpacity={0.84}
+                    disabled={!!sharingFormat}
+                    onPress={() => { void shareSchedule(format.key); }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: 14,
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: format.key === 'story' ? `${colors.brand}55` : colors.border,
+                      backgroundColor: format.key === 'story' ? colors.brandBg : colors.bgTertiary,
+                      opacity: sharingFormat && !isSharing ? 0.45 : 1,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 14,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: format.key === 'story' ? colors.brand : colors.card,
+                        borderWidth: format.key === 'story' ? 0 : 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      {isSharing ? (
+                        <ActivityIndicator size="small" color={format.key === 'story' ? 'white' : colors.brand} />
+                      ) : (
+                        <Ionicons
+                          name={format.icon}
+                          size={20}
+                          color={format.key === 'story' ? 'white' : colors.textSecondary}
+                        />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>{format.label}</Text>
+                      <Text style={{ marginTop: 2, fontSize: 12, lineHeight: 17, color: colors.textTertiary }}>
+                        {format.description}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* ── Course detail bottom sheet ── */}
@@ -2073,10 +2270,48 @@ export default function TimetableScreen({
           collapsable={false}
           style={{
             width: exportSnapshotWidth,
-            padding: 14,
+            ...(exportCanvasHeight ? { height: exportCanvasHeight } : null),
+            padding: exportOuterPadding,
             backgroundColor: isDark ? '#0b1220' : '#eef3ff',
+            justifyContent: exportFormat === 'story' ? 'space-between' : 'flex-start',
+            overflow: 'hidden',
           }}
         >
+          {exportFormat !== 'clean' && (
+            <View style={{ marginBottom: exportFormat === 'square' ? 9 : 14 }}>
+              <View
+                style={{
+                  alignSelf: 'flex-start',
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 999,
+                  backgroundColor: isDark ? 'rgba(65,105,225,0.22)' : '#ffffff',
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(255,255,255,0.10)' : '#dbe4ff',
+                }}
+              >
+                <Text style={{ fontSize: 10, fontWeight: '800', color: colors.brand, letterSpacing: 1 }}>
+                  CLASSMATE
+                </Text>
+              </View>
+              <Text
+                style={{
+                  marginTop: exportFormat === 'square' ? 7 : 12,
+                  fontSize: exportFormat === 'square' ? 22 : 28,
+                  lineHeight: exportFormat === 'square' ? 26 : 33,
+                  fontWeight: '900',
+                  color: colors.text,
+                  letterSpacing: -0.7,
+                }}
+              >
+                My {quarterLabel(selectedQuarter)} schedule
+              </Text>
+              <Text style={{ marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>
+                {activeTimetable?.name ?? 'My Schedule'} · {scheduledCourses.length} class{scheduledCourses.length === 1 ? '' : 'es'}
+              </Text>
+            </View>
+          )}
+
           <View
             style={{
               backgroundColor: gridFrameBg,
@@ -2089,6 +2324,7 @@ export default function TimetableScreen({
               shadowOpacity: isDark ? 0.22 : 0.16,
               shadowRadius: 18,
               elevation: 4,
+              flexShrink: 0,
             }}
           >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
@@ -2316,6 +2552,24 @@ export default function TimetableScreen({
               </View>
             )}
           </View>
+
+          {exportFormat !== 'clean' && (
+            <View
+              style={{
+                marginTop: exportFormat === 'square' ? 9 : 14,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>
+                Built with ClassMate
+              </Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand }}>
+                Schedule · Classmates · Boards
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     </View>

@@ -184,6 +184,11 @@ function buildDailyScheduleNotificationBody(courses: Course[]) {
   return truncateNotificationText(body || 'Open ClassMate to see your full schedule for today.', 178);
 }
 
+function normalizeDailyScheduleSummaryHour(value: number | undefined) {
+  const candidate = typeof value === 'number' ? value : 8;
+  return Number.isFinite(candidate) && candidate >= 0 && candidate <= 23 ? Math.floor(candidate) : 8;
+}
+
 function weekdayIndex(day: string) {
   const map: Record<string, number> = { Su: 0, M: 1, T: 2, W: 3, Th: 4, F: 5, Sa: 6 };
   return map[day] ?? -1;
@@ -458,7 +463,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [savingRegion, setSavingRegion] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
-  const [useCelsius, setUseCelsius] = useState(true);
   const [authStack, setAuthStack] = useState<AuthScreen[]>(['welcome']);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [needsFeatureOnboarding, setNeedsFeatureOnboarding] = useState(false);
@@ -1123,7 +1127,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         currentQuarter.year === selectedQuarter.year && currentQuarter.quarter === selectedQuarter.quarter;
 
       if (notifications.dailyScheduleSummary && quarterMatchesCurrent) {
-        const dailySummaries = buildDailyScheduleSummaryDates(activeCourses);
+        const dailySummaries = buildDailyScheduleSummaryDates(
+          activeCourses,
+          14,
+          normalizeDailyScheduleSummaryHour(notifications.dailyScheduleSummaryHour)
+        );
         for (const summary of dailySummaries) {
           if (cancelled) return;
           const classCount = summary.courses.length;
@@ -2206,8 +2214,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               userEmail={userEmail}
               userProfile={userProfile}
               userSettings={userSettings}
-              useCelsius={useCelsius}
-              onUseCelsiusChange={setUseCelsius}
               themePreference={themePreference}
               onThemeChange={onThemeChange}
               onSaveProfile={handleSaveProfile}

@@ -437,7 +437,7 @@ export default function HomeScreen({
   scrollToTopTrigger = 0,
 }: Props) {
   const { colors, isDark } = useTheme();
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const sportsEventScrollRef = useRef<ScrollView>(null);
   const sportsEventCommentInputRef = useRef<TextInput>(null);
@@ -471,8 +471,14 @@ export default function HomeScreen({
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const { start: quarterStart, end: quarterEnd } = getQuarterBounds(selectedQuarter);
+  const sportsEventSheetHeight = Math.round(windowHeight * 0.88);
   const sportsEventCommentFooterPadding = sportsEventKeyboardVisible ? 8 : Math.max(bottomInset, 12) + 10;
   const sportsEventScrollBottomPadding = sportsEventKeyboardVisible ? 92 : 18;
+  const resetSportsEventDetailScroll = useCallback(() => {
+    [0, 80, 180].forEach((delay) => {
+      setTimeout(() => sportsEventScrollRef.current?.scrollTo({ y: 0, animated: false }), delay);
+    });
+  }, []);
   const scrollSportsEventDetailToEnd = useCallback((animated = true, delay = 0) => {
     const run = () => sportsEventScrollRef.current?.scrollToEnd({ animated });
     if (delay > 0) {
@@ -917,6 +923,7 @@ export default function HomeScreen({
     setSportsEventRsvp(sportsEventUserRsvps[event.id] ?? null);
     setSportsEventGoingCount(sportsEventListParticipation[event.id] ?? 0);
     setSportsEventComments([]);
+    resetSportsEventDetailScroll();
     void loadSportsEventSocial(event);
   }
 
@@ -1676,7 +1683,7 @@ export default function HomeScreen({
                 zIndex: 1,
                 elevation: 1,
                 maxHeight: '88%',
-                height: sportsEventKeyboardVisible ? '88%' : undefined,
+                height: sportsEventSheetHeight,
                 borderTopLeftRadius: 28,
                 borderTopRightRadius: 28,
                 backgroundColor: colors.bg,

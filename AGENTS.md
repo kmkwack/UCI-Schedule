@@ -1702,3 +1702,45 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64lo (List classes in 8 AM summary notification)
 - **`App.tsx`** — Changed the daily 8:00 AM schedule notification body from a single “First up” class to a compact ordered class list with start times and locations, capped with a `+N more` suffix for long days. This makes the morning push notification summarize the full day’s schedule instead of only the first class.
+
+### Session 64lp (Configurable daily summary notification time)
+- **`src/data/userPreferences.ts`** — Added `dailyScheduleSummaryHour` to notification preferences with an 8 AM default so the morning class-list notification has a persisted delivery hour.
+- **`src/screens/SettingsScreen.tsx`** — Added a `Today Summary Time` notification settings section with 6 AM through 11 AM choices and updated the `Today's Classes` subtitle to show the selected time.
+- **`App.tsx`** — Changed daily schedule notification scheduling to use the saved `dailyScheduleSummaryHour` instead of the hardcoded 8 AM default.
+
+### Session 64lq (Remove temperature unit setting)
+- **`src/screens/SettingsScreen.tsx`** — Removed the `Temperature Unit` radio group from Appearance and dropped the now-unused temperature props from the settings screen.
+- **`App.tsx`** — Stopped keeping/passing a settings-level Celsius state because temperature unit is now controlled only inside the Home weather card.
+
+### Session 64lr (Restore sports detail content height)
+- **`src/screens/HomeScreen.tsx`** — Fixed the sports event detail sheet so it always opens at a stable viewport-derived height and resets its scroll position to the top. This prevents the comment composer from being the only visible element when opening a sports event.
+
+### Session 64ls (Create the seans company website)
+- **`the-seans-site/index.html`** — Added a standalone company website for `the seans` that presents ClassMate, the company direction, roadmap, and campus-expansion thesis.
+- **`the-seans-site/styles.css`** — Added the full responsive visual system, campus-photo hero, product mockup, roadmap sections, and mobile layout for the new company website.
+- **`the-seans-site/script.js`** — Added lightweight scroll reveal behavior and header polish for the static website.
+
+### Session 64lt (Expand the seans company narrative)
+- **`the-seans-site/index.html`** — Expanded the company website with more professional positioning, including `Who we are`, company motto, why the company started, founder section, operating principles, and a more detailed ClassMate thesis.
+- **`the-seans-site/styles.css`** — Added responsive layouts and visual treatments for the new company narrative sections, including definition cards, motto panel, founder card, and why-we-started content.
+
+### Session 64lu (Apple-style the seans website redesign)
+- **`the-seans-site/index.html`** — Rebuilt the company site into a more premium Apple-style narrative with full-screen hero sections, a centered ClassMate product stage, image story section, founder section, principles, roadmap, and closing thesis.
+- **`the-seans-site/styles.css`** — Replaced the previous card-heavy startup layout with a cleaner high-contrast system using large typography, full-bleed imagery, black/white product sections, responsive panels, and a larger phone mockup.
+- **`the-seans-site/script.js`** — Added a subtle reduced-motion-aware hero parallax while preserving the scroll reveal and header polish.
+
+### Session 64lv (Interactive scroll showcase for the seans site)
+- **`the-seans-site/index.html`** — Added a sticky Apple-style scroll showcase that turns the company thesis into a four-step product narrative with synchronized copy and ClassMate phone previews.
+- **`the-seans-site/styles.css`** — Added the scroll-driven showcase visuals, motion phone mockups, hero entrance polish, and standalone local asset references so the site renders correctly from its own folder.
+- **`the-seans-site/script.js`** — Added scroll-progress logic that updates the active showcase step, phone layer, progress meter, and hero parallax while respecting reduced-motion settings.
+- **`the-seans-site/assets/*`** — Added local copies of the campus, huddle, logo, mark, and favicon assets so the static website does not depend on parent-directory asset paths.
+
+### Session 64lw (Founder and responsive website polish)
+- **`the-seans-site/index.html`** — Updated the company founder story to credit both Kyumin Kwack and Sihyun Park, including two co-founder cards and plural navigation copy.
+- **`the-seans-site/styles.css`** — Reduced image over-cropping, widened constrained text blocks, added balanced text wrapping, and made the founder cards responsive so text does not collapse into narrow vertical columns.
+- **`the-seans-site/script.js`** — Matched the hero parallax scale to the gentler image crop and made reveal animations trigger earlier so section content does not leave awkward blank space while scrolling.
+
+### Session 64lx (Photo-free product-rich website pass)
+- **`the-seans-site/index.html`** — Removed photo-based sections and replaced them with product-native interface compositions, including a richer Product Idea showcase that mirrors ClassMate’s Today, ClassMates, Boards, timetable, and campus-expansion screens.
+- **`the-seans-site/styles.css`** — Replaced the photo hero and huddle image treatment with abstract product-system visuals, added richer app mockup components, and tuned responsive layouts for the denser interface scenes.
+- **`the-seans-site/script.js`** — Updated the hero parallax transform to suit the new non-photo product canvas.

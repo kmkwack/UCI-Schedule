@@ -27,8 +27,6 @@ type Props = {
   userEmail?: string;
   userProfile: EditableProfile;
   userSettings: UserSettingsState;
-  useCelsius?: boolean;
-  onUseCelsiusChange?: (v: boolean) => void;
   themePreference?: ThemePreference;
   onThemeChange?: (v: ThemePreference) => void;
   onSaveProfile: (profile: EditableProfile) => Promise<boolean>;
@@ -47,6 +45,13 @@ type Screen = 'main' | 'profile' | 'privacy' | 'notifications' | 'appearance' | 
 const SUPPORT_EMAILS = ['heyy.seans@gmail.com', 'hii.seans@gmail.com'];
 const SUPPORT_EMAIL_LABEL = SUPPORT_EMAILS.join(', ');
 const MODERATOR_EMAILS = ['sihyup2@uci.edu', 'kwackk@uci.edu'];
+
+function formatNotificationHour(hour: number) {
+  const normalized = Number.isFinite(hour) ? Math.max(0, Math.min(23, Math.floor(hour))) : 8;
+  const suffix = normalized >= 12 ? 'PM' : 'AM';
+  const hour12 = normalized % 12 || 12;
+  return `${hour12}:00 ${suffix}`;
+}
 
 type ReportStatus = 'pending' | 'reviewing' | 'resolved' | 'dismissed';
 
@@ -391,6 +396,7 @@ function NotificationsScreen({
   };
   const appNotificationStatus = s.pushNotifications ? 'On' : 'Off';
   const reminderMinuteOptions = [5, 10, 15, 30, 60];
+  const dailySummaryHourOptions = [6, 7, 8, 9, 10, 11];
   const row = (key: (typeof toggleableKeys)[number], label: string, subLabel?: string, last = false) => (
     <View key={key}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 }}>
@@ -473,9 +479,41 @@ function NotificationsScreen({
           {row('pushNotifications', 'Push Notifications', 'Receive notifications on your device', true)}
         </>)}
         {section('ACADEMIC', <>
-          {row('dailyScheduleSummary', "Today's Classes", 'Send a morning summary at 8:00 AM')}
+          {row('dailyScheduleSummary', "Today's Classes", `Send a morning summary at ${formatNotificationHour(s.dailyScheduleSummaryHour)}`)}
           {row('classReminders', 'Class Reminders')}
           {row('sportsGameReminders', 'Sports Game Reminders', undefined, true)}
+        </>)}
+        {section('TODAY SUMMARY TIME', <>
+          <View style={{ paddingHorizontal: 20, paddingVertical: 14, opacity: s.dailyScheduleSummary ? 1 : 0.45 }}>
+            <Text style={{ fontSize: 15, color: colors.text, marginBottom: 4 }}>Morning summary time</Text>
+            <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 10 }}>
+              Choose when ClassMate sends your daily class list.
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {dailySummaryHourOptions.map((hour) => {
+                const active = s.dailyScheduleSummaryHour === hour;
+                return (
+                  <TouchableOpacity
+                    key={`daily-summary-${hour}`}
+                    disabled={!s.dailyScheduleSummary}
+                    onPress={() => setS((prev) => ({ ...prev, dailyScheduleSummaryHour: hour }))}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 7,
+                      borderRadius: 18,
+                      borderWidth: 1,
+                      borderColor: active ? colors.brand : colors.border,
+                      backgroundColor: active ? colors.brandBg : colors.card,
+                    }}
+                  >
+                    <Text style={{ color: active ? colors.brand : colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                      {formatNotificationHour(hour)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
         </>)}
         {section('REMINDER TIMING', <>
           <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>
@@ -587,10 +625,8 @@ function NotificationsScreen({
 }
 
 // ─── Sub-screen: Appearance ───────────────────────────────────────────────────
-function AppearanceScreen({ onBack, useCelsius, onUseCelsiusChange, themePreference, onThemeChange }: {
+function AppearanceScreen({ onBack, themePreference, onThemeChange }: {
   onBack: () => void;
-  useCelsius?: boolean;
-  onUseCelsiusChange?: (v: boolean) => void;
   themePreference?: ThemePreference;
   onThemeChange?: (v: ThemePreference) => void;
 }) {
@@ -642,10 +678,6 @@ function AppearanceScreen({ onBack, useCelsius, onUseCelsiusChange, themePrefere
           { value: 'dark', label: 'Dark', desc: 'Always use dark theme' },
           { value: 'auto', label: 'Auto', desc: 'Match system settings' },
         ], themePreference ?? 'auto', v => onThemeChange?.(v as ThemePreference))}
-        {radioGroup('TEMPERATURE UNIT', [
-          { value: 'fahrenheit', label: 'Fahrenheit (°F)', desc: 'Example: 72°F' },
-          { value: 'celsius', label: 'Celsius (°C)', desc: 'Example: 22°C' },
-        ], useCelsius ? 'celsius' : 'fahrenheit', v => onUseCelsiusChange?.(v === 'celsius'))}
       </ScrollView>
     </View>
   );
@@ -1855,8 +1887,6 @@ export default function SettingsScreen({
   userEmail = 'john.doe@university.edu',
   userProfile,
   userSettings,
-  useCelsius,
-  onUseCelsiusChange,
   themePreference,
   onThemeChange,
   onSaveProfile,
@@ -1956,7 +1986,7 @@ export default function SettingsScreen({
             saving={savingNotifications}
           />
         );
-      case 'appearance': return <AppearanceScreen onBack={goBack} useCelsius={useCelsius} onUseCelsiusChange={onUseCelsiusChange} themePreference={themePreference} onThemeChange={onThemeChange} />;
+      case 'appearance': return <AppearanceScreen onBack={goBack} themePreference={themePreference} onThemeChange={onThemeChange} />;
       case 'language':
         return (
           <LanguageRegionScreen

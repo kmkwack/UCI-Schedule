@@ -16,6 +16,7 @@ export type NotificationPreferences = {
   pushNotifications: boolean;
   emailNotifications: boolean;
   dailyScheduleSummary: boolean;
+  dailyScheduleSummaryHour: number;
   classReminders: boolean;
   classReminderMinutes: number;
   sportsGameReminders: boolean;
@@ -165,6 +166,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   pushNotifications: false,
   emailNotifications: true,
   dailyScheduleSummary: true,
+  dailyScheduleSummaryHour: 8,
   classReminders: true,
   classReminderMinutes: 60,
   sportsGameReminders: true,

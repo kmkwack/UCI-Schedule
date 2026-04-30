@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>the seans | Campus software for student life</title>
+    <meta
+      name="description"
+      content="the seans builds ClassMate, campus software that organizes schedules, classmates, boards, events, course links, and daily student life around the timetable."
+    />
+    <link rel="icon" href="./assets/favicon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header" data-header>
+      <a class="brand-lockup" href="#top" aria-label="the seans home">
+        <span class="brand-mark"></span>
+        <span>the seans</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#motto">Motto</a>
+        <a href="#product">ClassMate</a>
+        <a href="#founder">Founders</a>
+        <a href="#roadmap">Roadmap</a>
+      </nav>
+      <a class="nav-action" href="mailto:hello@theseans.app">Contact</a>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-media" aria-hidden="true">
+          <div class="hero-canvas">
+            <div class="hero-tile hero-tile-main">
+              <span>CM</span>
+              <strong>ClassMate</strong>
+              <small>Campus context layer</small>
+            </div>
+            <div class="hero-tile hero-tile-a">
+              <small>Today</small>
+              <strong>Ends in 22 min</strong>
+            </div>
+            <div class="hero-tile hero-tile-b">
+              <small>Course link</small>
+              <strong>discord.gg/econ129</strong>
+            </div>
+            <div class="hero-tile hero-tile-c">
+              <small>ClassMates</small>
+              <strong>4 shared</strong>
+            </div>
+            <div class="hero-thread"></div>
+          </div>
+        </div>
+        <div class="hero-shade"></div>
+        <div class="hero-content">
+          <p class="eyebrow">Campus software studio</p>
+          <h1 id="hero-title">the seans</h1>
+          <p>
+            We build the missing layer between official university systems and the way students actually live.
+          </p>
+        </div>
+        <div class="hero-footer">
+          <span>Founded from UC Irvine by Kyumin Kwack and Sihyun Park</span>
+          <a href="#motto">Explore the company</a>
+        </div>
+      </section>
+
+      <section class="scroll-showcase" data-scroll-showcase aria-labelledby="showcase-title">
+        <div class="showcase-sticky">
+          <div class="showcase-copy">
+            <p class="eyebrow blue">The product idea</p>
+            <div class="showcase-copy-stack">
+              <article class="showcase-step active" data-step-copy>
+                <span>01</span>
+                <h2 id="showcase-title">Start with the timetable.</h2>
+                <p>The schedule is the most reliable source of truth in college. It tells us when a student moves, where they go, and which communities they belong to.</p>
+              </article>
+              <article class="showcase-step" data-step-copy>
+                <span>02</span>
+                <h2>Reveal the people around it.</h2>
+                <p>ClassMate makes classmates visible in context, so social features begin with a real shared class instead of a cold search bar.</p>
+              </article>
+              <article class="showcase-step" data-step-copy>
+                <span>03</span>
+                <h2>Keep conversations attached.</h2>
+                <p>Boards, course links, marketplace posts, and DMs become more useful when they know which school, department, or class they came from.</p>
+              </article>
+              <article class="showcase-step" data-step-copy>
+                <span>04</span>
+                <h2>Scale only when the campus is ready.</h2>
+                <p>We start at UCI, then expand school by school with dependable course data, moderation, and a product students actually trust.</p>
+              </article>
+            </div>
+            <div class="showcase-meter" aria-hidden="true">
+              <span data-showcase-meter></span>
+            </div>
+          </div>
+
+          <div class="showcase-visual" aria-label="ClassMate product motion preview">
+            <div class="motion-orbit orbit-one">SBSG 1241</div>
+            <div class="motion-orbit orbit-two">2 friends</div>
+            <div class="motion-orbit orbit-three">Discord added</div>
+            <div class="motion-phone">
+              <div class="phone-sensor"></div>
+              <div class="motion-screen">
+                <section class="mock-layer active" data-step-layer>
+                  <div class="mock-top">
+                    <span>Today</span>
+                    <strong>Apr 30 · Spring 2026</strong>
+                  </div>
+                  <div class="mock-current">
+                    <div class="mock-card-head">
+                      <small>Current class</small>
+                      <span>1/3 done</span>
+                    </div>
+                    <h3>Ends in<br />22 min</h3>
+                    <p>ECON 129 · Analysis Econ Data</p>
+                    <strong>SBSG 1241 · 9:30-10:50 AM</strong>
+                    <div class="mock-progress"><span></span></div>
+                  </div>
+                  <div class="today-mini-grid">
+                    <div>
+                      <span>Weather</span>
+                      <strong>19°</strong>
+                      <small>Mainly clear</small>
+                    </div>
+                    <div>
+                      <span>Sunrise</span>
+                      <strong>6:03</strong>
+                      <small>6:03 AM · 7:34 PM</small>
+                    </div>
+                  </div>
+                  <div class="mock-list-card">
+                    <div>
+                      <span>Next</span>
+                      <strong>MGMT 101</strong>
+                      <small>1:00 PM · SB2 1200</small>
+                    </div>
+                    <div>
+                      <span>Sports</span>
+                      <strong>Men's Volleyball vs Penn State</strong>
+                      <small>6:00 PM · 0 going</small>
+                    </div>
+                  </div>
+                </section>
+                <section class="mock-layer" data-step-layer>
+                  <div class="mock-top">
+                    <span>ClassMates</span>
+                    <strong>3 shared classes</strong>
+                  </div>
+                  <div class="mock-search">Search friends by name or email</div>
+                  <div class="mock-tabs">
+                    <span class="active">ClassMates (4)</span>
+                    <span>Requests</span>
+                  </div>
+                  <div class="shared-card">
+                    <small>Shared classes this quarter</small>
+                    <div class="shared-row">
+                      <strong>ECON 129</strong>
+                      <span><b>K</b><b>S</b><b>M</b></span>
+                    </div>
+                    <div class="shared-row">
+                      <strong>MGMT 101</strong>
+                      <span><b>A</b><b>J</b></span>
+                    </div>
+                    <div class="shared-row">
+                      <strong>WRITING 39C</strong>
+                      <span><b>K</b></span>
+                    </div>
+                  </div>
+                  <div class="friend-list">
+                    <div><b>KK</b><span>Kyumin Kwack<small>2 shared · ECON 129</small></span></div>
+                    <div><b>SP</b><span>Sienna Park<small>2 shared · MGMT 101</small></span></div>
+                    <div><b>JL</b><span>Jordan Lee<small>1 shared · Writing</small></span></div>
+                  </div>
+                </section>
+                <section class="mock-layer" data-step-layer>
+                  <div class="mock-top">
+                    <span>Boards</span>
+                    <strong>UCI</strong>
+                  </div>
+                  <div class="mock-search">Search boards or posts</div>
+                  <div class="board-pills">
+                    <span class="active">General</span>
+                    <span>Marketplace</span>
+                    <span>Departments</span>
+                  </div>
+                  <div class="board-stack">
+                    <article>
+                      <span>ECON 129 · 14 replies</span>
+                      <strong>Anyone have notes from today's regression example?</strong>
+                      <small>Course context attached</small>
+                    </article>
+                    <article>
+                      <span>Marketplace · 3 saves</span>
+                      <strong>Selling lab goggles near UTC</strong>
+                      <small>DM starts from this post</small>
+                    </article>
+                    <article>
+                      <span>Course link</span>
+                      <strong>Join Discord for ECON 129</strong>
+                      <small>Student-submitted invite</small>
+                    </article>
+                  </div>
+                </section>
+                <section class="mock-layer" data-step-layer>
+                  <div class="mock-top">
+                    <span>Timetable</span>
+                    <strong>Campus graph</strong>
+                  </div>
+                  <div class="mini-timetable">
+                    <div class="mini-days"><span>M</span><span>T</span><span>W</span><span>Th</span><span>F</span></div>
+                    <div class="mini-grid">
+                      <span class="block b1">ECON 129</span>
+                      <span class="block b2">MGMT 101</span>
+                      <span class="block b3">WR 39C</span>
+                      <span class="block b4">Custom</span>
+                    </div>
+                  </div>
+                  <div class="campus-grid">
+                    <span>UCI<small>Live</small></span>
+                    <span>UCLA<small>Preparing</small></span>
+                    <span>UCSD<small>Preparing</small></span>
+                    <span>UCB<small>Preparing</small></span>
+                  </div>
+                  <div class="mock-row">
+                    <span>Expansion rule</span>
+                    <strong>Data first. Campus by campus.</strong>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="statement-section" id="motto" aria-labelledby="motto-title">
+        <div class="statement-inner reveal">
+          <p class="eyebrow blue">Company motto</p>
+          <h2 id="motto-title">Make college less scattered.</h2>
+          <p>
+            College is not one app. It is a schedule, a course search, a room number, a Discord link,
+            a board post, a group message, a sports event, and a reminder you almost forgot. the seans
+            exists to make those pieces feel like they belong together.
+          </p>
+        </div>
+      </section>
+
+      <section class="cinema-section dark" aria-labelledby="why-title">
+        <div class="cinema-copy reveal">
+          <p class="eyebrow blue">Why we started</p>
+          <h2 id="why-title">The timetable is the most honest map of student life.</h2>
+          <p>
+            Every quarter, students rebuild the same context from scratch. They add classes, hunt for group chats,
+            ask who else is enrolled, look for campus events, and spread information across tools that do not know
+            what school or class they belong to.
+          </p>
+          <p>
+            We started with the schedule because it is the one place where academic life and social life naturally meet.
+          </p>
+        </div>
+      </section>
+
+      <section class="product-hero" id="product" aria-labelledby="product-title">
+        <div class="product-heading reveal">
+          <p class="eyebrow blue">First product</p>
+          <h2 id="product-title">ClassMate.</h2>
+          <p>The campus app that starts with your timetable, then organizes everything around it.</p>
+        </div>
+
+        <div class="device-stage reveal" aria-label="ClassMate preview">
+          <div class="phone-shell">
+            <div class="phone-sensor"></div>
+            <div class="phone-screen">
+              <div class="app-top">
+                <span>Today</span>
+                <b class="cm-badge">CM</b>
+              </div>
+              <div class="class-card">
+                <span class="live-dot"></span>
+                <p>Current class</p>
+                <h3>Ends in<br />22 min</h3>
+                <strong>ECON 129</strong>
+                <small>9:30-10:50 AM · SBSG 1241</small>
+                <div class="progress-line"><span></span></div>
+              </div>
+              <div class="weather-card">
+                <div>
+                  <span>Weather</span>
+                  <strong>19°</strong>
+                  <small>Mainly clear</small>
+                </div>
+                <div>
+                  <span>Sunrise</span>
+                  <strong>6:03</strong>
+                  <small>AM</small>
+                </div>
+              </div>
+              <div class="sports-row">
+                <span>Sports Events</span>
+                <strong>Men's Volleyball vs Penn State</strong>
+                <small>Tomorrow · 6:00 PM · 0 going</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="feature-panels" aria-label="ClassMate product pillars">
+        <article class="feature-panel reveal">
+          <span>01</span>
+          <h3>Schedule as the home base.</h3>
+          <p>Classes, custom blocks, quarter plans, reminders, grade tools, and shareable schedule formats.</p>
+        </article>
+        <article class="feature-panel reveal">
+          <span>02</span>
+          <h3>Classmates in context.</h3>
+          <p>See which friends share a class with you, compare timetables, and start conversations from the right place.</p>
+        </article>
+        <article class="feature-panel reveal">
+          <span>03</span>
+          <h3>Boards that know where they belong.</h3>
+          <p>General, marketplace, department, and class-specific discussions without losing the school context.</p>
+        </article>
+        <article class="feature-panel reveal">
+          <span>04</span>
+          <h3>Course links without the hunt.</h3>
+          <p>Students can add useful Discord invites and resources where future classmates will actually look.</p>
+        </article>
+      </section>
+
+      <section class="image-story" aria-labelledby="image-story-title">
+        <div class="system-map" aria-hidden="true">
+          <span>Schedule</span>
+          <span>ClassMates</span>
+          <span>Boards</span>
+          <span>Sports</span>
+          <span>Discord links</span>
+          <span>Notifications</span>
+        </div>
+        <div class="image-story-copy reveal">
+          <p class="eyebrow">Built from campus life</p>
+          <h2 id="image-story-title">Not another feed. A calmer operating layer.</h2>
+          <p>
+            Students already have enough places to scroll. Our job is to make the important campus context easier to find,
+            easier to trust, and easier to act on.
+          </p>
+        </div>
+      </section>
+
+      <section class="founder-section" id="founder" aria-labelledby="founder-title">
+        <div class="founder-copy reveal">
+          <p class="eyebrow blue">Founders</p>
+          <h2 id="founder-title">Founded by Kyumin Kwack and Sihyun Park.</h2>
+          <p>
+            the seans began as a student-built product from UC Irvine. Kyumin and Sihyun started with a
+            practical belief: college software should understand a student's actual campus life instead of
+            forcing them to rebuild context across five different tools every quarter.
+          </p>
+          <p>
+            The company is early by design. We are learning with real students, solving one campus deeply,
+            and turning those lessons into a product that can travel.
+          </p>
+        </div>
+        <div class="founders-grid reveal">
+          <article class="founder-card">
+            <span>KK</span>
+            <strong>Kyumin Kwack</strong>
+            <p>Co-founder, the seans</p>
+          </article>
+          <article class="founder-card">
+            <span>SP</span>
+            <strong>Sihyun Park</strong>
+            <p>Co-founder, the seans</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="principles-section" aria-labelledby="principles-title">
+        <div class="principles-heading reveal">
+          <p class="eyebrow blue">Operating principles</p>
+          <h2 id="principles-title">Professional software. Student-native instincts.</h2>
+        </div>
+        <div class="principles-grid">
+          <article class="reveal">
+            <h3>Context beats volume.</h3>
+            <p>One useful class-specific link is better than another endless feed.</p>
+          </article>
+          <article class="reveal">
+            <h3>Social, lightly.</h3>
+            <p>Classmates, DMs, and boards should help students coordinate without turning the app into noise.</p>
+          </article>
+          <article class="reveal">
+            <h3>Respect existing tools.</h3>
+            <p>We do not need to replace Discord, Canvas, calendars, or group chats. We make them easier to find in context.</p>
+          </article>
+          <article class="reveal">
+            <h3>Campus by campus.</h3>
+            <p>Start at UCI, learn in public, then expand only where the data and student need are real.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="roadmap-section" id="roadmap" aria-labelledby="roadmap-title">
+        <div class="roadmap-heading reveal">
+          <p class="eyebrow blue">Roadmap</p>
+          <h2 id="roadmap-title">From one campus to a trusted campus layer.</h2>
+        </div>
+        <ol class="timeline">
+          <li class="reveal">
+            <span>Now</span>
+            <div>
+              <h3>UCI beta</h3>
+              <p>Timetable, ClassMates, boards, sports events, course Discord links, notifications, and grade tools.</p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span>Next</span>
+            <div>
+              <h3>Reliable campus graph</h3>
+              <p>Better course metadata, friend overlap, department boards, event participation, moderation, and richer onboarding.</p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span>Later</span>
+            <div>
+              <h3>More schools</h3>
+              <p>UC campuses first as coming soon, then new schools when course data is dependable enough to earn trust.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="closing-section" aria-labelledby="closing-title">
+        <div class="closing-inner reveal">
+          <div class="closing-mark" aria-hidden="true">CM</div>
+          <p class="eyebrow blue">Company thesis</p>
+          <h2 id="closing-title">The official parts of campus and the human parts of campus should live closer together.</h2>
+          <a class="button primary" href="mailto:hello@theseans.app">Talk to us</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>the seans</span>
+      <span>Building ClassMate from UC Irvine.</span>
+      <a href="mailto:hello@theseans.app">hello@theseans.app</a>
+    </footer>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

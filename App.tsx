@@ -150,6 +150,40 @@ function parseTimeStart(timeRange: string) {
   return { hour: Number(hourStr), minute: Number(minuteStr) };
 }
 
+function courseStartMinutes(course: Course) {
+  const { hour, minute } = parseTimeStart(course.time);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return Number.MAX_SAFE_INTEGER;
+  return hour * 60 + minute;
+}
+
+function formatNotificationStartTime(timeRange: string) {
+  const rawStart = timeRange.split(' - ')[0]?.trim() ?? timeRange;
+  const match = rawStart.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return rawStart;
+
+  const hour24 = Number(match[1]);
+  const minute = match[2];
+  if (!Number.isFinite(hour24)) return rawStart;
+
+  const suffix = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${minute} ${suffix}`;
+}
+
+function buildDailyScheduleNotificationBody(courses: Course[]) {
+  const sortedCourses = courses.slice().sort((a, b) => courseStartMinutes(a) - courseStartMinutes(b));
+  const visibleCourses = sortedCourses.slice(0, 4);
+  const items = visibleCourses.map((course) => (
+    `${course.code} ${formatNotificationStartTime(course.time)}${course.location ? ` @ ${course.location}` : ''}`
+  ));
+  const remaining = Math.max(0, sortedCourses.length - visibleCourses.length);
+  const body = remaining > 0
+    ? `${items.join(' · ')} · +${remaining} more`
+    : items.join(' · ');
+
+  return truncateNotificationText(body || 'Open ClassMate to see your full schedule for today.', 178);
+}
+
 function weekdayIndex(day: string) {
   const map: Record<string, number> = { Su: 0, M: 1, T: 2, W: 3, Th: 4, F: 5, Sa: 6 };
   return map[day] ?? -1;
@@ -1092,14 +1126,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         const dailySummaries = buildDailyScheduleSummaryDates(activeCourses);
         for (const summary of dailySummaries) {
           if (cancelled) return;
-          const firstCourse = summary.courses
-            .slice()
-            .sort((a, b) => a.time.localeCompare(b.time))[0];
           const classCount = summary.courses.length;
           const summaryTitle = classCount === 1 ? 'You have 1 class today' : `You have ${classCount} classes today`;
-          const summaryBody = firstCourse
-            ? `First up: ${firstCourse.code} at ${firstCourse.time.split(' - ')[0]}${firstCourse.location ? ` in ${firstCourse.location}` : ''}.`
-            : 'Check ClassMate to see your full schedule for today.';
+          const summaryBody = buildDailyScheduleNotificationBody(summary.courses);
 
           await Notifications.scheduleNotificationAsync({
             content: {

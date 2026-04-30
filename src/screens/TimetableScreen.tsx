@@ -937,11 +937,30 @@ export default function TimetableScreen({
     time:       pendingShowTime,
   };
 
+  function waitForExportLayout() {
+    return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
+  function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+  }
+
   async function createScheduleExportImage(format: ScheduleShareFormat = 'clean') {
     setExportFormat(format);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    return captureRef(exportCaptureRef, { format: 'png', quality: 1 });
+    await waitForExportLayout();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    if (!exportCaptureRef.current) {
+      throw new Error('Schedule export view is not ready.');
+    }
+    return withTimeout(
+      captureRef(exportCaptureRef.current, { format: 'png', quality: 1, result: 'tmpfile' }),
+      8000,
+      'Schedule export timed out.'
+    );
   }
 
   async function saveSchedule() {
@@ -978,7 +997,8 @@ export default function TimetableScreen({
       }
 
       await shareScheduleWithSystemSheet(uri, format);
-    } catch {
+    } catch (error) {
+      console.warn('Schedule share failed:', error);
       Alert.alert('Error', 'Could not share the schedule. Please try again.');
     } finally {
       setSharingFormat(null);
@@ -999,8 +1019,33 @@ export default function TimetableScreen({
     });
   }
 
+  function canUseNativeShareModule() {
+    const reactNative = require('react-native') as typeof import('react-native') & {
+      TurboModuleRegistry?: { get?: (name: string) => unknown };
+    };
+    return Boolean(
+      reactNative.NativeModules?.RNShare
+      || reactNative.TurboModuleRegistry?.get?.('RNShare')
+    );
+  }
+
+  function showInstagramFallbackAlert(uri: string, format: ScheduleShareFormat) {
+    Alert.alert(
+      'Could not open Instagram',
+      'Make sure Instagram is installed. Direct Instagram sharing also requires a native/TestFlight build, not Expo Go.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Use Share Sheet', onPress: () => { void shareScheduleWithSystemSheet(uri, format); } },
+      ]
+    );
+  }
+
   async function shareScheduleToInstagram(uri: string, format: ScheduleShareFormat) {
     try {
+      if (!canUseNativeShareModule()) {
+        showInstagramFallbackAlert(uri, format);
+        return;
+      }
       const RNShare = require('react-native-share').default as typeof import('react-native-share').default;
       await RNShare.shareSingle({
         social: RNShare.Social.INSTAGRAM as any,
@@ -1010,14 +1055,7 @@ export default function TimetableScreen({
       });
     } catch (error) {
       console.warn('Instagram direct share failed:', error);
-      Alert.alert(
-        'Could not open Instagram',
-        'Make sure Instagram is installed. Direct Instagram sharing also requires a native/TestFlight build, not Expo Go.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Use Share Sheet', onPress: () => { void shareScheduleWithSystemSheet(uri, format); } },
-        ]
-      );
+      showInstagramFallbackAlert(uri, format);
     }
   }
 
@@ -2258,11 +2296,15 @@ export default function TimetableScreen({
 
       <View
         pointerEvents="none"
+        accessible={false}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
         style={{
           position: 'absolute',
           top: 0,
-          left: screenWidth + 40,
+          left: 0,
           width: exportSnapshotWidth,
+          zIndex: -1,
         }}
       >
         <View

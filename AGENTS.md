@@ -1678,3 +1678,27 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`package.json` / `package-lock.json`** — Added `react-native-share` so schedule snapshots can target Instagram directly instead of only opening the generic system share sheet.
 - **`app.json`** — Added Instagram URL query schemes to the iOS plist so the app can check/open Instagram from native builds.
 - **`src/screens/TimetableScreen.tsx`** — Changed the Story/Post share choices to call Instagram directly with the generated schedule image. The clean option remains a normal share-sheet fallback, and direct Instagram failures offer a share-sheet fallback for Expo Go or devices without Instagram installed.
+
+### Session 64lh (Harden timetable export capture)
+- **`src/screens/TimetableScreen.tsx`** — Added an export-layout wait, an 8-second timeout, and a direct native-view ref for schedule snapshot capture. The hidden export canvas now sits behind the timetable instead of far offscreen so Instagram/share exports cannot leave the picker stuck in a loading state if native capture stalls.
+
+### Session 64li (Avoid Expo Go Instagram redbox)
+- **`src/screens/TimetableScreen.tsx`** — Added a native-module availability check before loading `react-native-share`, so Expo Go shows the Instagram fallback alert instead of a redbox while TestFlight/native builds can still hand off directly to Instagram. Hid the offscreen export canvas from accessibility so it does not appear as duplicate timetable content.
+
+### Session 64lj (Auto-scroll long post composer)
+- **`src/screens/BoardScreen.tsx`** — Made the new/edit post content field grow with multiline text and keep the composer scrolled to the cursor while the keyboard is open. This prevents long post text from disappearing behind the keyboard or below the visible white writing area.
+
+### Session 64lk (Pin sports comment composer)
+- **`src/screens/HomeScreen.tsx`** — Moved the sports event comment input out of the event-detail scroll body into a fixed keyboard-aware footer, lifts that footer by the actual keyboard height, and added scroll-to-bottom settling while the keyboard opens. This keeps the sports comment field visible above the keyboard instead of hiding it behind the iOS keyboard.
+
+### Session 64ll (Persist sports RSVP state in detail)
+- **`src/screens/HomeScreen.tsx`** — Added a per-event current-user RSVP cache, seeds the sports event detail sheet from the cached list participation state, and keeps that cache in sync with optimistic RSVP changes and server reloads. This prevents a selected `Going` state from visually disappearing when reopening the same sports event.
+
+### Session 64lm (Weather card sunlight carousel)
+- **`src/screens/HomeScreen.tsx`** — Extended the campus weather fetch to include sunrise and sunset, cached those values with the existing weather data, and converted the weather card into a two-page swipeable carousel with tappable dots. The second page now shows today’s sunrise, sunset, and daylight duration in the same home card footprint.
+
+### Session 64ln (Balance weather carousel page height)
+- **`src/screens/HomeScreen.tsx`** — Removed the forced campus/walk chips from the Weather page and removed the daylight-duration sentence from the Sunlight page while keeping the carousel dots closer to the card content. This balances the two weather carousel pages without adding filler UI.
+
+### Session 64lo (List classes in 8 AM summary notification)
+- **`App.tsx`** — Changed the daily 8:00 AM schedule notification body from a single “First up” class to a compact ordered class list with start times and locations, capped with a `+N more` suffix for long days. This makes the morning push notification summarize the full day’s schedule instead of only the first class.

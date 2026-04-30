@@ -3425,6 +3425,14 @@ type NewPostModalProps = {
   colors: ReturnType<typeof useTheme>['colors'];
 };
 
+function estimatePostBodyInputHeight(value: string) {
+  if (!value.trim()) return 240;
+  const visualLines = value
+    .split('\n')
+    .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / 34)), 0);
+  return Math.max(240, Math.min(1800, visualLines * 24 + 42));
+}
+
 function NewPostModal({
   visible,
   onClose,
@@ -3450,6 +3458,9 @@ function NewPostModal({
   colors,
 }: NewPostModalProps) {
   const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? boards[0];
+  const composerScrollRef = useRef<ScrollView>(null);
+  const bodyInputFocusedRef = useRef(false);
+  const [bodyInputHeight, setBodyInputHeight] = useState(240);
   const fieldChrome = {
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -3460,6 +3471,21 @@ function NewPostModal({
     shadowOffset: { width: 0, height: 4 },
     elevation: 1,
   };
+
+  const keepBodyCursorVisible = useCallback((animated = true) => {
+    [0, 80, 180].forEach((delay) => {
+      setTimeout(() => composerScrollRef.current?.scrollToEnd({ animated }), delay);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!visible) {
+      bodyInputFocusedRef.current = false;
+      setBodyInputHeight(240);
+      return;
+    }
+    setBodyInputHeight(estimatePostBodyInputHeight(body));
+  }, [body, visible]);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -3475,7 +3501,13 @@ function NewPostModal({
         </View>
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'ios' ? 80 : 60 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={composerScrollRef}
+          contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'ios' ? 140 : 90 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 }}>
             Board <Text style={{ color: '#ef4444' }}>*</Text>
           </Text>
@@ -3524,11 +3556,34 @@ function NewPostModal({
           </Text>
           <TextInput
             value={body}
-            onChangeText={onBodyChange}
+            onChangeText={(value) => {
+              onBodyChange(value);
+              const nextHeight = estimatePostBodyInputHeight(value);
+              setBodyInputHeight(nextHeight);
+              if (bodyInputFocusedRef.current && nextHeight > 240) keepBodyCursorVisible(true);
+            }}
             placeholder="Share your thoughts, ask questions, or provide details..."
             placeholderTextColor={colors.placeholder}
             multiline
-            style={{ ...fieldChrome, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: colors.text, marginBottom: 20, minHeight: 240, textAlignVertical: 'top' }}
+            scrollEnabled={false}
+            onFocus={() => {
+              bodyInputFocusedRef.current = true;
+            }}
+            onBlur={() => {
+              bodyInputFocusedRef.current = false;
+            }}
+            style={{
+              ...fieldChrome,
+              borderRadius: 14,
+              paddingHorizontal: 14,
+              paddingVertical: 13,
+              fontSize: 15,
+              color: colors.text,
+              marginBottom: 20,
+              minHeight: 240,
+              height: bodyInputHeight,
+              textAlignVertical: 'top',
+            }}
           />
 
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
@@ -355,6 +355,13 @@ function weatherInsightText(tempC: number | null, weatherCode: number | null, us
   return `${tempLabel} and comfortable for getting around campus.`;
 }
 
+function formatSunTime(value: string | null) {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
 function ProgressRing({
   progress,
   color,
@@ -432,14 +439,20 @@ export default function HomeScreen({
   const { colors, isDark } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
+  const sportsEventScrollRef = useRef<ScrollView>(null);
+  const sportsEventCommentInputRef = useRef<TextInput>(null);
   const [useCelsius, setUseCelsius] = useState(true);
   const [tempUnitLoaded, setTempUnitLoaded] = useState(false);
   const tempToggleAnim = useRef(new Animated.Value(0)).current;
   const [tempPillWidth, setTempPillWidth] = useState(0);
+  const weatherPagerRef = useRef<ScrollView>(null);
+  const [activeWeatherIndex, setActiveWeatherIndex] = useState(0);
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
   const [sportsLoading, setSportsLoading] = useState(true);
   const [tempC, setTempC] = useState<number | null>(null);
   const [weatherCode, setWeatherCode] = useState<number | null>(null);
+  const [sunriseTime, setSunriseTime] = useState<string | null>(null);
+  const [sunsetTime, setSunsetTime] = useState<string | null>(null);
   const [classmateMatches, setClassmateMatches] = useState<ClassmateMatch[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [selectedSportsEvent, setSelectedSportsEvent] = useState<SportsEvent | null>(null);
@@ -449,16 +462,51 @@ export default function HomeScreen({
   const [sportsEventComments, setSportsEventComments] = useState<SportsEventComment[]>([]);
   const [sportsEventCommentInput, setSportsEventCommentInput] = useState('');
   const [sportsEventListParticipation, setSportsEventListParticipation] = useState<Record<string, number>>({});
+  const [sportsEventUserRsvps, setSportsEventUserRsvps] = useState<Record<string, SportsEventRsvpStatus>>({});
   const [sportsEventDetailLoading, setSportsEventDetailLoading] = useState(false);
   const [savingSportsEventRsvp, setSavingSportsEventRsvp] = useState(false);
   const [submittingSportsEventComment, setSubmittingSportsEventComment] = useState(false);
+  const [sportsEventKeyboardVisible, setSportsEventKeyboardVisible] = useState(false);
+  const [sportsEventKeyboardHeight, setSportsEventKeyboardHeight] = useState(0);
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const { start: quarterStart, end: quarterEnd } = getQuarterBounds(selectedQuarter);
+  const sportsEventCommentFooterPadding = sportsEventKeyboardVisible ? 8 : Math.max(bottomInset, 12) + 10;
+  const sportsEventScrollBottomPadding = sportsEventKeyboardVisible ? 92 : 18;
+  const scrollSportsEventDetailToEnd = useCallback((animated = true, delay = 0) => {
+    const run = () => sportsEventScrollRef.current?.scrollToEnd({ animated });
+    if (delay > 0) {
+      setTimeout(run, delay);
+      return;
+    }
+    requestAnimationFrame(run);
+  }, []);
+  const settleSportsEventComposer = useCallback((animated = true) => {
+    [0, 90, 180, 340].forEach((delay) => scrollSportsEventDetailToEnd(animated, delay));
+  }, [scrollSportsEventDetailToEnd]);
 
   useEffect(() => {
     selectedSportsEventRef.current = selectedSportsEvent;
   }, [selectedSportsEvent]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setSportsEventKeyboardVisible(true);
+      setSportsEventKeyboardHeight(Math.max(event.endCoordinates?.height ?? 0, 0));
+      if (selectedSportsEventRef.current) settleSportsEventComposer(true);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setSportsEventKeyboardVisible(false);
+      setSportsEventKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [settleSportsEventComposer]);
 
   useEffect(() => {
     async function loadTempUnit() {
@@ -484,15 +532,26 @@ export default function HomeScreen({
         const parsed = JSON.parse(cached);
         setTempC(parsed.tempC ?? null);
         setWeatherCode(parsed.weatherCode ?? null);
+        setSunriseTime(parsed.sunriseTime ?? null);
+        setSunsetTime(parsed.sunsetTime ?? null);
       }
       try {
-        const response = await fetch('https://api.open-meteo.com/v1/forecast?latitude=33.6405&longitude=-117.8443&current=temperature_2m,weathercode&temperature_unit=celsius');
+        const response = await fetch('https://api.open-meteo.com/v1/forecast?latitude=33.6405&longitude=-117.8443&current=temperature_2m,weathercode&daily=sunrise,sunset&timezone=America%2FLos_Angeles&forecast_days=1&temperature_unit=celsius');
         const json = await response.json();
         const nextTempC = json.current?.temperature_2m ?? null;
         const nextWeatherCode = json.current?.weathercode ?? null;
+        const nextSunriseTime = json.daily?.sunrise?.[0] ?? null;
+        const nextSunsetTime = json.daily?.sunset?.[0] ?? null;
         setTempC(nextTempC);
         setWeatherCode(nextWeatherCode);
-        void AsyncStorage.setItem('weather_cache', JSON.stringify({ tempC: nextTempC, weatherCode: nextWeatherCode }));
+        setSunriseTime(nextSunriseTime);
+        setSunsetTime(nextSunsetTime);
+        void AsyncStorage.setItem('weather_cache', JSON.stringify({
+          tempC: nextTempC,
+          weatherCode: nextWeatherCode,
+          sunriseTime: nextSunriseTime,
+          sunsetTime: nextSunsetTime,
+        }));
       } catch {}
     }
 
@@ -706,6 +765,7 @@ export default function HomeScreen({
   } as const;
 
   const twoColumnWidth = Math.max((windowWidth - 18 * 2 - 12) / 2, 0);
+  const weatherPageWidth = Math.max(twoColumnWidth - 36, 0);
   const heroCardWidth = Math.max(windowWidth - 36, 0);
   const activeHeroItem = heroItems[activeHeroIndex] ?? null;
   const heroAccent = activeHeroItem?.type === 'course'
@@ -742,12 +802,25 @@ export default function HomeScreen({
       }
 
       const counts: Record<string, number> = {};
+      const userRsvps: Record<string, SportsEventRsvpStatus> = {};
       ((data ?? []) as SportsEventRsvpRow[]).forEach((row) => {
         if (!row.event_id) return;
         if (row.status !== 'going') return;
         counts[row.event_id] = (counts[row.event_id] ?? 0) + 1;
+        if (String(row.user_id) === userId) userRsvps[row.event_id] = 'going';
       });
       setSportsEventListParticipation(counts);
+      setSportsEventUserRsvps((current) => {
+        const next = { ...current };
+        eventIds.forEach((eventId) => {
+          if (userRsvps[eventId]) {
+            next[eventId] = userRsvps[eventId];
+          } else {
+            delete next[eventId];
+          }
+        });
+        return next;
+      });
     }
 
     void loadSportsEventParticipation();
@@ -755,7 +828,7 @@ export default function HomeScreen({
     return () => {
       cancelled = true;
     };
-  }, [visibleSportsEventIds]);
+  }, [userId, visibleSportsEventIds]);
 
   async function loadSportsEventSocial(event: SportsEvent) {
     setSportsEventDetailLoading(true);
@@ -779,12 +852,22 @@ export default function HomeScreen({
     if (!rsvpResult.error) {
       const rows = (rsvpResult.data ?? []) as SportsEventRsvpRow[];
       const nextGoingCount = rows.filter((row) => row.status === 'going').length;
-      setSportsEventRsvp(rows.some((row) => row.user_id === userId && row.status === 'going') ? 'going' : null);
+      const nextUserRsvp: SportsEventRsvpStatus | null = rows.some((row) => String(row.user_id) === userId && row.status === 'going') ? 'going' : null;
+      setSportsEventRsvp(nextUserRsvp);
       setSportsEventGoingCount(nextGoingCount);
       setSportsEventListParticipation((current) => ({
         ...current,
         [event.id]: nextGoingCount,
       }));
+      setSportsEventUserRsvps((current) => {
+        const next = { ...current };
+        if (nextUserRsvp) {
+          next[event.id] = nextUserRsvp;
+        } else {
+          delete next[event.id];
+        }
+        return next;
+      });
     } else if (rsvpResult.error.code !== 'PGRST205') {
       console.error('Failed to load sports event RSVPs:', rsvpResult.error);
     }
@@ -831,13 +914,14 @@ export default function HomeScreen({
     selectedSportsEventRef.current = event;
     setSelectedSportsEvent(event);
     setSportsEventCommentInput('');
-    setSportsEventRsvp(null);
-    setSportsEventGoingCount(0);
+    setSportsEventRsvp(sportsEventUserRsvps[event.id] ?? null);
+    setSportsEventGoingCount(sportsEventListParticipation[event.id] ?? 0);
     setSportsEventComments([]);
     void loadSportsEventSocial(event);
   }
 
   function closeSportsEvent() {
+    Keyboard.dismiss();
     selectedSportsEventRef.current = null;
     setSelectedSportsEvent(null);
     setSportsEventCommentInput('');
@@ -845,6 +929,8 @@ export default function HomeScreen({
     setSportsEventDetailLoading(false);
     setSavingSportsEventRsvp(false);
     setSubmittingSportsEventComment(false);
+    setSportsEventKeyboardVisible(false);
+    setSportsEventKeyboardHeight(0);
   }
 
   async function handleSportsEventRsvp() {
@@ -863,6 +949,15 @@ export default function HomeScreen({
       ...current,
       [event.id]: nextGoingCount,
     }));
+    setSportsEventUserRsvps((current) => {
+      const next = { ...current };
+      if (nextStatus) {
+        next[event.id] = nextStatus;
+      } else {
+        delete next[event.id];
+      }
+      return next;
+    });
     setSavingSportsEventRsvp(true);
 
     const result = nextStatus
@@ -891,6 +986,15 @@ export default function HomeScreen({
           ...current,
           [event.id]: previousGoingCount,
         }));
+        setSportsEventUserRsvps((current) => {
+          const next = { ...current };
+          if (previousStatus) {
+            next[event.id] = previousStatus;
+          } else {
+            delete next[event.id];
+          }
+          return next;
+        });
       }
       setSavingSportsEventRsvp(false);
       return;
@@ -921,6 +1025,7 @@ export default function HomeScreen({
         createdAt: new Date().toISOString(),
       },
     ]);
+    settleSportsEventComposer(true);
 
     const { data, error } = await supabase
       .from('sports_event_comments')
@@ -962,6 +1067,8 @@ export default function HomeScreen({
           : comment
       )));
     }
+    requestAnimationFrame(() => sportsEventCommentInputRef.current?.focus());
+    settleSportsEventComposer(true);
     setSubmittingSportsEventComment(false);
   }
 
@@ -1332,81 +1439,143 @@ export default function HomeScreen({
           backgroundColor: colors.card,
           padding: 18,
         }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
-                Weather
-              </Text>
-              <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text, lineHeight: 32, marginTop: 8 }}>
-                {displayTemperature(tempC, useCelsius)}
-              </Text>
-              <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
-                {weatherCode === null ? 'Loading...' : (WMO_DESCRIPTIONS[weatherCode]?.label ?? 'Clear Sky')}
+          <ScrollView
+            ref={weatherPagerRef}
+            horizontal
+            pagingEnabled
+            bounces={false}
+            showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onMomentumScrollEnd={(event) => {
+              setActiveWeatherIndex(clamp(Math.round(event.nativeEvent.contentOffset.x / Math.max(weatherPageWidth, 1)), 0, 1));
+            }}
+            style={{ width: weatherPageWidth }}
+          >
+            <View style={{ width: weatherPageWidth }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
+                    Weather
+                  </Text>
+                  <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text, lineHeight: 32, marginTop: 8 }}>
+                    {displayTemperature(tempC, useCelsius)}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
+                    {weatherCode === null ? 'Loading...' : (WMO_DESCRIPTIONS[weatherCode]?.label ?? 'Clear Sky')}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Ionicons
+                    name={weatherCode === null ? 'cloud-outline' : (WMO_DESCRIPTIONS[weatherCode]?.icon ?? 'sunny-outline')}
+                    size={24}
+                    color={colors.brand}
+                  />
+                  <TouchableOpacity
+                    onPress={() => {
+                      const next = !useCelsius;
+                      setUseCelsius(next);
+                      Animated.spring(tempToggleAnim, {
+                        toValue: next ? 0 : 1,
+                        tension: 220,
+                        friction: 18,
+                        useNativeDriver: true,
+                      }).start();
+                    }}
+                    style={{
+                      flexDirection: 'row',
+                      backgroundColor: colors.inputBg,
+                      borderRadius: 999,
+                      padding: 3,
+                      marginTop: 12,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <Animated.View
+                      style={{
+                        position: 'absolute',
+                        left: 3,
+                        top: 3,
+                        bottom: 3,
+                        width: tempPillWidth,
+                        borderRadius: 999,
+                        backgroundColor: colors.brand,
+                        transform: [{
+                          translateX: tempToggleAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, tempPillWidth],
+                          }),
+                        }],
+                      }}
+                    />
+                    {(['C', 'F'] as const).map((label, idx) => {
+                      const active = label === 'C' ? useCelsius : !useCelsius;
+                      return (
+                        <View
+                          key={label}
+                          onLayout={idx === 0 ? (e) => setTempPillWidth(e.nativeEvent.layout.width) : undefined}
+                          style={{ paddingHorizontal: 9, paddingVertical: 5 }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#ffffff' : colors.textSecondary }}>
+                            {label}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <Text style={{ fontSize: 12, lineHeight: 18, color: colors.textTertiary, marginTop: 12 }}>
+                {weatherInsightText(tempC, weatherCode, useCelsius)}
               </Text>
             </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Ionicons
-                name={weatherCode === null ? 'cloud-outline' : (WMO_DESCRIPTIONS[weatherCode]?.icon ?? 'sunny-outline')}
-                size={24}
-                color={colors.brand}
-              />
+
+            <View style={{ width: weatherPageWidth }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
+                    Sunlight
+                  </Text>
+                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
+                    Today on campus
+                  </Text>
+                </View>
+                <Ionicons name="sunny-outline" size={24} color={colors.brand} />
+              </View>
+              <View style={{ marginTop: 14, gap: 9 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '700' }}>Sunrise</Text>
+                  <Text style={{ fontSize: 15, color: colors.text, fontWeight: '800' }}>{formatSunTime(sunriseTime)}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '700' }}>Sunset</Text>
+                  <Text style={{ fontSize: 15, color: colors.text, fontWeight: '800' }}>{formatSunTime(sunsetTime)}</Text>
+                </View>
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 6 }}>
+            {[0, 1].map((index) => (
               <TouchableOpacity
+                key={index}
                 onPress={() => {
-                  const next = !useCelsius;
-                  setUseCelsius(next);
-                  Animated.spring(tempToggleAnim, {
-                    toValue: next ? 0 : 1,
-                    tension: 220,
-                    friction: 18,
-                    useNativeDriver: true,
-                  }).start();
+                  setActiveWeatherIndex(index);
+                  weatherPagerRef.current?.scrollTo({ x: weatherPageWidth * index, animated: true });
                 }}
-                style={{
-                  flexDirection: 'row',
-                  backgroundColor: colors.inputBg,
-                  borderRadius: 999,
-                  padding: 3,
-                  marginTop: 12,
-                  overflow: 'hidden',
-                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ width: 16, height: 14, alignItems: 'center', justifyContent: 'center' }}
               >
-                <Animated.View
+                <View
                   style={{
-                    position: 'absolute',
-                    left: 3,
-                    top: 3,
-                    bottom: 3,
-                    width: tempPillWidth,
-                    borderRadius: 999,
-                    backgroundColor: colors.brand,
-                    transform: [{
-                      translateX: tempToggleAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0, tempPillWidth],
-                      }),
-                    }],
+                    width: activeWeatherIndex === index ? 14 : 5,
+                    height: 5,
+                    borderRadius: 3,
+                    backgroundColor: activeWeatherIndex === index ? colors.brand : colors.bgTertiary,
                   }}
                 />
-                {(['C', 'F'] as const).map((label, idx) => {
-                  const active = label === 'C' ? useCelsius : !useCelsius;
-                  return (
-                    <View
-                      key={label}
-                      onLayout={idx === 0 ? (e) => setTempPillWidth(e.nativeEvent.layout.width) : undefined}
-                      style={{ paddingHorizontal: 9, paddingVertical: 5 }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#ffffff' : colors.textSecondary }}>
-                        {label}
-                      </Text>
-                    </View>
-                  );
-                })}
               </TouchableOpacity>
-            </View>
+            ))}
           </View>
-          <Text style={{ fontSize: 12, lineHeight: 18, color: colors.textTertiary, marginTop: 12 }}>
-            {weatherInsightText(tempC, weatherCode, useCelsius)}
-          </Text>
         </View>
       </View>
 
@@ -1493,9 +1662,8 @@ export default function HomeScreen({
         animationType="slide"
         onRequestClose={closeSportsEvent}
       >
-        <KeyboardAvoidingView
+        <View
           style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <TouchableOpacity
             activeOpacity={1}
@@ -1508,11 +1676,12 @@ export default function HomeScreen({
                 zIndex: 1,
                 elevation: 1,
                 maxHeight: '88%',
+                height: sportsEventKeyboardVisible ? '88%' : undefined,
                 borderTopLeftRadius: 28,
                 borderTopRightRadius: 28,
                 backgroundColor: colors.bg,
                 paddingTop: 10,
-                paddingBottom: Math.max(bottomInset, 12) + 10,
+                paddingBottom: 0,
                 overflow: 'hidden',
               }}
             >
@@ -1520,8 +1689,17 @@ export default function HomeScreen({
                 <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
               </View>
               <ScrollView
+                ref={sportsEventScrollRef}
+                style={{ flex: 1 }}
                 keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 10 }}
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: sportsEventScrollBottomPadding }}
+                onLayout={() => {
+                  if (sportsEventKeyboardVisible) settleSportsEventComposer(false);
+                }}
+                onContentSizeChange={() => {
+                  if (sportsEventKeyboardVisible) settleSportsEventComposer(true);
+                }}
                 showsVerticalScrollIndicator={false}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
@@ -1693,55 +1871,71 @@ export default function HomeScreen({
                       No comments yet. Start the game thread.
                     </Text>
                   )}
-
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 12 }}>
-                    <TextInput
-                      value={sportsEventCommentInput}
-                      onChangeText={setSportsEventCommentInput}
-                      placeholder="Add a comment..."
-                      placeholderTextColor={colors.placeholder}
-                      multiline
-                      blurOnSubmit={false}
-                      maxLength={500}
-                      style={{
-                        flex: 1,
-                        minHeight: 40,
-                        maxHeight: 104,
-                        borderRadius: 20,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        backgroundColor: colors.inputBg,
-                        paddingHorizontal: 14,
-                        paddingTop: 10,
-                        paddingBottom: 10,
-                        fontSize: 14,
-                        lineHeight: 19,
-                        color: colors.text,
-                      }}
-                    />
-                    <TouchableOpacity
-                      onPress={() => void handleSubmitSportsEventComment()}
-                      disabled={!sportsEventCommentInput.trim() || submittingSportsEventComment}
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 20,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: sportsEventCommentInput.trim() ? colors.brand : colors.border,
-                        opacity: submittingSportsEventComment ? 0.7 : 1,
-                      }}
-                    >
-                      {submittingSportsEventComment
-                        ? <ActivityIndicator size="small" color="white" />
-                        : <Ionicons name="send" size={16} color="white" />}
-                    </TouchableOpacity>
-                  </View>
                 </View>
               </ScrollView>
+              <View
+                style={{
+                  paddingHorizontal: 18,
+                  paddingTop: 8,
+                  paddingBottom: sportsEventCommentFooterPadding,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.borderSubtle,
+                  backgroundColor: colors.bg,
+                  marginBottom: sportsEventKeyboardHeight,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+                  <TextInput
+                    ref={sportsEventCommentInputRef}
+                    value={sportsEventCommentInput}
+                    onChangeText={setSportsEventCommentInput}
+                    onFocus={() => settleSportsEventComposer(true)}
+                    placeholder="Add a comment..."
+                    placeholderTextColor={colors.placeholder}
+                    multiline
+                    blurOnSubmit={false}
+                    maxLength={500}
+                    style={{
+                      flex: 1,
+                      minHeight: 40,
+                      maxHeight: 104,
+                      borderRadius: 20,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.inputBg,
+                      paddingHorizontal: 14,
+                      paddingTop: 10,
+                      paddingBottom: 10,
+                      fontSize: 14,
+                      lineHeight: 19,
+                      color: colors.text,
+                    }}
+                    onSubmitEditing={() => void handleSubmitSportsEventComment()}
+                    returnKeyType="send"
+                  />
+                  <TouchableOpacity
+                    onPressIn={() => sportsEventCommentInputRef.current?.focus()}
+                    onPress={() => void handleSubmitSportsEventComment()}
+                    disabled={!sportsEventCommentInput.trim() || submittingSportsEventComment}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: sportsEventCommentInput.trim() ? colors.brand : colors.border,
+                      opacity: submittingSportsEventComment ? 0.7 : 1,
+                    }}
+                  >
+                    {submittingSportsEventComment
+                      ? <ActivityIndicator size="small" color="white" />
+                      : <Ionicons name="send" size={16} color="white" />}
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
           ) : null}
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </>
   );

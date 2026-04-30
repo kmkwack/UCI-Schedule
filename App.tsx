@@ -1981,7 +1981,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           onOpenCoursePicker={() => setShowCoursePicker(true)}
           onRemoveCourse={handleToggleCourse}
           onEditCustomCourse={(course) => { setEditingCustomCourse(course); setShowCoursePicker(true); }}
-          onOpenChat={openMessages}
           school={selectedUniversity?.name ?? 'UC Irvine'}
           userId={USER_ID}
           timetables={timetables}

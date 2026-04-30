@@ -121,7 +121,7 @@ const SLIDES: Slide[] = [
   {
     eyebrow: '05 · App Tour',
     title: 'Meet ClassMate.',
-    body: 'Scroll through the core pieces of the app: today, your timetable, course chats, classmates, and boards.',
+    body: 'Scroll through the core pieces of the app: today, your timetable, classmates, and boards.',
     accent: '#4169E1',
     kind: 'tour',
   },
@@ -530,55 +530,6 @@ function SchedulePreview() {
   );
 }
 
-function CourseChatPreview() {
-  const messages = [
-    { id: 'question', text: 'Did anyone catch what changed on the midterm guide?', mine: false },
-    { id: 'answer', text: 'Yeah, chapters 5-7 only.', mine: true },
-    { id: 'thanks', text: 'Thank you!', mine: false },
-  ];
-
-  return (
-    <View style={{ marginTop: 24, backgroundColor: '#ffffff', borderRadius: 22, borderWidth: 1, borderColor: '#edf1ff', overflow: 'hidden' }}>
-      <View style={{ paddingHorizontal: 15, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#edf1ff', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: '#eef3ff', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="chatbubbles-outline" size={20} color={PALETTE.brand} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '900', color: PALETTE.ink }}>ECON 129 Chat</Text>
-          <Text style={{ fontSize: 11, color: PALETTE.inkMuted, fontWeight: '800', marginTop: 2 }}>Course chat · 18 members</Text>
-        </View>
-        <View style={{ borderRadius: 999, backgroundColor: '#eef3ff', paddingHorizontal: 9, paddingVertical: 5 }}>
-          <Text style={{ fontSize: 10, fontWeight: '900', color: PALETTE.brand }}>FROM SCHEDULE</Text>
-        </View>
-      </View>
-
-      <View style={{ padding: 14, gap: 8 }}>
-        {messages.map((message) => (
-          <View
-            key={message.id}
-            style={{
-              alignSelf: message.mine ? 'flex-end' : 'flex-start',
-              maxWidth: '78%',
-              borderRadius: 16,
-              paddingHorizontal: 12,
-              paddingVertical: 9,
-              backgroundColor: message.mine ? PALETTE.brand : '#eef3ff',
-            }}
-          >
-            <Text style={{ fontSize: 12, lineHeight: 17, fontWeight: '700', color: message.mine ? '#ffffff' : PALETTE.ink }}>
-              {message.text}
-            </Text>
-          </View>
-        ))}
-        <View style={{ marginTop: 4, height: 38, borderRadius: 19, borderWidth: 1, borderColor: '#dfe6f8', backgroundColor: '#f7f9ff', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13 }}>
-          <Text style={{ flex: 1, fontSize: 12, fontWeight: '700', color: PALETTE.inkMuted }}>Ask your class...</Text>
-          <Ionicons name="send" size={15} color={PALETTE.brand} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
 function ClassMatesPreview() {
   const mates = [
     { name: 'Sienna', initials: 'S', color: '#f97316', shared: 'ECON 100A', x: -86, y: -76 },
@@ -637,7 +588,7 @@ function BoardsPreview() {
 const TOUR_SECTION_HEIGHT = 420;
 const TOUR_SECTION_OVERLAP = 56;
 
-type TourKey = 'today' | 'schedule' | 'courseChat' | 'classmates' | 'boards';
+type TourKey = 'today' | 'schedule' | 'classmates' | 'boards';
 
 const TOUR_ITEMS: { key: TourKey; label: string; title: string; body: string; accent: string }[] = [
   {
@@ -655,24 +606,17 @@ const TOUR_ITEMS: { key: TourKey; label: string; title: string; body: string; ac
     accent: '#4169E1',
   },
   {
-    key: 'courseChat',
-    label: '03 · Course Chat',
-    title: 'Every class gets a room.',
-    body: 'Tap a class from your timetable and jump into the course chat without hunting for links.',
-    accent: '#4169E1',
-  },
-  {
     key: 'classmates',
-    label: '04 · ClassMates',
+    label: '03 · ClassMates',
     title: 'The people in the room.',
     body: "See which friends share your classes and open their timetable when they choose to share it.",
     accent: '#4169E1',
   },
   {
     key: 'boards',
-    label: '05 · Boards',
+    label: '04 · Boards',
     title: 'Every class has a place to talk.',
-    body: 'Use hot posts, department boards, marketplace posts, replies, images, and anonymous class conversations.',
+    body: 'Use hot posts, department boards, marketplace posts, replies, images, and anonymous board conversations.',
     accent: '#4169E1',
   },
 ];
@@ -680,7 +624,6 @@ const TOUR_ITEMS: { key: TourKey; label: string; title: string; body: string; ac
 function TourPreview({ item }: { item: TourKey }) {
   if (item === 'today') return <TodayPreview />;
   if (item === 'schedule') return <SchedulePreview />;
-  if (item === 'courseChat') return <CourseChatPreview />;
   if (item === 'classmates') return <ClassMatesPreview />;
   return <BoardsPreview />;
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Easing, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, QUARTERS, quarterKey, quarterLabel, getBlockColors, normalizeTimetableTheme } from '../data/courses';
 import { getUciMapLocation, type UciMapLocation } from '../data/uciLocations';
@@ -12,7 +12,6 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import * as Linking from 'expo-linking';
 import MapView, { Marker } from 'react-native-maps';
-import type { ChatTarget } from '../data/messages';
 
 const RMP_SCHOOL_IDS: Record<string, string> = { 'UC Irvine': '1074' };
 
@@ -68,7 +67,6 @@ type Props = {
   onOpenCoursePicker: () => void;
   onRemoveCourse: (course: Course) => void;
   onEditCustomCourse?: (course: Course) => void;
-  onOpenChat?: (target: ChatTarget) => void;
   school: string;
   userId: string;
   quarterTimetables: Timetable[];
@@ -105,7 +103,7 @@ function normalizeDiscordInviteUrl(input: string) {
   const raw = input.trim();
   if (!raw) return null;
   const withoutQuery = raw.split(/[?#]/)[0];
-  const match = withoutQuery.match(/^(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([A-Za-z0-9-]+)\/?$/i);
+  const match = withoutQuery.match(/^(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([A-Za-z0-9-]{2,64})\/?$/i);
   if (!match?.[1]) return null;
   return `https://discord.gg/${match[1]}`;
 }
@@ -210,7 +208,6 @@ export default function TimetableScreen({
   onOpenCoursePicker,
   onRemoveCourse,
   onEditCustomCourse,
-  onOpenChat,
   school,
   userId,
   quarterTimetables,
@@ -405,7 +402,9 @@ export default function TimetableScreen({
   const [discordLinkLoadingKey, setDiscordLinkLoadingKey] = useState<string | null>(null);
   const [discordLinkCourse, setDiscordLinkCourse] = useState<Course | null>(null);
   const [discordInviteInput, setDiscordInviteInput] = useState('');
+  const [discordInviteError, setDiscordInviteError] = useState<string | null>(null);
   const [savingDiscordLink, setSavingDiscordLink] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const skipDetailAnimRef = useRef(false);
 
   // Pending settings (in the modal, before Apply is tapped)
@@ -499,23 +498,41 @@ export default function TimetableScreen({
   }, [courseDiscordLinks, school, selectedCourse, selectedCourseDiscordKey, selectedQuarterKey]);
 
   function openDiscordLinkModal(course: Course) {
-    setDiscordLinkCourse(course);
     setDiscordInviteInput('');
+    setDiscordInviteError(null);
+    setSelectedCourse(null);
+    setTimeout(() => {
+      setDiscordLinkCourse(course);
+    }, Platform.OS === 'ios' ? 320 : 0);
   }
 
   function closeDiscordLinkModal() {
     if (savingDiscordLink) return;
     setDiscordLinkCourse(null);
     setDiscordInviteInput('');
+    setDiscordInviteError(null);
   }
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   async function saveDiscordLink() {
     if (!discordLinkCourse) return;
     const normalizedUrl = normalizeDiscordInviteUrl(discordInviteInput);
     if (!normalizedUrl) {
-      Alert.alert('Invalid Discord link', 'Paste an invite like discord.gg/classmate or discord.com/invite/classmate.');
+      setDiscordInviteError('Enter a valid Discord invite: discord.gg/... or discord.com/invite/...');
       return;
     }
+    setDiscordInviteError(null);
 
     const qKey = quarterKey(selectedQuarter);
     const linkKey = courseDiscordKey(qKey, discordLinkCourse.code);
@@ -1353,11 +1370,10 @@ export default function TimetableScreen({
             const mapQuery = mappedLocation?.name ?? rawLocation;
             const courseMapUrl = hasMapLocation ? appleMapsUrl(mapQuery, school) : null;
             const selectedQuarterKey = quarterKey(selectedQuarter);
-            const courseChatKey = `${selectedQuarterKey}:${selectedCourse.code}`;
-            const canOpenCourseChat = !!onOpenChat && selectedCourse.department !== 'CUSTOM';
-            const discordLinkKnown = Object.prototype.hasOwnProperty.call(courseDiscordLinks, courseChatKey);
-            const discordLink = selectedCourse.department !== 'CUSTOM' ? courseDiscordLinks[courseChatKey] : null;
-            const discordLinkLoading = selectedCourse.department !== 'CUSTOM' && discordLinkLoadingKey === courseChatKey && !discordLinkKnown;
+            const discordKey = courseDiscordKey(selectedQuarterKey, selectedCourse.code);
+            const discordLinkKnown = Object.prototype.hasOwnProperty.call(courseDiscordLinks, discordKey);
+            const discordLink = selectedCourse.department !== 'CUSTOM' ? courseDiscordLinks[discordKey] : null;
+            const discordLinkLoading = selectedCourse.department !== 'CUSTOM' && discordLinkLoadingKey === discordKey && !discordLinkKnown;
             return (
               <View style={{ flex: 1, backgroundColor: colors.card }}>
                 <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
@@ -1466,26 +1482,6 @@ export default function TimetableScreen({
                   </View>
                 ) : null}
                 <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 10 }}>
-                  {canOpenCourseChat ? (
-                    <TouchableOpacity
-                      onPress={() => {
-                        onOpenChat?.({
-                          id: courseChatKey,
-                          kind: 'course',
-                          name: `${selectedCourse.code} Chat`,
-                          courseKey: courseChatKey,
-                          courseCode: selectedCourse.code,
-                          courseTitle: selectedCourse.title,
-                          quarterKey: selectedQuarterKey,
-                        });
-                        setSelectedCourse(null);
-                      }}
-                      style={{ backgroundColor: colors.brand, borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-                    >
-                      <Ionicons name="chatbubbles-outline" size={17} color="white" />
-                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Course Chat</Text>
-                    </TouchableOpacity>
-                  ) : null}
                   {selectedCourse.department !== 'CUSTOM' ? (
                     <TouchableOpacity
                       disabled={discordLinkLoading}
@@ -1530,13 +1526,13 @@ export default function TimetableScreen({
                       flexDirection: 'row',
                       justifyContent: 'center',
                       gap: 8,
-                      borderWidth: canOpenCourseChat ? 1.5 : 0,
+                      borderWidth: 0,
                       borderColor: colors.brand,
-                      backgroundColor: canOpenCourseChat ? colors.brandBg : colors.brand,
+                      backgroundColor: colors.brand,
                     }}
                   >
-                    <Ionicons name="star-outline" size={17} color={canOpenCourseChat ? colors.brand : 'white'} />
-                    <Text style={{ color: canOpenCourseChat ? colors.brand : 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
+                    <Ionicons name="star-outline" size={17} color="white" />
+                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
                   </TouchableOpacity>
                   {courseMapUrl && !mappedLocation && (
                     <TouchableOpacity
@@ -1595,85 +1591,103 @@ export default function TimetableScreen({
         visible={!!discordLinkCourse}
         onRequestClose={closeDiscordLinkModal}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}
-        >
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeDiscordLinkModal} />
-          <View
-            onStartShouldSetResponder={() => true}
-            style={{
-              backgroundColor: colors.card,
-              borderTopLeftRadius: 26,
-              borderTopRightRadius: 26,
-              paddingHorizontal: 20,
-              paddingTop: 18,
-              paddingBottom: bottomInset + 18,
-              borderTopWidth: 1,
-              borderColor: colors.borderSubtle,
-            }}
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+            activeOpacity={1}
+            onPress={closeDiscordLinkModal}
+          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'position' : undefined}
+            keyboardVerticalOffset={0}
+            style={{ width: '100%' }}
+            contentContainerStyle={{ width: '100%' }}
           >
-            <View style={{ width: 42, height: 4, borderRadius: 999, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 18 }} />
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Add Discord link</Text>
-                <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
-                  {discordLinkCourse ? `${discordLinkCourse.code} · ${quarterLabel(selectedQuarter)}` : 'Paste a class invite link.'}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={closeDiscordLinkModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={22} color={colors.textTertiary} />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              value={discordInviteInput}
-              onChangeText={setDiscordInviteInput}
-              placeholder="discord.gg/your-class"
-              placeholderTextColor={colors.textTertiary}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              returnKeyType="done"
+            <View
+              onStartShouldSetResponder={() => true}
               style={{
-                marginTop: 18,
-                minHeight: 48,
-                borderRadius: 16,
-                borderWidth: 1.5,
-                borderColor: colors.border,
-                backgroundColor: colors.bgTertiary,
-                color: colors.text,
-                fontSize: 15,
-                fontWeight: '600',
-                paddingHorizontal: 14,
+                backgroundColor: colors.card,
+                borderTopLeftRadius: 26,
+                borderTopRightRadius: 26,
+                paddingHorizontal: 20,
+                paddingTop: 16,
+                paddingBottom: keyboardVisible ? 12 : Math.max(bottomInset + 12, 16),
+                borderTopWidth: 1,
+                borderColor: colors.borderSubtle,
               }}
-            />
+            >
+              <View style={{ width: 42, height: 4, borderRadius: 999, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 14 }} />
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Add Discord link</Text>
+                  <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
+                    {discordLinkCourse ? `${discordLinkCourse.code} · ${quarterLabel(selectedQuarter)}` : 'Paste a class invite link.'}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={closeDiscordLinkModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={22} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
 
-            <Text style={{ fontSize: 12, lineHeight: 17, color: colors.textTertiary, marginTop: 10 }}>
-              Student-submitted invite links are shared with everyone viewing this class.
-            </Text>
+              <TextInput
+                value={discordInviteInput}
+                onChangeText={(value) => {
+                  setDiscordInviteInput(value);
+                  if (discordInviteError) setDiscordInviteError(null);
+                }}
+                placeholder="discord.gg/your-class"
+                placeholderTextColor={colors.textTertiary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                returnKeyType="done"
+                style={{
+                  marginTop: 16,
+                  minHeight: 44,
+                  borderRadius: 16,
+                  borderWidth: 1.5,
+                  borderColor: discordInviteError ? colors.destructive : colors.border,
+                  backgroundColor: colors.bgTertiary,
+                  color: colors.text,
+                  fontSize: 15,
+                  fontWeight: '600',
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                }}
+              />
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-              <TouchableOpacity
-                disabled={savingDiscordLink}
-                onPress={closeDiscordLinkModal}
-                style={{ flex: 1, minHeight: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgTertiary, borderWidth: 1, borderColor: colors.border }}
-              >
-                <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textSecondary }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                disabled={savingDiscordLink}
-                onPress={() => { void saveDiscordLink(); }}
-                style={{ flex: 1.4, minHeight: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#5865F2', flexDirection: 'row', gap: 8, opacity: savingDiscordLink ? 0.72 : 1 }}
-              >
-                {savingDiscordLink ? <ActivityIndicator color="white" size="small" /> : <Ionicons name="logo-discord" size={17} color="white" />}
-                <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>
-                  {savingDiscordLink ? 'Saving...' : 'Save link'}
+              {discordInviteError ? (
+                <Text style={{ fontSize: 12, lineHeight: 17, color: colors.destructive, marginTop: 8, fontWeight: '700' }}>
+                  {discordInviteError}
                 </Text>
-              </TouchableOpacity>
+              ) : null}
+
+              <Text style={{ fontSize: 12, lineHeight: 17, color: colors.textTertiary, marginTop: 8 }}>
+                Student-submitted invite links are shared with everyone viewing this class.
+              </Text>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                <TouchableOpacity
+                  disabled={savingDiscordLink}
+                  onPress={closeDiscordLinkModal}
+                  style={{ flex: 1, minHeight: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgTertiary, borderWidth: 1, borderColor: colors.border }}
+                >
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textSecondary }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  disabled={savingDiscordLink}
+                  onPress={() => { void saveDiscordLink(); }}
+                  style={{ flex: 1.4, minHeight: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#5865F2', flexDirection: 'row', gap: 8, opacity: savingDiscordLink ? 0.72 : 1 }}
+                >
+                  {savingDiscordLink ? <ActivityIndicator color="white" size="small" /> : <Ionicons name="logo-discord" size={17} color="white" />}
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>
+                    {savingDiscordLink ? 'Saving...' : 'Save link'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       <View style={{ flex: 1, backgroundColor: colors.bg }}>

@@ -1646,3 +1646,21 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64ky (Course Discord links)
 - **`src/screens/TimetableScreen.tsx`** — Added a Discord action to the course detail sheet. Students can now join an existing class Discord invite or submit a `discord.gg` / `discord.com/invite` link for that course and quarter.
 - **`supabase/sql/course_discord_links.sql`** — Added the course Discord link table, uniqueness by school/quarter/course, and RLS policies so authenticated students can read links and submit/manage their own invite links.
+
+### Session 64kz (Remove in-app course chat)
+- **`src/data/messages.ts`** — Removed the `course` chat kind and course metadata fields so app chat targets are limited to friend DMs and anonymous board DMs.
+- **`src/screens/TimetableScreen.tsx`** — Removed the in-app `Course Chat` action from course details while keeping the class Discord invite action as the course-specific communication path.
+- **`src/screens/MessagesScreen.tsx`** — Removed course-room preview, opening, sending, header, and list-row logic so existing course-chat rows are ignored by the Messages inbox.
+- **`src/components/FeatureOnboardingScreen.tsx`** — Removed Course Chat from the app-tour copy and preview sequence so onboarding matches the current feature set.
+- **`App.tsx`** — Stopped passing the messages opener into `TimetableScreen`, disconnecting timetable blocks from in-app course chat.
+- **`supabase/sql/conversation_messages.sql`** — Removed the course-room RPC/index setup from the canonical chat SQL and added a drop for the old `get_or_create_course_conversation` function.
+
+### Session 64la (Show Discord link sheet after course detail)
+- **`src/screens/TimetableScreen.tsx`** — Changed the `Add Discord link` action to close the course-detail modal before opening the Discord-link input sheet. This avoids iOS swallowing the second modal when it is presented on top of another modal.
+
+### Session 64lb (Compact Discord link keyboard sheet)
+- **`src/screens/TimetableScreen.tsx`** — Reworked the Discord-link input modal so the dimmed backdrop no longer participates in keyboard avoidance, reduced the input/button heights, and trims bottom padding while the keyboard is visible. This removes the awkward empty white space above the keyboard.
+
+### Session 64lc (Validate Discord invite input)
+- **`src/screens/TimetableScreen.tsx`** — Tightened Discord invite validation to only accept `discord.gg/...` and `discord.com/invite/...` style links, normalizing them to `https://discord.gg/...`. Invalid entries now keep the sheet open, turn the input border red, and show an inline warning instead of silently failing.
+- **`supabase/sql/conversation_messages.sql`** — Made the post-course-chat `conversations_kind_check` constraint strict again now that course-chat rows are expected to be cleaned from Supabase.

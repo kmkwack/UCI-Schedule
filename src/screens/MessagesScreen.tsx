@@ -37,11 +37,6 @@ type ConversationPreview = {
   sourcePostId: string | null;
   sourceLabel: string | null;
   sourcePost: SourcePostPreview | null;
-  courseKey: string | null;
-  courseCode: string | null;
-  courseTitle: string | null;
-  quarterKey: string | null;
-  participantCount: number | null;
   lastMessage: string;
   timestamp: string;
   unread: number;
@@ -98,7 +93,6 @@ function isUuid(value: string) {
 
 function conversationLabel(kind: ChatKind) {
   if (kind === 'friend') return 'ClassMate';
-  if (kind === 'course') return 'Course chat';
   return 'Anonymous board chat';
 }
 
@@ -123,11 +117,6 @@ function sourcePostImageAttachment(attachments: SourcePostAttachment[] | null | 
 function conversationAccent(kind: ChatKind, brand: string) {
   if (kind === 'board_anonymous') return '#111827';
   return brand;
-}
-
-function formatMemberCount(count: number | null | undefined) {
-  if (!count || count <= 0) return null;
-  return `${count} ${count === 1 ? 'member' : 'members'}`;
 }
 
 export default function MessagesScreen({ onClose, openChatWith, userId, school }: Props) {
@@ -251,18 +240,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       !message.deleted_at &&
       (!myParticipant.last_read_at || new Date(message.created_at) > new Date(myParticipant.last_read_at))
     )).length;
-    const isCourse = conversation.kind === 'course';
     const isAnonymous = conversation.kind === 'board_anonymous';
-    const partner = isCourse
-      ? null
-      : participants.find((row) => row.conversation_id === conversation.id && row.user_id !== userId);
-    if (!isCourse && !partner) return null;
+    const partner = participants.find((row) => row.conversation_id === conversation.id && row.user_id !== userId);
+    if (!partner) return null;
 
-    const name = isCourse
-      ? `${conversation.course_code ?? 'Course'} Chat`
-      : isAnonymous
-        ? partner?.alias_snapshot || anteaterAliasForId(partner?.user_id ?? conversation.id)
-        : namesById[partner?.user_id ?? ''] || anteaterAliasForId(partner?.user_id ?? conversation.id);
+    const name = isAnonymous
+      ? partner.alias_snapshot || anteaterAliasForId(partner.user_id)
+      : namesById[partner.user_id] || anteaterAliasForId(partner.user_id);
     const sortStamp = new Date(lastMessage.created_at).getTime();
     const sourcePost = isAnonymous && conversation.source_post_id
       ? sourcePostsById[conversation.source_post_id] ?? {
@@ -274,11 +258,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
           deleted: true,
         }
       : null;
-    const participantCount = participants.filter((row) => row.conversation_id === conversation.id).length;
-
     return {
       conversationId: conversation.id,
-      partnerId: isCourse ? conversation.course_key ?? conversation.id : partner?.user_id ?? conversation.id,
+      partnerId: partner.user_id,
       kind: conversation.kind,
       name,
       avatar: getInitials(name),
@@ -286,11 +268,6 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       sourcePostId: conversation.source_post_id,
       sourceLabel: sourcePost?.title ?? null,
       sourcePost,
-      courseKey: conversation.course_key,
-      courseCode: conversation.course_code,
-      courseTitle: conversation.course_title,
-      quarterKey: conversation.quarter_key,
-      participantCount,
       lastMessage: lastMessage.deleted_at ? 'Message deleted' : lastMessage.content,
       timestamp: formatMessageTime(lastMessage.created_at),
       unread,
@@ -328,8 +305,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     ] = await Promise.all([
       supabase
         .from('conversations')
-        .select('id, school, kind, source_post_id, course_key, course_code, course_title, quarter_key, created_at, updated_at')
-        .in('id', conversationIds),
+        .select('id, school, kind, source_post_id, created_at, updated_at')
+        .in('id', conversationIds)
+        .in('kind', ['friend', 'board_anonymous']),
       supabase
         .from('conversation_participants')
         .select('conversation_id, user_id, display_mode, alias_snapshot, last_read_at')
@@ -429,43 +407,6 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     await fetchConversations({ silent: true });
   }, [fetchConversations, fetchMessages]);
 
-  const getOrCreateCourseConversationId = useCallback(async (target: {
-    id?: string;
-    partnerId?: string;
-    courseKey?: string | null;
-    courseCode?: string | null;
-    courseTitle?: string | null;
-    quarterKey?: string | null;
-    name?: string | null;
-  }) => {
-    const fallbackId = target.id ?? target.partnerId ?? '';
-    const { data, error } = await supabase.rpc('get_or_create_course_conversation', {
-      p_course_key: target.courseKey ?? fallbackId,
-      p_course_code: target.courseCode ?? target.name?.replace(/\s+Chat$/i, '') ?? 'Course',
-      p_course_title: target.courseTitle ?? null,
-      p_quarter_key: target.quarterKey ?? null,
-      p_conversation_school: school,
-    });
-
-    if (error) throw error;
-    return data as string;
-  }, [school]);
-
-  const fetchParticipantCount = useCallback(async (conversationId: string | null) => {
-    if (!conversationId) return null;
-    const { count, error } = await supabase
-      .from('conversation_participants')
-      .select('user_id', { count: 'exact', head: true })
-      .eq('conversation_id', conversationId);
-
-    if (error) {
-      console.warn('Failed to load conversation participant count:', error);
-      return null;
-    }
-
-    return count ?? null;
-  }, []);
-
   const findExistingConversationId = useCallback(async (target: ChatTarget) => {
     if (!hasValidUserId) return null;
 
@@ -483,7 +424,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     const { data: conversationsData, error: conversationsError } = await supabase
       .from('conversations')
-      .select('id, school, kind, source_post_id, course_key, course_code, course_title, quarter_key, created_at, updated_at')
+      .select('id, school, kind, source_post_id, created_at, updated_at')
       .in('id', myConversationIds)
       .eq('school', school)
       .eq('kind', target.kind)
@@ -493,11 +434,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     const candidateConversations = ((conversationsData ?? []) as ConversationRow[]).filter((conversation) => {
       if (target.kind === 'friend') return true;
-      if (target.kind === 'course') return conversation.course_key === (target.courseKey ?? target.id);
       return conversation.source_post_id === (target.sourcePostId ?? null);
     });
     if (candidateConversations.length === 0) return null;
-    if (target.kind === 'course') return candidateConversations[0]?.id ?? null;
 
     const candidateIds = candidateConversations.map((conversation) => conversation.id);
     const { data: targetParticipantsData, error: targetParticipantsError } = await supabase
@@ -535,23 +474,17 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       return;
     }
 
-    if (target.kind !== 'course' && !isUuid(target.id)) {
+    if (!isUuid(target.id)) {
       Alert.alert('Could not open chat', 'This user cannot be messaged from this older board item.');
       return;
     }
 
     setOpeningConversation(true);
     try {
-      const conversationId = target.conversationId ?? (
-        target.kind === 'course'
-          ? await getOrCreateCourseConversationId(target)
-          : await findExistingConversationId(target)
-      );
-      const name = target.kind === 'course'
-        ? target.name?.trim() || `${target.courseCode ?? 'Course'} Chat`
-        : target.kind === 'board_anonymous'
-          ? anteaterAliasForId(target.id)
-          : target.name?.trim() || anteaterAliasForId(target.id);
+      const conversationId = target.conversationId ?? await findExistingConversationId(target);
+      const name = target.kind === 'board_anonymous'
+        ? anteaterAliasForId(target.id)
+        : target.name?.trim() || anteaterAliasForId(target.id);
       const sourcePostsById = target.kind === 'board_anonymous' && target.sourcePostId
         ? await loadSourcePostsById([target.sourcePostId])
         : {};
@@ -565,7 +498,6 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
             deleted: !target.sourceLabel?.trim(),
           }
         : null;
-      const participantCount = target.kind === 'course' ? await fetchParticipantCount(conversationId) : null;
       const preview: ConversationPreview = {
         conversationId,
         partnerId: target.id,
@@ -576,11 +508,6 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         sourcePostId: target.sourcePostId ?? null,
         sourceLabel: sourcePost?.title ?? null,
         sourcePost,
-        courseKey: target.courseKey ?? (target.kind === 'course' ? target.id : null),
-        courseCode: target.courseCode ?? null,
-        courseTitle: target.courseTitle ?? null,
-        quarterKey: target.quarterKey ?? null,
-        participantCount,
         lastMessage: 'Start the conversation.',
         timestamp: '',
         unread: 0,
@@ -606,7 +533,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     } finally {
       setOpeningConversation(false);
     }
-  }, [fetchConversations, fetchMessages, fetchParticipantCount, findExistingConversationId, getOrCreateCourseConversationId, hasValidUserId, loadSourcePostsById, school]);
+  }, [fetchConversations, fetchMessages, findExistingConversationId, hasValidUserId, loadSourcePostsById]);
 
   useEffect(() => {
     void fetchConversations();
@@ -838,22 +765,14 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       let conversationData: string | null = null;
       let conversationError: any = null;
 
-      if (selectedChat.kind === 'course') {
-        try {
-          conversationData = await getOrCreateCourseConversationId(selectedChat);
-        } catch (error) {
-          conversationError = error;
-        }
-      } else {
-        const result = await supabase.rpc('get_or_create_conversation', {
-          p_target_user_id: selectedChat.partnerId,
-          p_conversation_kind: selectedChat.kind,
-          p_source_post_id: selectedChat.sourcePostId ?? null,
-          p_conversation_school: school,
-        });
-        conversationData = result.data as string | null;
-        conversationError = result.error;
-      }
+      const result = await supabase.rpc('get_or_create_conversation', {
+        p_target_user_id: selectedChat.partnerId,
+        p_conversation_kind: selectedChat.kind,
+        p_source_post_id: selectedChat.sourcePostId ?? null,
+        p_conversation_school: school,
+      });
+      conversationData = result.data as string | null;
+      conversationError = result.error;
 
       if (conversationError) {
         setSending(false);
@@ -958,14 +877,6 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          {(() => {
-            const memberCountLabel = selectedChat.kind === 'course'
-              ? formatMemberCount(selectedChat.participantCount)
-              : null;
-            const headerLabel = memberCountLabel
-              ? `${selectedChat.label} · ${memberCountLabel}`
-              : selectedChat.label;
-            return (
           <View style={{
             flexDirection: 'row', alignItems: 'center',
             paddingHorizontal: 16,
@@ -988,7 +899,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
             </TouchableOpacity>
             <View style={{
               width: 36, height: 36, borderRadius: 18,
-            backgroundColor: conversationAccent(selectedChat.kind, colors.brand),
+              backgroundColor: conversationAccent(selectedChat.kind, colors.brand),
               alignItems: 'center', justifyContent: 'center',
             }}>
               <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>{selectedChat.avatar}</Text>
@@ -996,12 +907,10 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
             <View style={{ flex: 1 }}>
               <Text numberOfLines={1} style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{selectedChat.name}</Text>
               <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2, fontWeight: '700' }}>
-                {headerLabel}
+                {selectedChat.label}
               </Text>
             </View>
           </View>
-            );
-          })()}
 
           {selectedChat.kind === 'board_anonymous' && selectedChat.sourcePost ? (
             <View
@@ -1253,7 +1162,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               <Ionicons name="chatbubble-ellipses-outline" size={42} color={colors.border} />
               <Text style={{ marginTop: 12, fontSize: 15, fontWeight: '700', color: colors.text }}>No messages yet</Text>
               <Text style={{ marginTop: 6, fontSize: 13, lineHeight: 19, color: colors.textTertiary, textAlign: 'center' }}>
-                Friend chats use real names. Board chats stay anonymous. Course chats open from your timetable.
+                Friend chats use real names. Board chats stay anonymous.
               </Text>
             </View>
           )}
@@ -1302,13 +1211,6 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 {chat.kind === 'board_anonymous' && chat.sourcePost ? (
                   <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 3 }} numberOfLines={1}>
                     From: {chat.sourcePost.title}
-                  </Text>
-                ) : null}
-                {chat.kind === 'course' ? (
-                  <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 3 }} numberOfLines={1}>
-                    {[chat.courseTitle || chat.quarterKey?.replace('-', ' ') || 'Course chat', formatMemberCount(chat.participantCount)]
-                      .filter(Boolean)
-                      .join(' · ')}
                   </Text>
                 ) : null}
                 <Text style={{ fontSize: 13, color: colors.textSecondary }} numberOfLines={1}>{chat.lastMessage}</Text>

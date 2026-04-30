@@ -4,26 +4,16 @@
 create table if not exists public.conversations (
   id uuid primary key default gen_random_uuid(),
   school text not null default 'UC Irvine',
-  kind text not null check (kind in ('friend', 'board_anonymous', 'course')),
+  kind text not null check (kind in ('friend', 'board_anonymous')),
   source_post_id uuid references public.posts(id) on delete set null,
-  course_key text,
-  course_code text,
-  course_title text,
-  quarter_key text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-alter table public.conversations
-  add column if not exists course_key text,
-  add column if not exists course_code text,
-  add column if not exists course_title text,
-  add column if not exists quarter_key text;
-
 alter table public.conversations drop constraint if exists conversations_kind_check;
 alter table public.conversations
   add constraint conversations_kind_check
-  check (kind in ('friend', 'board_anonymous', 'course'));
+  check (kind in ('friend', 'board_anonymous'));
 
 create table if not exists public.conversation_participants (
   conversation_id uuid not null references public.conversations(id) on delete cascade,
@@ -52,13 +42,8 @@ create index if not exists conversations_school_updated_idx
 create index if not exists conversations_kind_source_idx
   on public.conversations (kind, source_post_id);
 
-create index if not exists conversations_course_key_idx
-  on public.conversations (school, kind, course_key)
-  where course_key is not null;
-
-create unique index if not exists conversations_unique_course_idx
-  on public.conversations (school, course_key)
-  where kind = 'course' and course_key is not null;
+drop index if exists public.conversations_course_key_idx;
+drop index if exists public.conversations_unique_course_idx;
 
 create index if not exists conversation_participants_user_idx
   on public.conversation_participants (user_id, conversation_id);
@@ -309,98 +294,4 @@ $$;
 
 grant execute on function public.get_or_create_conversation(uuid, text, uuid, text) to authenticated;
 
-create or replace function public.get_or_create_course_conversation(
-  p_course_key text,
-  p_course_code text,
-  p_course_title text default null,
-  p_quarter_key text default null,
-  p_conversation_school text default 'UC Irvine'
-)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  current_user_id uuid := auth.uid();
-  normalized_course_key text := nullif(trim(p_course_key), '');
-  normalized_course_code text := nullif(trim(p_course_code), '');
-  normalized_quarter_key text := nullif(trim(coalesce(p_quarter_key, '')), '');
-  existing_conversation_id uuid;
-  created_conversation_id uuid;
-begin
-  if current_user_id is null then
-    raise exception 'Not authenticated';
-  end if;
-
-  if normalized_course_key is null or normalized_course_code is null or normalized_quarter_key is null then
-    raise exception 'Course chat requires course and quarter information';
-  end if;
-
-  if not exists (
-    select 1
-    from public.timetables timetable
-    where timetable.user_id::text = current_user_id::text
-      and timetable.quarter_key = normalized_quarter_key
-      and exists (
-        select 1
-        from jsonb_array_elements(coalesce(timetable.courses::jsonb, '[]'::jsonb)) as course
-        where course->>'code' = normalized_course_code
-      )
-  ) then
-    raise exception 'Add this class to your timetable before opening its course chat';
-  end if;
-
-  select conversation.id
-  into existing_conversation_id
-  from public.conversations conversation
-  where conversation.school = p_conversation_school
-    and conversation.kind = 'course'
-    and conversation.course_key = normalized_course_key
-  order by conversation.created_at asc
-  limit 1;
-
-  if existing_conversation_id is null then
-    insert into public.conversations (school, kind, course_key, course_code, course_title, quarter_key)
-    values (
-      p_conversation_school,
-      'course',
-      normalized_course_key,
-      normalized_course_code,
-      nullif(trim(coalesce(p_course_title, '')), ''),
-      normalized_quarter_key
-    )
-    returning id into created_conversation_id;
-  else
-    created_conversation_id := existing_conversation_id;
-  end if;
-
-  insert into public.conversation_participants (conversation_id, user_id, display_mode)
-  values (created_conversation_id, current_user_id, 'real')
-  on conflict (conversation_id, user_id) do nothing;
-
-  return created_conversation_id;
-exception
-  when unique_violation then
-    select conversation.id
-    into created_conversation_id
-    from public.conversations conversation
-    where conversation.school = p_conversation_school
-      and conversation.kind = 'course'
-      and conversation.course_key = normalized_course_key
-    order by conversation.created_at asc
-    limit 1;
-
-    if created_conversation_id is null then
-      raise;
-    end if;
-
-    insert into public.conversation_participants (conversation_id, user_id, display_mode)
-    values (created_conversation_id, current_user_id, 'real')
-    on conflict (conversation_id, user_id) do nothing;
-
-    return created_conversation_id;
-end;
-$$;
-
-grant execute on function public.get_or_create_course_conversation(text, text, text, text, text) to authenticated;
+drop function if exists public.get_or_create_course_conversation(text, text, text, text, text);

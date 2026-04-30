@@ -1,4 +1,4 @@
-export type ChatKind = 'friend' | 'board_anonymous' | 'course';
+export type ChatKind = 'friend' | 'board_anonymous';
 
 export type ChatTarget = {
   id: string;
@@ -7,10 +7,6 @@ export type ChatTarget = {
   conversationId?: string;
   sourcePostId?: string | null;
   sourceLabel?: string | null;
-  courseKey?: string | null;
-  courseCode?: string | null;
-  courseTitle?: string | null;
-  quarterKey?: string | null;
 };
 
 export type ConversationRow = {
@@ -18,10 +14,6 @@ export type ConversationRow = {
   school: string;
   kind: ChatKind;
   source_post_id: string | null;
-  course_key: string | null;
-  course_code: string | null;
-  course_title: string | null;
-  quarter_key: string | null;
   created_at: string;
   updated_at: string;
 };

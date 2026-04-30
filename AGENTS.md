@@ -1639,3 +1639,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64kw (Message edit and delete actions)
 - **`src/screens/MessagesScreen.tsx`** — Added shared long-press actions for all chat room types. Users can now long-press their own non-deleted messages to edit or soft-delete them, with a composer edit mode and optimistic message updates.
+
+### Session 64kx (Mention course chat in app tour)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Added Course Chat to the onboarding app-tour copy and inserted a dedicated course-chat preview section. This makes class-wide rooms visible as one of ClassMate’s core features without overloading the first-run flow.

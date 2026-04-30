@@ -1642,3 +1642,7 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64kx (Mention course chat in app tour)
 - **`src/components/FeatureOnboardingScreen.tsx`** — Added Course Chat to the onboarding app-tour copy and inserted a dedicated course-chat preview section. This makes class-wide rooms visible as one of ClassMate’s core features without overloading the first-run flow.
+
+### Session 64ky (Course Discord links)
+- **`src/screens/TimetableScreen.tsx`** — Added a Discord action to the course detail sheet. Students can now join an existing class Discord invite or submit a `discord.gg` / `discord.com/invite` link for that course and quarter.
+- **`supabase/sql/course_discord_links.sql`** — Added the course Discord link table, uniqueness by school/quarter/course, and RLS policies so authenticated students can read links and submit/manage their own invite links.

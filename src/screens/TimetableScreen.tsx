@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Easing, LayoutAnimation, PanResponder, Platform, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Easing, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, QUARTERS, quarterKey, quarterLabel, getBlockColors, normalizeTimetableTheme } from '../data/courses';
 import { getUciMapLocation, type UciMapLocation } from '../data/uciLocations';
@@ -84,6 +84,40 @@ type Props = {
   bottomInset?: number;
   scrollToTopTrigger?: number;
 };
+
+type CourseDiscordLinkRow = {
+  id: string;
+  school: string;
+  quarter_key: string;
+  course_code: string;
+  course_title: string | null;
+  discord_url: string;
+  submitted_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function courseDiscordKey(quarterKeyValue: string, courseCode: string) {
+  return `${quarterKeyValue}:${courseCode}`;
+}
+
+function normalizeDiscordInviteUrl(input: string) {
+  const raw = input.trim();
+  if (!raw) return null;
+  const withoutQuery = raw.split(/[?#]/)[0];
+  const match = withoutQuery.match(/^(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([A-Za-z0-9-]+)\/?$/i);
+  if (!match?.[1]) return null;
+  return `https://discord.gg/${match[1]}`;
+}
+
+async function openDiscordInvite(url: string) {
+  try {
+    await Linking.openURL(url);
+  } catch (error) {
+    console.warn('Discord invite open failed:', error);
+    Alert.alert('Could not open Discord', 'This Discord invite could not be opened on this device.');
+  }
+}
 
 let seededQuartersCache: Set<string> | null = null;
 
@@ -367,6 +401,11 @@ export default function TimetableScreen({
   // Course detail sheet
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [reviewsCourse, setReviewsCourse] = useState<Course | null>(null);
+  const [courseDiscordLinks, setCourseDiscordLinks] = useState<Record<string, CourseDiscordLinkRow | null>>({});
+  const [discordLinkLoadingKey, setDiscordLinkLoadingKey] = useState<string | null>(null);
+  const [discordLinkCourse, setDiscordLinkCourse] = useState<Course | null>(null);
+  const [discordInviteInput, setDiscordInviteInput] = useState('');
+  const [savingDiscordLink, setSavingDiscordLink] = useState(false);
   const skipDetailAnimRef = useRef(false);
 
   // Pending settings (in the modal, before Apply is tapped)
@@ -410,6 +449,122 @@ export default function TimetableScreen({
     () => activeCourses.filter((course) => course.time === 'TBA' || course.days === 'TBA'),
     [activeCourses]
   );
+
+  const selectedQuarterKey = quarterKey(selectedQuarter);
+  const selectedCourseDiscordKey = selectedCourse && selectedCourse.department !== 'CUSTOM'
+    ? courseDiscordKey(selectedQuarterKey, selectedCourse.code)
+    : null;
+
+  useEffect(() => {
+    if (!selectedCourse || !selectedCourseDiscordKey) return;
+    if (Object.prototype.hasOwnProperty.call(courseDiscordLinks, selectedCourseDiscordKey)) return;
+
+    const discordKey = selectedCourseDiscordKey;
+    const courseCode = selectedCourse.code;
+    let cancelled = false;
+    setDiscordLinkLoadingKey(discordKey);
+
+    async function loadDiscordLink() {
+      try {
+        const { data, error } = await supabase
+          .from('course_discord_links')
+          .select('id, school, quarter_key, course_code, course_title, discord_url, submitted_by, created_at, updated_at')
+          .eq('school', school)
+          .eq('quarter_key', selectedQuarterKey)
+          .eq('course_code', courseCode)
+          .maybeSingle();
+
+        if (cancelled) return;
+        if (error) {
+          if (error.code !== 'PGRST205') console.warn('Failed to load course Discord link:', error);
+          setCourseDiscordLinks((current) => ({ ...current, [discordKey]: null }));
+          return;
+        }
+        setCourseDiscordLinks((current) => ({
+          ...current,
+          [discordKey]: (data as CourseDiscordLinkRow | null) ?? null,
+        }));
+      } finally {
+        if (!cancelled) {
+          setDiscordLinkLoadingKey((current) => (current === discordKey ? null : current));
+        }
+      }
+    }
+
+    void loadDiscordLink();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [courseDiscordLinks, school, selectedCourse, selectedCourseDiscordKey, selectedQuarterKey]);
+
+  function openDiscordLinkModal(course: Course) {
+    setDiscordLinkCourse(course);
+    setDiscordInviteInput('');
+  }
+
+  function closeDiscordLinkModal() {
+    if (savingDiscordLink) return;
+    setDiscordLinkCourse(null);
+    setDiscordInviteInput('');
+  }
+
+  async function saveDiscordLink() {
+    if (!discordLinkCourse) return;
+    const normalizedUrl = normalizeDiscordInviteUrl(discordInviteInput);
+    if (!normalizedUrl) {
+      Alert.alert('Invalid Discord link', 'Paste an invite like discord.gg/classmate or discord.com/invite/classmate.');
+      return;
+    }
+
+    const qKey = quarterKey(selectedQuarter);
+    const linkKey = courseDiscordKey(qKey, discordLinkCourse.code);
+    setSavingDiscordLink(true);
+
+    const { data, error } = await supabase
+      .from('course_discord_links')
+      .insert({
+        school,
+        quarter_key: qKey,
+        course_code: discordLinkCourse.code,
+        course_title: discordLinkCourse.title,
+        discord_url: normalizedUrl,
+        submitted_by: userId,
+      })
+      .select('id, school, quarter_key, course_code, course_title, discord_url, submitted_by, created_at, updated_at')
+      .single();
+
+    setSavingDiscordLink(false);
+
+    if (error) {
+      if (error.code === '23505') {
+        const { data: existing } = await supabase
+          .from('course_discord_links')
+          .select('id, school, quarter_key, course_code, course_title, discord_url, submitted_by, created_at, updated_at')
+          .eq('school', school)
+          .eq('quarter_key', qKey)
+          .eq('course_code', discordLinkCourse.code)
+          .maybeSingle();
+        if (existing) {
+          setCourseDiscordLinks((current) => ({ ...current, [linkKey]: existing as CourseDiscordLinkRow }));
+        }
+        Alert.alert('Discord link already exists', 'Another student already added a Discord invite for this class.');
+        closeDiscordLinkModal();
+        return;
+      }
+
+      Alert.alert(
+        'Could not save Discord link',
+        error.code === 'PGRST205'
+          ? 'The course_discord_links table is missing. Run supabase/sql/course_discord_links.sql first.'
+          : error.message
+      );
+      return;
+    }
+
+    setCourseDiscordLinks((current) => ({ ...current, [linkKey]: data as CourseDiscordLinkRow }));
+    closeDiscordLinkModal();
+  }
 
   const visibleDays = useMemo(() => {
     const usedDays = new Set<string>();
@@ -1200,6 +1355,9 @@ export default function TimetableScreen({
             const selectedQuarterKey = quarterKey(selectedQuarter);
             const courseChatKey = `${selectedQuarterKey}:${selectedCourse.code}`;
             const canOpenCourseChat = !!onOpenChat && selectedCourse.department !== 'CUSTOM';
+            const discordLinkKnown = Object.prototype.hasOwnProperty.call(courseDiscordLinks, courseChatKey);
+            const discordLink = selectedCourse.department !== 'CUSTOM' ? courseDiscordLinks[courseChatKey] : null;
+            const discordLinkLoading = selectedCourse.department !== 'CUSTOM' && discordLinkLoadingKey === courseChatKey && !discordLinkKnown;
             return (
               <View style={{ flex: 1, backgroundColor: colors.card }}>
                 <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
@@ -1328,6 +1486,39 @@ export default function TimetableScreen({
                       <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Course Chat</Text>
                     </TouchableOpacity>
                   ) : null}
+                  {selectedCourse.department !== 'CUSTOM' ? (
+                    <TouchableOpacity
+                      disabled={discordLinkLoading}
+                      onPress={() => {
+                        if (discordLink?.discord_url) {
+                          void openDiscordInvite(discordLink.discord_url);
+                          return;
+                        }
+                        openDiscordLinkModal(selectedCourse);
+                      }}
+                      style={{
+                        borderRadius: 14,
+                        paddingVertical: 14,
+                        alignItems: 'center',
+                        flexDirection: 'row',
+                        justifyContent: 'center',
+                        gap: 8,
+                        borderWidth: discordLink?.discord_url ? 0 : 1.5,
+                        borderColor: '#5865F2',
+                        backgroundColor: discordLink?.discord_url ? '#5865F2' : colors.brandBg,
+                        opacity: discordLinkLoading ? 0.6 : 1,
+                      }}
+                    >
+                      {discordLinkLoading ? (
+                        <ActivityIndicator size="small" color="#5865F2" />
+                      ) : (
+                        <Ionicons name="logo-discord" size={17} color={discordLink?.discord_url ? 'white' : '#5865F2'} />
+                      )}
+                      <Text style={{ color: discordLink?.discord_url ? 'white' : '#5865F2', fontWeight: '700', fontSize: 15 }}>
+                        {discordLinkLoading ? 'Checking Discord...' : discordLink?.discord_url ? 'Join Discord' : 'Add Discord link'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <TouchableOpacity
                     onPress={() => {
                       setReviewsCourse(selectedCourse);
@@ -1396,6 +1587,93 @@ export default function TimetableScreen({
               quarterKey={quarterKey(selectedQuarter)}
             />
           )}
+      </Modal>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={!!discordLinkCourse}
+        onRequestClose={closeDiscordLinkModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}
+        >
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeDiscordLinkModal} />
+          <View
+            onStartShouldSetResponder={() => true}
+            style={{
+              backgroundColor: colors.card,
+              borderTopLeftRadius: 26,
+              borderTopRightRadius: 26,
+              paddingHorizontal: 20,
+              paddingTop: 18,
+              paddingBottom: bottomInset + 18,
+              borderTopWidth: 1,
+              borderColor: colors.borderSubtle,
+            }}
+          >
+            <View style={{ width: 42, height: 4, borderRadius: 999, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 18 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Add Discord link</Text>
+                <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
+                  {discordLinkCourse ? `${discordLinkCourse.code} · ${quarterLabel(selectedQuarter)}` : 'Paste a class invite link.'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={closeDiscordLinkModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={22} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              value={discordInviteInput}
+              onChangeText={setDiscordInviteInput}
+              placeholder="discord.gg/your-class"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              returnKeyType="done"
+              style={{
+                marginTop: 18,
+                minHeight: 48,
+                borderRadius: 16,
+                borderWidth: 1.5,
+                borderColor: colors.border,
+                backgroundColor: colors.bgTertiary,
+                color: colors.text,
+                fontSize: 15,
+                fontWeight: '600',
+                paddingHorizontal: 14,
+              }}
+            />
+
+            <Text style={{ fontSize: 12, lineHeight: 17, color: colors.textTertiary, marginTop: 10 }}>
+              Student-submitted invite links are shared with everyone viewing this class.
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+              <TouchableOpacity
+                disabled={savingDiscordLink}
+                onPress={closeDiscordLinkModal}
+                style={{ flex: 1, minHeight: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgTertiary, borderWidth: 1, borderColor: colors.border }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textSecondary }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={savingDiscordLink}
+                onPress={() => { void saveDiscordLink(); }}
+                style={{ flex: 1.4, minHeight: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#5865F2', flexDirection: 'row', gap: 8, opacity: savingDiscordLink ? 0.72 : 1 }}
+              >
+                {savingDiscordLink ? <ActivityIndicator color="white" size="small" /> : <Ionicons name="logo-discord" size={17} color="white" />}
+                <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>
+                  {savingDiscordLink ? 'Saving...' : 'Save link'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <View style={{ flex: 1, backgroundColor: colors.bg }}>

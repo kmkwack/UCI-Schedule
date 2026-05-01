@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import ReviewsModal from '../components/ReviewsModal';
 import ErrorScreen from '../components/ErrorScreen';
 import { captureRef } from 'react-native-view-shot';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import * as Linking from 'expo-linking';
@@ -963,6 +964,13 @@ export default function TimetableScreen({
     );
   }
 
+  async function createScheduleExportDataUrl(uri: string) {
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return `data:image/png;base64,${base64}`;
+  }
+
   async function saveSchedule() {
     await new Promise<void>((r) => closeSettings(r));
     await new Promise((r) => setTimeout(r, 350));
@@ -1047,9 +1055,22 @@ export default function TimetableScreen({
         return;
       }
       const RNShare = require('react-native-share').default as typeof import('react-native-share').default;
+      const imageDataUrl = await createScheduleExportDataUrl(uri);
+
+      if (format === 'story') {
+        await RNShare.shareSingle({
+          social: RNShare.Social.INSTAGRAM_STORIES as any,
+          appId: 'com.parksihyun.classmate',
+          backgroundImage: imageDataUrl,
+          backgroundTopColor: '#f6f8ff',
+          backgroundBottomColor: '#4169E1',
+        } as any);
+        return;
+      }
+
       await RNShare.shareSingle({
         social: RNShare.Social.INSTAGRAM as any,
-        url: uri,
+        url: imageDataUrl,
         type: 'image/png',
         filename: `classmate-${format}-schedule`,
       });

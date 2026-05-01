@@ -1758,3 +1758,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64mb (Move comment options to top right)
 - **`src/screens/BoardScreen.tsx`** — Moved the board comment ellipsis menu from the lower action row to the comment header’s top-right corner so like/reply actions stay visually clean.
 - **`src/screens/HomeScreen.tsx`** — Moved the sports event comment ellipsis menu to the same top-right header position for consistency with board comments.
+
+### Session 64mc (Fix Instagram schedule image payload)
+- **`src/screens/TimetableScreen.tsx`** — Converted captured timetable exports to PNG data URLs before handing them to Instagram, and uses the Instagram Stories background image API for story shares. This prevents Instagram from falling back to the user’s camera roll instead of the generated schedule image.

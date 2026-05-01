@@ -145,6 +145,12 @@ function getInitials(name: string): string {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
+function firstLastName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length <= 2) return name.trim();
+  return parts[0] + ' ' + parts[parts.length - 1];
+}
+
 function buildCourseMatchKey(course: Pick<Course, 'id' | 'code' | 'days' | 'time'>) {
   if (course.id?.trim()) return course.id.trim();
   return `${course.code}|${course.days}|${course.time}`;
@@ -873,7 +879,7 @@ export default function FriendsScreen({
                             }}
                           >
                             <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{user.name}</Text>
+                              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{firstLastName(user.name)}</Text>
                               <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{user.email}</Text>
                               <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
                                 {user.major} • {user.year}
@@ -1232,7 +1238,7 @@ export default function FriendsScreen({
                     </View>
 
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{f.name}</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{firstLastName(f.name)}</Text>
                       <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{f.email}</Text>
                       <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
                         {f.major} • {f.year}
@@ -1341,7 +1347,7 @@ export default function FriendsScreen({
                         <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>{getInitials(req.name)}</Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{req.name}</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{firstLastName(req.name)}</Text>
                         <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{req.email}</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{req.major} • {req.year}</Text>
                       </View>
@@ -1381,7 +1387,7 @@ export default function FriendsScreen({
                         <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>{getInitials(req.name)}</Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{req.name}</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{firstLastName(req.name)}</Text>
                         <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{req.email}</Text>
                         <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{req.major} • {req.year}</Text>
                       </View>
@@ -1468,22 +1474,22 @@ export default function FriendsScreen({
           {/* Fixed header */}
           <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, marginRight: 8 }}>
                 <TouchableOpacity onPress={closeFriendTimetable} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Ionicons name="chevron-back" size={24} color={colors.brand} />
                 </TouchableOpacity>
                 <View style={{
                   width: 34, height: 34, borderRadius: 17,
                   backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center',
-                  marginRight: 4,
+                  marginRight: 4, flexShrink: 0,
                 }}>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>
                     {getInitials(friend.name)}
                   </Text>
                 </View>
-                <View>
-                  <Text style={{ fontSize: 22, fontWeight: 'bold', color: colors.text }}>{friend.name}</Text>
-                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{friend.email}</Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: 'bold', color: colors.text }}>{firstLastName(friend.name)}</Text>
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{friend.email}</Text>
                 </View>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

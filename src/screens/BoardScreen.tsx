@@ -1802,26 +1802,43 @@ export default function BoardScreen({
             </Text>
           </View>
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{comment.author_name ?? anteaterAliasForId(comment.user_id)}</Text>
-              {selectedPost?.user_id === comment.user_id ? (
-                <View
-                  style={{
-                    paddingHorizontal: 7,
-                    paddingVertical: 3,
-                    borderRadius: 999,
-                    backgroundColor: colors.brandBg,
-                    borderWidth: 1,
-                    borderColor: `${colors.brand}20`,
-                  }}
-                >
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: colors.brand }}>Author</Text>
-                </View>
-              ) : null}
-              {comment.author_meta ? (
-                <Text style={{ fontSize: 11, color: colors.textTertiary }}>{comment.author_meta}</Text>
-              ) : null}
-              <Text style={{ fontSize: 11, color: colors.textTertiary }}>{timeAgo(comment.created_at)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{comment.author_name ?? anteaterAliasForId(comment.user_id)}</Text>
+                {selectedPost?.user_id === comment.user_id ? (
+                  <View
+                    style={{
+                      paddingHorizontal: 7,
+                      paddingVertical: 3,
+                      borderRadius: 999,
+                      backgroundColor: colors.brandBg,
+                      borderWidth: 1,
+                      borderColor: `${colors.brand}20`,
+                    }}
+                  >
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: colors.brand }}>Author</Text>
+                  </View>
+                ) : null}
+                {comment.author_meta ? (
+                  <Text style={{ fontSize: 11, color: colors.textTertiary }}>{comment.author_meta}</Text>
+                ) : null}
+                <Text style={{ fontSize: 11, color: colors.textTertiary }}>{timeAgo(comment.created_at)}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => openCommentActions(comment)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'transparent',
+                  flexShrink: 0,
+                }}
+              >
+                <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
             </View>
             <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 20 }}>{comment.content}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 8 }}>
@@ -1848,21 +1865,6 @@ export default function BoardScreen({
               >
                 <Ionicons name="return-up-forward-outline" size={14} color={colors.textTertiary} />
                 <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>Reply</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => openCommentActions(comment)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 5,
-                  paddingHorizontal: 4,
-                  paddingVertical: 2,
-                  borderRadius: 999,
-                  backgroundColor: 'transparent',
-                }}
-              >
-                <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
             </View>
           </View>

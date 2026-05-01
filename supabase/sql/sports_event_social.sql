@@ -24,7 +24,7 @@ create index if not exists sports_event_comments_event_created_idx
   on public.sports_event_comments (event_id, created_at);
 
 grant select, insert, update, delete on public.sports_event_rsvps to authenticated;
-grant select, insert on public.sports_event_comments to authenticated;
+grant select, insert, delete on public.sports_event_comments to authenticated;
 
 alter table public.sports_event_rsvps enable row level security;
 alter table public.sports_event_comments enable row level security;
@@ -71,3 +71,10 @@ on public.sports_event_comments
 for insert
 to authenticated
 with check (user_id = auth.uid());
+
+drop policy if exists "Users can delete their own sports event comments" on public.sports_event_comments;
+create policy "Users can delete their own sports event comments"
+on public.sports_event_comments
+for delete
+to authenticated
+using (user_id = auth.uid());

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, Alert, Animated, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
@@ -186,6 +186,18 @@ function formatRelativeEventDayLabel(date: Date, now: Date) {
 
 function formatSportsEventDetailDate(event: SportsEvent) {
   return `${formatEventDayLabel(event.date)} · ${formatSportsEventTime(event.date, event.timeLabel)}`;
+}
+
+function timeAgo(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(isoString).toLocaleDateString();
 }
 
 function sportsEventVenueFor(event: SportsEvent): SportsVenue | null {
@@ -466,6 +478,7 @@ export default function HomeScreen({
   const [sportsEventDetailLoading, setSportsEventDetailLoading] = useState(false);
   const [savingSportsEventRsvp, setSavingSportsEventRsvp] = useState(false);
   const [submittingSportsEventComment, setSubmittingSportsEventComment] = useState(false);
+  const [deletingSportsEventCommentId, setDeletingSportsEventCommentId] = useState<string | null>(null);
   const [sportsEventKeyboardVisible, setSportsEventKeyboardVisible] = useState(false);
   const [sportsEventKeyboardHeight, setSportsEventKeyboardHeight] = useState(0);
 
@@ -936,6 +949,7 @@ export default function HomeScreen({
     setSportsEventDetailLoading(false);
     setSavingSportsEventRsvp(false);
     setSubmittingSportsEventComment(false);
+    setDeletingSportsEventCommentId(null);
     setSportsEventKeyboardVisible(false);
     setSportsEventKeyboardHeight(0);
   }
@@ -1077,6 +1091,81 @@ export default function HomeScreen({
     requestAnimationFrame(() => sportsEventCommentInputRef.current?.focus());
     settleSportsEventComposer(true);
     setSubmittingSportsEventComment(false);
+  }
+
+  function openSportsEventCommentActions(comment: SportsEventComment) {
+    if (comment.userId !== userId || comment.id.startsWith('local-')) return;
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Delete Comment', 'Cancel'],
+          cancelButtonIndex: 1,
+          destructiveButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) confirmDeleteSportsEventComment(comment);
+        }
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Comment options',
+      undefined,
+      [
+        { text: 'Delete Comment', style: 'destructive', onPress: () => confirmDeleteSportsEventComment(comment) },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }
+
+  function confirmDeleteSportsEventComment(comment: SportsEventComment) {
+    if (comment.userId !== userId || comment.id.startsWith('local-')) return;
+    Alert.alert(
+      'Delete comment?',
+      'This comment will be removed from the game thread.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => void handleDeleteSportsEventComment(comment),
+        },
+      ]
+    );
+  }
+
+  async function handleDeleteSportsEventComment(comment: SportsEventComment) {
+    if (!selectedSportsEvent || comment.userId !== userId || deletingSportsEventCommentId) return;
+    const event = selectedSportsEvent;
+    const previousComments = sportsEventComments;
+
+    setDeletingSportsEventCommentId(comment.id);
+    setSportsEventComments((current) => current.filter((item) => item.id !== comment.id));
+
+    const { error } = await supabase
+      .from('sports_event_comments')
+      .delete()
+      .eq('id', comment.id)
+      .eq('user_id', userId);
+
+    if (selectedSportsEventRef.current?.id !== event.id) {
+      setDeletingSportsEventCommentId(null);
+      return;
+    }
+
+    if (error) {
+      console.error('Failed to delete sports event comment:', error);
+      setSportsEventComments(previousComments);
+      Alert.alert(
+        'Delete failed',
+        error.code === 'PGRST205'
+          ? 'Sports event comments are not set up yet. Run the sports_event_social.sql migration.'
+          : error.message
+      );
+    }
+
+    setDeletingSportsEventCommentId(null);
   }
 
   useEffect(() => {
@@ -1845,32 +1934,75 @@ export default function HomeScreen({
 
                 <View style={{ marginTop: 20 }}>
                   <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: 10 }}>
-                    Comments
+                    Comments ({sportsEventComments.length})
                   </Text>
                   {sportsEventDetailLoading ? (
                     <View style={{ paddingVertical: 16, alignItems: 'center' }}>
                       <ActivityIndicator size="small" color={colors.brand} />
                     </View>
                   ) : sportsEventComments.length > 0 ? (
-                    <View style={{ gap: 10 }}>
+                    <View>
                       {sportsEventComments.map((comment) => (
-                        <View
+                        <TouchableOpacity
                           key={comment.id}
+                          activeOpacity={comment.userId === userId && !comment.id.startsWith('local-') ? 0.92 : 1}
+                          disabled={comment.userId !== userId || comment.id.startsWith('local-')}
+                          onLongPress={() => openSportsEventCommentActions(comment)}
                           style={{
-                            padding: 12,
-                            borderRadius: 16,
-                            backgroundColor: colors.card,
-                            borderWidth: 1,
-                            borderColor: colors.borderSubtle,
+                            flexDirection: 'row',
+                            gap: 10,
+                            marginBottom: 16,
                           }}
                         >
-                          <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>
-                            {comment.authorName}
-                          </Text>
-                          <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 18, marginTop: 4 }}>
-                            {comment.content}
-                          </Text>
-                        </View>
+                          <View
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 16,
+                              backgroundColor: colors.brand,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: 'white' }}>
+                              {(comment.authorName || 'A').charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+                              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
+                                  {comment.authorName}
+                                </Text>
+                                <Text style={{ fontSize: 11, color: colors.textTertiary }}>
+                                  {timeAgo(comment.createdAt)}
+                                </Text>
+                              </View>
+                              {comment.userId === userId && !comment.id.startsWith('local-') ? (
+                                <TouchableOpacity
+                                  onPress={() => openSportsEventCommentActions(comment)}
+                                  disabled={deletingSportsEventCommentId === comment.id}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                  style={{
+                                    width: 24,
+                                    height: 24,
+                                    borderRadius: 12,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    opacity: deletingSportsEventCommentId === comment.id ? 0.45 : 1,
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
+                                </TouchableOpacity>
+                              ) : null}
+                            </View>
+                            <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 20 }}>
+                              {comment.content}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
                       ))}
                     </View>
                   ) : (

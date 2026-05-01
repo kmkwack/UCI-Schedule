@@ -1744,3 +1744,17 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`the-seans-site/index.html`** — Removed photo-based sections and replaced them with product-native interface compositions, including a richer Product Idea showcase that mirrors ClassMate’s Today, ClassMates, Boards, timetable, and campus-expansion screens.
 - **`the-seans-site/styles.css`** — Replaced the photo hero and huddle image treatment with abstract product-system visuals, added richer app mockup components, and tuned responsive layouts for the denser interface scenes.
 - **`the-seans-site/script.js`** — Updated the hero parallax transform to suit the new non-photo product canvas.
+
+### Session 64ly (Sports event comment deletion)
+- **`supabase/sql/sports_event_social.sql`** — Added delete grants and an owner-only RLS delete policy for sports event comments so users can remove their own game-thread comments.
+- **`src/screens/HomeScreen.tsx`** — Added an owner-only delete affordance to sports event comments, with optimistic removal and rollback on Supabase errors.
+
+### Session 64lz (Long-press sports comment delete)
+- **`src/screens/HomeScreen.tsx`** — Added long-press deletion to the user’s own sports event comments so deletion is discoverable even if the small trash icon is easy to miss.
+
+### Session 64ma (Align sports comments with board comments)
+- **`src/screens/HomeScreen.tsx`** — Restyled sports event comments to match the board comment pattern with avatar, author/time metadata, plain thread rows, and an ellipsis options menu instead of a separate card-style trash button.
+
+### Session 64mb (Move comment options to top right)
+- **`src/screens/BoardScreen.tsx`** — Moved the board comment ellipsis menu from the lower action row to the comment header’s top-right corner so like/reply actions stay visually clean.
+- **`src/screens/HomeScreen.tsx`** — Moved the sports event comment ellipsis menu to the same top-right header position for consistency with board comments.

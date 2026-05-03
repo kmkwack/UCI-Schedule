@@ -263,6 +263,9 @@ const QUARTERS = [
 ### Session 75 (Persist C/F temperature preference)
 - `src/screens/HomeScreen.tsx` — Added `tempUnitLoaded` state + two effects: one loads `temp_unit` from AsyncStorage on mount and sets `useCelsius`; the other saves `'C'`/`'F'` to AsyncStorage whenever `useCelsius` changes (guarded by `tempUnitLoaded` to avoid overwriting stored value before load completes).
 
+### Session 76 (Friend timetable header — long name truncation + first/last only in all name displays)
+- `src/screens/FriendsScreen.tsx` — Left section of friend timetable header given `flex: 1` + `minWidth: 0` so it never crowds the quarter pill. Name and email texts get `numberOfLines={1} ellipsizeMode="tail"`. Avatar marked `flexShrink: 0` so it never collapses. Added `firstLastName()` helper; applied to every name display site: Add Friend search results, friends list rows, incoming request rows, sent request rows, and friend timetable header.
+
 ### Session 61 (RMP moved to ReviewsModal + Reviews button layout)
 - `src/components/ReviewsModal.tsx` — Added `sectionType: string` prop. Added RMP row in course info section (shows prof name as tappable link to RateMyProfessors). `fetchReviews` and `handleSubmit` filter/set `section_type`. Supabase `reviews` table requires `ALTER TABLE reviews ADD COLUMN section_type TEXT;`.
 - `src/screens/CoursePickerScreen.tsx` — Removed RMP button from section rows. Reviews button moved directly beneath Add button. Star rating ("★ X.X · N ratings") moved beneath Reviews button in right column. `fetchReviewSummary(courseCode, sectionType)` cache keyed as `"ECON 100A::Lec"`. Early-return guard: `if (cache[key]?.count)` (not truthy check). `handleExpandCourse` fetches summaries for all unique section types in the course.

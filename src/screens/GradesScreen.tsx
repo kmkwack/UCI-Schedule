@@ -8,6 +8,7 @@ import {
 import Svg, { Path, Circle, Line, Defs, ClipPath, G, LinearGradient, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, quarterKey, quarterLabel, resolveCurrentQuarter } from '../data/courses';
+import { gradeScaleForSchool } from '../data/schools';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 
@@ -15,18 +16,9 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-type Props = { timetables: Timetable[]; userId: string; bottomInset?: number; scrollToTopTrigger?: number };
+type Props = { timetables: Timetable[]; userId: string; school: string; bottomInset?: number; scrollToTopTrigger?: number };
 
 // ── constants ─────────────────────────────────────────────────────────────────
-
-const GRADE_OPTIONS = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D', 'F', 'P', 'NP'];
-
-const GRADE_POINTS: Record<string, number> = {
-  'A+': 4.0, 'A': 4.0, 'A-': 3.7, 'B+': 3.3, 'B': 3.0, 'B-': 2.7,
-  'C+': 2.3, 'C': 2.0, 'C-': 1.7, 'D': 1.0, 'F': 0.0,
-  // P and NP do not affect GPA — omitted intentionally
-};
-
 
 // ── GPA chart ─────────────────────────────────────────────────────────────────
 
@@ -106,7 +98,7 @@ function visibleXAxisIndices(pointCount: number, chartWidth: number) {
   return Array.from(indices).sort((a, b) => a - b);
 }
 
-function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
+function GpaChart({ history, maxGpa }: { history: { label: string; gpa: number }[]; maxGpa: number }) {
   const { colors } = useTheme();
   const screenWidth = Dimensions.get('window').width;
   const [containerWidth, setContainerWidth] = useState(0);
@@ -117,10 +109,10 @@ function GpaChart({ history }: { history: { label: string; gpa: number }[] }) {
   const hPad = 10;
 
   const dataMin = history.length > 0 ? Math.min(...history.map(d => d.gpa)) : 0;
-  const dataMax = history.length > 0 ? Math.max(...history.map(d => d.gpa)) : 4;
+  const dataMax = history.length > 0 ? Math.max(...history.map(d => d.gpa)) : maxGpa;
   // Round down to nearest 0.5 for minY, up to nearest 0.5 for maxY, with at least 0.5 range
   const minY = Math.max(0, Math.floor(dataMin * 2) / 2 - 0.5);
-  const maxY = Math.min(4, Math.ceil(dataMax * 2) / 2 + 0.5);
+  const maxY = Math.min(maxGpa, Math.ceil(dataMax * 2) / 2 + 0.5);
   const range = maxY - minY;
   // Generate y-axis labels evenly spaced
   const yLabelCount = 5;
@@ -310,11 +302,12 @@ function GradeBadge({ grade, onPress }: { grade?: string; onPress: () => void })
 // ── grade picker modal ────────────────────────────────────────────────────────
 
 function GradePickerModal({
-  visible, current, currentUnits, onSelect, onSetUnits, onClose,
+  visible, current, currentUnits, gradeOptions, onSelect, onSetUnits, onClose,
 }: {
   visible: boolean;
   current?: string;
   currentUnits: number;
+  gradeOptions: string[];
   onSelect: (g: string) => void;
   onSetUnits: (u: number) => void;
   onClose: () => void;
@@ -335,9 +328,9 @@ function GradePickerModal({
           }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 16 }}>Select Grade</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              {GRADE_OPTIONS.map(g => {
+              {gradeOptions.map(g => {
                 const selected = current === g;
-                const isWide = g === 'NP';
+                const isWide = g.length > 1;
                 return (
                   <TouchableOpacity
                     key={g}
@@ -400,13 +393,14 @@ function GradePickerModal({
 // ── past semester section ─────────────────────────────────────────────────────
 
 function PastQuarterSection({
-  label, qk, courses, grades, unitOverrides, onEditGrade, defaultExpanded,
+  label, qk, courses, grades, unitOverrides, gradePoints, onEditGrade, defaultExpanded,
 }: {
   label: string;
   qk: string;
   courses: Course[];
   grades: Record<string, string>;
   unitOverrides: Record<string, number>;
+  gradePoints: Record<string, number>;
   onEditGrade: (key: string) => void;
   defaultExpanded?: boolean;
 }) {
@@ -420,17 +414,17 @@ function PastQuarterSection({
       return { units, grade };
     });
     const gradedRows = rows.filter(row => !!row.grade);
-    const gpaRows = rows.filter(row => row.grade && GRADE_POINTS[row.grade] !== undefined);
+    const gpaRows = rows.filter(row => row.grade && gradePoints[row.grade] !== undefined);
     const totalUnits = rows.reduce((sum, row) => sum + row.units, 0);
     const gpaUnits = gpaRows.reduce((sum, row) => sum + row.units, 0);
-    const gpaPoints = gpaRows.reduce((sum, row) => sum + GRADE_POINTS[row.grade as string] * row.units, 0);
+    const gpaPoints = gpaRows.reduce((sum, row) => sum + gradePoints[row.grade as string] * row.units, 0);
     return {
       gpa: gpaUnits > 0 ? (gpaPoints / gpaUnits).toFixed(2) : '—',
       totalUnits,
       gpaUnits,
       gradedCount: gradedRows.length,
     };
-  }, [courses, grades, qk, unitOverrides]);
+  }, [courses, gradePoints, grades, qk, unitOverrides]);
 
   const toggle = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -546,8 +540,10 @@ function PastQuarterSection({
 
 // ── main screen ───────────────────────────────────────────────────────────────
 
-export default function GradesScreen({ timetables, userId, bottomInset = 0, scrollToTopTrigger = 0 }: Props) {
+export default function GradesScreen({ timetables, userId, school, bottomInset = 0, scrollToTopTrigger = 0 }: Props) {
   const { colors } = useTheme();
+  const gradeScale = gradeScaleForSchool(school);
+  const gradePoints = gradeScale.points;
   const CURRENT_QUARTER: Quarter = resolveCurrentQuarter(timetables);
   const CURRENT_QK = quarterKey(CURRENT_QUARTER);
   const currentTimetable = timetables.find(t => t.quarterKey === CURRENT_QK && t.name === 'My Schedule') ?? null;
@@ -643,10 +639,10 @@ export default function GradesScreen({ timetables, userId, bottomInset = 0, scro
     const quarterGpa = (qk: string, courses: Course[]) => {
       const graded = courses.filter(c => {
         const g = grades[gk(qk, c.id)];
-        return g && GRADE_POINTS[g] !== undefined;
+        return g && gradePoints[g] !== undefined;
       });
       const totalCredits = graded.reduce((s, c) => s + getUnits(qk, c), 0);
-      const totalPoints  = graded.reduce((s, c) => s + GRADE_POINTS[grades[gk(qk, c.id)]] * getUnits(qk, c), 0);
+      const totalPoints  = graded.reduce((s, c) => s + gradePoints[grades[gk(qk, c.id)]] * getUnits(qk, c), 0);
       return totalCredits > 0 ? totalPoints / totalCredits : 0;
     };
 
@@ -656,25 +652,25 @@ export default function GradesScreen({ timetables, userId, bottomInset = 0, scro
       })),
       { label: quarterLabel(CURRENT_QUARTER), gpa: quarterGpa(CURRENT_QK, activeCourses) },
     ].filter(p => p.gpa > 0);
-  }, [pastQuarterItems, grades, activeCourses, unitOverrides]);
+  }, [pastQuarterItems, grades, activeCourses, unitOverrides, gradePoints]);
 
   const { gpa, credits, courseCount } = useMemo(() => {
     const gradedActive = activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0).filter(c => {
       const g = grades[gk(CURRENT_QK, c.id)];
-      return g && GRADE_POINTS[g] !== undefined;
+      return g && gradePoints[g] !== undefined;
     });
     const activeCredits = gradedActive.reduce((s, c) => s + getUnits(CURRENT_QK, c), 0);
-    const activePoints  = gradedActive.reduce((s, c) => s + GRADE_POINTS[grades[gk(CURRENT_QK, c.id)]] * getUnits(CURRENT_QK, c), 0);
+    const activePoints  = gradedActive.reduce((s, c) => s + gradePoints[grades[gk(CURRENT_QK, c.id)]] * getUnits(CURRENT_QK, c), 0);
 
     const pastCourses = pastQuarterItems.flatMap(({ qk, courses }) =>
       courses.map(c => ({ ...c, _qk: qk }))
     );
     const gradedPast = pastCourses.filter(c => {
       const g = grades[gk(c._qk, c.id)];
-      return g && GRADE_POINTS[g] !== undefined;
+      return g && gradePoints[g] !== undefined;
     });
     const pastCredits = gradedPast.reduce((s, c) => s + getUnits(c._qk, c), 0);
-    const pastPoints  = gradedPast.reduce((s, c) => s + GRADE_POINTS[grades[gk(c._qk, c.id)]] * getUnits(c._qk, c), 0);
+    const pastPoints  = gradedPast.reduce((s, c) => s + gradePoints[grades[gk(c._qk, c.id)]] * getUnits(c._qk, c), 0);
 
     const totalCredits = pastCredits + activeCredits;
     const gpaVal = totalCredits > 0 ? (pastPoints + activePoints) / totalCredits : 0;
@@ -685,7 +681,7 @@ export default function GradesScreen({ timetables, userId, bottomInset = 0, scro
              + activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0).reduce((s, c) => s + getUnits(CURRENT_QK, c), 0),
       courseCount: pastQuarterItems.flatMap(q => q.courses).length + activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0).length,
     };
-  }, [grades, activeCourses, pastQuarterItems, unitOverrides]);
+  }, [grades, activeCourses, pastQuarterItems, unitOverrides, gradePoints]);
 
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => {
@@ -736,8 +732,13 @@ export default function GradesScreen({ timetables, userId, bottomInset = 0, scro
         shadowRadius: 20,
         elevation: 5,
       }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 14 }}>GPA Trend</Text>
-        <GpaChart history={gpaHistory} />
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>GPA Trend</Text>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary, textAlign: 'right', flexShrink: 1 }}>
+            {gradeScale.sourceLabel}
+          </Text>
+        </View>
+        <GpaChart history={gpaHistory} maxGpa={gradeScale.maxGpa} />
       </View>
 
       {/* Current quarter */}
@@ -750,6 +751,7 @@ export default function GradesScreen({ timetables, userId, bottomInset = 0, scro
         courses={activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0)}
         grades={grades}
         unitOverrides={unitOverrides}
+        gradePoints={gradePoints}
         onEditGrade={setPickerCourseId}
         defaultExpanded={false}
       />
@@ -768,6 +770,7 @@ export default function GradesScreen({ timetables, userId, bottomInset = 0, scro
               courses={item.courses}
               grades={grades}
               unitOverrides={unitOverrides}
+              gradePoints={gradePoints}
               onEditGrade={setPickerCourseId}
               defaultExpanded={false}
             />
@@ -779,6 +782,7 @@ export default function GradesScreen({ timetables, userId, bottomInset = 0, scro
       <GradePickerModal
         visible={pickerCourseId !== null}
         current={pickerCourseId ? grades[pickerCourseId] : undefined}
+        gradeOptions={gradeScale.options}
         currentUnits={(() => {
           if (!pickerCourseId) return 0;
           const [qk, courseId] = pickerCourseId.split('|');

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, QUARTERS, quarterKey, quarterLabel, getBlockColors, normalizeTimetableTheme } from '../data/courses';
+import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, getBlockColors, normalizeTimetableTheme } from '../data/courses';
+import { academicSystemNoun, buildTermCandidates, termLabel, termOrderValue } from '../data/schools';
 import { getUciMapLocation, type UciMapLocation } from '../data/uciLocations';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -146,39 +147,31 @@ async function openDiscordInvite(url: string) {
   }
 }
 
-let seededQuartersCache: Set<string> | null = null;
+const seededQuartersCacheBySchool: Record<string, Set<string>> = {};
 
-async function prefetchSeededQuarters() {
-  if (seededQuartersCache) return;
-  const allCandidates: Quarter[] = [];
-  for (let year = 2020; year <= 2026; year++) {
-    allCandidates.push(
-      { year: String(year), quarter: 'Winter' },
-      { year: String(year), quarter: 'Spring' },
-      { year: String(year), quarter: 'Summer1' },
-      { year: String(year), quarter: 'Summer10wk' },
-      { year: String(year), quarter: 'Summer2' },
-      { year: String(year), quarter: 'Fall' },
-    );
-  }
+async function prefetchSeededQuarters(school: string) {
+  if (seededQuartersCacheBySchool[school]) return;
+  const allCandidates = buildTermCandidates(school, 2020, 2026);
   const results = await Promise.all(
     allCandidates.map(async (q) => {
       const { count } = await supabase
         .from('sections')
         .select('*', { count: 'exact', head: true })
+        .eq('school', school)
         .eq('quarter_key', quarterKey(q));
       return (count ?? 0) > 0 ? q : null;
     })
   );
   const seeded = results.filter((q): q is Quarter => q !== null);
-  seededQuartersCache = new Set(seeded.map((q) => quarterKey(q)));
+  seededQuartersCacheBySchool[school] = new Set(seeded.map((q) => quarterKey(q)));
 }
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
 const DEFAULT_START_HOUR = 8;
 const DEFAULT_END_HOUR = 17;
 
-const TIME_LABEL_WIDTH = 44;
+const TIME_LABEL_WIDTH = 36;
+const EXPORT_TIME_LABEL_WIDTH = 32;
 const GRID_LEFT_PAD = 16;
 const GRID_OUTER_HORIZONTAL_PADDING = 30;
 
@@ -261,21 +254,20 @@ export default function TimetableScreen({
     if (scrollToTopTrigger > 0) timetableScrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [scrollToTopTrigger]);
 
-  useEffect(() => { prefetchSeededQuarters(); }, []);
+  useEffect(() => { prefetchSeededQuarters(school); }, [school]);
   const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
   const quarterDropdownAnim = useRef(new Animated.Value(0)).current;
   const quarterItemAnims = useRef<Animated.Value[]>([]);
 
   const sortedQuarterKeys = useMemo(() => {
-    const QORDER: Record<string, number> = { Winter: 0, Spring: 1, Fall: 2 };
     return Array.from(new Set([quarterKey(selectedQuarter), ...timetables.map((t) => t.quarterKey)]))
       .sort((a, b) => {
         const [aYear, aQ] = a.split('-');
         const [bYear, bQ] = b.split('-');
         if (bYear !== aYear) return Number(bYear) - Number(aYear);
-        return QORDER[bQ] - QORDER[aQ];
+        return termOrderValue(bQ, school) - termOrderValue(aQ, school);
       });
-  }, [selectedQuarter, timetables]);
+  }, [school, selectedQuarter, timetables]);
 
   // Keep item anim array in sync with quarter count
   while (quarterItemAnims.current.length < sortedQuarterKeys.length) {
@@ -647,7 +639,8 @@ export default function TimetableScreen({
       ? gridWidth + GRID_LEFT_PAD
       : screenWidth - GRID_OUTER_HORIZONTAL_PADDING;
 
-  const dayColumnWidth = usableGridWidth / (visibleDays.length + 1);
+  const timeColumnWidth = Math.min(TIME_LABEL_WIDTH, usableGridWidth * 0.13);
+  const dayColumnWidth = (usableGridWidth - timeColumnWidth) / visibleDays.length;
   const compactGrid = visibleDays.length >= 6 || totalHours >= 11;
   const codeFontSize = compactGrid ? 9 : 10;
   const metaFontSize = compactGrid ? 8 : 9;
@@ -667,12 +660,14 @@ export default function TimetableScreen({
       ? 158
       : screenHeight * 0.5;
   // outer padding, card padding, card border, and grid border are removed from the capture width.
-  const exportDayColumnWidth = (
+  const exportUsableGridWidth = (
     exportSnapshotWidth -
     exportOuterPadding * 2 -
     exportCardPadding * 2 -
     4
-  ) / (visibleDays.length + 1);
+  );
+  const exportTimeColumnWidth = Math.min(EXPORT_TIME_LABEL_WIDTH, exportUsableGridWidth * 0.12);
+  const exportDayColumnWidth = (exportUsableGridWidth - exportTimeColumnWidth) / visibleDays.length;
   const exportHourHeight = Math.max(
     exportFormat === 'square' ? 18 : 22,
     Math.min(exportFormat === 'square' ? 26 : 34, exportAvailableGridHeight / Math.max(totalHours, 1))
@@ -799,23 +794,13 @@ export default function TimetableScreen({
   async function openAddQuarterModal() {
     const existingQks = new Set(timetables.map((t) => t.quarterKey));
 
-    // Build the full candidate list matching the seeder range (2020–2026)
-    const allCandidates: Quarter[] = [];
-    for (let year = 2020; year <= 2026; year++) {
-      allCandidates.push(
-        { year: String(year), quarter: 'Winter' },
-        { year: String(year), quarter: 'Spring' },
-        { year: String(year), quarter: 'Summer1' },
-        { year: String(year), quarter: 'Summer10wk' },
-        { year: String(year), quarter: 'Summer2' },
-        { year: String(year), quarter: 'Fall' },
-      );
-    }
+    const allCandidates = buildTermCandidates(school, 2020, 2026);
 
     // If we already know which quarters are seeded, skip the network call
+    const seededQuartersCache = seededQuartersCacheBySchool[school] ?? null;
     if (seededQuartersCache) {
       const available = allCandidates
-        .filter((q) => !existingQks.has(quarterKey(q)) && seededQuartersCache!.has(quarterKey(q)))
+        .filter((q) => !existingQks.has(quarterKey(q)) && seededQuartersCache.has(quarterKey(q)))
         .reverse();
       const uniqueYears = [...new Set(available.map((q) => q.year))].length;
       const h = Math.min(360, uniqueYears * 53);
@@ -839,13 +824,14 @@ export default function TimetableScreen({
         const { count } = await supabase
           .from('sections')
           .select('*', { count: 'exact', head: true })
+          .eq('school', school)
           .eq('quarter_key', quarterKey(q));
         return (count ?? 0) > 0 ? q : null;
       })
     );
 
     const seeded = results.filter((q): q is Quarter => q !== null);
-    seededQuartersCache = new Set(seeded.map((q) => quarterKey(q)));
+    seededQuartersCacheBySchool[school] = new Set(seeded.map((q) => quarterKey(q)));
 
     const uniqueYears = [...new Set(seeded.map((q) => q.year))].length;
     const h = Math.min(360, uniqueYears * 53);
@@ -1023,7 +1009,7 @@ export default function TimetableScreen({
 
     await Sharing.shareAsync(uri, {
       mimeType: 'image/png',
-      dialogTitle: `${quarterLabel(selectedQuarter)} schedule · ${SHARE_FORMATS.find((item) => item.key === format)?.label ?? 'Share'}`,
+      dialogTitle: `${termLabel(selectedQuarter, school)} schedule · ${SHARE_FORMATS.find((item) => item.key === format)?.label ?? 'Share'}`,
     });
   }
 
@@ -1150,7 +1136,7 @@ export default function TimetableScreen({
                       }}
                     >
                       <Text style={{ color: isActive ? colors.brand : colors.textSecondary, fontWeight: isActive ? '700' : '400', fontSize: 14 }}>
-                        {quarterLabel(q)}
+                        {termLabel(q, school, true)}
                       </Text>
                       {isActive && <Ionicons name="checkmark" size={16} color={colors.brand} />}
                     </TouchableOpacity>
@@ -1185,7 +1171,7 @@ export default function TimetableScreen({
             {[
               { icon: 'add', label: 'Add Course', onPress: () => { if (timetables.length > 0) { closeAddMenu(); onOpenCoursePicker(); } }, disabled: timetables.length === 0 },
               { icon: 'calendar-outline', label: 'Add Timetable', onPress: () => { closeAddMenu(); onCreateTimetable(); }, disabled: false },
-              { icon: 'earth-outline', label: 'Add Quarter', onPress: () => { closeAddMenu(); setTimeout(() => openAddQuarterModal(), 200); }, disabled: false },
+              { icon: 'earth-outline', label: `Add ${academicSystemNoun(school, true)}`, onPress: () => { closeAddMenu(); setTimeout(() => openAddQuarterModal(), 200); }, disabled: false },
             ].map((item, i) => (
               <Animated.View
                 key={item.label}
@@ -1236,11 +1222,11 @@ export default function TimetableScreen({
 
               {loadingAddableQuarters ? (
                 <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-                  <Text style={{ color: colors.textTertiary, fontSize: 14 }}>Loading quarters…</Text>
+                  <Text style={{ color: colors.textTertiary, fontSize: 14 }}>Loading {academicSystemNoun(school)}s...</Text>
                 </View>
               ) : addableQuarters.length === 0 ? (
                 <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-                  <Text style={{ color: colors.textTertiary, fontSize: 14 }}>No new quarters available</Text>
+                  <Text style={{ color: colors.textTertiary, fontSize: 14 }}>No new {academicSystemNoun(school)}s available</Text>
                 </View>
               ) : (
                 <Animated.View style={{ height: contentHeightAnim, overflow: 'hidden' }}>
@@ -1263,7 +1249,7 @@ export default function TimetableScreen({
                             >
                               <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>{year}</Text>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <Text style={{ fontSize: 14, color: colors.textTertiary }}>{count} quarter{count !== 1 ? 's' : ''}</Text>
+                                <Text style={{ fontSize: 14, color: colors.textTertiary }}>{count} {academicSystemNoun(school)}{count !== 1 ? 's' : ''}</Text>
                                 <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
                               </View>
                             </TouchableOpacity>
@@ -1273,7 +1259,7 @@ export default function TimetableScreen({
                     );
                   })()}
 
-                  {/* Quarter drill-down — absolutely overlays the year list, slides in from right */}
+              {/* Term drill-down — absolutely overlays the year list, slides in from right */}
                   {mountedYear && (
                     <Animated.View
                       style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.card, transform: [{ translateX: addYearSlideAnim }] }}
@@ -1292,7 +1278,7 @@ export default function TimetableScreen({
                                 borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.borderSubtle,
                               }}
                             >
-                              <Text style={{ fontSize: 16, color: colors.text }}>{q.quarter}</Text>
+                              <Text style={{ fontSize: 16, color: colors.text }}>{termLabel(q, school, true)}</Text>
                               <Ionicons name="add-circle-outline" size={20} color={colors.brand} />
                             </TouchableOpacity>
                           ))}
@@ -1835,7 +1821,7 @@ export default function TimetableScreen({
               }
               school={school}
               userId={userId}
-              semesterLabel={quarterLabel(selectedQuarter)}
+              semesterLabel={termLabel(selectedQuarter, school)}
               quarterKey={quarterKey(selectedQuarter)}
             />
           )}
@@ -1877,7 +1863,7 @@ export default function TimetableScreen({
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Add Discord link</Text>
                   <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
-                    {discordLinkCourse ? `${discordLinkCourse.code} · ${quarterLabel(selectedQuarter)}` : 'Paste a class invite link.'}
+                    {discordLinkCourse ? `${discordLinkCourse.code} · ${termLabel(selectedQuarter, school)}` : 'Paste a class invite link.'}
                   </Text>
                 </View>
                 <TouchableOpacity onPress={closeDiscordLinkModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -1959,8 +1945,8 @@ export default function TimetableScreen({
         {/* Header */}
         <View style={{ paddingHorizontal: 18, paddingBottom: 10, paddingTop: 6 }}>
           {/* Row 1: Title + Quarter picker + three-dots */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <Text style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>
               Timetable
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -1984,7 +1970,7 @@ export default function TimetableScreen({
                 }}
               >
                 <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
-                  {timetables.length === 0 ? '--' : quarterLabel(selectedQuarter)}
+                  {timetables.length === 0 ? '--' : termLabel(selectedQuarter, school, true)}
                 </Text>
                 <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
               </TouchableOpacity>
@@ -2097,7 +2083,7 @@ export default function TimetableScreen({
                   backgroundColor: gridHeaderBg,
                 }}
               >
-                <View style={{ width: dayColumnWidth }} />
+                <View style={{ width: timeColumnWidth }} />
                 {visibleDays.map((day) => (
                   <View
                     key={day}
@@ -2124,7 +2110,7 @@ export default function TimetableScreen({
                       flexDirection: 'row',
                     }}
                   >
-                    <View style={{ width: dayColumnWidth, height: timetableHeight }}>
+                    <View style={{ width: timeColumnWidth, height: timetableHeight }}>
                       {hourLabels.map((hour, index) => (
                         <View key={hour} style={{
                           position: 'absolute',
@@ -2169,7 +2155,7 @@ export default function TimetableScreen({
                           style={{
                             position: 'absolute',
                             top: index * hourHeight,
-                            left: -dayColumnWidth,
+                            left: -timeColumnWidth,
                             right: 0,
                             height: 1,
                             backgroundColor: gridLine,
@@ -2367,7 +2353,7 @@ export default function TimetableScreen({
                   letterSpacing: -0.7,
                 }}
               >
-                My {quarterLabel(selectedQuarter)} schedule
+                My {termLabel(selectedQuarter, school)} schedule
               </Text>
               <Text style={{ marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>
                 {activeTimetable?.name ?? 'My Schedule'} · {scheduledCourses.length} class{scheduledCourses.length === 1 ? '' : 'es'}
@@ -2396,7 +2382,7 @@ export default function TimetableScreen({
                   CLASSMATE
                 </Text>
                 <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 4 }}>
-                  {quarterLabel(selectedQuarter)}
+                  {termLabel(selectedQuarter, school, true)}
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
                   {activeTimetable?.name ?? 'My Schedule'}
@@ -2433,7 +2419,7 @@ export default function TimetableScreen({
                   backgroundColor: gridHeaderBg,
                 }}
               >
-                <View style={{ width: exportDayColumnWidth }} />
+                <View style={{ width: exportTimeColumnWidth }} />
                 {visibleDays.map((day) => (
                   <View
                     key={`export-header-${day}`}
@@ -2455,7 +2441,7 @@ export default function TimetableScreen({
 
               <View style={{ backgroundColor: gridFrameBg, height: exportTimetableHeight }}>
                 <View style={{ flexDirection: 'row' }}>
-                  <View style={{ width: exportDayColumnWidth, height: exportTimetableHeight }}>
+                  <View style={{ width: exportTimeColumnWidth, height: exportTimetableHeight }}>
                     {hourLabels.map((hour, index) => (
                       <View
                         key={`export-hour-${hour}`}
@@ -2504,7 +2490,7 @@ export default function TimetableScreen({
                         style={{
                           position: 'absolute',
                           top: index * exportHourHeight,
-                          left: -exportDayColumnWidth,
+                          left: -exportTimeColumnWidth,
                           right: 0,
                           height: 1,
                           backgroundColor: gridLine,

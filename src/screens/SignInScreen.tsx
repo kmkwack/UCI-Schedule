@@ -123,6 +123,19 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
       return false;
     }
 
+    const { error: metadataError } = await supabase.auth.updateUser({
+      data: {
+        classmate_signup_started: true,
+        classmate_school: university.name,
+      },
+    });
+
+    if (metadataError) {
+      await supabase.auth.signOut();
+      Alert.alert('Sign-in failed', metadataError.message);
+      return false;
+    }
+
     onSignedIn(userId, email);
     return true;
   };

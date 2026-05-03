@@ -4,17 +4,20 @@ import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, Linking, 
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
-import { Course, Quarter, blockColorKey, pastelForCourse, quarterKey, quarterLabel } from '../data/courses';
-import { enrichSportsEventsWithScheduleVenues, formatSportsEventTime, parseSportsCalendar, type SportsEvent } from '../data/sportsEvents';
+import { Course, Quarter, blockColorKey, pastelForCourse, quarterKey } from '../data/courses';
+import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
+import { academicSystemNoun, schoolCampusLabel, schoolFeatureEnabled, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
+import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 
 type Props = {
   activeCourses: Course[];
   selectedQuarter: Quarter;
   onOpenSettings: () => void;
   userId: string;
+  school: string;
   bottomInset?: number;
   scrollToTopTrigger?: number;
 };
@@ -134,8 +137,14 @@ function getQuarterBounds(selectedQuarter: Quarter) {
   const key = `${selectedQuarter.year}-${selectedQuarter.quarter}`;
   const range = QUARTER_DATES[key];
   if (!range) {
-    const fallbackStart = new Date(`${selectedQuarter.year}-01-01`);
-    const fallbackEnd = new Date(`${selectedQuarter.year}-03-31T23:59:59`);
+    const fallbackByTerm: Record<string, { start: string; end: string }> = {
+      Spring: { start: `${selectedQuarter.year}-01-10`, end: `${selectedQuarter.year}-05-15T23:59:59` },
+      Summer: { start: `${selectedQuarter.year}-06-01`, end: `${selectedQuarter.year}-08-15T23:59:59` },
+      Fall: { start: `${selectedQuarter.year}-08-20`, end: `${selectedQuarter.year}-12-20T23:59:59` },
+    };
+    const fallback = fallbackByTerm[selectedQuarter.quarter] ?? { start: `${selectedQuarter.year}-01-01`, end: `${selectedQuarter.year}-03-31T23:59:59` };
+    const fallbackStart = new Date(fallback.start);
+    const fallbackEnd = new Date(fallback.end);
     return { start: fallbackStart, end: fallbackEnd };
   }
   return { start: new Date(range.start), end: new Date(range.end) };
@@ -157,12 +166,12 @@ function getDaysRemainingInQuarter(now: Date, quarterEnd: Date) {
   return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
 }
 
-function getDateLabel(now: Date, selectedQuarter: Quarter, quarterStart: Date, quarterEnd: Date) {
+function getDateLabel(now: Date, selectedQuarter: Quarter, quarterStart: Date, quarterEnd: Date, school: string) {
   const dayName = DAY_LABELS[now.getDay()];
   const month = MONTH_LABELS[now.getMonth()];
   const date = now.getDate();
   const week = getWeekNumber(now, quarterStart, quarterEnd);
-  return `${month} ${date} ${dayName} · ${quarterLabel(selectedQuarter)} · Week ${week}`;
+  return `${month} ${date} ${dayName} · ${termLabel(selectedQuarter, school, true)} · Week ${week}`;
 }
 
 function formatEventDayLabel(date: Date) {
@@ -445,6 +454,7 @@ export default function HomeScreen({
   selectedQuarter,
   onOpenSettings,
   userId,
+  school,
   bottomInset = 0,
   scrollToTopTrigger = 0,
 }: Props) {
@@ -579,7 +589,14 @@ export default function HomeScreen({
 
   useEffect(() => {
     async function loadSports() {
-      const cached = await AsyncStorage.getItem('sports_cache');
+      const sportsCacheKey = `sports_cache_${school}`;
+      if (!schoolFeatureEnabled(school, 'sports')) {
+        setSportsEvents([]);
+        setSportsLoading(false);
+        return;
+      }
+
+      const cached = await AsyncStorage.getItem(sportsCacheKey);
       if (cached) {
         setSportsEvents(JSON.parse(cached).map((event: any) => (
           normalizeSportsEventForDisplay({ ...event, date: new Date(event.date) })
@@ -587,19 +604,16 @@ export default function HomeScreen({
         setSportsLoading(false);
       }
       try {
-        const response = await fetch('https://ucirvinesports.com/calendar');
-        const text = await response.text();
-        const parsedEvents = parseSportsCalendar(text, { maxDaysAhead: 7, includePastDays: 0 });
-        const events = await enrichSportsEventsWithScheduleVenues(parsedEvents);
+        const events = await fetchSportsEventsForSchool(school, { maxDaysAhead: 7, includePastDays: 0 });
         const normalizedEvents = events.map(normalizeSportsEventForDisplay);
         setSportsEvents(normalizedEvents);
-        void AsyncStorage.setItem('sports_cache', JSON.stringify(normalizedEvents));
+        void AsyncStorage.setItem(sportsCacheKey, JSON.stringify(normalizedEvents));
       } catch {}
       setSportsLoading(false);
     }
 
     void loadSports();
-  }, []);
+  }, [school]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30000);
@@ -624,7 +638,7 @@ export default function HomeScreen({
     let cancelled = false;
 
     async function loadClassmates() {
-      const cacheKey = `home_classmates_${userId}_${selectedQuarterKey}_${homeScheduleSignature}`;
+      const cacheKey = `home_classmates_${userId}_${school}_${selectedQuarterKey}_${homeScheduleSignature}`;
       const cached = await AsyncStorage.getItem(cacheKey);
       if (cached && !cancelled) {
         try {
@@ -635,6 +649,7 @@ export default function HomeScreen({
       const { data: requestRows, error: requestError } = await supabase
         .from('friend_requests')
         .select('sender_id, receiver_id, status')
+        .eq('school', school)
         .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
 
       if (cancelled) return;
@@ -662,9 +677,9 @@ export default function HomeScreen({
         { data: settingsData, error: settingsError },
         { data: timetableData, error: timetableError },
       ] = await Promise.all([
-        supabase.from('profiles').select('id, name, email').in('id', acceptedIds),
+        supabase.from('profiles').select('id, name, email').eq('school', school).in('id', acceptedIds),
         supabase.from('user_settings').select('user_id, timetable_visibility').in('user_id', acceptedIds),
-        supabase.from('timetables').select('user_id, name, courses').eq('quarter_key', selectedQuarterKey).in('user_id', acceptedIds),
+        supabase.from('timetables').select('user_id, name, courses').eq('school', school).eq('quarter_key', selectedQuarterKey).in('user_id', acceptedIds),
       ]);
 
       if (cancelled) return;
@@ -723,7 +738,7 @@ export default function HomeScreen({
     return () => {
       cancelled = true;
     };
-  }, [activeCourses, homeScheduleSignature, selectedQuarterKey, userId]);
+  }, [activeCourses, homeScheduleSignature, school, selectedQuarterKey, userId]);
 
   const todayCode = getTodayDayCode();
   const todayCourses = useMemo(
@@ -809,14 +824,24 @@ export default function HomeScreen({
     let cancelled = false;
 
     async function loadSportsEventParticipation() {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('sports_event_rsvps')
         .select('event_id, user_id, status')
+        .eq('school', school)
         .in('event_id', eventIds);
+
+      if (error && isMissingSchoolColumnError(error)) {
+        const fallback = await supabase
+          .from('sports_event_rsvps')
+          .select('event_id, user_id, status')
+          .in('event_id', eventIds);
+        data = fallback.data;
+        error = fallback.error;
+      }
 
       if (cancelled) return;
       if (error) {
-        if (error.code !== 'PGRST205') console.error('Failed to load sports event participation:', error);
+        if (error.code !== 'PGRST205' && !isMissingSchoolColumnError(error)) console.error('Failed to load sports event participation:', error);
         return;
       }
 
@@ -847,22 +872,40 @@ export default function HomeScreen({
     return () => {
       cancelled = true;
     };
-  }, [userId, visibleSportsEventIds]);
+  }, [school, userId, visibleSportsEventIds]);
 
   async function loadSportsEventSocial(event: SportsEvent) {
     setSportsEventDetailLoading(true);
-    const [rsvpResult, commentsResult] = await Promise.all([
+    let [rsvpResult, commentsResult] = await Promise.all([
       supabase
         .from('sports_event_rsvps')
         .select('user_id, status')
+        .eq('school', school)
         .eq('event_id', event.id),
       supabase
         .from('sports_event_comments')
         .select('id, event_id, user_id, content, created_at')
+        .eq('school', school)
         .eq('event_id', event.id)
         .order('created_at', { ascending: true })
         .limit(50),
     ]);
+
+    if (rsvpResult.error && isMissingSchoolColumnError(rsvpResult.error)) {
+      rsvpResult = await supabase
+        .from('sports_event_rsvps')
+        .select('user_id, status')
+        .eq('event_id', event.id);
+    }
+
+    if (commentsResult.error && isMissingSchoolColumnError(commentsResult.error)) {
+      commentsResult = await supabase
+        .from('sports_event_comments')
+        .select('id, event_id, user_id, content, created_at')
+        .eq('event_id', event.id)
+        .order('created_at', { ascending: true })
+        .limit(50);
+    }
 
     if (selectedSportsEventRef.current?.id !== event.id) {
       return;
@@ -887,7 +930,7 @@ export default function HomeScreen({
         }
         return next;
       });
-    } else if (rsvpResult.error.code !== 'PGRST205') {
+    } else if (rsvpResult.error.code !== 'PGRST205' && !isMissingSchoolColumnError(rsvpResult.error)) {
       console.error('Failed to load sports event RSVPs:', rsvpResult.error);
     }
 
@@ -900,6 +943,7 @@ export default function HomeScreen({
         const { data: profilesData, error: profilesError } = await supabase
           .from('profiles')
           .select('id, name, email')
+          .eq('school', school)
           .in('id', authorIds);
         if (!profilesError) {
           namesById = Object.fromEntries(
@@ -922,7 +966,7 @@ export default function HomeScreen({
         content: row.content,
         createdAt: row.created_at,
       })));
-    } else if (commentsResult.error.code !== 'PGRST205') {
+    } else if (commentsResult.error.code !== 'PGRST205' && !isMissingSchoolColumnError(commentsResult.error)) {
       console.error('Failed to load sports event comments:', commentsResult.error);
     }
 
@@ -985,14 +1029,16 @@ export default function HomeScreen({
       ? await supabase
           .from('sports_event_rsvps')
           .upsert({
+            school,
             event_id: event.id,
             user_id: userId,
             status: nextStatus,
             updated_at: new Date().toISOString(),
-          })
+          }, { onConflict: 'school,event_id,user_id' })
       : await supabase
           .from('sports_event_rsvps')
           .delete()
+          .eq('school', school)
           .eq('event_id', event.id)
           .eq('user_id', userId);
 
@@ -1051,6 +1097,7 @@ export default function HomeScreen({
     const { data, error } = await supabase
       .from('sports_event_comments')
       .insert({
+        school,
         event_id: event.id,
         user_id: userId,
         content,
@@ -1146,6 +1193,7 @@ export default function HomeScreen({
     const { error } = await supabase
       .from('sports_event_comments')
       .delete()
+      .eq('school', school)
       .eq('id', comment.id)
       .eq('user_id', userId);
 
@@ -1267,8 +1315,14 @@ export default function HomeScreen({
             </View>
           </TouchableOpacity>
         </View>
+        <Text
+          numberOfLines={1}
+          style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary, marginTop: 2 }}
+        >
+          {schoolCampusLabel(school)}
+        </Text>
         <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 4 }}>
-          {getDateLabel(now, selectedQuarter, quarterStart, quarterEnd)}
+          {getDateLabel(now, selectedQuarter, quarterStart, quarterEnd, school)}
         </Text>
       </View>
 
@@ -1473,21 +1527,19 @@ export default function HomeScreen({
             <View style={{
               ...raisedCardStyle,
               backgroundColor: colors.card,
-              padding: 22,
+              paddingHorizontal: 18,
+              paddingVertical: 17,
             }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                  <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
                     {todayCourses.length > 0 ? 'You are clear for the rest of today' : 'No classes on your schedule today'}
                   </Text>
-                  <Text style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }}>
-                    Take a lighter campus day
-                  </Text>
-                  <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 6 }}>
+                  <Text style={{ fontSize: 13, lineHeight: 18, color: colors.textSecondary, marginTop: 7 }}>
                     Open your timetable to add a class or switch plans.
                   </Text>
                 </View>
-                <View style={{ width: 74, alignItems: 'flex-end' }}>
+                <View style={{ width: 56, alignItems: 'flex-end' }}>
                   <ProgressRing
                     progress={heroProgress}
                     primaryLabel={heroProgressLabel}
@@ -1496,6 +1548,8 @@ export default function HomeScreen({
                     trackColor={colors.bgTertiary}
                     textColor={colors.text}
                     subTextColor={colors.textTertiary}
+                    size={56}
+                    strokeWidth={5}
                   />
                 </View>
               </View>
@@ -1512,9 +1566,12 @@ export default function HomeScreen({
           padding: 18,
         }}>
           <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
-            {quarterLabel(selectedQuarter)}
+            {termLabel(selectedQuarter, school)}
           </Text>
-          <View style={{ alignItems: 'center', marginTop: 16 }}>
+          <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 3 }}>
+            {academicSystemNoun(school, true)} progress
+          </Text>
+          <View style={{ alignItems: 'center', marginTop: 12 }}>
             <ProgressRing
               progress={quarterProgress}
               primaryLabel={`${Math.round(quarterProgress * 100)}%`}
@@ -1523,8 +1580,8 @@ export default function HomeScreen({
               trackColor={colors.bgTertiary}
               textColor={colors.text}
               subTextColor={colors.textTertiary}
-              size={112}
-              strokeWidth={7}
+              size={92}
+              strokeWidth={6}
             />
           </View>
         </View>

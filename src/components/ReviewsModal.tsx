@@ -179,6 +179,10 @@ export default function ReviewsModal({
     if (!visible) return;
     const cacheKey = `${department}${courseNumber}${instructor}`;
     if (cacheKey in gradesCache) return;
+    if (school !== 'UC Irvine') {
+      setGradesCache((prev) => ({ ...prev, [cacheKey]: null }));
+      return;
+    }
     setGradeLoading(true);
     const params = new URLSearchParams({ department, courseNumber });
     if (instructor) params.append('instructor', instructor);
@@ -189,7 +193,7 @@ export default function ReviewsModal({
       })
       .catch(() => setGradesCache((prev) => ({ ...prev, [cacheKey]: null })))
       .finally(() => setGradeLoading(false));
-  }, [visible, instructor]);
+  }, [visible, instructor, school, department, courseNumber]);
 
   async function fetchCourseInfo() {
     const rowId = sectionId ? `${sectionId}::${quarterKey}` : null;
@@ -210,6 +214,7 @@ export default function ReviewsModal({
       const { data } = await supabase
         .from('sections')
         .select('final_exam, restrictions, prerequisite_link, section_comment')
+        .eq('school', school)
         .eq('id', rowId)
         .limit(1);
       rows = (data ?? []) as typeof rows;
@@ -219,6 +224,7 @@ export default function ReviewsModal({
       const { data } = await supabase
         .from('sections')
         .select('final_exam, restrictions, prerequisite_link, section_comment')
+        .eq('school', school)
         .eq('code', courseCode)
         .eq('quarter_key', quarterKey)
         .limit(25);
@@ -268,7 +274,7 @@ export default function ReviewsModal({
       ({ error } = await supabase.from('reviews').update({
         rating, difficulty, workload, content: content.trim(),
         quarter: quarterTaken || semesterLabel,
-      }).eq('id', editingReviewId));
+      }).eq('id', editingReviewId).eq('school', school).eq('user_id', userId));
     } else {
       ({ error } = await supabase.from('reviews').insert({
         school, course_code: courseCode, department, course_number: courseNumber,
@@ -301,7 +307,7 @@ export default function ReviewsModal({
   }
 
   async function handleDelete(reviewId: string) {
-    const { error } = await supabase.from('reviews').delete().eq('id', reviewId);
+    const { error } = await supabase.from('reviews').delete().eq('id', reviewId).eq('school', school).eq('user_id', userId);
     if (error) { Alert.alert('Could not delete review', error.message); return; }
     setReviews(prev => prev.filter(r => r.id !== reviewId));
   }

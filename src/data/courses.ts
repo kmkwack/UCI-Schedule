@@ -114,6 +114,23 @@ const COURSE_COLORS = [
   '#e879f9', '#2dd4bf', '#facc15', '#94a3b8',
 ];
 
+const VIVID_COURSE_COLORS = [
+  '#DC2626', // red
+  '#EA580C', // orange
+  '#FACC15', // yellow
+  '#16A34A', // green
+  '#0891B2', // cyan
+  '#2563EB', // blue
+  '#4F46E5', // indigo
+  '#9333EA', // violet
+  '#DB2777', // magenta
+  '#BE123C', // rose
+  '#65A30D', // lime
+  '#0D9488', // teal
+  '#7C3AED', // purple
+  '#F59E0B', // amber
+];
+
 // FNV-1a hash — far better distribution than weighted sum for similar strings
 function hashStr(s: string): number {
   let hash = 2166136261;
@@ -257,6 +274,11 @@ export function colorForCourse(courseCode: string): string {
   return COURSE_COLORS[Math.abs(hashStr(courseCode)) % COURSE_COLORS.length];
 }
 
+/** Saturated rainbow color for a course code — used in Colorful theme. */
+export function vividColorForCourse(courseCode: string): string {
+  return VIVID_COURSE_COLORS[Math.abs(hashStr(courseCode)) % VIVID_COURSE_COLORS.length];
+}
+
 /** Color key includes section type so Lec and Dis get distinct colors. */
 export function blockColorKey(course: Course): string {
   const type = course.sectionLabel?.split(' ')[0];
@@ -275,8 +297,12 @@ export function getBlockColors(course: Course, themeInput: TimetableTheme | stri
     case 'minimal':
       return { bg: '#f5f6f8', text: '#4b5563', border: '#d1d5db' };
     case 'colorful': {
-      const color = colorForCourse(blockColorKey(course));
-      return { bg: color, text: relativeLuminance(color) > 0.55 ? '#111827' : '#ffffff', border: color };
+      const color = vividColorForCourse(blockColorKey(course));
+      return {
+        bg: color,
+        text: relativeLuminance(color) > 0.55 ? '#111827' : '#ffffff',
+        border: mixHex(color, '#000000', 0.16),
+      };
     }
     case 'soft': {
       const color = colorForCourse(blockColorKey(course));

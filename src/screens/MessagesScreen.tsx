@@ -137,13 +137,19 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const messageListRef = useRef<FlatList<MessageBubble>>(null);
   const messageInputRef = useRef<TextInput>(null);
+  const messageScrollTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const hasValidUserId = !!userId && isUuid(userId);
   const selectedConversationId = selectedChat?.conversationId ?? null;
-  const composerBottomPadding = keyboardVisible ? 8 : Math.max(insets.bottom, 8);
+  const composerBottomPadding = keyboardVisible ? 14 : Math.max(insets.bottom, 8);
   const keyboardListSpacer = keyboardVisible ? Math.max(keyboardHeight, Platform.OS === 'ios' ? 320 : 260) : 0;
   const messageListBottomPadding = keyboardVisible
-    ? (editingMessage ? 132 : 92) + keyboardListSpacer
+    ? (editingMessage ? 148 : 112) + keyboardListSpacer
     : editingMessage ? 64 : 22;
+
+  const clearPendingMessageScrolls = useCallback(() => {
+    messageScrollTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    messageScrollTimeoutsRef.current = [];
+  }, []);
 
   const scrollMessagesToEnd = useCallback((animated = true, delay = 0) => {
     const run = () => {
@@ -152,15 +158,17 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       });
     };
     if (delay > 0) {
-      setTimeout(run, delay);
+      const timeoutId = setTimeout(run, delay);
+      messageScrollTimeoutsRef.current.push(timeoutId);
       return;
     }
     requestAnimationFrame(run);
   }, []);
 
-  const settleMessagesAtEnd = useCallback((animated = true) => {
-    [0, 80, 180, 340, 560, 780].forEach((delay) => scrollMessagesToEnd(animated, delay));
-  }, [scrollMessagesToEnd]);
+  const settleMessagesAtEnd = useCallback((animated = true, delay = animated ? 80 : 0) => {
+    clearPendingMessageScrolls();
+    scrollMessagesToEnd(animated, delay);
+  }, [clearPendingMessageScrolls, scrollMessagesToEnd]);
 
   const mapMessageRow = useCallback((row: ConversationMessageRow): MessageBubble => ({
     id: row.id,
@@ -177,6 +185,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     const { data, error } = await supabase
       .from('posts')
       .select('id, title, category, body, attachments')
+      .eq('school', school)
       .in('id', ids);
 
     if (error) {
@@ -206,7 +215,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     );
 
     return Object.fromEntries(entries);
-  }, []);
+  }, [school]);
 
   const resolveProfileNames = useCallback(async (partnerIds: string[]) => {
     const validIds = Array.from(new Set(partnerIds.filter(isUuid)));
@@ -215,6 +224,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     const { data, error } = await supabase
       .from('profiles')
       .select('id, name, email')
+      .eq('school', school)
       .in('id', validIds);
 
     if (error) {
@@ -228,7 +238,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         profile.name?.trim() || profile.email?.split('@')[0] || anteaterAliasForId(profile.id),
       ])
     );
-  }, []);
+  }, [school]);
 
   const buildPreview = useCallback((
     conversation: ConversationRow,
@@ -305,37 +315,53 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       return;
     }
 
-    const [
-      { data: conversationsData, error: conversationsError },
-      { data: allParticipantsData, error: participantsError },
-      { data: messagesData, error: messagesError },
-    ] = await Promise.all([
-      supabase
-        .from('conversations')
-        .select('id, school, kind, source_post_id, created_at, updated_at')
-        .in('id', conversationIds)
-        .in('kind', ['friend', 'board_anonymous']),
-      supabase
-        .from('conversation_participants')
-        .select('conversation_id, user_id, display_mode, alias_snapshot, last_read_at')
-        .in('conversation_id', conversationIds),
-      supabase
-        .from('conversation_messages')
-        .select('id, conversation_id, sender_id, content, created_at, deleted_at')
-        .in('conversation_id', conversationIds)
-        .order('created_at', { ascending: false })
-        .limit(Math.max(200, conversationIds.length * 20)),
-    ]);
+    const { data: conversationsData, error: conversationsError } = await supabase
+      .from('conversations')
+      .select('id, school, kind, source_post_id, created_at, updated_at')
+      .eq('school', school)
+      .in('id', conversationIds)
+      .in('kind', ['friend', 'board_anonymous']);
 
-    if (conversationsError || participantsError || messagesError) {
-      console.error('Failed to load message previews:', conversationsError ?? participantsError ?? messagesError);
+    if (conversationsError) {
+      console.error('Failed to load message previews:', conversationsError);
       if (!options.silent) setLoadingChats(false);
       return;
     }
 
     const conversationsRows = (conversationsData ?? []) as ConversationRow[];
+    const scopedConversationIds = conversationsRows.map((conversation) => conversation.id);
+    if (scopedConversationIds.length === 0) {
+      setConversations([]);
+      if (!options.silent) setLoadingChats(false);
+      return;
+    }
+
+    const [
+      { data: allParticipantsData, error: participantsError },
+      { data: messagesData, error: messagesError },
+    ] = await Promise.all([
+      supabase
+        .from('conversation_participants')
+        .select('conversation_id, user_id, display_mode, alias_snapshot, last_read_at')
+        .in('conversation_id', scopedConversationIds),
+      supabase
+        .from('conversation_messages')
+        .select('id, conversation_id, sender_id, content, created_at, deleted_at')
+        .in('conversation_id', scopedConversationIds)
+        .order('created_at', { ascending: false })
+        .limit(Math.max(200, scopedConversationIds.length * 20)),
+    ]);
+
+    if (participantsError || messagesError) {
+      console.error('Failed to load message previews:', participantsError ?? messagesError);
+      if (!options.silent) setLoadingChats(false);
+      return;
+    }
+
+    const scopedConversationIdSet = new Set(scopedConversationIds);
     const participantsRows = (allParticipantsData ?? []) as ConversationParticipantRow[];
-    const messageRows = (messagesData ?? []) as ConversationMessageRow[];
+    const messageRows = ((messagesData ?? []) as ConversationMessageRow[])
+      .filter((message) => scopedConversationIdSet.has(message.conversation_id));
     const sourcePostIds = Array.from(new Set(
       conversationsRows
         .map((conversation) => conversation.source_post_id)
@@ -370,7 +396,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     setConversations(previews);
     if (!options.silent) setLoadingChats(false);
-  }, [buildPreview, hasValidUserId, loadSourcePostsById, resolveProfileNames, userId]);
+  }, [buildPreview, hasValidUserId, loadSourcePostsById, resolveProfileNames, school, userId]);
 
   const markThreadRead = useCallback(async (conversationId: string) => {
     if (!hasValidUserId) return;
@@ -388,6 +414,20 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     }
 
     if (!options.silent) setLoadingMessages(true);
+    const { data: scopedConversation, error: scopedConversationError } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('id', conversation.conversationId)
+      .eq('school', school)
+      .maybeSingle();
+
+    if (scopedConversationError || !scopedConversation) {
+      if (scopedConversationError) console.error('Failed to scope conversation messages:', scopedConversationError);
+      setMessages([]);
+      if (!options.silent) setLoadingMessages(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('conversation_messages')
       .select('id, conversation_id, sender_id, content, created_at, deleted_at')
@@ -404,7 +444,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     if (!options.silent) setLoadingMessages(false);
     await markThreadRead(conversation.conversationId);
-  }, [hasValidUserId, mapMessageRow, markThreadRead]);
+  }, [hasValidUserId, mapMessageRow, markThreadRead, school]);
 
   const openExistingConversation = useCallback(async (conversation: ConversationPreview) => {
     setEditingMessage(null);
@@ -561,25 +601,28 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   }, [fetchConversations, hasValidUserId]);
 
   useEffect(() => {
-    const showEvents = Platform.OS === 'ios'
-      ? (['keyboardWillShow', 'keyboardDidShow'] as const)
-      : (['keyboardDidShow'] as const);
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSubs = showEvents.map((eventName) => Keyboard.addListener(eventName, (event) => {
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      const duration = Math.max(event.duration ?? 250, 180);
       setKeyboardHeight(event.endCoordinates?.height ?? (Platform.OS === 'ios' ? 320 : 260));
       setKeyboardVisible(true);
-      settleMessagesAtEnd(true);
-    }));
+      settleMessagesAtEnd(false, duration + 40);
+    });
     const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardVisible(false);
       setKeyboardHeight(0);
     });
 
     return () => {
-      showSubs.forEach((sub) => sub.remove());
+      showSub.remove();
       hideSub.remove();
     };
   }, [settleMessagesAtEnd]);
+
+  useEffect(() => {
+    return () => clearPendingMessageScrolls();
+  }, [clearPendingMessageScrolls]);
 
   useEffect(() => {
     if (!selectedChat || messages.length === 0) return;
@@ -847,7 +890,6 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     }
     settleMessagesAtEnd(true);
     await fetchConversations({ silent: true });
-    settleMessagesAtEnd(true);
   };
 
   const filteredChats = useMemo(() => {
@@ -888,7 +930,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior="height"
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={{
             flexDirection: 'row', alignItems: 'center',
@@ -1004,7 +1046,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 if (messages.length > 0) settleMessagesAtEnd(false);
               }}
               onContentSizeChange={() => {
-                if (messages.length > 0) settleMessagesAtEnd(true);
+                if (messages.length > 0) settleMessagesAtEnd(false);
               }}
               ListEmptyComponent={() => (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
@@ -1046,6 +1088,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
             paddingHorizontal: 12,
             paddingTop: 9,
             paddingBottom: composerBottomPadding,
+            marginBottom: keyboardVisible ? 10 : 0,
             borderTopWidth: 1,
             borderTopColor: colors.borderSubtle,
             backgroundColor: colors.card,

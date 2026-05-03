@@ -205,7 +205,8 @@ begin
     if not exists (
       select 1
       from public.friend_requests
-      where status = 'accepted'
+      where school = p_conversation_school
+        and status = 'accepted'
         and (
           (sender_id::text = current_user_id::text and receiver_id::text = p_target_user_id::text)
           or (sender_id::text = p_target_user_id::text and receiver_id::text = current_user_id::text)

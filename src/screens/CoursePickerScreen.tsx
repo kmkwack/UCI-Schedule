@@ -21,7 +21,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, UCI_DEPARTMENTS, quarterLabel, quarterKey } from '../data/courses';
+import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, UCI_DEPARTMENTS, quarterKey } from '../data/courses';
+import { termLabel } from '../data/schools';
 import PreviewTimetable from '../components/PreviewTimetable';
 import { supabase } from '../lib/supabase';
 import ReviewsModal from '../components/ReviewsModal';
@@ -231,6 +232,7 @@ export default function CoursePickerScreen({
   }
   const [searchText, setSearchText] = useState('');
   const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
+  const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
   const [selectedGE, setSelectedGE] = useState('');
   const [selectedDayFilters, setSelectedDayFilters] = useState<string[]>([]);
   const [deptDropdownOpen, setDeptDropdownOpen] = useState(false);
@@ -380,6 +382,90 @@ export default function CoursePickerScreen({
   const hasSelectedDepartments = selectedDepts.length > 0;
   const hasSelectedCategory = hasSelectedDepartments || !!selectedGE;
   const selectedDeptKey = selectedDepts.join('|');
+  const isUciSchool = school === 'UC Irvine';
+  const departmentOptions = availableDepartments.length > 0
+    ? availableDepartments
+    : isUciSchool
+      ? UCI_DEPARTMENTS
+      : [];
+
+  useEffect(() => {
+    const qk = quarterKey(selectedQuarter);
+    let cancelled = false;
+
+    void (async () => {
+      const departmentsSet = new Set<string>();
+      const { data: departmentRows, error: departmentError } = await supabase
+        .from('school_departments')
+        .select('department')
+        .eq('school', school)
+        .eq('active', true)
+        .order('department', { ascending: true });
+
+      if (cancelled) return;
+      if (!departmentError && departmentRows && departmentRows.length > 0) {
+        departmentRows.forEach((row: any) => {
+          if (row.department) departmentsSet.add(row.department);
+        });
+      }
+
+      const PAGE_SIZE = 1000;
+      let sectionError: any = null;
+      let selectedTermDepartmentCount = 0;
+
+      async function scanSectionDepartments(queryQuarterKey?: string) {
+        let from = 0;
+        while (!cancelled) {
+          let query = supabase
+            .from('sections')
+            .select('department')
+            .eq('school', school)
+            .range(from, from + PAGE_SIZE - 1);
+
+          if (queryQuarterKey) query = query.eq('quarter_key', queryQuarterKey);
+
+          const { data, error } = await query;
+
+          if (error) {
+            sectionError = error;
+            break;
+          }
+
+          (data ?? []).forEach((row: any) => {
+            if (row.department) {
+              departmentsSet.add(row.department);
+              if (queryQuarterKey) selectedTermDepartmentCount += 1;
+            }
+          });
+
+          if (!data || data.length < PAGE_SIZE) break;
+          from += PAGE_SIZE;
+        }
+      }
+
+      await scanSectionDepartments(qk);
+
+      // If the selected term has no rows yet, still show the school's departments
+      // so the picker is not blank while the user switches to a seeded term.
+      if (!cancelled && selectedTermDepartmentCount === 0 && !isUciSchool) {
+        await scanSectionDepartments();
+      }
+
+      if (cancelled) return;
+      if (departmentsSet.size === 0 && (departmentError || sectionError)) {
+        console.error('Failed to load departments:', departmentError ?? sectionError);
+        setAvailableDepartments([]);
+        return;
+      }
+
+      const departments = [...departmentsSet].sort((a, b) => a.localeCompare(b));
+      setAvailableDepartments(departments);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedQuarter, school]);
 
   // Global search: fires when search text >= 2 and no category selected
   useEffect(() => {
@@ -403,6 +489,7 @@ export default function CoursePickerScreen({
       const { data, error } = await supabase
         .from('sections')
         .select('*')
+        .eq('school', school)
         .eq('quarter_key', qk)
         .or(orClause)
         .order('code', { ascending: true })
@@ -417,7 +504,7 @@ export default function CoursePickerScreen({
     }, 400);
 
     return () => { clearTimeout(timer); setGlobalSearchLoading(false); };
-  }, [searchText, hasSelectedCategory, selectedQuarter]);
+  }, [searchText, hasSelectedCategory, selectedQuarter, school]);
 
   useEffect(() => {
     const qk = quarterKey(selectedQuarter);
@@ -427,6 +514,7 @@ export default function CoursePickerScreen({
       const { data, error } = await supabase
         .from('timetables')
         .select('user_id, courses')
+        .eq('school', school)
         .eq('quarter_key', qk);
 
       if (cancelled) return;
@@ -459,7 +547,7 @@ export default function CoursePickerScreen({
     return () => {
       cancelled = true;
     };
-  }, [selectedQuarter]);
+  }, [selectedQuarter, school]);
 
   // Fetch courses from Supabase when one or more departments are selected
   useEffect(() => {
@@ -486,6 +574,7 @@ export default function CoursePickerScreen({
         const { data, error } = await supabase
           .from('sections')
           .select('*')
+          .eq('school', school)
           .in('department', selectedDepts)
           .eq('quarter_key', qk);
         if (cancelled) return;
@@ -500,7 +589,7 @@ export default function CoursePickerScreen({
     return () => {
       cancelled = true;
     };
-  }, [hasSelectedDepartments, selectedDeptKey, selectedGE, selectedQuarter]);
+  }, [hasSelectedDepartments, selectedDeptKey, selectedGE, selectedQuarter, school]);
 
   // Fetch GE courses from Supabase when a GE category is selected
   useEffect(() => {
@@ -527,6 +616,7 @@ export default function CoursePickerScreen({
         const { data, error } = await supabase
           .from('sections')
           .select('*')
+          .eq('school', school)
           .eq('quarter_key', qk)
           .contains('ge_categories', [selectedGE]);
         if (cancelled) return;
@@ -541,9 +631,10 @@ export default function CoursePickerScreen({
     return () => {
       cancelled = true;
     };
-  }, [selectedGE, hasSelectedDepartments, selectedQuarter]);
+  }, [selectedGE, hasSelectedDepartments, selectedQuarter, school]);
 
   const fetchEnrollment = async (course: CatalogCourse) => {
+    if (school !== 'UC Irvine') return;
     if (enrollmentLoadingIds.has(course.id)) return;
     // Check if all sections for this course are already cached
     const sections = (isGlobalSearch ? globalSectionsMap : sectionsMap)[course.id] ?? [];
@@ -853,10 +944,10 @@ export default function CoursePickerScreen({
   }, [catalogCourses, searchText, sectionsMap, isGlobalSearch, globalCatalog, globalSectionsMap, selectedDayFilters, selectedDepts.length]);
 
   const filteredDepts = useMemo(() => {
-    if (!deptSearch) return UCI_DEPARTMENTS;
+    if (!deptSearch) return departmentOptions;
     const q = deptSearch.toLowerCase();
-    return UCI_DEPARTMENTS.filter((d) => d.toLowerCase().includes(q));
-  }, [deptSearch]);
+    return departmentOptions.filter((d) => d.toLowerCase().includes(q));
+  }, [departmentOptions, deptSearch]);
 
   const filteredGECategories = useMemo(() => {
     if (!deptSearch) return GE_CATEGORIES;
@@ -885,7 +976,7 @@ export default function CoursePickerScreen({
     setSelectedDepts((prev) => {
       const exists = prev.includes(dept);
       if (exists) return prev.filter((item) => item !== dept);
-      return [...prev, dept].sort((a, b) => UCI_DEPARTMENTS.indexOf(a) - UCI_DEPARTMENTS.indexOf(b));
+      return [...prev, dept].sort((a, b) => departmentOptions.indexOf(a) - departmentOptions.indexOf(b));
     });
     setExpandedCourseIds({});
     setPreviewCourse(null);
@@ -944,7 +1035,7 @@ export default function CoursePickerScreen({
             color: '#374151',
           }}
         >
-          {quarterLabel(selectedQuarter)}
+          {termLabel(selectedQuarter, school, true)}
         </Text>
 
         <TouchableOpacity
@@ -1224,7 +1315,7 @@ export default function CoursePickerScreen({
                           </Text>
                           {!hasSelectedCategory && <Ionicons name="checkmark" size={18} color="#4169E1" />}
                         </TouchableOpacity>
-                        {!deptSearch && (
+                        {isUciSchool && !deptSearch && (
                           <TouchableOpacity
                           onPress={() => { Keyboard.dismiss(); setShowGESublist(true); setDeptSearch(''); }}
                           style={{
@@ -1290,10 +1381,10 @@ export default function CoursePickerScreen({
               {isGlobalSearch
                 ? `Searching "${searchText.trim()}"…`
                 : selectedGE
-                ? `Loading ${GE_CATEGORIES.find(g => g.code === selectedGE)?.label ?? selectedGE} for ${quarterLabel(selectedQuarter)}…`
+                ? `Loading ${GE_CATEGORIES.find(g => g.code === selectedGE)?.label ?? selectedGE} for ${termLabel(selectedQuarter, school, true)}…`
                 : selectedDepts.length === 1
-                ? `Loading ${selectedDepts[0]} courses for ${quarterLabel(selectedQuarter)}…`
-                : `Loading ${selectedDepts.length} departments for ${quarterLabel(selectedQuarter)}…`}
+                ? `Loading ${selectedDepts[0]} courses for ${termLabel(selectedQuarter, school, true)}…`
+                : `Loading ${selectedDepts.length} departments for ${termLabel(selectedQuarter, school, true)}…`}
             </Text>
           </View>
         ) : filteredCatalog.length === 0 ? (
@@ -1342,7 +1433,7 @@ export default function CoursePickerScreen({
                         <Text style={{ color: '#9ca3af', fontSize: 13, paddingVertical: 8 }}>
                           {selectedDayFilters.length > 0
                             ? 'No sections match selected days'
-                            : `No sections found for ${quarterLabel(selectedQuarter)}`}
+                            : `No sections found for ${termLabel(selectedQuarter, school, true)}`}
                         </Text>
                       ) : (
                         sections.map((course) => {
@@ -1521,7 +1612,7 @@ export default function CoursePickerScreen({
           )]}
           school={school}
           userId={userId}
-          semesterLabel={quarterLabel(selectedQuarter)}
+          semesterLabel={termLabel(selectedQuarter, school)}
           quarterKey={quarterKey(selectedQuarter)}
         />
       )}

@@ -21,7 +21,8 @@ import AppErrorBoundary from './src/components/AppErrorBoundary';
 import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
-import { Course, Quarter, QUARTERS, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey, getAcademicQuarterForDate, resolveCurrentQuarter } from './src/data/courses';
+import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey } from './src/data/courses';
+import { DEFAULT_UNIVERSITY, getAcademicTermForDate, resolveCurrentTerm, schoolFeatureEnabled, universityForName, type University } from './src/data/schools';
 import {
   buildDisplayName,
   DEFAULT_NOTIFICATION_PREFERENCES,
@@ -35,9 +36,9 @@ import {
   profileDetailsFromProfile,
   profileFromSources,
 } from './src/data/userPreferences';
-import { parseSportsCalendar } from './src/data/sportsEvents';
+import { fetchSportsEventsForSchool } from './src/data/sportsEvents';
 import { supabase } from './src/lib/supabase';
-import type { University } from './src/screens/UniversitySelectionScreen';
+import { isMissingSchoolColumnError } from './src/lib/supabaseErrors';
 import type { ChatTarget } from './src/data/messages';
 import type { DateFormatPreference, EditableProfile, LanguagePreference, NotificationPreferences, PushPermissionStatus, TimetableVisibility, UserSettingsState } from './src/data/userPreferences';
 
@@ -98,13 +99,39 @@ type ConversationUnreadMessageRow = {
 
 type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
 
-const DEFAULT_UNIVERSITY: University = {
-  id: '1',
-  name: 'UC Irvine',
-  domain: '@uci.edu',
-  location: 'Irvine, CA',
-  logo: 'UCI',
-};
+function parseQuarterKeyValue(key: string): Quarter | null {
+  const idx = key.indexOf('-');
+  if (idx <= 0) return null;
+  const year = key.slice(0, idx);
+  const quarter = key.slice(idx + 1);
+  if (!year || !quarter) return null;
+  return { year, quarter };
+}
+
+async function fetchPreferredSeededQuarter(school: string, preferredKey: string): Promise<Quarter | null> {
+  const { count: preferredCount } = await supabase
+    .from('sections')
+    .select('id', { count: 'exact', head: true })
+    .eq('school', school)
+    .eq('quarter_key', preferredKey);
+
+  if ((preferredCount ?? 0) > 0) return parseQuarterKeyValue(preferredKey);
+
+  const { data, error } = await supabase
+    .from('sections')
+    .select('quarter_key')
+    .eq('school', school)
+    .limit(5000);
+
+  if (error) {
+    console.error('Failed to resolve seeded quarter:', error);
+    return null;
+  }
+
+  const seededKeys = [...new Set((data ?? []).map((row: any) => row.quarter_key).filter(Boolean))]
+    .sort((a, b) => b.localeCompare(a));
+  return seededKeys.length > 0 ? parseQuarterKeyValue(seededKeys[0]) : null;
+}
 
 const REVIEW_ACCOUNT_EMAILS = new Set(['review@classmate.app']);
 
@@ -346,6 +373,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
   const [authInitializing, setAuthInitializing] = useState(true);
+  const [userBootstrapLoading, setUserBootstrapLoading] = useState(false);
   // Ref so the onAuthStateChange closure (created once) always sees current userId.
   const userIdRef = useRef<string | null>(null);
   userIdRef.current = userId;
@@ -353,14 +381,13 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const suppressNextSignedOutClearRef = useRef(false);
 
   const hydrateUserFromSession = (sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> }) => {
+    setUserBootstrapLoading(true);
     setUserId(sessionUser.id);
     setUserEmail(sessionUser.email ?? '');
     const school = typeof sessionUser.user_metadata?.classmate_school === 'string'
       ? sessionUser.user_metadata.classmate_school
       : DEFAULT_UNIVERSITY.name;
-    if (school === DEFAULT_UNIVERSITY.name) {
-      setSelectedUniversity(DEFAULT_UNIVERSITY);
-    }
+    setSelectedUniversity(universityForName(school));
   };
 
   const clearSignedOutState = () => {
@@ -369,7 +396,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setSelectedUniversity(null);
     setExpoPushToken(null);
     setUnreadMessageCount(0);
-    setUserProfile(fallbackProfileFromEmail('student@uci.edu'));
+    setUserProfile(fallbackProfileFromEmail(`student${DEFAULT_UNIVERSITY.domain}`));
     setUserSettings(DEFAULT_USER_SETTINGS);
     setTimetables([]);
     setSelectedTimetableId(null);
@@ -382,6 +409,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setSavingOnboarding(false);
     setForceReviewOnboardingOnce(false);
     setDeletingAccount(false);
+    setUserBootstrapLoading(false);
     setAuthStack(returnToUniversityAfterSignOutRef.current ? ['welcome', 'university'] : ['welcome']);
     returnToUniversityAfterSignOutRef.current = false;
   };
@@ -456,7 +484,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     return () => subscription.unsubscribe();
   }, []);
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
-  const [userProfile, setUserProfile] = useState<EditableProfile>(fallbackProfileFromEmail('student@uci.edu'));
+  const [userProfile, setUserProfile] = useState<EditableProfile>(fallbackProfileFromEmail(`student${DEFAULT_UNIVERSITY.domain}`));
   const [userSettings, setUserSettings] = useState<UserSettingsState>(DEFAULT_USER_SETTINGS);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingVisibility, setSavingVisibility] = useState(false);
@@ -546,7 +574,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [showCoursePicker, setShowCoursePicker] = useState(false);
   const [renderCoursePicker, setRenderCoursePicker] = useState(false);
   const [editingCustomCourse, setEditingCustomCourse] = useState<Course | null>(null);
-  const [selectedQuarter, setSelectedQuarter] = useState<Quarter>(getAcademicQuarterForDate(new Date()));
+  const [selectedQuarter, setSelectedQuarter] = useState<Quarter>(getAcademicTermForDate(DEFAULT_UNIVERSITY.name, new Date()));
   const [timetables, setTimetables] = useState<Timetable[]>([]);
   const [selectedTimetableId, setSelectedTimetableId] = useState<string | null>(null);
   const [focusedCourseId, setFocusedCourseId] = useState<string | null>(null);
@@ -560,13 +588,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const seenCommentIdsRef = useRef<Set<string>>(new Set());
   const seenLikeKeysRef = useRef<Set<string>>(new Set());
   const lastSocialNotificationErrorRef = useRef(0);
+  const currentSchool = selectedUniversity?.name ?? DEFAULT_UNIVERSITY.name;
 
   const activeKey = quarterKey(selectedQuarter);
   const quarterTimetables = timetables.filter((t) => t.quarterKey === activeKey);
   const activeTimetable = quarterTimetables.find((t) => t.id === selectedTimetableId) ?? quarterTimetables[0] ?? null;
   const activeCourses = activeTimetable?.courses ?? [];
 
-  const academicQuarter = getAcademicQuarterForDate(new Date());
+  const academicQuarter = getAcademicTermForDate(currentSchool, new Date());
   const academicQuarterKey = quarterKey(academicQuarter);
   const homeQuarterKey = timetables.some((t) => t.quarterKey === academicQuarterKey) ? academicQuarterKey : activeKey;
   const homeQuarterTimetables = timetables.filter((t) => t.quarterKey === homeQuarterKey);
@@ -579,7 +608,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   const USER_ID = userId ?? '';
   const displayUserName = buildDisplayName({ ...userProfile, email: userEmail || userProfile.email });
-  const currentSchool = selectedUniversity?.name ?? 'UC Irvine';
 
   const loadUnreadMessageCount = useCallback(async () => {
     if (!USER_ID) return 0;
@@ -600,10 +628,26 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     const conversationIds = participants.map((row) => row.conversation_id);
     if (conversationIds.length === 0) return 0;
 
+    const { data: scopedConversationData, error: scopedConversationError } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('school', currentSchool)
+      .in('id', conversationIds);
+
+    if (scopedConversationError) {
+      if (scopedConversationError.code !== 'PGRST205') {
+        console.warn('Failed to scope unread conversations:', scopedConversationError);
+      }
+      return 0;
+    }
+
+    const scopedConversationIds = ((scopedConversationData ?? []) as Array<{ id: string }>).map((row) => row.id);
+    if (scopedConversationIds.length === 0) return 0;
+
     const { data: messageData, error: messageError } = await supabase
       .from('conversation_messages')
       .select('id, conversation_id, sender_id, created_at, deleted_at')
-      .in('conversation_id', conversationIds)
+      .in('conversation_id', scopedConversationIds)
       .neq('sender_id', USER_ID)
       .is('deleted_at', null);
 
@@ -615,14 +659,16 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
 
     const lastReadByConversation = Object.fromEntries(
-      participants.map((row) => [row.conversation_id, row.last_read_at])
+      participants
+        .filter((row) => scopedConversationIds.includes(row.conversation_id))
+        .map((row) => [row.conversation_id, row.last_read_at])
     );
 
     return ((messageData ?? []) as ConversationUnreadMessageRow[]).filter((message) => {
       const lastReadAt = lastReadByConversation[message.conversation_id];
       return !lastReadAt || new Date(message.created_at) > new Date(lastReadAt);
     }).length;
-  }, [USER_ID]);
+  }, [USER_ID, currentSchool]);
 
   useEffect(() => {
     if (!USER_ID) {
@@ -689,13 +735,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     let active = true;
 
     async function loadUserPreferences() {
-      const fallback = fallbackProfileFromEmail(userEmail || 'student@uci.edu');
+      setUserBootstrapLoading(true);
+      const fallback = fallbackProfileFromEmail(userEmail || `student${DEFAULT_UNIVERSITY.domain}`);
       let settingsDetails: Record<string, any> | null | undefined;
 
       const { data: profileRow, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
+        .eq('school', currentSchool)
         .maybeSingle();
 
       if (profileError) {
@@ -763,6 +811,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         dateFormat: normalizeDateFormatPreference(settingsDetails?.dateFormat),
       });
       setExpoPushToken(((settingsRow as Record<string, any> | null | undefined)?.expo_push_token as string | undefined) ?? null);
+      setUserBootstrapLoading(false);
     }
 
     loadUserPreferences();
@@ -770,7 +819,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     return () => {
       active = false;
     };
-  }, [forceReviewOnboardingOnce, userEmail, userId]);
+  }, [currentSchool, forceReviewOnboardingOnce, userEmail, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -786,6 +835,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
     function logSocialNotificationError(label: string, error: unknown) {
       const now = Date.now();
+      if (isMissingSchoolColumnError(error)) {
+        return;
+      }
       if (isNetworkRequestError(error)) {
         if (now - lastSocialNotificationErrorRef.current < 60000) return;
         lastSocialNotificationErrorRef.current = now;
@@ -827,6 +879,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         supabase
           .from('friend_requests')
           .select('id, sender_id, receiver_id, status, created_at')
+          .eq('school', currentSchool)
           .eq('receiver_id', userId)
           .eq('status', 'pending')
           .order('created_at', { ascending: true }),
@@ -838,6 +891,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         supabase
           .from('post_comments')
           .select('id, post_id')
+          .eq('school', currentSchool)
           .eq('user_id', userId),
       ]);
 
@@ -860,10 +914,25 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           .map((row) => row.conversation_id);
 
         if (conversationIds.length > 0) {
+          const { data: scopedConversations, error: scopedConversationError } = await supabase
+            .from('conversations')
+            .select('id')
+            .eq('school', currentSchool)
+            .in('id', conversationIds);
+
+          if (scopedConversationError) {
+            if (scopedConversationError.code !== 'PGRST205') {
+              logSnapshotQueryError('Failed to scope message notifications:', scopedConversationError);
+            }
+          }
+          const scopedConversationIds = ((scopedConversations ?? []) as Array<{ id: string }>).map((row) => row.id);
+          if (scopedConversationIds.length === 0) {
+            messageRows = [];
+          } else {
           const { data: messageData, error: messageError } = await supabase
             .from('conversation_messages')
             .select('id, conversation_id, sender_id, content, created_at')
-            .in('conversation_id', conversationIds)
+            .in('conversation_id', scopedConversationIds)
             .neq('sender_id', userId)
             .order('created_at', { ascending: true });
 
@@ -874,13 +943,27 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           } else {
             messageRows = (messageData ?? []) as ConversationMessageNotificationRow[];
           }
+          }
         }
       }
 
       const postRows = (myPosts ?? []) as Array<{ id: string; title: string }>;
       const postIds = postRows.map((post) => post.id);
       const postTitlesById = Object.fromEntries(postRows.map((post) => [post.id, post.title]));
-      const myCommentRows = (myComments ?? []) as Array<{ id: string; post_id: string }>;
+      const rawMyCommentRows = (myComments ?? []) as Array<{ id: string; post_id: string }>;
+      const schoolPostIdsForComments = new Set(postIds);
+      const commentedPostIds = Array.from(new Set(rawMyCommentRows.map((comment) => comment.post_id)))
+        .filter((postId) => !schoolPostIdsForComments.has(postId));
+      if (commentedPostIds.length > 0) {
+        const { data: commentedPosts, error: commentedPostsError } = await supabase
+          .from('posts')
+          .select('id')
+          .eq('school', currentSchool)
+          .in('id', commentedPostIds);
+        logSnapshotQueryError('Failed to scope comment notifications by school:', commentedPostsError);
+        ((commentedPosts ?? []) as Array<{ id: string }>).forEach((post) => schoolPostIdsForComments.add(post.id));
+      }
+      const myCommentRows = rawMyCommentRows.filter((comment) => schoolPostIdsForComments.has(comment.post_id));
       const myCommentIds = new Set(myCommentRows.map((comment) => comment.id));
       const myCommentIdList = Array.from(myCommentIds);
 
@@ -901,6 +984,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           supabase
             .from('post_comments')
             .select('id, post_id, user_id, content, created_at, parent_comment_id')
+            .eq('school', currentSchool)
             .in('post_id', postIds)
             .neq('user_id', userId)
             .order('created_at', { ascending: true })
@@ -911,6 +995,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           supabase
             .from('post_comments')
             .select('id, post_id, user_id, content, created_at, parent_comment_id')
+            .eq('school', currentSchool)
             .in('parent_comment_id', myCommentIdList)
             .neq('user_id', userId)
             .order('created_at', { ascending: true })
@@ -933,6 +1018,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           supabase
             .from('post_votes')
             .select('post_id, user_id')
+            .eq('school', currentSchool)
             .in('post_id', postIds)
             .neq('user_id', userId)
         );
@@ -942,6 +1028,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           supabase
             .from('post_comment_votes')
             .select('comment_id, user_id')
+            .eq('school', currentSchool)
             .in('comment_id', myCommentIdList)
             .neq('user_id', userId)
         );
@@ -1122,7 +1209,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const notifications = userSettings.notifications;
       if (!notifications.pushNotifications || userSettings.pushPermissionStatus !== 'granted') return;
 
-      const currentQuarter = getAcademicQuarterForDate(new Date());
+      const currentQuarter = getAcademicTermForDate(currentSchool, new Date());
       const quarterMatchesCurrent =
         currentQuarter.year === selectedQuarter.year && currentQuarter.quarter === selectedQuarter.quarter;
 
@@ -1170,11 +1257,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         }
       }
 
-      if (notifications.sportsGameReminders && currentSchool === 'UC Irvine') {
+      if (notifications.sportsGameReminders && schoolFeatureEnabled(currentSchool, 'sports')) {
         try {
-          const response = await fetch('https://ucirvinesports.com/calendar.ics');
-          const text = await response.text();
-          const events = parseSportsCalendar(text, { maxDaysAhead: 14, includePastDays: 0 });
+          const events = await fetchSportsEventsForSchool(currentSchool, { maxDaysAhead: 14, includePastDays: 0 });
 
           for (const event of events) {
             if (cancelled) return;
@@ -1209,12 +1294,28 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   // Load all timetables from Supabase on mount (or when user logs in)
   useEffect(() => {
     if (!userId) return;
+    let cancelled = false;
+
     async function load() {
-      const { data, error } = await supabase
+      setTimetables([]);
+      setSelectedTimetableId(null);
+
+      let { data, error } = await supabase
         .from('timetables')
         .select('*')
-        .eq('user_id', USER_ID);
+        .eq('user_id', USER_ID)
+        .eq('school', currentSchool);
 
+      if (error && currentSchool === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(error)) {
+        const fallback = await supabase
+          .from('timetables')
+          .select('*')
+          .eq('user_id', USER_ID);
+        data = fallback.data;
+        error = fallback.error;
+      }
+
+      if (cancelled) return;
       if (error) { console.error('Failed to load timetables:', error); return; }
 
       const loaded: Timetable[] = (data ?? [])
@@ -1229,47 +1330,76 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       setTimetables(loaded);
 
+      const preferredQuarter = await fetchPreferredSeededQuarter(currentSchool, activeKey);
+      if (cancelled) return;
+
+      const targetQuarter = preferredQuarter ?? selectedQuarter;
+      const targetKey = quarterKey(targetQuarter);
+      if (targetKey !== activeKey) setSelectedQuarter(targetQuarter);
+
       if (loaded.length === 0) {
-        // New user — bootstrap with an empty 'My Schedule' for the current quarter
-        await createTimetable(activeKey, 'My Schedule');
+        // New user — bootstrap with an empty 'My Schedule' for a quarter that has data for this school.
+        await createTimetable(targetKey, 'My Schedule');
       } else {
-        let targetKey = activeKey;
-        // If the current date maps to a quarter outside the seeded list, fall back safely.
-        if (!QUARTERS.some((quarter) => quarterKey(quarter) === quarterKey(selectedQuarter))) {
-          const fallback = resolveCurrentQuarter(loaded);
-          setSelectedQuarter(fallback);
-          targetKey = quarterKey(fallback);
-        }
         const forCurrentQuarter = loaded.filter((t) => t.quarterKey === targetKey);
         if (forCurrentQuarter.length > 0) {
           setSelectedTimetableId(forCurrentQuarter[0].id);
+        } else if (preferredQuarter) {
+          await createTimetable(targetKey, 'My Schedule');
         }
       }
     }
     load();
+
+    return () => {
+      cancelled = true;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, currentSchool]);
 
   async function saveTimetable(t: Timetable) {
-    const { error } = await supabase.from('timetables').upsert({
+    let { error } = await supabase.from('timetables').upsert({
       id: t.id,
       user_id: USER_ID,
+      school: currentSchool,
       quarter_key: t.quarterKey,
       name: t.name,
       courses: t.courses,
       order: t.order,
       updated_at: new Date().toISOString(),
     });
+    if (error && currentSchool === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(error)) {
+      const fallback = await supabase.from('timetables').upsert({
+        id: t.id,
+        user_id: USER_ID,
+        quarter_key: t.quarterKey,
+        name: t.name,
+        courses: t.courses,
+        order: t.order,
+        updated_at: new Date().toISOString(),
+      });
+      error = fallback.error;
+    }
     if (error) console.error('Failed to save timetable:', error);
   }
 
   async function createTimetable(qKey: string, name: string): Promise<Timetable | null> {
     const nextOrder = timetables.filter((t) => t.quarterKey === qKey).length;
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('timetables')
-      .insert({ user_id: USER_ID, quarter_key: qKey, name, courses: [], order: nextOrder })
+      .insert({ user_id: USER_ID, school: currentSchool, quarter_key: qKey, name, courses: [], order: nextOrder })
       .select()
       .single();
+
+    if (error && currentSchool === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(error)) {
+      const fallback = await supabase
+        .from('timetables')
+        .insert({ user_id: USER_ID, quarter_key: qKey, name, courses: [], order: nextOrder })
+        .select()
+        .single();
+      data = fallback.data;
+      error = fallback.error;
+    }
 
     if (error || !data) { console.error('Failed to create timetable:', error); return null; }
 
@@ -1363,11 +1493,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
   };
 
-  const CURRENT_QUARTER: Quarter = resolveCurrentQuarter(timetables);
+  const CURRENT_QUARTER: Quarter = resolveCurrentTerm(currentSchool, timetables);
 
   const handleDeleteTimetable = async () => {
     if (!activeTimetable) return;
-    const { error } = await supabase.from('timetables').delete().eq('id', activeTimetable.id);
+    let { error } = await supabase.from('timetables').delete().eq('id', activeTimetable.id).eq('school', currentSchool);
+    if (error && currentSchool === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(error)) {
+      const fallback = await supabase.from('timetables').delete().eq('id', activeTimetable.id);
+      error = fallback.error;
+    }
     if (error) { console.error('Failed to delete timetable:', error); return; }
 
     const remaining = quarterTimetables.filter((t) => t.id !== activeTimetable.id);
@@ -1376,7 +1510,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     // If 'My Schedule' no longer exists in this quarter, promote the first remaining one
     if (remaining.length > 0 && !remaining.some((t) => t.name === 'My Schedule')) {
       const toRename = remaining[0];
-      await supabase.from('timetables').update({ name: 'My Schedule' }).eq('id', toRename.id);
+      const renameResult = await supabase.from('timetables').update({ name: 'My Schedule' }).eq('id', toRename.id).eq('school', currentSchool);
+      if (renameResult.error && currentSchool === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(renameResult.error)) {
+        await supabase.from('timetables').update({ name: 'My Schedule' }).eq('id', toRename.id);
+      }
       updatedTimetables = updatedTimetables.map((t) =>
         t.id === toRename.id ? { ...t, name: 'My Schedule' } : t
       );
@@ -1407,7 +1544,13 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       orderedIds.map((id, newOrder) => {
         const t = timetables.find((x) => x.id === id);
         if (!t) return Promise.resolve();
-        return supabase.from('timetables').update({ order: newOrder }).eq('id', id);
+        return supabase.from('timetables').update({ order: newOrder }).eq('id', id).eq('school', currentSchool)
+          .then((result) => {
+            if (result.error && currentSchool === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(result.error)) {
+              return supabase.from('timetables').update({ order: newOrder }).eq('id', id);
+            }
+            return result;
+          });
       })
     );
   };
@@ -1925,7 +2068,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           <SignUpScreen
             university={selectedUniversity ?? undefined}
             onBack={goBack}
-            onSignedUp={(id, email) => {
+          onSignedUp={(id, email) => {
+              setUserBootstrapLoading(true);
               setUserId(id);
               setUserEmail(email);
               setUserProfile(fallbackProfileFromEmail(email));
@@ -1945,6 +2089,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           onBack={goBack}
           onSignedIn={(id, email) => {
             const shouldForceReviewOnboarding = isReviewAccountEmail(email);
+            setUserBootstrapLoading(true);
             setUserId(id);
             setUserEmail(email);
             setUserProfile(fallbackProfileFromEmail(email));
@@ -1960,6 +2105,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     };
 
     return <AuthNavigator stack={authStack} onPop={popAuth} renderScreen={renderAuthScreen} />;
+  }
+
+  if (userBootstrapLoading) {
+    return <View style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff' }} />;
   }
 
   if (showNotificationPermissionPrompt) {
@@ -2004,6 +2153,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         userId={USER_ID}
         bottomInset={insets.bottom}
         scrollToTopTrigger={homeTabTapCount}
+        school={currentSchool}
       />
     );
   } else if (currentTab === 'timetable') {
@@ -2018,7 +2168,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           onOpenCoursePicker={() => setShowCoursePicker(true)}
           onRemoveCourse={handleToggleCourse}
           onEditCustomCourse={(course) => { setEditingCustomCourse(course); setShowCoursePicker(true); }}
-          school={selectedUniversity?.name ?? 'UC Irvine'}
+          school={currentSchool}
           userId={USER_ID}
           timetables={timetables}
           quarterTimetables={quarterTimetables}
@@ -2036,11 +2186,19 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       </View>
     );
   } else if (currentTab === 'grades') {
-    content = <GradesScreen timetables={timetables} userId={USER_ID} bottomInset={insets.bottom} scrollToTopTrigger={gradesTabTapCount} />;
+    content = (
+      <GradesScreen
+        timetables={timetables}
+        userId={USER_ID}
+        school={currentSchool}
+        bottomInset={insets.bottom}
+        scrollToTopTrigger={gradesTabTapCount}
+      />
+    );
   } else if (currentTab === 'board') {
     content = (
       <BoardScreen
-        school={selectedUniversity?.name ?? 'UC Irvine'}
+        school={currentSchool}
         userId={USER_ID}
         boardAuthorName={userProfile.nickname.trim() || displayUserName}
         boardProfileVisible={userSettings.boardProfileVisible}
@@ -2057,7 +2215,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         <FriendsScreen
           userId={USER_ID}
           userEmail={userEmail}
-          school={selectedUniversity?.name ?? 'UC Irvine'}
+          school={currentSchool}
           activeCourses={homeQuarterKey === academicQuarterKey ? homeQuarterCourses : []}
           selectedQuarter={academicQuarter}
           bottomInset={insets.bottom}
@@ -2212,6 +2370,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               deletingAccount={deletingAccount}
               userName={displayUserName}
               userEmail={userEmail}
+              school={currentSchool}
               userProfile={userProfile}
               userSettings={userSettings}
               themePreference={themePreference}
@@ -2241,7 +2400,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             onClose={closeMessages}
             openChatWith={messageTarget}
             userId={USER_ID}
-            school={selectedUniversity?.name ?? 'UC Irvine'}
+            school={currentSchool}
           />
         ) : null}
       </Modal>
@@ -2267,7 +2426,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             selectedQuarter={selectedQuarter}
             timetableSettings={timetableSettings}
             userId={USER_ID}
-            school={selectedUniversity?.name ?? 'UC Irvine'}
+            school={currentSchool}
             editingCustomCourse={editingCustomCourse}
             onReplaceCourse={handleReplaceCourse}
             onEditingHandled={() => setEditingCustomCourse(null)}

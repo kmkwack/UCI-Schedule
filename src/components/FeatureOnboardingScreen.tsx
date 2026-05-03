@@ -14,6 +14,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { DEFAULT_UNIVERSITY, getSchoolConfig } from '../data/schools';
 import { fallbackProfileFromEmail, type EditableProfile } from '../data/userPreferences';
 
 type Props = {
@@ -137,32 +138,88 @@ const SLIDES: Slide[] = [
 type SchoolOnboardingBrand = {
   badge: string;
   backgroundSource?: number;
-  mascot: string;
+  welcomeName: string;
+  mascotName: string;
+  communityName: string;
+  accent: string;
 };
 
 function getOnboardingSchoolBrand(schoolName?: string): SchoolOnboardingBrand {
-  const normalized = (schoolName ?? 'UC Irvine').trim().toLowerCase();
+  const defaultSchoolName = DEFAULT_UNIVERSITY.name;
+  const normalized = (schoolName ?? defaultSchoolName).trim().toLowerCase();
+  const config = getSchoolConfig(schoolName ?? defaultSchoolName);
+
+  if (config.name === schoolName || config.name === (schoolName ?? defaultSchoolName)) {
+    return {
+      badge: config.shortName.toUpperCase(),
+      welcomeName: config.welcomeName,
+      mascotName: config.mascotName,
+      communityName: config.communityName,
+      accent: config.accent,
+    };
+  }
 
   if (normalized.includes('irvine')) {
     return {
       badge: 'UC IRVINE',
-      backgroundSource: require('../../assets/uci-anthill-plaza.jpg'),
-      mascot: 'Anteater',
+      welcomeName: 'Anteater',
+      mascotName: 'Peter the Anteater',
+      communityName: 'Anteaters',
+      accent: '#4169E1',
     };
   }
 
-  if (normalized.includes('berkeley')) return { badge: 'UC BERKELEY', mascot: 'Golden Bear' };
-  if (normalized.includes('los angeles') || normalized.includes('ucla')) return { badge: 'UCLA', mascot: 'Bruin' };
-  if (normalized.includes('san diego')) return { badge: 'UC SAN DIEGO', mascot: 'Triton' };
-  if (normalized.includes('davis')) return { badge: 'UC DAVIS', mascot: 'Aggie' };
-  if (normalized.includes('santa barbara')) return { badge: 'UC SANTA BARBARA', mascot: 'Gaucho' };
-  if (normalized.includes('santa cruz')) return { badge: 'UC SANTA CRUZ', mascot: 'Banana Slug' };
-  if (normalized.includes('riverside')) return { badge: 'UC RIVERSIDE', mascot: 'Highlander' };
-  if (normalized.includes('merced')) return { badge: 'UC MERCED', mascot: 'Bobcat' };
+  if (normalized.includes('berkeley')) return { badge: 'UC BERKELEY', welcomeName: 'Golden Bear', mascotName: 'Golden Bears', communityName: 'Golden Bears', accent: '#003262' };
+  if (normalized.includes('los angeles') || normalized.includes('ucla')) return { badge: 'UCLA', welcomeName: 'Bruin', mascotName: 'Bruins', communityName: 'Bruins', accent: '#2774AE' };
+  if (normalized.includes('san diego')) return { badge: 'UC SAN DIEGO', welcomeName: 'Triton', mascotName: 'Tritons', communityName: 'Tritons', accent: '#006A96' };
+  if (normalized.includes('davis')) return { badge: 'UC DAVIS', welcomeName: 'Aggie', mascotName: 'Aggies', communityName: 'Aggies', accent: '#022851' };
+  if (normalized.includes('santa barbara')) return { badge: 'UC SANTA BARBARA', welcomeName: 'Gaucho', mascotName: 'Gauchos', communityName: 'Gauchos', accent: '#003660' };
+  if (normalized.includes('santa cruz')) return { badge: 'UC SANTA CRUZ', welcomeName: 'Banana Slug', mascotName: 'Banana Slugs', communityName: 'Banana Slugs', accent: '#003C6C' };
+  if (normalized.includes('riverside')) return { badge: 'UC RIVERSIDE', welcomeName: 'Highlander', mascotName: 'Highlanders', communityName: 'Highlanders', accent: '#2D6CC0' };
+  if (normalized.includes('merced')) return { badge: 'UC MERCED', welcomeName: 'Bobcat', mascotName: 'Bobcats', communityName: 'Bobcats', accent: '#005487' };
+  if (normalized.includes('maryland') || normalized.includes('college park')) {
+    return {
+      badge: 'MARYLAND',
+      welcomeName: 'Terp',
+      mascotName: 'Terrapin',
+      communityName: 'Terrapins',
+      accent: '#E21833',
+    };
+  }
+  if (normalized.includes('cornell')) {
+    return {
+      badge: 'CORNELL',
+      welcomeName: 'Cornellian',
+      mascotName: 'Big Red',
+      communityName: 'Cornellians',
+      accent: '#B31B1B',
+    };
+  }
+  if (normalized.includes('purdue')) {
+    return {
+      badge: 'PURDUE',
+      welcomeName: 'Boilermaker',
+      mascotName: 'Purdue Pete',
+      communityName: 'Boilermakers',
+      accent: '#8E6F3E',
+    };
+  }
+  if (normalized.includes('illinois') || normalized.includes('urbana')) {
+    return {
+      badge: 'ILLINOIS',
+      welcomeName: 'Illini',
+      mascotName: 'Fighting Illini',
+      communityName: 'Illini',
+      accent: '#FF5F05',
+    };
+  }
 
   return {
     badge: schoolName ? schoolName.toUpperCase() : 'COLLEGE',
-    mascot: 'student',
+    welcomeName: 'student',
+    mascotName: 'campus community',
+    communityName: 'students',
+    accent: PALETTE.brand,
   };
 }
 
@@ -602,7 +659,7 @@ const TOUR_ITEMS: { key: TourKey; label: string; title: string; body: string; ac
     key: 'schedule',
     label: '02 · Schedule',
     title: 'Build the week you actually live.',
-    body: 'Add real UCI sections, compare plans, customize blocks, and keep every quarter organized.',
+    body: 'Add real course sections, compare plans, customize blocks, and keep every term organized.',
     accent: '#4169E1',
   },
   {
@@ -784,16 +841,17 @@ export default function FeatureOnboardingScreen({
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [index, setIndex] = useState(0);
-  const [profile, setProfile] = useState<EditableProfile>(() => initialProfile ?? fallbackProfileFromEmail(userEmail || 'student@uci.edu'));
+  const [profile, setProfile] = useState<EditableProfile>(() => initialProfile ?? fallbackProfileFromEmail(userEmail || `student${DEFAULT_UNIVERSITY.domain}`));
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const anim = useRef(new Animated.Value(1)).current;
   const tourScrollY = useRef(new Animated.Value(0)).current;
   const slide = SLIDES[index];
   const schoolBrand = useMemo(() => getOnboardingSchoolBrand(schoolName), [schoolName]);
-  const slideTitle = slide.kind === 'arrival' ? `Welcome, ${schoolBrand.mascot}.` : slide.title;
+  const slideAccent = slide.kind === 'arrival' ? schoolBrand.accent : slide.accent;
+  const slideTitle = slide.kind === 'arrival' ? `Welcome, ${schoolBrand.welcomeName}.` : slide.title;
   const slideBody = slide.kind === 'arrival'
-    ? "Let's set up the campus app built around your schedule, classmates, and college life."
+    ? `Let's set up ClassMate for ${schoolBrand.communityName}: your schedule, classmates, boards, and campus life in one place.`
     : slide.body;
   const isPhotoSlide = slide.kind === 'arrival';
   const backgroundColor = isDark ? PALETTE.bgDark : PALETTE.bg;
@@ -900,10 +958,10 @@ export default function FeatureOnboardingScreen({
                     opacity: finishing || savingProfile ? 0.5 : 1,
                   }}
                 >
-                  <Ionicons name="chevron-back" size={18} color={slide.accent} />
+                  <Ionicons name="chevron-back" size={18} color={slideAccent} />
                 </TouchableOpacity>
               ) : null}
-              <Text style={{ fontSize: 11, fontWeight: '900', letterSpacing: 1.4, color: slide.accent, textTransform: 'uppercase' }}>
+              <Text style={{ fontSize: 11, fontWeight: '900', letterSpacing: 1.4, color: slideAccent, textTransform: 'uppercase' }}>
                 {slide.eyebrow}
               </Text>
             </View>
@@ -929,7 +987,7 @@ export default function FeatureOnboardingScreen({
               </TouchableOpacity>
             ) : <View style={{ width: 34 }} />}
           </View>
-          <ProgressBar index={index} accent={slide.accent} isDark={isDark} />
+          <ProgressBar index={index} accent={slideAccent} isDark={isDark} />
         </View>
 
         <Animated.ScrollView
@@ -980,8 +1038,11 @@ export default function FeatureOnboardingScreen({
                     ...heroBodyStyle,
                   }}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '900', color: slide.accent, letterSpacing: 0.7 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '900', color: slideAccent, letterSpacing: 0.7 }}>
                     {schoolBrand.badge}
+                  </Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginTop: 3 }}>
+                    {schoolBrand.mascotName}
                   </Text>
                 </Animated.View>
               </>
@@ -1023,7 +1084,7 @@ export default function FeatureOnboardingScreen({
                     width: active ? 24 : 7,
                     height: 7,
                     borderRadius: 999,
-                    backgroundColor: active ? slide.accent : isDark ? 'rgba(255,255,255,0.16)' : 'rgba(134,148,178,0.32)',
+                    backgroundColor: active ? slideAccent : isDark ? 'rgba(255,255,255,0.16)' : 'rgba(134,148,178,0.32)',
                     opacity: disabled ? 0.35 : 1,
                   }}
                 />
@@ -1054,7 +1115,7 @@ export default function FeatureOnboardingScreen({
                 <View style={{ flex: 0.62 }}>
                   <PrimaryButton
                     onPress={() => { void goNext(); }}
-                    accent={slide.accent}
+                    accent={slideAccent}
                     loading={finishing || savingProfile}
                     disabled={isBlocked}
                   >
@@ -1095,7 +1156,7 @@ export default function FeatureOnboardingScreen({
               <View style={{ flex: index > 0 ? 0.62 : 1 }}>
                 <PrimaryButton
                   onPress={() => { void goNext(); }}
-                  accent={slide.accent}
+                  accent={slideAccent}
                   loading={finishing || savingProfile}
                   disabled={isBlocked}
                 >

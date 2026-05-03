@@ -25,6 +25,7 @@ type Props = {
   deletingAccount?: boolean;
   userName?: string;
   userEmail?: string;
+  school: string;
   userProfile: EditableProfile;
   userSettings: UserSettingsState;
   themePreference?: ThemePreference;
@@ -851,7 +852,7 @@ function HelpCenterScreen({ onBack }: { onBack: () => void }) {
     ]},
     { title: 'Troubleshooting', icon: '🔧', faqs: [
       { q: "The app won't load my courses", a: 'Make sure you have a stable internet connection. Try refreshing the page or logging out and back in. If the problem persists, contact support.' },
-      { q: "I can't find my university", a: "ClassMate is currently only available for UC Irvine. We're working on adding more universities soon! Check the About section for updates." },
+      { q: "I can't find my university", a: "ClassMate is expanding across universities now, starting with UC Irvine, University of Maryland, Cornell University, Purdue University, and University of Illinois Urbana-Champaign. If your school is not listed yet, contact support." },
       { q: "Notifications aren't working", a: 'Check Settings > Notifications to ensure the types of notifications you want are enabled. Also verify that your device allows push notifications from ClassMate.' },
     ]},
   ];
@@ -995,7 +996,7 @@ function AboutScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
-function ModerationScreen({ onBack }: { onBack: () => void }) {
+function ModerationScreen({ school, onBack }: { school: string; onBack: () => void }) {
   const { colors } = useTheme();
   const [reports, setReports] = useState<ModerationReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1011,6 +1012,7 @@ function ModerationScreen({ onBack }: { onBack: () => void }) {
     const { data: reportRows, error } = await supabase
       .from('reports')
       .select('*')
+      .eq('school', school)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -1036,13 +1038,13 @@ function ModerationScreen({ onBack }: { onBack: () => void }) {
 
     const [{ data: profiles }, { data: posts }, { data: comments }] = await Promise.all([
       reporterIds.length
-        ? supabase.from('profiles').select('id, name, email').in('id', reporterIds)
+        ? supabase.from('profiles').select('id, name, email').eq('school', school).in('id', reporterIds)
         : Promise.resolve({ data: [] as any[] }),
       postIds.length
-        ? supabase.from('posts').select('id, title, body').in('id', postIds)
+        ? supabase.from('posts').select('id, title, body').eq('school', school).in('id', postIds)
         : Promise.resolve({ data: [] as any[] }),
       commentIds.length
-        ? supabase.from('post_comments').select('id, content').in('id', commentIds)
+        ? supabase.from('post_comments').select('id, content').eq('school', school).in('id', commentIds)
         : Promise.resolve({ data: [] as any[] }),
     ]);
 
@@ -1084,7 +1086,7 @@ function ModerationScreen({ onBack }: { onBack: () => void }) {
 
   async function updateReportStatus(reportId: string, status: ReportStatus) {
     setUpdatingId(reportId);
-    const { error } = await supabase.from('reports').update({ status }).eq('id', reportId);
+    const { error } = await supabase.from('reports').update({ status }).eq('id', reportId).eq('school', school);
     setUpdatingId(null);
     if (error) {
       Alert.alert('Could not update report', error.message);
@@ -1298,12 +1300,14 @@ const BOARD_ICON_OPTIONS: Array<{
 ];
 
 function CreateBoardView({
+  school,
   requestId,
   initialName,
   initialDescription,
   onBack,
   onSuccess,
 }: {
+  school: string;
   requestId: string;
   initialName: string;
   initialDescription: string;
@@ -1333,7 +1337,7 @@ function CreateBoardView({
       icon: selectedIcon.icon,
       color: selectedIcon.color,
       icon_bg: selectedIcon.iconBg,
-      school: 'UC Irvine',
+      school,
     });
 
     if (insertError) {
@@ -1342,7 +1346,7 @@ function CreateBoardView({
       return;
     }
 
-    await supabase.from('board_requests').update({ status: 'resolved' }).eq('id', requestId);
+    await supabase.from('board_requests').update({ status: 'resolved' }).eq('id', requestId).eq('school', school);
     setSubmitting(false);
     Alert.alert('Board created!', `"${trimmedName}" is now live for all users.`, [
       { text: 'OK', onPress: () => onSuccess(requestId) },
@@ -1477,7 +1481,7 @@ function CreateBoardView({
   );
 }
 
-function ManageBoardsView({ onBack }: { onBack: () => void }) {
+function ManageBoardsView({ school, onBack }: { school: string; onBack: () => void }) {
   const { colors } = useTheme();
   const [boards, setBoards] = useState<Array<{
     id: string;
@@ -1498,7 +1502,7 @@ function ManageBoardsView({ onBack }: { onBack: () => void }) {
     const { data, error } = await supabase
       .from('boards')
       .select('*')
-      .eq('school', 'UC Irvine')
+      .eq('school', school)
       .order('created_at', { ascending: true });
     setLoading(false);
     if (error) { Alert.alert('Could not load boards', error.message); return; }
@@ -1526,6 +1530,7 @@ function ManageBoardsView({ onBack }: { onBack: () => void }) {
       .from('boards')
       .delete()
       .eq('id', boardId)
+      .eq('school', school)
       .select();
     setDeletingId(null);
     if (error) {
@@ -1599,7 +1604,7 @@ function ManageBoardsView({ onBack }: { onBack: () => void }) {
   );
 }
 
-function BoardRequestsScreen({ onBack }: { onBack: () => void }) {
+function BoardRequestsScreen({ school, onBack }: { school: string; onBack: () => void }) {
   const { colors } = useTheme();
   const [requests, setRequests] = useState<Array<{
     id: string;
@@ -1656,6 +1661,7 @@ function BoardRequestsScreen({ onBack }: { onBack: () => void }) {
     const { data: rows, error } = await supabase
       .from('board_requests')
       .select('*')
+      .eq('school', school)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -1675,7 +1681,7 @@ function BoardRequestsScreen({ onBack }: { onBack: () => void }) {
 
     const requesterIds = Array.from(new Set(typedRows.map((r) => r.requester_id).filter(Boolean)));
     const { data: profiles } = requesterIds.length
-      ? await supabase.from('profiles').select('id, name, email').in('id', requesterIds)
+      ? await supabase.from('profiles').select('id, name, email').eq('school', school).in('id', requesterIds)
       : { data: [] as any[] };
 
     const profileById = Object.fromEntries(
@@ -1699,7 +1705,7 @@ function BoardRequestsScreen({ onBack }: { onBack: () => void }) {
 
   async function updateStatus(id: string, status: ReportStatus) {
     setUpdatingId(id);
-    const { error } = await supabase.from('board_requests').update({ status }).eq('id', id);
+    const { error } = await supabase.from('board_requests').update({ status }).eq('id', id).eq('school', school);
     setUpdatingId(null);
     if (error) { Alert.alert('Could not update status', error.message); return; }
     setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
@@ -1718,6 +1724,7 @@ function BoardRequestsScreen({ onBack }: { onBack: () => void }) {
   if (createBoardFor) {
     return (
       <CreateBoardView
+        school={school}
         requestId={createBoardFor.id}
         initialName={createBoardFor.name}
         initialDescription={createBoardFor.description}
@@ -1869,7 +1876,7 @@ function BoardRequestsScreen({ onBack }: { onBack: () => void }) {
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, transform: [{ translateX: boardsSlideAnim }] }}
           {...swipeBoardsPan.panHandlers}
         >
-          <ManageBoardsView onBack={closeManageBoards} />
+          <ManageBoardsView school={school} onBack={closeManageBoards} />
         </Animated.View>
       )}
     </View>
@@ -1885,6 +1892,7 @@ export default function SettingsScreen({
   deletingAccount = false,
   userName = 'John Doe',
   userEmail = 'john.doe@university.edu',
+  school,
   userProfile,
   userSettings,
   themePreference,
@@ -2000,8 +2008,8 @@ export default function SettingsScreen({
         );
       case 'help': return <HelpCenterScreen onBack={goBack} />;
       case 'about': return <AboutScreen onBack={goBack} />;
-      case 'moderation': return <ModerationScreen onBack={goBack} />;
-      case 'board_requests': return <BoardRequestsScreen onBack={goBack} />;
+      case 'moderation': return <ModerationScreen school={school} onBack={goBack} />;
+      case 'board_requests': return <BoardRequestsScreen school={school} onBack={goBack} />;
       default: return null;
     }
   };

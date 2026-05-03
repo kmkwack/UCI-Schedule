@@ -34,7 +34,7 @@ import * as Sharing from 'expo-sharing';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import { anteaterAliasForId } from '../data/anonymousAliases';
-import { UCI_DEPARTMENTS, colorForDepartment } from '../data/courses';
+import { colorForDepartment } from '../data/courses';
 import type { ChatTarget } from '../data/messages';
 import { abbreviateMajor } from '../data/userPreferences';
 
@@ -225,6 +225,17 @@ function isNetworkRequestError(error: unknown) {
     message.includes('network request failed') ||
     message.includes('failed to fetch') ||
     message.includes('fetch failed')
+  );
+}
+
+function isMissingSchemaError(error: unknown) {
+  const message = String((error as { message?: unknown } | null | undefined)?.message ?? error ?? '').toLowerCase();
+  return (
+    message.includes('schema cache') ||
+    message.includes('does not exist') ||
+    message.includes('could not find the table') ||
+    message.includes('could not find the') ||
+    (error as { code?: unknown } | null | undefined)?.code === 'PGRST205'
   );
 }
 
@@ -606,6 +617,8 @@ export default function BoardScreen({
   const [boards, setBoards] = useState<Board[]>(FALLBACK_BOARDS);
   const [showDepartmentBoards, setShowDepartmentBoards] = useState(false);
   const [departmentSearch, setDepartmentSearch] = useState('');
+  const [departmentCodes, setDepartmentCodes] = useState<string[]>([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
 
   const SCREEN_W = Dimensions.get('window').width;
   const boardSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
@@ -630,7 +643,7 @@ export default function BoardScreen({
   const settleSelectedPostComposer = useCallback((animated = true) => {
     [0, 80, 180, 340].forEach((delay) => scrollSelectedPostToComposer(animated, delay));
   }, [scrollSelectedPostToComposer]);
-  const departmentBoards = useMemo(() => UCI_DEPARTMENTS.map(departmentBoardFor), []);
+  const departmentBoards = useMemo(() => departmentCodes.map(departmentBoardFor), [departmentCodes]);
   const hotPosts = useMemo(() => {
     return posts
       .filter((post) => post.likes > 10)
@@ -668,6 +681,7 @@ export default function BoardScreen({
 
   useEffect(() => {
     void fetchBoards();
+    void fetchDepartmentBoards();
     void fetchPosts();
   }, [boardAuthorName, boardProfileVisible, school, userId]);
 
@@ -725,6 +739,7 @@ export default function BoardScreen({
     const { data: profilesData, error: profilesError } = await supabase
       .from('profiles')
       .select('id, major, year')
+      .eq('school', school)
       .in('id', validIds);
 
     if (profilesError && !isNetworkRequestError(profilesError)) console.error('Failed to load board profiles:', profilesError);
@@ -1024,8 +1039,8 @@ export default function BoardScreen({
 
       const postIds = postsData.map((post: any) => post.id);
       const [{ data: votesData }, { data: commentsData }, authorSummaries] = await Promise.all([
-        supabase.from('post_votes').select('post_id, user_id').in('post_id', postIds),
-        supabase.from('post_comments').select('id, post_id').in('post_id', postIds),
+        supabase.from('post_votes').select('post_id, user_id').eq('school', school).in('post_id', postIds),
+        supabase.from('post_comments').select('id, post_id').eq('school', school).in('post_id', postIds),
         resolveAuthorSummaries(postsData.map((post: any) => post.user_id)),
       ]);
 
@@ -1119,11 +1134,70 @@ export default function BoardScreen({
     }
   }
 
+  async function fetchDepartmentBoards() {
+    setDepartmentsLoading(true);
+    const departmentsSet = new Set<string>();
+
+    try {
+      const { data: departmentRows, error: departmentError } = await supabase
+        .from('school_departments')
+        .select('department')
+        .eq('school', school)
+        .eq('active', true)
+        .order('department', { ascending: true });
+
+      if (departmentError) {
+        if (!isMissingSchemaError(departmentError) && !isNetworkRequestError(departmentError)) {
+          console.warn('Failed to load school department boards:', departmentError);
+        }
+      } else {
+        (departmentRows ?? []).forEach((row: any) => {
+          if (row.department) departmentsSet.add(String(row.department).trim());
+        });
+      }
+
+      const PAGE_SIZE = 1000;
+      let from = 0;
+      while (true) {
+        const { data: sectionRows, error: sectionError } = await supabase
+          .from('sections')
+          .select('department')
+          .eq('school', school)
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (sectionError) {
+          if (!isMissingSchemaError(sectionError) && !isNetworkRequestError(sectionError)) {
+            console.warn('Failed to load section-backed department boards:', sectionError);
+          }
+          break;
+        }
+
+        (sectionRows ?? []).forEach((row: any) => {
+          if (row.department) departmentsSet.add(String(row.department).trim());
+        });
+
+        if (!sectionRows || sectionRows.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+
+      const nextDepartments = Array.from(departmentsSet)
+        .map((department) => department.trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b));
+      setDepartmentCodes(nextDepartments);
+    } catch (error) {
+      if (!isNetworkRequestError(error)) console.warn('Failed to refresh department boards:', error);
+      setDepartmentCodes([]);
+    } finally {
+      setDepartmentsLoading(false);
+    }
+  }
+
   async function handleRefresh() {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      await Promise.all([fetchBoards(), fetchPosts()]);
+      await Promise.all([fetchBoards(), fetchDepartmentBoards(), fetchPosts()]);
       if (selectedPost) {
         await loadCommentsForPost(selectedPost.id);
       }
@@ -1137,6 +1211,7 @@ export default function BoardScreen({
     const { data: commentsData, error: commentsError } = await supabase
       .from('post_comments')
       .select('*')
+      .eq('school', school)
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
 
@@ -1151,7 +1226,7 @@ export default function BoardScreen({
     const commentIds = commentRows.map((comment) => comment.id);
     const [{ data: commentVoteData, error: commentVotesError }, authorSummaries] = await Promise.all([
       commentIds.length > 0
-        ? supabase.from('post_comment_votes').select('comment_id, user_id').in('comment_id', commentIds)
+        ? supabase.from('post_comment_votes').select('comment_id, user_id').eq('school', school).in('comment_id', commentIds)
         : Promise.resolve({ data: [], error: null }),
       resolveAuthorSummaries(commentRows.map((comment) => comment.user_id)),
     ]);
@@ -1220,9 +1295,9 @@ export default function BoardScreen({
     );
 
     if (wasLiked) {
-      await supabase.from('post_votes').delete().eq('post_id', postId).eq('user_id', userId);
+      await supabase.from('post_votes').delete().eq('school', school).eq('post_id', postId).eq('user_id', userId);
     } else {
-      await supabase.from('post_votes').insert({ post_id: postId, user_id: userId });
+      await supabase.from('post_votes').insert({ school, post_id: postId, user_id: userId });
     }
   }
 
@@ -1236,8 +1311,8 @@ export default function BoardScreen({
     );
 
     const query = liked
-      ? supabase.from('post_comment_votes').delete().eq('comment_id', commentId).eq('user_id', userId)
-      : supabase.from('post_comment_votes').insert({ comment_id: commentId, user_id: userId });
+      ? supabase.from('post_comment_votes').delete().eq('school', school).eq('comment_id', commentId).eq('user_id', userId)
+      : supabase.from('post_comment_votes').insert({ school, comment_id: commentId, user_id: userId });
 
     const { error } = await query;
     if (error) {
@@ -1282,11 +1357,12 @@ export default function BoardScreen({
                 await supabase
                   .from('post_comments')
                   .update({ parent_comment_id: comment.parent_comment_id })
+                  .eq('school', school)
                   .eq('parent_comment_id', comment.id);
               }
 
-              await supabase.from('post_comment_votes').delete().eq('comment_id', comment.id);
-              const fallback = await supabase.from('post_comments').delete().eq('id', comment.id).eq('user_id', userId);
+              await supabase.from('post_comment_votes').delete().eq('school', school).eq('comment_id', comment.id);
+              const fallback = await supabase.from('post_comments').delete().eq('school', school).eq('id', comment.id).eq('user_id', userId);
               error = fallback.error;
             }
 
@@ -1327,6 +1403,7 @@ export default function BoardScreen({
       let { error } = await supabase
         .from('post_comments')
         .update({ content, edited_at: editedAt })
+        .eq('school', school)
         .eq('id', editingComment.id)
         .eq('user_id', userId);
 
@@ -1334,6 +1411,7 @@ export default function BoardScreen({
         const retry = await supabase
           .from('post_comments')
           .update({ content })
+          .eq('school', school)
           .eq('id', editingComment.id)
           .eq('user_id', userId);
         error = retry.error;
@@ -1360,6 +1438,7 @@ export default function BoardScreen({
 
     const authorName = anteaterAliasForId(userId);
     const { error } = await supabase.from('post_comments').insert({
+      school,
       post_id: selectedPost.id,
       user_id: userId,
       author_name: authorName,
@@ -1424,6 +1503,7 @@ export default function BoardScreen({
           .from('posts')
           .update(editPayload)
           .eq('id', editingPostId)
+          .eq('school', school)
           .eq('user_id', userId)
           .select()
           .single();
@@ -1433,6 +1513,7 @@ export default function BoardScreen({
             .from('posts')
             .update(payload)
             .eq('id', editingPostId)
+            .eq('school', school)
             .eq('user_id', userId)
             .select()
             .single();
@@ -1555,16 +1636,28 @@ export default function BoardScreen({
         style: 'destructive',
         onPress: () => {
           void (async () => {
-            const { data: commentRows } = await supabase.from('post_comments').select('id').eq('post_id', post.id);
+            const { data: postRow } = await supabase
+              .from('posts')
+              .select('id')
+              .eq('id', post.id)
+              .eq('school', school)
+              .eq('user_id', userId)
+              .maybeSingle();
+            if (!postRow) {
+              Alert.alert('Delete failed', 'This post does not belong to the current school.');
+              return;
+            }
+
+            const { data: commentRows } = await supabase.from('post_comments').select('id').eq('school', school).eq('post_id', post.id);
             const commentIds = (commentRows ?? []).map((row: any) => row.id);
 
             if (commentIds.length > 0) {
-              await supabase.from('post_comment_votes').delete().in('comment_id', commentIds);
+              await supabase.from('post_comment_votes').delete().eq('school', school).in('comment_id', commentIds);
             }
-            await supabase.from('post_comments').delete().eq('post_id', post.id);
-            await supabase.from('post_votes').delete().eq('post_id', post.id);
+            await supabase.from('post_comments').delete().eq('school', school).eq('post_id', post.id);
+            await supabase.from('post_votes').delete().eq('school', school).eq('post_id', post.id);
 
-            const { error } = await supabase.from('posts').delete().eq('id', post.id).eq('user_id', userId);
+            const { error } = await supabase.from('posts').delete().eq('id', post.id).eq('school', school).eq('user_id', userId);
             if (error) {
               Alert.alert('Delete failed', error.message);
               return;
@@ -2158,9 +2251,6 @@ export default function BoardScreen({
                   SCHOOL BOARDS
                 </Text>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Department Boards</Text>
-                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
-                  Browse {UCI_DEPARTMENTS.length} department boards
-                </Text>
               </View>
               <View
                 style={{
@@ -2313,7 +2403,7 @@ export default function BoardScreen({
             >
               <Ionicons name="search-outline" size={18} color={colors.placeholder} />
               <TextInput
-                placeholder="Search departments..."
+                placeholder="Search department or course code..."
                 placeholderTextColor={colors.placeholder}
                 value={departmentSearch}
                 onChangeText={setDepartmentSearch}
@@ -2334,7 +2424,23 @@ export default function BoardScreen({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {filteredDepartmentBoards.length === 0 ? (
+            {departmentsLoading ? (
+              <View
+                style={{
+                  borderRadius: 18,
+                  padding: 18,
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <ActivityIndicator size="small" color={colors.brand} />
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Loading department boards</Text>
+              </View>
+            ) : filteredDepartmentBoards.length === 0 ? (
               <View
                 style={{
                   borderRadius: 18,

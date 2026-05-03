@@ -91,6 +91,13 @@ async function fetchDepartment(year, quarter, dept, retries = 3) {
 
           rows.push({
             id:              `${section.sectionCode}::${qKey}`,
+            school:          'UC Irvine',
+            source:          'anteaterapi',
+            source_id:       section.sectionCode,
+            source_term_code: `${year}-${quarter}`,
+            campus:          'Irvine',
+            status:          section.status ?? null,
+            last_synced_at:  new Date().toISOString(),
             quarter_key:     qKey,
             department:      d.deptCode,
             dept_name:       d.deptName ?? null,
@@ -103,7 +110,7 @@ async function fetchDepartment(year, quarter, dept, retries = 3) {
             time,
             location:        meeting?.bldg?.[0] ?? null,
             meetings:        section.meetings ?? [],
-            units:           parseInt(section.units) || null,
+            units:           Number(section.units) || null,
             ge_categories:   section.geCategories ?? [],
             final_exam:      section.finalExam ?? null,
             restrictions:    section.restrictions ?? null,

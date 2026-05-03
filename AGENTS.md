@@ -1761,3 +1761,185 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64mc (Fix Instagram schedule image payload)
 - **`src/screens/TimetableScreen.tsx`** — Converted captured timetable exports to PNG data URLs before handing them to Instagram, and uses the Instagram Stories background image API for story shares. This prevents Instagram from falling back to the user’s camera roll instead of the generated schedule image.
+
+### Session 64md (Narrow timetable time column)
+- **`src/screens/TimetableScreen.tsx`** — Reduced the timetable time-label column to a narrower fixed width and recalculated day columns from the remaining space, including the hidden export timetable. This gives each weekday more horizontal room so course blocks feel less cramped.
+
+### Session 64me (Compact empty Today card)
+- **`src/screens/HomeScreen.tsx`** — Reduced the empty Today schedule card padding, headline size, and progress ring size, and removed the extra “Take a lighter campus day” line. This makes the no-class state feel less heavy and brings the quarter/weather cards higher on the first screen.
+
+### Session 64mf (Make Colorful timetable vivid)
+- **`src/data/courses.ts`** — Added a separate saturated rainbow palette for the Colorful timetable theme and switched colorful course blocks to use it instead of the softer course-color palette. This makes the theme change real hues across red, orange, yellow, green, blue, indigo, violet, and pink instead of only changing brightness.
+
+### Session 64mg (Smooth message auto-scroll)
+- **`src/screens/MessagesScreen.tsx`** — Replaced the repeated delayed `scrollToEnd` sequence with a single coalesced scroll, clears pending scroll timers, and avoids animated scrolling on every content-size change. This prevents newly sent messages from jumping upward in choppy steps while still keeping the latest message visible.
+
+### Session 64mh (Keep messages above keyboard)
+- **`src/screens/MessagesScreen.tsx`** — Changed chat keyboard handling to use a single keyboard-show event, wait until the keyboard animation finishes before the final scroll-to-end correction, and use iOS padding behavior for the chat `KeyboardAvoidingView`. This keeps the newest messages visible above the keyboard without reintroducing choppy repeated scrolling.
+
+### Session 64mi (Add chat keyboard breathing room)
+- **`src/screens/MessagesScreen.tsx`** — Increased the keyboard-visible composer bottom padding and message-list bottom padding. This gives the latest chat bubbles and input row more space above the keyboard instead of feeling pinned to it.
+
+### Session 64mj (Lift chat composer off keyboard)
+- **`src/screens/MessagesScreen.tsx`** — Added a keyboard-visible bottom margin to the chat composer container. This moves the whole message input bar off the keyboard instead of only increasing its internal padding.
+
+### Session 64mk (Add Maryland to university roadmap)
+- **`src/screens/UniversitySelectionScreen.tsx`** — Added University of Maryland, College Park as the next coming-soon school with the `@umd.edu` domain and updated the coming-soon alert to describe broader school expansion instead of only UC campuses.
+- **`src/components/FeatureOnboardingScreen.tsx`** — Added a Maryland onboarding brand fallback (`MARYLAND`, `Terrapin`) so the school has sensible copy when enabled later.
+- **`src/screens/SettingsScreen.tsx`** — Updated the help FAQ to mention University of Maryland, College Park as the next roadmap university.
+
+### Session 64ml (UMD sections seed path)
+- **`supabase/sql/sections_school.sql`** — Added a `school` column plus school/quarter indexes for the shared `sections` table so UCI and UMD section rows can coexist without mixing in course search.
+- **`scripts/seed-umd-sections.js`** — Added a University of Maryland, College Park seeder that reads departments/courses/sections from `umd.io`, normalizes UMD semester data into the existing ClassMate `sections` shape, and upserts by section/term id.
+- **`scripts/seed-sections.js`** and **`scripts/seed-summer.js`** — Added `school: 'UC Irvine'` to future UCI section seed rows.
+- **`src/screens/CoursePickerScreen.tsx`** — Added school-scoped section queries, school-scoped department loading from seeded rows, hid UCI GE filters for non-UCI schools, and disabled Anteater live-enrollment fetches outside UC Irvine.
+- **`src/screens/TimetableScreen.tsx`** — Made seeded-quarter availability checks school-scoped so Add Quarter only shows terms with rows for the current school.
+- **`src/components/ReviewsModal.tsx`** — Scoped section info lookup by school and skipped UCI Anteater grade-distribution fetches for non-UCI schools.
+
+### Session 64mm (Fix UMD full-department seed)
+- **`scripts/seed-umd-sections.js`** — Updated department discovery to read `dept_id` from umd.io department objects. This fixes full-school seeding returning zero sections when no explicit department list is passed.
+
+### Session 64mn (Add Cornell and Purdue roadmap schools)
+- **`src/screens/UniversitySelectionScreen.tsx`** — Added Cornell University (`@cornell.edu`) and Purdue University (`@purdue.edu`) as coming-soon schools in the university picker.
+- **`src/components/FeatureOnboardingScreen.tsx`** — Added Cornell and Purdue onboarding brand fallbacks (`CORNELL` / `Big Red`, `PURDUE` / `Boilermaker`).
+- **`src/screens/SettingsScreen.tsx`** — Updated the help FAQ to mention Cornell and Purdue as schools being prepared after Maryland.
+
+### Session 64mo (Open expansion schools in picker)
+- **`src/screens/UniversitySelectionScreen.tsx`** — Changed Maryland, Cornell, and Purdue from coming-soon to available in the university picker because these schools are being connected immediately.
+- **`src/screens/SettingsScreen.tsx`** — Updated the help FAQ to describe active university expansion across UC Irvine, Maryland, Cornell, and Purdue instead of roadmap-only language.
+
+### Session 64mp (Cornell and Purdue seeders)
+- **`scripts/seed-cornell-sections.js`** — Added a Cornell University seeder that reads subjects/classes from the official Cornell Class Roster API, normalizes roster sections into the shared `sections` shape, and respects Cornell's 1-request-per-second guidance.
+- **`scripts/seed-purdue-sections.js`** — Added a Purdue University seeder that reads subjects/sections/meetings from Purdue.io OData for the West Lafayette campus and normalizes rows into the shared `sections` shape.
+- **`scripts/seed-cornell-sections.js`** and **`scripts/seed-purdue-sections.js`** — Prefix generated section IDs by school and normalize Cornell `R` meeting days to `Th` so non-UCI CRNs cannot collide with existing rows and Thursday classes render correctly.
+
+### Session 64mq (Multi-school catalog metadata)
+- **`supabase/sql/multi_school_catalog_metadata.sql`** — Added source identity columns to `sections`, seed status tables for school terms/departments, a separate raw payload table, and a `school` column/index for `timetables`. This keeps app search rows lean while making large multi-school imports easier to audit and resync.
+- **`scripts/seed-umd-sections.js`**, **`scripts/seed-cornell-sections.js`**, **`scripts/seed-purdue-sections.js`**, **`scripts/seed-sections.js`**, and **`scripts/seed-summer.js`** — Added source metadata to seeded section rows and term/department seed summaries for the new multi-school catalog tables.
+- **`supabase/sql/multi_school_catalog_metadata.sql`**, **`scripts/seed-umd-sections.js`**, **`scripts/seed-sections.js`**, and **`scripts/seed-summer.js`** — Changed section units storage/parsing to support decimal credit values such as Purdue's `0.5`, `1.5`, and `2.5` unit courses.
+- **`supabase/sql/multi_school_catalog_metadata.sql`** — Added a PostgREST schema-cache reload notification so Supabase API inserts can see the new catalog metadata columns immediately after the migration runs.
+
+### Session 64mr (Scope timetables by school)
+- **`App.tsx`** — Scoped timetable loading, creation, and saving by the selected school so schedules for UCI, Maryland, Cornell, and Purdue do not share the same user/quarter rows.
+- **`src/screens/HomeScreen.tsx`** and **`src/screens/FriendsScreen.tsx`** — Filtered friend/classmate timetable reads and caches by school so social schedule previews only show schedules from the current university.
+- **`src/screens/CoursePickerScreen.tsx`** — Switched department loading to prefer `school_departments`, with a `sections` fallback, and scoped saved-count reads by school.
+
+### Session 64ms (Review account school persistence)
+- **`App.tsx`** — Added supported university lookup for Maryland, Cornell, and Purdue so restored sessions can reopen the correct selected school instead of falling back to UC Irvine.
+- **`src/screens/SignInScreen.tsx`** — Saves the currently selected school into auth metadata on email/password review sign-in, letting one review account test each newly seeded school without owning that school email domain.
+- **`scripts/ensure-review-account.js`** — Added a service-role bootstrap script for creating/updating the shared review email/password account used to test any supported school through the in-app Review access flow.
+
+### Session 64mt (School-specific welcome identity)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Reworked the arrival slide to use school-specific student/mascot language and colors: UC Irvine Anteaters, Maryland Terps/Terrapins, Cornell Cornellians/Big Red, and Purdue Boilermakers/Purdue Pete. Also removed UCI-specific wording from the app-tour schedule copy.
+
+### Session 64mu (Robust department loading)
+- **`src/screens/CoursePickerScreen.tsx`** — Changed department loading to merge `school_departments` with a paginated scan of the current term's `sections`. This prevents partially backfilled metadata from hiding most departments for newly seeded schools such as Purdue.
+- **`src/screens/CoursePickerScreen.tsx`** — Added a non-UCI fallback that scans all seeded sections for a school when the selected term has no rows, preventing the department filter from rendering empty before the user switches to a seeded quarter.
+- **`App.tsx`** — Added seeded-quarter resolution on school login/load so newly added schools open on a term that actually has course rows, instead of defaulting to the current academic quarter and showing empty course lists.
+
+### Session 64mv (Partition social data by school)
+- **`supabase/sql/social_school_partitioning.sql`** — Added a school-partition migration for friend requests, board requests, reports, board comments/likes, and sports event social tables, including school-scoped indexes and unique keys.
+- **`supabase/sql/conversation_messages.sql`** — Updated friend-chat creation to require an accepted friend request in the same school as the conversation.
+- **`App.tsx`** — Scoped unread message counts and social notification polling by the currently selected school so cross-school conversations, requests, comments, and likes cannot feed badges or notifications.
+- **`src/screens/FriendsScreen.tsx`** — Scoped friend graph reads/writes by school and stores new requests with the selected school.
+- **`src/screens/MessagesScreen.tsx`** — Scoped conversation lists, source-post previews, profile name resolution, and message loading by school before messages are fetched.
+- **`src/screens/HomeScreen.tsx`** — Scoped classmate matching and sports event RSVP/comment data by school, and stopped non-UCI schools from showing UCI athletics events until their own sports feed is connected.
+- **`src/screens/BoardScreen.tsx`** — Scoped board authors, comments, post likes, comment likes, post edits/deletes, reports, and board requests by school.
+- **`src/screens/SettingsScreen.tsx`** — Passed the selected school into moderation and board-management tools so board/report/admin actions operate only within that school.
+- **`src/components/ReviewsModal.tsx`** — Scoped review edits and deletes by school and author so review moderation cannot cross school boundaries.
+
+### Session 64mw (Prevent review-login main-screen flash)
+- **`App.tsx`** — Added a signed-in user bootstrap loading gate around profile/settings/onboarding hydration. Review-account logins now wait for onboarding state to resolve before rendering the main app, preventing the brief main-screen flash before the external-review onboarding flow appears.
+
+### Session 64mx (School logos and campus context)
+- **`assets/umd-logo.png`**, **`assets/cornell-logo.jpg`**, and **`assets/purdue-logo.png`** — Added provided university logo assets for the expanded school picker.
+- **`src/screens/UniversitySelectionScreen.tsx`** — Replaced text-only abbreviations for UMD, Cornell, and Purdue with real logo images in the university selection cards while keeping UCI's existing monogram.
+- **`src/screens/TimetableScreen.tsx`** — Added a small connected-school/campus line below the Timetable title so users can see which university context they are currently using.
+
+### Session 64my (Backfill UCI legacy social data)
+- **`App.tsx`** — Added UC Irvine-only fallback reads/writes for timetables when the deployed database has not yet received the new `school` column, preventing legacy UCI schedules from disappearing during the multi-school migration window.
+- **`src/screens/FriendsScreen.tsx`** — Added UC Irvine-only fallback reads/writes for friend requests when the `school` column is not yet present, preserving existing UCI friend/request visibility until the social partition migration is applied.
+- **`supabase/sql/multi_school_catalog_metadata.sql`** and **`supabase/sql/social_school_partitioning.sql`** — Added explicit UCI backfill updates for legacy rows whose school value is missing or blank.
+
+### Session 64mz (Uniform university cards)
+- **`src/screens/UniversitySelectionScreen.tsx`** — Fixed university cards to a consistent height, constrained long school names like University of Maryland, College Park to one line with ellipsis, and removed the extra coming-soon helper line so the picker stays visually even.
+
+### Session 64na (Remove UC coming-soon schools)
+- **`src/screens/UniversitySelectionScreen.tsx`** — Removed the UC coming-soon entries from the university picker and simplified the intro copy so only currently connected schools are shown.
+
+### Session 64nb (Move campus context to Today)
+- **`src/screens/TimetableScreen.tsx`** — Removed the connected-school/campus line from the timetable header to keep the schedule surface cleaner.
+- **`src/screens/HomeScreen.tsx`** — Added a compact plain school/campus label above the Today title, using just the university name and campus without "Connected to" wording.
+
+### Session 64nc (School academic systems)
+- **`src/data/schools.ts`** — Added centralized school configuration for campus labels, academic system (`quarter` vs `semester`), term ordering, current-term resolution, and school-specific term labels.
+- **`App.tsx`** — Switched current-term logic from hardcoded UCI quarters to school-aware academic terms while keeping the existing `quarter_key` storage format.
+- **`src/screens/HomeScreen.tsx`** — Changed the Today progress card and date label to use `Quarter progress` for UCI and `Semester progress` for semester schools.
+- **`src/screens/TimetableScreen.tsx`** — Made term sorting, Add Quarter/Semester copy, and add-term candidates school-aware so semester schools do not show Winter quarter options.
+- **`src/screens/CoursePickerScreen.tsx`** and **`src/screens/FriendsScreen.tsx`** — Updated visible term labels to show `Fall 2026 Quarter` or `Fall 2026 Semester` depending on the selected school.
+
+### Session 64nd (Quiet missing school-column migration errors)
+- **`App.tsx`** — Suppressed redbox-triggering social notification logs when the deployed database is still missing newly added `school` columns, while keeping the school-scoped queries as the source of truth.
+- **`src/screens/HomeScreen.tsx`** — Added migration-safe fallback reads for sports RSVP/comment tables when the `school` column has not been applied yet, and prevents missing-column responses from surfacing as console errors.
+
+### Session 64ne (Remove UCI welcome photo)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Removed the UCI Anthill Plaza background image from the arrival/welcome onboarding slide so "Welcome, Anteater" uses the clean app background instead.
+
+### Session 64nf (Show school name only)
+- **`src/data/schools.ts`** — Changed the shared school label helper to return only the university name, removing campus suffixes from the Today header.
+
+### Session 64ng (Move school label below Today)
+- **`src/screens/HomeScreen.tsx`** — Moved the compact school name label from above the Today title to directly below it.
+
+### Session 64nh (Reduce progress ring size)
+- **`src/screens/HomeScreen.tsx`** — Reduced the term progress ring in the Today two-column card from 112px to 92px and tightened its top spacing so the progress card no longer feels oversized after adding the Quarter/Semester progress label.
+
+### Session 64ni (Simplify progress term title)
+- **`src/screens/HomeScreen.tsx`** — Removed the academic-system suffix from the progress card title so it shows just `Spring 2026` while keeping the separate Quarter/Semester progress label.
+
+### Session 64nj (School-specific course boards)
+- **`src/screens/BoardScreen.tsx`** — Replaced the hardcoded UCI department-board list with school-scoped departments loaded from `school_departments` and `sections`, so Cornell, Purdue, Maryland, and UCI show course boards from their own catalog data.
+- **`src/screens/BoardScreen.tsx`** — Changed the department-board browser into a search-first Course Boards flow that does not render every department by default, preventing schools with 150+ subjects from becoming a huge browse list.
+
+### Session 64nk (Restore department board wording)
+- **`src/screens/BoardScreen.tsx`** — Restored the visible board label to `Department Boards` and removed the helper/status line below the entry card so the school board list stays cleaner.
+
+### Session 64nl (Show all department boards)
+- **`src/screens/BoardScreen.tsx`** — Restored the department-board modal to show the full school-specific department list by default, with the search box acting only as a filter.
+
+### Session 64nm (Multi-school section backfill runner)
+- **`scripts/backfill-school-sections.js`** — Added a runner that calls the UMD, Cornell, and Purdue seeders across multiple years and standard semester terms, so historical catalog imports can be launched consistently instead of typing every school/term command by hand.
+
+### Session 64nn (Backfill schools from 2019)
+- **`scripts/backfill-school-sections.js`** — Changed the default backfill start year for UMD, Cornell, and Purdue to 2019 so expanded schools follow the same historical coverage target as UCI.
+
+### Session 64no (Add UIUC school support)
+- **`scripts/seed-uiuc-sections.js`** — Added a University of Illinois Urbana-Champaign seeder that reads Course Explorer subject/course pages, parses embedded section data, normalizes meetings, and upserts UIUC rows into the shared `sections` table.
+- **`src/screens/UniversitySelectionScreen.tsx`**, **`App.tsx`**, **`src/data/schools.ts`**, and **`src/components/FeatureOnboardingScreen.tsx`** — Added University of Illinois Urbana-Champaign as an available semester school with `@illinois.edu` review/login metadata and Illini onboarding language.
+- **`scripts/backfill-school-sections.js`** and **`src/screens/SettingsScreen.tsx`** — Added UIUC to the multi-school backfill runner and visible supported-school copy.
+
+### Session 64np (Validate backfill env)
+- **`scripts/backfill-school-sections.js`** — Added an upfront Supabase environment-variable check so a missing `SUPABASE_URL` or `SUPABASE_SERVICE_KEY` fails once before launching every school/term child seeder.
+
+### Session 64nq (Slow UIUC seeding to avoid 403s)
+- **`scripts/seed-uiuc-sections.js`** — Reduced UIUC seeding concurrency, added browser-like request headers, and added long 403 retry backoff so Course Explorer is less likely to block historical backfills mid-run.
+
+### Session 64nr (Centralize school workspace config)
+- **`src/data/schools.ts`** — Expanded school config into the single source of truth for supported universities, domains, locations, branding, mascot language, academic systems, terms, and feature flags.
+- **`src/screens/UniversitySelectionScreen.tsx`** and **`App.tsx`** — Switched university selection and restored-session school lookup to use the shared school config instead of separate hardcoded school arrays.
+- **`src/components/FeatureOnboardingScreen.tsx`**, **`src/screens/HomeScreen.tsx`**, and **`App.tsx`** — Reused the shared school branding/features so onboarding copy and sports availability are driven by school config rather than scattered string checks.
+
+### Session 64ns (School sports feeds and grade scales)
+- **`src/data/schools.ts`** — Added school-specific sports feed configuration and GPA scale metadata, including Cornell's 4.3 scale, UIUC's official decimal 4.0 scale, Purdue/UMD 4.0 scales, and per-school non-GPA grade options.
+- **`src/data/sportsEvents.ts`** — Added shared school-aware sports loading for UCI calendar data, Cornell responsive calendar JSON, and UIUC Sidearm calendar events, with unsupported sports feeds returning empty data safely.
+- **`src/screens/HomeScreen.tsx`** and **`App.tsx`** — Switched sports cards and sports reminder scheduling to use the selected school's feature flag and sports feed instead of UCI-only calendar fetching.
+- **`src/screens/GradesScreen.tsx`** — Passed the selected school into Grades and changed GPA calculation, grade picker options, and chart max scale to follow each school's grading policy.
+
+### Session 64nt (Enable UMD and Purdue sports schedules)
+- **`src/data/schools.ts`** — Added official UMD and Purdue team schedule page feeds and enabled sports for both schools after confirming they expose schedule data through official athletics pages even without a clean public calendar API.
+- **`src/data/sportsEvents.ts`** — Added schedule-page parsers for UMD's `/schedule/text` pages and Purdue's WMT schedule pages, normalizing their official athletics schedule rows into the shared `SportsEvent` shape used by Today cards and sports reminders.
+
+### Session 64nu (Harden multi-school fallbacks)
+- **`src/lib/supabaseErrors.ts`** — Added a shared Supabase schema-migration error helper so missing `school` column errors are detected consistently across screens, including Postgres `42703` responses.
+- **`App.tsx`**, **`src/screens/HomeScreen.tsx`**, and **`src/screens/FriendsScreen.tsx`** — Replaced duplicated missing-school-column checks with the shared helper and stopped friend-request loading from redboxing when the social partition migration has not reached Supabase yet.
+- **`src/screens/FriendsScreen.tsx`**, **`src/screens/SignUpScreen.tsx`**, **`src/screens/UniversitySelectionScreen.tsx`**, and **`src/components/FeatureOnboardingScreen.tsx`** — Removed several UCI-specific defaults/placeholders in favor of shared school config/default-university values, keeping the auth/onboarding/friend UI easier to extend for future schools.

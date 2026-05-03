@@ -23,16 +23,15 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   Course,
   Quarter,
-  QUARTERS,
   DEFAULT_TIMETABLE_SETTINGS,
   getBlockColors,
   quarterKey,
-  quarterLabel,
-  getAcademicQuarterForDate,
 } from '../data/courses';
+import { DEFAULT_UNIVERSITY, getAcademicTermForDate, getSchoolConfig, termLabel } from '../data/schools';
 import { abbreviateMajor, type TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
+import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import type { ChatTarget } from '../data/messages';
 
 type Friend = {
@@ -220,7 +219,7 @@ export default function FriendsScreen({
   const [debouncedEmailQuery, setDebouncedEmailQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'friends' | 'requests'>('friends');
   const [searchQuery, setSearchQuery] = useState('');
-  const [friendQuarter, setFriendQuarter] = useState<Quarter>(getAcademicQuarterForDate(new Date()));
+  const [friendQuarter, setFriendQuarter] = useState<Quarter>(getAcademicTermForDate(school, new Date()));
   const [showQuarterDropdown, setShowQuarterDropdown] = useState(false);
   const [friendAvailableQuarters, setFriendAvailableQuarters] = useState<string[]>([]);
   const [fetchingQuarters, setFetchingQuarters] = useState(false);
@@ -252,6 +251,7 @@ export default function FriendsScreen({
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [submittingRequestId, setSubmittingRequestId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
+  const schoolDomain = getSchoolConfig(school).domain || DEFAULT_UNIVERSITY.domain;
 
   const friend = selectedFriendId ? friends.find((f) => f.id === selectedFriendId) ?? null : null;
   const friendQuarterCourses: Course[] = friend
@@ -308,7 +308,7 @@ export default function FriendsScreen({
     return () => clearTimeout(timeout);
   }, [emailQuery]);
 
-  const classmateCacheKey = `classmates_${userId}`;
+  const classmateCacheKey = `classmates_${userId}_${school}`;
 
   useEffect(() => {
     if (!userId) return;
@@ -326,12 +326,30 @@ export default function FriendsScreen({
         setFriendsLoading(true);
       }
 
-      const { data: requestRows, error: requestsError } = await supabase
+      let { data: requestRows, error: requestsError } = await supabase
         .from('friend_requests')
         .select('id, sender_id, receiver_id, status')
+        .eq('school', school)
         .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
 
+      if (requestsError && school === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(requestsError)) {
+        const fallback = await supabase
+          .from('friend_requests')
+          .select('id, sender_id, receiver_id, status')
+          .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+        requestRows = fallback.data;
+        requestsError = fallback.error;
+      }
+
       if (requestsError) {
+        if (isMissingSchoolColumnError(requestsError)) {
+          setFriends([]);
+          setPendingRequests([]);
+          setSentRequests([]);
+          setSentRequestIds([]);
+          setFriendsLoading(false);
+          return;
+        }
         console.error('Failed to load friend requests:', requestsError);
         setFriendsLoading(false);
         return;
@@ -369,6 +387,7 @@ export default function FriendsScreen({
         const { data: profilesData, error: profilesError } = await supabase
           .from('profiles')
           .select('id, email, name, major, year, school')
+          .eq('school', school)
           .in('id', profileIds);
 
         if (profilesError) {
@@ -402,6 +421,7 @@ export default function FriendsScreen({
         const { data: timetableRows, error: timetablesError } = await supabase
           .from('timetables')
           .select('user_id, quarter_key, courses')
+          .eq('school', school)
           .in('user_id', acceptedIds);
 
         if (timetablesError) {
@@ -464,7 +484,7 @@ export default function FriendsScreen({
     }
 
     loadClassmates();
-  }, [userId]);
+  }, [classmateCacheKey, school, userId]);
 
   useEffect(() => {
     if (!showAddModal || !debouncedEmailQuery || debouncedEmailQuery.length < 2 || !userId) {
@@ -527,6 +547,7 @@ export default function FriendsScreen({
       const { data: rows, error } = await supabase
         .from('timetables')
         .select('quarter_key, courses')
+        .eq('school', school)
         .eq('user_id', selectedFriendId);
       if (error || !rows || rows.length === 0) return;
       const timetables: Record<string, Course[]> = {};
@@ -541,7 +562,7 @@ export default function FriendsScreen({
       );
     }
     refreshFriendTimetables();
-  }, [selectedFriendId]);
+  }, [school, selectedFriendId]);
 
   function openFriendTimetable(friendId: string) {
     friendSlideAnim.setValue(SCREEN_W);
@@ -575,6 +596,7 @@ export default function FriendsScreen({
     const { data, error } = await supabase
       .from('timetables')
       .select('quarter_key')
+      .eq('school', school)
       .eq('user_id', selectedFriendId);
     if (!error && data) {
       const keys = [...new Set((data as { quarter_key: string }[]).map(r => r.quarter_key))];
@@ -605,10 +627,20 @@ export default function FriendsScreen({
     if (!userId) return;
 
     setSubmittingRequestId(target.id);
-    const { data: existingRows, error: existingError } = await supabase
+    let { data: existingRows, error: existingError } = await supabase
       .from('friend_requests')
       .select('id, status')
+      .eq('school', school)
       .or(`and(sender_id.eq.${userId},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${userId})`);
+
+    if (existingError && school === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(existingError)) {
+      const fallback = await supabase
+        .from('friend_requests')
+        .select('id, status')
+        .or(`and(sender_id.eq.${userId},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${userId})`);
+      existingRows = fallback.data;
+      existingError = fallback.error;
+    }
 
     if (existingError) {
       setSubmittingRequestId(null);
@@ -623,11 +655,21 @@ export default function FriendsScreen({
       return;
     }
 
-    const { error } = await supabase.from('friend_requests').insert({
+    let { error } = await supabase.from('friend_requests').insert({
+      school,
       sender_id: userId,
       receiver_id: target.id,
       status: 'pending',
     });
+
+    if (error && school === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(error)) {
+      const fallback = await supabase.from('friend_requests').insert({
+        sender_id: userId,
+        receiver_id: target.id,
+        status: 'pending',
+      });
+      error = fallback.error;
+    }
 
     setSubmittingRequestId(null);
 
@@ -646,12 +688,23 @@ export default function FriendsScreen({
 
   const handleRespondToRequest = async (requesterId: string, status: 'accepted' | 'rejected') => {
     if (status === 'accepted') {
-      const { error } = await supabase
+      let { error } = await supabase
         .from('friend_requests')
         .update({ status: 'accepted' })
+        .eq('school', school)
         .eq('sender_id', requesterId)
         .eq('receiver_id', userId)
         .eq('status', 'pending');
+
+      if (error && school === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(error)) {
+        const fallback = await supabase
+          .from('friend_requests')
+          .update({ status: 'accepted' })
+          .eq('sender_id', requesterId)
+          .eq('receiver_id', userId)
+          .eq('status', 'pending');
+        error = fallback.error;
+      }
 
       if (error) {
         Alert.alert('Request update failed', error.message);
@@ -662,12 +715,23 @@ export default function FriendsScreen({
       setPendingRequests((prev) => prev.filter((row) => row.id !== requesterId));
       if (request) setFriends((prev) => [...prev, { ...request, timetableVisibility: 'friends', timetables: {} }]);
     } else {
-      const { error } = await supabase
+      let { error } = await supabase
         .from('friend_requests')
         .delete()
+        .eq('school', school)
         .eq('sender_id', requesterId)
         .eq('receiver_id', userId)
         .eq('status', 'pending');
+
+      if (error && school === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(error)) {
+        const fallback = await supabase
+          .from('friend_requests')
+          .delete()
+          .eq('sender_id', requesterId)
+          .eq('receiver_id', userId)
+          .eq('status', 'pending');
+        error = fallback.error;
+      }
 
       if (error) {
         Alert.alert('Request update failed', error.message);
@@ -679,12 +743,23 @@ export default function FriendsScreen({
   };
 
   const handleCancelRequest = async (receiverId: string) => {
-    const { error } = await supabase
+    let { error } = await supabase
       .from('friend_requests')
       .delete()
+      .eq('school', school)
       .eq('sender_id', userId)
       .eq('receiver_id', receiverId)
       .eq('status', 'pending');
+
+    if (error && school === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(error)) {
+      const fallback = await supabase
+        .from('friend_requests')
+        .delete()
+        .eq('sender_id', userId)
+        .eq('receiver_id', receiverId)
+        .eq('status', 'pending');
+      error = fallback.error;
+    }
 
     if (error) {
       Alert.alert('Could not cancel request', error.message);
@@ -696,10 +771,19 @@ export default function FriendsScreen({
   };
 
   const handleDeleteFriend = async (friendId: string) => {
-    const [{ error: e1 }, { error: e2 }] = await Promise.all([
-      supabase.from('friend_requests').delete().eq('sender_id', userId).eq('receiver_id', friendId),
-      supabase.from('friend_requests').delete().eq('sender_id', friendId).eq('receiver_id', userId),
+    let [{ error: e1 }, { error: e2 }] = await Promise.all([
+      supabase.from('friend_requests').delete().eq('school', school).eq('sender_id', userId).eq('receiver_id', friendId),
+      supabase.from('friend_requests').delete().eq('school', school).eq('sender_id', friendId).eq('receiver_id', userId),
     ]);
+
+    if (school === DEFAULT_UNIVERSITY.name && ((e1 && isMissingSchoolColumnError(e1)) || (e2 && isMissingSchoolColumnError(e2)))) {
+      const [fallback1, fallback2] = await Promise.all([
+        supabase.from('friend_requests').delete().eq('sender_id', userId).eq('receiver_id', friendId),
+        supabase.from('friend_requests').delete().eq('sender_id', friendId).eq('receiver_id', userId),
+      ]);
+      e1 = fallback1.error;
+      e2 = fallback2.error;
+    }
 
     if (e1 || e2) {
       Alert.alert('Could not remove friend', (e1 ?? e2)!.message);
@@ -808,7 +892,7 @@ export default function FriendsScreen({
                   }}>
                     <Ionicons name="search-outline" size={16} color={colors.placeholder} />
                     <TextInput
-                      placeholder="Name or student@uci.edu"
+                      placeholder={`Name or student${schoolDomain}`}
                       placeholderTextColor={colors.placeholder}
                       value={emailQuery}
                       onChangeText={setEmailQuery}
@@ -1194,7 +1278,7 @@ export default function FriendsScreen({
                       <Ionicons name="calendar-outline" size={17} color={colors.textTertiary} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>No classes in {quarterLabel(selectedQuarter)}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>No classes in {termLabel(selectedQuarter, school, true)}</Text>
                       <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>Add classes to see overlaps here.</Text>
                     </View>
                   </View>
@@ -1429,7 +1513,7 @@ export default function FriendsScreen({
                   </View>
                 ) : friendAvailableQuarters.length === 0 ? (
                   <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
-                    <Text style={{ color: colors.textSecondary, fontSize: 14 }}>No quarters found</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 14 }}>No terms found</Text>
                   </View>
                 ) : friendAvailableQuarters.map((key, i) => {
                   const q = parseQuarterKey(key);
@@ -1454,7 +1538,7 @@ export default function FriendsScreen({
                         }}
                       >
                         <Text style={{ color: active ? colors.brand : colors.text, fontWeight: active ? '700' : '400', fontSize: 14 }}>
-                          {quarterLabel(q)}
+                          {termLabel(q, school, true)}
                         </Text>
                         {active && <Ionicons name="checkmark" size={16} color={colors.brand} />}
                       </TouchableOpacity>
@@ -1496,7 +1580,7 @@ export default function FriendsScreen({
                     borderWidth: 1, borderColor: colors.border, gap: 4,
                   }}
                 >
-                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{quarterLabel(friendQuarter)}</Text>
+                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{termLabel(friendQuarter, school, true)}</Text>
                   <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>

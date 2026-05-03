@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { sportsFeedForSchool, type SportsFeedConfig } from './schools';
 
 export type SportsEvent = {
   id: string;
@@ -14,6 +15,9 @@ export type SportsEvent = {
   opponent: string;
   isHome: boolean;
 };
+
+type SportsFetchOptions = { maxDaysAhead?: number; includePastDays?: number };
+type SchedulePageConfig = Extract<SportsFeedConfig, { kind: 'schedule-pages' }>['pages'][number];
 
 const SPORT_STYLES: Record<string, { icon: ComponentProps<typeof Ionicons>['name']; color: string; bg: string }> = {
   Baseball: { icon: 'baseball-outline', color: '#f97316', bg: '#fff7ed' },
@@ -49,6 +53,7 @@ const SPORT_SCHEDULE_PATHS: Record<string, string> = {
 };
 
 const SPORTS_SCHEDULE_FETCH_TIMEOUT_MS = 3500;
+const TEAM_SCHEDULE_FETCH_TIMEOUT_MS = 6500;
 
 function getSportStyle(sport: string) {
   const normalized = sport.replace(/^(Men's|Women's)\s+/i, '');
@@ -275,6 +280,99 @@ function parseCompositeCalendarDate(dateText: string, timeText: string): Date | 
   return new Date(year, monthIdx, day, hour, minute);
 }
 
+function parseScheduleTime(timeLabel: string): { hour: number; minute: number; label?: string } {
+  const raw = timeLabel.replace(/\s+/g, ' ').trim();
+  const normalized = raw
+    .replace(/\./g, '')
+    .replace(/\s+(EDT|EST|CDT|CST|MDT|MST|PDT|PST|ET|CT|MT|PT)$/i, '')
+    .trim()
+    .toUpperCase();
+
+  if (!normalized || normalized === '-' || /^(TBA|TBD|CANCELED|CANCELLED|POSTPONED)$/.test(normalized)) {
+    return { hour: 12, minute: 0, label: /CANCELED|CANCELLED|POSTPONED/.test(normalized) ? raw : 'TBA' };
+  }
+  if (normalized === 'NOON') return { hour: 12, minute: 0, label: raw };
+
+  const match = normalized.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/);
+  if (!match) return { hour: 12, minute: 0, label: raw || 'TBA' };
+
+  let hour = parseInt(match[1], 10);
+  const minute = match[2] ? parseInt(match[2], 10) : 0;
+  const isPm = match[3] === 'PM';
+  if (isPm && hour !== 12) hour += 12;
+  if (!isPm && hour === 12) hour = 0;
+  return { hour, minute, label: raw };
+}
+
+function scheduleDateFromParts(year: number, month: string, day: string, timeLabel: string): Date | null {
+  const monthIdx = MONTH_ABBR[month.slice(0, 3)];
+  if (monthIdx === undefined) return null;
+  const time = parseScheduleTime(timeLabel);
+  return new Date(year, monthIdx, parseInt(day, 10), time.hour, time.minute);
+}
+
+function cleanOpponentName(value: string) {
+  return decodeHtmlEntities(value)
+    .replace(/\bOpens in a new window\b.*$/i, '')
+    .replace(/^#\d+\s*/, '')
+    .replace(/^RV\s+/i, '')
+    .replace(/\s+(Updated Start Time.*|Doubleheader.*|Free Admission.*|Live on BTN.*|Homecoming.*)$/i, '')
+    .replace(/\s+(Midweek Deals.*|Bark in the Park.*|Boilermaker Kids Club.*|No Fly Zone.*)$/i, '')
+    .replace(/\s+(Picklepalooza.*|Riley Children's Day.*|Class of \d{4}.*|Senior Day.*|Star Wars Night.*)$/i, '')
+    .replace(/\s+(Country Night.*|Fraternity Night.*|Sorority Night.*|Carnival Night.*|Purdue .*Giveaway.*|Upside Down.*)$/i, '')
+    .replace(/\s+(Cannon Trophy Game|Old Oaken Bucket Game|Shillelagh Trophy Game)$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripResultSuffix(value: string) {
+  return value
+    .replace(/\s+-\s*$/i, '')
+    .replace(/\s*(?:W|L|T),?\s+\d[\d\s,\-.]*$/i, '')
+    .replace(/\s+(?:Win|Loss)\s+\d[\d\s,\-.]*$/i, '')
+    .replace(/\s+(?:Canceled|Cancelled|Postponed)$/i, '')
+    .trim();
+}
+
+function splitOpponentAndLocation(value: string, fallbackLocation: string) {
+  const cleaned = stripResultSuffix(value);
+  const locationMatch = cleaned.match(/^(.+?)\s+([A-Z][A-Za-z0-9 .'"&-]+,\s*(?:[A-Z]{2}|(?:[A-Z]\.){2,}|[A-Z][a-z]+\.?)(?:\s*\/\s*[^()]+)?(?:\s+\(.+\))?)$/);
+  if (!locationMatch) {
+    return { opponent: cleanOpponentName(cleaned), location: fallbackLocation };
+  }
+  return {
+    opponent: cleanOpponentName(locationMatch[1]),
+    location: cleanScheduleLocation(locationMatch[2]),
+  };
+}
+
+function makeSchedulePageEvent(
+  sport: string,
+  date: Date,
+  timeLabel: string,
+  opponent: string,
+  location: string,
+  isHome: boolean
+): SportsEvent | null {
+  if (!opponent || isNaN(date.getTime())) return null;
+  const style = getSportStyle(sport);
+  const cleanOpponent = cleanOpponentName(opponent);
+  const cleanLocation = cleanScheduleLocation(location || (isHome ? 'Venue TBA' : 'Away'));
+  return {
+    id: `${sport}-${cleanOpponent}-${date.toISOString()}-${cleanLocation}`,
+    title: `${sport} ${isHome ? 'vs' : 'at'} ${cleanOpponent}`,
+    location: cleanLocation || (isHome ? 'Venue TBA' : 'Away'),
+    icon: style.icon,
+    color: style.color,
+    bg: style.bg,
+    date,
+    timeLabel: parseScheduleTime(timeLabel).label,
+    sport,
+    opponent: cleanOpponent,
+    isHome,
+  };
+}
+
 function parseUpcomingHtmlSummary(summary: string): { sport: string; opponent: string; isHome: boolean } | null {
   const cleaned = summary
     .replace(/^UCI\s+/i, '')
@@ -322,6 +420,221 @@ function parseSummary(raw: string): { sport: string; opponent: string; isHome: b
   const dashIdx = rest.indexOf(' - ');
   const opponent = (dashIdx !== -1 ? rest.slice(0, dashIdx) : rest).trim().replace(/^#\d+\s+/, '');
   return { sport, opponent, isHome };
+}
+
+function eventFromSidearmGame(game: any): SportsEvent | null {
+  const dateValue = game?.date_utc ?? game?.date;
+  const date = dateValue ? new Date(dateValue) : null;
+  if (!date || isNaN(date.getTime())) return null;
+  const sport = game?.sport?.title ?? game?.sport?.short_display ?? 'Sports';
+  const opponent = game?.opponent?.title ?? game?.opponent?.name ?? game?.opponent_name ?? 'Opponent TBA';
+  const indicator = String(game?.location_indicator ?? game?.at_vs ?? '').toUpperCase();
+  const isHome = indicator === 'H' || indicator === 'VS' || indicator === 'V';
+  const style = getSportStyle(sport);
+  const timeLabel = game?.time || (game?.tbd ? 'TBA' : undefined);
+  return {
+    id: String(game?.id ?? `${sport}-${opponent}-${date.toISOString()}`),
+    title: `${sport} ${isHome ? 'vs' : 'at'} ${opponent}`,
+    location: game?.location || (isHome ? 'Venue TBA' : 'Away'),
+    icon: style.icon,
+    color: style.color,
+    bg: style.bg,
+    date,
+    timeLabel: timeLabel === 'All Day' ? 'TBA' : timeLabel,
+    sport,
+    opponent,
+    isHome,
+  };
+}
+
+function filterSportsEventsByWindow(events: SportsEvent[], options?: { maxDaysAhead?: number; includePastDays?: number }) {
+  const maxDaysAhead = options?.maxDaysAhead ?? 2;
+  const includePastDays = options?.includePastDays ?? 0;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return events.filter((event) => {
+    const eventDay = new Date(event.date.getFullYear(), event.date.getMonth(), event.date.getDate());
+    const dayOffset = Math.round((eventDay.getTime() - today.getTime()) / 86400000);
+    return dayOffset >= -includePastDays && dayOffset <= maxDaysAhead;
+  });
+}
+
+function scheduleYearFromLines(lines: string[]) {
+  const heading = lines.find((line) => /\b\d{4}\b.*\bSchedule\b/i.test(line));
+  const match = heading?.match(/\b(\d{4})\b/);
+  return match ? parseInt(match[1], 10) : new Date().getFullYear();
+}
+
+function parseUmdTextScheduleEvents(text: string, page: SchedulePageConfig, options?: SportsFetchOptions) {
+  const lines = htmlToLines(text);
+  const year = scheduleYearFromLines(lines);
+  const headerIndex = lines.findIndex((line) => /^Date\s+Time\s+At\s+Opponent\s+Location/i.test(line));
+  if (headerIndex < 0) return [];
+
+  const events: SportsEvent[] = [];
+  for (const line of lines.slice(headerIndex + 1)) {
+    const match = line.match(/^([A-Za-z]{3})\s+(\d{1,2})\s+\([^)]+\)\s*(.*?)\s+(Home|Away|Neutral)\s*(.+)$/i);
+    if (!match) continue;
+
+    const [, month, day, rawTime, marker, rawOpponentLocation] = match;
+    if (/\b(Canceled|Cancelled|Postponed)\b/i.test(rawOpponentLocation)) continue;
+    const date = scheduleDateFromParts(year, month, day, rawTime.trim());
+    if (!date) continue;
+    const isHome = marker.toLowerCase() === 'home';
+    const parsed = splitOpponentAndLocation(rawOpponentLocation, isHome ? 'College Park, MD' : marker);
+    const event = makeSchedulePageEvent(page.sport, date, rawTime.trim(), parsed.opponent, parsed.location, isHome);
+    if (event) events.push(event);
+  }
+
+  return dedupeSportsEvents(filterSportsEventsByWindow(events, options).sort((a, b) => a.date.getTime() - b.date.getTime()));
+}
+
+function isShortScheduleDateLine(line: string) {
+  return /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+([A-Za-z]{3})\s+(\d{1,2})$/i.test(line);
+}
+
+function isAtVsLine(line: string) {
+  return /^(at(?:#\d+)?|vs\.?(?:#\d+)?)$/i.test(line.trim());
+}
+
+function isScheduleTimeLine(line: string) {
+  const normalized = line.trim();
+  return /^(TBA|TBD|Noon|Canceled|Cancelled|Postponed)$/i.test(normalized)
+    || /^\d{1,2}(?::\d{2})?\s*(AM|PM)(?:\s+[A-Z]{2,4})?$/i.test(normalized);
+}
+
+function isScheduleResultLine(line: string) {
+  return /^(W|L|T)\s+(Win|Loss)?\s*\d/i.test(line)
+    || /^(Canceled|Cancelled|Postponed)$/i.test(line)
+    || /^\(\d+\s+Innings?\)$/i.test(line);
+}
+
+function isSchedulePageNoise(line: string) {
+  const lower = line.toLowerCase();
+  return !line
+    || lower.includes('opens in a new window')
+    || lower.includes('box score')
+    || lower.includes('recap')
+    || lower.includes('photo')
+    || lower.includes('preview')
+    || lower.includes('tickets')
+    || lower.includes('live stats')
+    || lower.includes('stream')
+    || lower.includes('listen')
+    || lower.includes('pdf')
+    || lower.includes('schedule stats')
+    || lower.includes('date teams location')
+    || lower === 'loading'
+    || lower === 'print';
+}
+
+function parseWmtScheduleEvents(text: string, page: SchedulePageConfig, options?: SportsFetchOptions) {
+  const lines = htmlToLines(text);
+  const year = scheduleYearFromLines(lines);
+  const startIndex = lines.findIndex((line) => line === '## Schedule Events');
+  if (startIndex < 0) return [];
+
+  const scheduleLines = lines.slice(startIndex + 1);
+  const events: SportsEvent[] = [];
+
+  for (let index = 0; index < scheduleLines.length; index += 1) {
+    const dateLine = scheduleLines[index];
+    const dateMatch = dateLine.match(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+([A-Za-z]{3})\s+(\d{1,2})$/i);
+    if (!dateMatch) continue;
+
+    const nextDateIndex = scheduleLines.findIndex((line, innerIndex) => innerIndex > index && isShortScheduleDateLine(line));
+    const rawBlock = scheduleLines.slice(index + 1, nextDateIndex >= 0 ? nextDateIndex : scheduleLines.length);
+    const block = rawBlock.filter((line) => !isSchedulePageNoise(line));
+    if (block.length < 2) continue;
+
+    let cursor = 0;
+    let isHome = true;
+    const marker = block[cursor] ?? '';
+    if (isAtVsLine(marker)) {
+      isHome = !marker.toLowerCase().startsWith('at');
+      cursor += 1;
+    }
+
+    const opponent = block[cursor] ?? '';
+    const location = block[cursor + 1] ?? (isHome ? 'West Lafayette, IN' : 'Away');
+    const timeLabel = block.slice(cursor + 2).find((line) => isScheduleTimeLine(line)) ?? 'TBA';
+    if (/^(Canceled|Cancelled|Postponed)$/i.test(timeLabel)) continue;
+    if (!opponent || isScheduleResultLine(opponent)) continue;
+
+    const date = scheduleDateFromParts(year, dateMatch[2], dateMatch[3], timeLabel);
+    if (!date) continue;
+    const event = makeSchedulePageEvent(page.sport, date, timeLabel, opponent, location, isHome);
+    if (event) events.push(event);
+  }
+
+  return dedupeSportsEvents(filterSportsEventsByWindow(events, options).sort((a, b) => a.date.getTime() - b.date.getTime()));
+}
+
+async function fetchSchedulePageEvents(feed: Extract<SportsFeedConfig, { kind: 'schedule-pages' }>, options?: SportsFetchOptions) {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeout = setTimeout(() => controller?.abort(), TEAM_SCHEDULE_FETCH_TIMEOUT_MS);
+
+  try {
+    const results = await Promise.allSettled(feed.pages.map(async (page) => {
+      const response = await fetch(`${feed.baseUrl}${page.path}`, {
+        headers: { Accept: 'text/html,application/xhtml+xml' },
+        signal: controller?.signal,
+      });
+      if (!response.ok) return [];
+      const text = await response.text();
+      return page.parser === 'umd-text'
+        ? parseUmdTextScheduleEvents(text, page, options)
+        : parseWmtScheduleEvents(text, page, options);
+    }));
+
+    const events = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+    return dedupeSportsEvents(events.sort((a, b) => a.date.getTime() - b.date.getTime()));
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseSidearmComponentsEvents(text: string, options?: { maxDaysAhead?: number; includePastDays?: number }) {
+  const eventsIndex = text.indexOf('"type":"events"');
+  if (eventsIndex < 0) return [];
+  const start = text.lastIndexOf('var obj = ', eventsIndex);
+  if (start < 0) return [];
+  const jsonStart = start + 'var obj = '.length;
+  const windowsEnd = text.indexOf(';\r\n    if (!("sidearmComponents"', eventsIndex);
+  const unixEnd = text.indexOf(';\n    if (!("sidearmComponents"', eventsIndex);
+  const end = windowsEnd >= 0 ? windowsEnd : unixEnd;
+  if (end < 0) return [];
+  try {
+    const obj = JSON.parse(text.slice(jsonStart, end));
+    const events = (obj.data ?? []).map(eventFromSidearmGame).filter(Boolean) as SportsEvent[];
+    return dedupeSportsEvents(filterSportsEventsByWindow(events, options).sort((a, b) => a.date.getTime() - b.date.getTime()));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchSidearmResponsiveEvents(feed: Extract<SportsFeedConfig, { kind: 'sidearm-responsive' }>, options?: { maxDaysAhead?: number; includePastDays?: number }) {
+  const now = new Date();
+  const months = [new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 1)];
+  const events: SportsEvent[] = [];
+  for (const month of months) {
+    const url = new URL(`${feed.baseUrl}/services/responsive-calendar.ashx`);
+    url.searchParams.set('type', 'month');
+    url.searchParams.set('sport', '0');
+    url.searchParams.set('location', 'all');
+    url.searchParams.set('date', `${month.getMonth() + 1}/1/${month.getFullYear()}`);
+    url.searchParams.set('year', String(month.getFullYear()));
+    const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+    if (!response.ok) continue;
+    const days = await response.json();
+    (Array.isArray(days) ? days : []).forEach((day: any) => {
+      (day.events ?? []).forEach((game: any) => {
+        const event = eventFromSidearmGame(game);
+        if (event) events.push(event);
+      });
+    });
+  }
+  return dedupeSportsEvents(filterSportsEventsByWindow(events, options).sort((a, b) => a.date.getTime() - b.date.getTime()));
 }
 
 export function formatSportsEventTime(date: Date, timeLabel?: string): string {
@@ -486,4 +799,19 @@ export async function enrichSportsEventsWithScheduleVenues(events: SportsEvent[]
       location,
     };
   });
+}
+
+export async function fetchSportsEventsForSchool(school: string, options?: { maxDaysAhead?: number; includePastDays?: number }) {
+  const feed = sportsFeedForSchool(school);
+  if (!feed) return [];
+  if (feed.kind === 'sidearm-responsive') return fetchSidearmResponsiveEvents(feed, options);
+  if (feed.kind === 'schedule-pages') return fetchSchedulePageEvents(feed, options);
+
+  const response = await fetch(feed.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (!response.ok) return [];
+  const text = await response.text();
+  if (feed.kind === 'sidearm-components') return parseSidearmComponentsEvents(text, options);
+
+  const events = parseSportsCalendar(text, options);
+  return school === 'UC Irvine' ? enrichSportsEventsWithScheduleVenues(events) : events;
 }

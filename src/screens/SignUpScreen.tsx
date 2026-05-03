@@ -6,7 +6,7 @@ import Svg, { Path } from 'react-native-svg';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
-import type { University } from './UniversitySelectionScreen';
+import { DEFAULT_UNIVERSITY, type University } from '../data/schools';
 import LegalConsentText from '../components/LegalConsentText';
 import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
 import { supabase } from '../lib/supabase';
@@ -32,8 +32,6 @@ type Props = {
   onGoToSignIn: () => void;
 };
 
-const UCI: University = { id: '1', name: 'UC Irvine', domain: '@uci.edu', location: 'Irvine, CA', logo: 'UCI' };
-
 function GoogleIcon() {
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24">
@@ -46,7 +44,7 @@ function GoogleIcon() {
 }
 
 export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSignIn }: Props) {
-  const uni = university ?? UCI;
+  const uni = university ?? DEFAULT_UNIVERSITY;
   const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
   const [loading, setLoading] = useState(false);
   const hd = uni.domain.replace('@', '');

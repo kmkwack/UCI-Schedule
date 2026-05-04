@@ -2016,3 +2016,7 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64op (Add GitHub Pages deploy workflow)
 - **`.github/workflows/deploy-the-seans-site.yml`** — Added a GitHub Pages deployment workflow that publishes the standalone `the-seans-site` static website whenever the site folder or workflow changes land on `main`, making the homepage available on the public web through GitHub Pages.
+
+### Session 64oq (Reposition the seans website as company-first)
+- **`the-seans-site/index.html`** — Rewrote the website copy so `the seans` reads first as an education and campus community company, with ClassMate framed as the first product instead of the whole company identity. Replaced the prominent boxed school-support display with a small supported-schools line and updated the narrative around campus trust, verified anonymity, and student-native software.
+- **`the-seans-site/styles.css`** — Added a subtle supported-schools line style and preserved the existing visual design while keeping the product heading text treatment stable after adding the small school list.

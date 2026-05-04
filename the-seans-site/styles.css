@@ -1049,12 +1049,21 @@ p {
   margin: 0 auto 64px;
 }
 
-.product-heading p:last-child {
+.product-heading p:not(.supported-schools-note) {
   width: min(660px, 100%);
   margin: 0 auto;
   color: var(--ink-soft);
   font-size: clamp(18px, 1.8vw, 22px);
   text-wrap: balance;
+}
+
+.product-heading .supported-schools-note {
+  width: min(760px, 100%);
+  margin: 18px auto 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 750;
 }
 
 .device-stage {

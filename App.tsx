@@ -379,18 +379,32 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   userIdRef.current = userId;
   const returnToUniversityAfterSignOutRef = useRef(false);
   const suppressNextSignedOutClearRef = useRef(false);
+  const pendingAuthUniversityRef = useRef<University | null>(null);
 
   const hydrateUserFromSession = (sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> }) => {
+    const email = sessionUser.email ?? '';
+    const isReviewAccount = isReviewAccountEmail(email);
     setUserBootstrapLoading(true);
     setUserId(sessionUser.id);
-    setUserEmail(sessionUser.email ?? '');
-    const school = typeof sessionUser.user_metadata?.classmate_school === 'string'
-      ? sessionUser.user_metadata.classmate_school
-      : DEFAULT_UNIVERSITY.name;
-    setSelectedUniversity(universityForName(school));
+    setUserEmail(email);
+    const metadataSchool =
+      typeof sessionUser.user_metadata?.classmate_school === 'string'
+        ? sessionUser.user_metadata.classmate_school
+        : DEFAULT_UNIVERSITY.name;
+    const school = pendingAuthUniversityRef.current?.name ?? metadataSchool;
+    const hydratedUniversity = universityForName(school);
+    setSelectedUniversity(hydratedUniversity);
+    setSelectedQuarter(getAcademicTermForDate(hydratedUniversity.name, new Date()));
+    if (isReviewAccount) {
+      setForceReviewOnboardingOnce(true);
+      setNeedsFeatureOnboarding(true);
+      setShowNotificationPermissionPrompt(false);
+      setShowBrandIntro(false);
+    }
   };
 
   const clearSignedOutState = () => {
+    pendingAuthUniversityRef.current = null;
     setUserId(null);
     setUserEmail('');
     setSelectedUniversity(null);
@@ -811,6 +825,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         dateFormat: normalizeDateFormatPreference(settingsDetails?.dateFormat),
       });
       setExpoPushToken(((settingsRow as Record<string, any> | null | undefined)?.expo_push_token as string | undefined) ?? null);
+      pendingAuthUniversityRef.current = null;
       setUserBootstrapLoading(false);
     }
 
@@ -2059,16 +2074,25 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         return (
           <UniversitySelectionScreen
             onBack={goBack}
-            onContinue={(uni) => { setSelectedUniversity(uni); pushAuth('signup'); }}
+            onContinue={(uni) => {
+              pendingAuthUniversityRef.current = uni;
+              setSelectedUniversity(uni);
+              setSelectedQuarter(getAcademicTermForDate(uni.name, new Date()));
+              pushAuth('signup');
+            }}
           />
         );
       }
       if (name === 'signup') {
+        const signupUniversity = selectedUniversity ?? DEFAULT_UNIVERSITY;
         return (
           <SignUpScreen
-            university={selectedUniversity ?? undefined}
+            university={signupUniversity}
             onBack={goBack}
-          onSignedUp={(id, email) => {
+            onSignedUp={(id, email, university) => {
+              pendingAuthUniversityRef.current = university;
+              setSelectedUniversity(university);
+              setSelectedQuarter(getAcademicTermForDate(university.name, new Date()));
               setUserBootstrapLoading(true);
               setUserId(id);
               setUserEmail(email);
@@ -2083,19 +2107,23 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           />
         );
       }
+      const signInUniversity = selectedUniversity ?? DEFAULT_UNIVERSITY;
       return (
         <SignInScreen
-          university={selectedUniversity ?? DEFAULT_UNIVERSITY}
+          university={signInUniversity}
           onBack={goBack}
-          onSignedIn={(id, email) => {
+          onSignedIn={(id, email, university) => {
             const shouldForceReviewOnboarding = isReviewAccountEmail(email);
+            pendingAuthUniversityRef.current = university;
+            setSelectedUniversity(university);
+            setSelectedQuarter(getAcademicTermForDate(university.name, new Date()));
             setUserBootstrapLoading(true);
+            setForceReviewOnboardingOnce(shouldForceReviewOnboarding);
+            setNeedsFeatureOnboarding(shouldForceReviewOnboarding);
             setUserId(id);
             setUserEmail(email);
             setUserProfile(fallbackProfileFromEmail(email));
             setNeedsProfileSetup(false);
-            setForceReviewOnboardingOnce(shouldForceReviewOnboarding);
-            setNeedsFeatureOnboarding(shouldForceReviewOnboarding);
             setShowNotificationPermissionPrompt(false);
             setShowBrandIntro(false);
           }}

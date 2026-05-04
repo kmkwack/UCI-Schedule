@@ -21,8 +21,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, UCI_DEPARTMENTS, quarterKey } from '../data/courses';
+import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey } from '../data/courses';
 import { getSchoolConfig, termLabel } from '../data/schools';
+import { departmentsForSchoolId } from '../data/schoolDepartments';
 import PreviewTimetable from '../components/PreviewTimetable';
 import { supabase } from '../lib/supabase';
 import ReviewsModal from '../components/ReviewsModal';
@@ -135,6 +136,7 @@ const SECTION_SELECT_COLUMNS = 'id,code,title,department,professor,days,time,loc
 const COURSE_PICKER_ACCENT = '#4169E1';
 const COURSE_PICKER_ACCENT_SOFT = '#EEF3FF';
 const COURSE_PICKER_ACCENT_BORDER = '#C7D4FF';
+const departmentMemoryCache = new Map<string, string[]>();
 
 function getDaysArray(daysString: string) {
   const result: string[] = [];
@@ -391,19 +393,22 @@ export default function CoursePickerScreen({
   const hasSelectedCategory = hasSelectedDepartments || !!selectedGE;
   const selectedDeptKey = selectedDepts.join('|');
   const isUciSchool = schoolConfig.id === 'uci';
+  const localDepartmentOptions = useMemo(() => departmentsForSchoolId(schoolConfig.id), [schoolConfig.id]);
   const activeCourseIds = useMemo(() => new Set(activeCourses.map((course) => course.id)), [activeCourses]);
   const departmentOptions = availableDepartments.length > 0
     ? availableDepartments
-    : isUciSchool
-      ? UCI_DEPARTMENTS
-      : [];
+    : localDepartmentOptions;
 
   useEffect(() => {
     const qk = quarterKey(selectedQuarter);
     let cancelled = false;
+    const cachedDepartments = departmentMemoryCache.get(school);
+    const instantDepartments = cachedDepartments?.length ? cachedDepartments : localDepartmentOptions;
+
+    setAvailableDepartments(instantDepartments);
 
     void (async () => {
-      const departmentsSet = new Set<string>();
+      const departmentsSet = new Set<string>(instantDepartments);
       const { data: departmentRows, error: departmentError } = await supabase
         .from('school_departments')
         .select('department')
@@ -417,8 +422,9 @@ export default function CoursePickerScreen({
           if (row.department) departmentsSet.add(row.department);
         });
         if (departmentsSet.size > 0) {
-          setAvailableDepartments([...departmentsSet].sort((a, b) => a.localeCompare(b)));
-          return;
+          const departments = [...departmentsSet].sort((a, b) => a.localeCompare(b));
+          departmentMemoryCache.set(school, departments);
+          setAvailableDepartments(departments);
         }
       }
 
@@ -460,7 +466,9 @@ export default function CoursePickerScreen({
 
       // If the selected term has no rows yet, still show the school's departments
       // so the picker is not blank while the user switches to a seeded term.
-      if (!cancelled && selectedTermDepartmentCount === 0 && !isUciSchool) {
+      // For supported schools with local indexes, avoid scanning every historical
+      // row; seeders should backfill school_departments as the long-term source.
+      if (!cancelled && selectedTermDepartmentCount === 0 && localDepartmentOptions.length === 0) {
         await scanSectionDepartments();
       }
 
@@ -472,13 +480,14 @@ export default function CoursePickerScreen({
       }
 
       const departments = [...departmentsSet].sort((a, b) => a.localeCompare(b));
+      departmentMemoryCache.set(school, departments);
       setAvailableDepartments(departments);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [selectedQuarter, school]);
+  }, [localDepartmentOptions, selectedQuarter, school]);
 
   // Global search: fires when search text >= 2 and no category selected
   useEffect(() => {

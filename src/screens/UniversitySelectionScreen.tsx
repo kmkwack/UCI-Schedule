@@ -5,10 +5,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { getSchoolConfig, SUPPORTED_UNIVERSITIES, type University } from '../data/schools';
 
 const UNIVERSITY_LOGOS: Partial<Record<string, ImageSourcePropType>> = {
-  uci: require('../../assets/ucirvine-monogram.png'),
+  uci: require('../../assets/uci-logo-white.png'),
   umd: require('../../assets/umd-logo.png'),
-  cornell: require('../../assets/cornell-logo.jpg'),
-  purdue: require('../../assets/purdue-logo.png'),
+  cornell: require('../../assets/cornell-logo-white.png'),
+  purdue: require('../../assets/purdue-logo-white.png'),
+  uiuc: require('../../assets/uiuc-logo-white.png'),
+};
+
+const UNIVERSITY_LOGO_SIZES: Record<string, { width: number; height: number }> = {
+  uci: { width: 78, height: 22 },
+  umd: { width: 66, height: 34 },
+  cornell: { width: 72, height: 26 },
+  purdue: { width: 74, height: 22 },
+  uiuc: { width: 74, height: 20 },
 };
 
 type Props = {
@@ -72,6 +81,7 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
             const isSelected = selected?.id === uni.id;
             const schoolConfig = getSchoolConfig(uni.name);
             const accent = schoolConfig.accent;
+            const logoSize = UNIVERSITY_LOGO_SIZES[uni.id] ?? { width: 66, height: 34 };
             return (
               <TouchableOpacity
                 key={uni.id}
@@ -94,7 +104,7 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
               >
                 {/* Logo */}
                 <View style={{
-                  width: 76, height: 56, borderRadius: 14,
+                  width: 84, height: 56, borderRadius: 14,
                   backgroundColor: UNIVERSITY_LOGOS[uni.id] ? 'white' : `${accent}12`,
                   alignItems: 'center', justifyContent: 'center',
                   borderWidth: 1,
@@ -105,10 +115,7 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
                   {UNIVERSITY_LOGOS[uni.id] ? (
                     <Image
                       source={UNIVERSITY_LOGOS[uni.id]}
-                      style={{
-                        width: uni.id === 'uci' ? 52 : 66,
-                        height: uni.id === 'uci' ? 22 : uni.id === 'purdue' ? 40 : 34,
-                      }}
+                      style={logoSize}
                       resizeMode="contain"
                     />
                   ) : (

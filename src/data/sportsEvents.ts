@@ -53,7 +53,8 @@ const SPORT_SCHEDULE_PATHS: Record<string, string> = {
 };
 
 const SPORTS_SCHEDULE_FETCH_TIMEOUT_MS = 3500;
-const TEAM_SCHEDULE_FETCH_TIMEOUT_MS = 6500;
+const TEAM_SCHEDULE_FETCH_TIMEOUT_MS = 10000;
+const TEAM_SCHEDULE_FETCH_CONCURRENCY = 4;
 
 function getSportStyle(sport: string) {
   const normalized = sport.replace(/^(Men's|Women's)\s+/i, '');
@@ -472,17 +473,46 @@ function parseUmdTextScheduleEvents(text: string, page: SchedulePageConfig, opti
   if (headerIndex < 0) return [];
 
   const events: SportsEvent[] = [];
-  for (const line of lines.slice(headerIndex + 1)) {
-    const match = line.match(/^([A-Za-z]{3})\s+(\d{1,2})\s+\([^)]+\)\s*(.*?)\s+(Home|Away|Neutral)\s*(.+)$/i);
-    if (!match) continue;
+  const scheduleLines = lines.slice(headerIndex + 1);
 
-    const [, month, day, rawTime, marker, rawOpponentLocation] = match;
-    if (/\b(Canceled|Cancelled|Postponed)\b/i.test(rawOpponentLocation)) continue;
+  for (let index = 0; index < scheduleLines.length; index += 1) {
+    const line = scheduleLines[index];
+    const match = line.match(/^([A-Za-z]{3})\s+(\d{1,2})\s+\([^)]+\)\s*(.*?)\s+(Home|Away|Neutral)\s*(.+)$/i);
+    if (match) {
+      const [, month, day, rawTime, marker, rawOpponentLocation] = match;
+      if (/\b(Canceled|Cancelled|Postponed)\b/i.test(rawOpponentLocation)) continue;
+      const date = scheduleDateFromParts(year, month, day, rawTime.trim());
+      if (!date) continue;
+      const isHome = marker.toLowerCase() === 'home';
+      const parsed = splitOpponentAndLocation(rawOpponentLocation, isHome ? 'College Park, MD' : marker);
+      const event = makeSchedulePageEvent(page.sport, date, rawTime.trim(), parsed.opponent, parsed.location, isHome);
+      if (event) events.push(event);
+      continue;
+    }
+
+    const dateMatch = line.match(/^([A-Za-z]{3})\s+(\d{1,2})\s+\([^)]+\)$/i);
+    if (!dateMatch) continue;
+
+    let cursor = index + 1;
+    let rawTime = 'TBA';
+    if (isScheduleTimeLine(scheduleLines[cursor] ?? '')) {
+      rawTime = scheduleLines[cursor];
+      cursor += 1;
+    }
+
+    const marker = scheduleLines[cursor] ?? '';
+    if (!/^(Home|Away|Neutral)$/i.test(marker)) continue;
+    cursor += 1;
+
+    const opponent = scheduleLines[cursor] ?? '';
+    const location = scheduleLines[cursor + 1] ?? (marker.toLowerCase() === 'home' ? 'College Park, MD' : marker);
+    if (!opponent || /\b(Canceled|Cancelled|Postponed)\b/i.test(opponent)) continue;
+
+    const [, month, day] = dateMatch;
     const date = scheduleDateFromParts(year, month, day, rawTime.trim());
     if (!date) continue;
     const isHome = marker.toLowerCase() === 'home';
-    const parsed = splitOpponentAndLocation(rawOpponentLocation, isHome ? 'College Park, MD' : marker);
-    const event = makeSchedulePageEvent(page.sport, date, rawTime.trim(), parsed.opponent, parsed.location, isHome);
+    const event = makeSchedulePageEvent(page.sport, date, rawTime.trim(), opponent, location, isHome);
     if (event) events.push(event);
   }
 
@@ -571,13 +601,13 @@ function parseWmtScheduleEvents(text: string, page: SchedulePageConfig, options?
 }
 
 async function fetchSchedulePageEvents(feed: Extract<SportsFeedConfig, { kind: 'schedule-pages' }>, options?: SportsFetchOptions) {
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeout = setTimeout(() => controller?.abort(), TEAM_SCHEDULE_FETCH_TIMEOUT_MS);
+  const fetchPage = async (page: SchedulePageConfig) => {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeout = setTimeout(() => controller?.abort(), TEAM_SCHEDULE_FETCH_TIMEOUT_MS);
 
-  try {
-    const results = await Promise.allSettled(feed.pages.map(async (page) => {
+    try {
       const response = await fetch(`${feed.baseUrl}${page.path}`, {
-        headers: { Accept: 'text/html,application/xhtml+xml' },
+        headers: { Accept: 'text/html,application/xhtml+xml', 'User-Agent': 'Mozilla/5.0' },
         signal: controller?.signal,
       });
       if (!response.ok) return [];
@@ -585,13 +615,27 @@ async function fetchSchedulePageEvents(feed: Extract<SportsFeedConfig, { kind: '
       return page.parser === 'umd-text'
         ? parseUmdTextScheduleEvents(text, page, options)
         : parseWmtScheduleEvents(text, page, options);
-    }));
+    } catch {
+      return [];
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
 
-    const events = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
-    return dedupeSportsEvents(events.sort((a, b) => a.date.getTime() - b.date.getTime()));
-  } finally {
-    clearTimeout(timeout);
-  }
+  const results: SportsEvent[][] = [];
+  let nextIndex = 0;
+  const workerCount = Math.min(TEAM_SCHEDULE_FETCH_CONCURRENCY, feed.pages.length);
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < feed.pages.length) {
+      const pageIndex = nextIndex;
+      nextIndex += 1;
+      results[pageIndex] = await fetchPage(feed.pages[pageIndex]);
+    }
+  }));
+
+  const events = results.flat();
+  return dedupeSportsEvents(events.sort((a, b) => a.date.getTime() - b.date.getTime()));
 }
 
 function parseSidearmComponentsEvents(text: string, options?: { maxDaysAhead?: number; includePastDays?: number }) {

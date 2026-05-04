@@ -28,7 +28,7 @@ function getOAuthRedirectUrl() {
 type Props = {
   university?: University;
   onBack: () => void;
-  onSignedUp: (userId: string, email: string) => void;
+  onSignedUp: (userId: string, email: string, university: University) => void;
   onGoToSignIn: () => void;
 };
 
@@ -108,7 +108,7 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
       return;
     }
 
-    onSignedUp(sessionData.user.id, email);
+    onSignedUp(sessionData.user.id, email, uni);
   };
 
   return (

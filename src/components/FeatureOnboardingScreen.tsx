@@ -1015,26 +1015,6 @@ export default function FeatureOnboardingScreen({
                 <Animated.Text style={{ fontSize: 16, lineHeight: 24, color: colors.textSecondary, marginTop: 14, fontWeight: '600', ...heroBodyStyle }}>
                   {slideBody}
                 </Animated.Text>
-                <Animated.View
-                  style={{
-                    marginTop: 24,
-                    alignSelf: 'flex-start',
-                    borderRadius: 999,
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.64)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(65,105,225,0.12)',
-                    paddingHorizontal: 13,
-                    paddingVertical: 8,
-                    ...heroBodyStyle,
-                  }}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '900', color: slideAccent, letterSpacing: 0.7 }}>
-                    {schoolBrand.badge}
-                  </Text>
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginTop: 3 }}>
-                    {schoolBrand.mascotName}
-                  </Text>
-                </Animated.View>
               </>
             ) : (
               <>

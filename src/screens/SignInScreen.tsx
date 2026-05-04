@@ -28,7 +28,7 @@ function getOAuthRedirectUrl() {
 type Props = {
   university: University;
   onBack: () => void;
-  onSignedIn: (userId: string, email: string) => void;
+  onSignedIn: (userId: string, email: string, university: University) => void;
   onGoToSignUp: () => void;
 };
 
@@ -136,7 +136,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
       return false;
     }
 
-    onSignedIn(userId, email);
+    onSignedIn(userId, email, university);
     return true;
   };
 

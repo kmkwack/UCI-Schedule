@@ -2085,3 +2085,35 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64pj (Refresh Expo lockfile for EAS)
 - **`package-lock.json`** — Refreshed the npm lockfile with `npm install` so the locked Expo SDK 55 patch packages match `package.json`, fixing the remote `npm ci` failure during the EAS install-dependencies phase.
+
+### Session 64pk (Add cleaned university logos)
+- **`assets/cornell-logo-white.png`, `assets/purdue-logo-white.png`, `assets/uiuc-logo-white.png`** — Added cleaned white-background logo assets from the supplied school logo files so the university picker shows only the logo artwork without colored or checkerboard backgrounds.
+- **`src/screens/UniversitySelectionScreen.tsx`** — Updated Cornell and Purdue to use the cleaned logo assets, added the UIUC logo asset, and tuned per-school logo sizing inside the university selection card.
+
+### Session 64pl (Prevent review-account home flash)
+- **`App.tsx`** — Detects the review account during Supabase session hydration and sets the one-time feature-onboarding gate before profile/settings loading can clear it, preventing the home screen from flashing briefly before the onboarding flow appears after review-account login.
+
+### Session 64pm (Respect selected university during auth)
+- **`App.tsx`** — Added a pending-auth university ref so Supabase `SIGNED_IN` hydration cannot overwrite the school the user just selected with stale `classmate_school` metadata from a previous login. Also resets the selected academic term to the chosen school's current term during sign-in/sign-up.
+- **`src/screens/SignInScreen.tsx`** and **`src/screens/SignUpScreen.tsx`** — Pass the selected university back through the auth success callbacks so the app state is anchored to the explicit school choice instead of whatever school metadata was previously stored on the account.
+- **`src/screens/HomeScreen.tsx`** — Clears sports-event state immediately on school changes and ignores stale sports fetch results so events or participation counts from a previous university cannot leak into the newly selected school.
+
+### Session 64pn (Harden Purdue sports schedule fetching)
+- **`src/data/sportsEvents.ts`** — Changed schedule-page sports fetching from one shared timeout over all team pages to per-page timeouts with a four-request concurrency limit and browser-like headers. Purdue's WMT schedule pages are heavier than the other schools, so this prevents one slow page batch from aborting every Purdue sports request and leaving the app with no events.
+
+### Session 64po (Remove onboarding school badge card)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Removed the small school badge/mascot pill from the first post-login welcome onboarding screen so the welcome slide stays cleaner and does not show an extra school card under the intro copy.
+
+### Session 64pp (Fix UMD sports text schedule parsing)
+- **`src/data/sportsEvents.ts`** — Updated the UMD `schedule/text` parser to handle the actual fetched HTML structure where date, time, home/away marker, opponent, location, and result are split across separate lines. This fixes UMD sports pages returning zero events even when official upcoming Terps games exist.
+
+### Session 64pq (Replace UCI selection logo)
+- **`assets/uci-logo-white.svg` / `assets/uci-logo-white.png`** — Added a white-background UCI wordmark asset matching the new school-logo style.
+- **`src/screens/UniversitySelectionScreen.tsx`** — Swapped the UCI school selection logo from the tiny monogram to the new full UCI wordmark and adjusted its card size so it fits the row cleanly.
+
+### Session 64pr (Instant department picker lists)
+- **`src/data/schoolDepartments.ts`** — Added local seeded department indexes for all currently supported schools so department filters can render immediately without waiting for Supabase.
+- **`src/screens/CoursePickerScreen.tsx`** — Uses the local department index first, keeps a small in-memory cache for remote updates, and skips the expensive `sections` table scan for supported schools when `school_departments` is empty. This removes the multi-second delay before Cornell, Purdue, UMD, and UIUC department lists appear.
+
+### Session 64ps (Merge live departments after instant render)
+- **`src/screens/CoursePickerScreen.tsx`** — Changed the instant department list from a hard authority into a fast initial cache. The picker now renders local departments immediately, then merges in `school_departments` and the selected term's live `sections` departments in the background so newly seeded departments can appear without blocking the sheet opening.

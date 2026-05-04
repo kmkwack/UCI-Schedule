@@ -578,16 +578,27 @@ export default function HomeScreen({
   }, [school]);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadSports() {
       const sportsCacheKey = `sports_cache_${school}`;
+      setSportsEvents([]);
+      setSportsEventListParticipation({});
+      setSportsEventUserRsvps({});
+      selectedSportsEventRef.current = null;
+      setSelectedSportsEvent(null);
+      setSportsEventRsvp(null);
+      setSportsEventGoingCount(0);
+      setSportsEventComments([]);
+      setSportsLoading(true);
+
       if (!schoolFeatureEnabled(school, 'sports')) {
-        setSportsEvents([]);
-        setSportsLoading(false);
+        if (!cancelled) setSportsLoading(false);
         return;
       }
 
       const cached = await AsyncStorage.getItem(sportsCacheKey);
-      if (cached) {
+      if (cached && !cancelled) {
         setSportsEvents(JSON.parse(cached).map((event: any) => (
           normalizeSportsEventForDisplay({ ...event, date: new Date(event.date) })
         )));
@@ -596,13 +607,17 @@ export default function HomeScreen({
       try {
         const events = await fetchSportsEventsForSchool(school, { maxDaysAhead: 7, includePastDays: 0 });
         const normalizedEvents = events.map(normalizeSportsEventForDisplay);
+        if (cancelled) return;
         setSportsEvents(normalizedEvents);
         void AsyncStorage.setItem(sportsCacheKey, JSON.stringify(normalizedEvents));
       } catch {}
-      setSportsLoading(false);
+      if (!cancelled) setSportsLoading(false);
     }
 
     void loadSports();
+    return () => {
+      cancelled = true;
+    };
   }, [school]);
 
   useEffect(() => {

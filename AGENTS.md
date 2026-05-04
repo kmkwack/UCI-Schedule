@@ -1943,3 +1943,46 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/lib/supabaseErrors.ts`** — Added a shared Supabase schema-migration error helper so missing `school` column errors are detected consistently across screens, including Postgres `42703` responses.
 - **`App.tsx`**, **`src/screens/HomeScreen.tsx`**, and **`src/screens/FriendsScreen.tsx`** — Replaced duplicated missing-school-column checks with the shared helper and stopped friend-request loading from redboxing when the social partition migration has not reached Supabase yet.
 - **`src/screens/FriendsScreen.tsx`**, **`src/screens/SignUpScreen.tsx`**, **`src/screens/UniversitySelectionScreen.tsx`**, and **`src/components/FeatureOnboardingScreen.tsx`** — Removed several UCI-specific defaults/placeholders in favor of shared school config/default-university values, keeping the auth/onboarding/friend UI easier to extend for future schools.
+
+### Session 64nv (Fast-skip UIUC backfills)
+- **`scripts/seed-uiuc-sections.js`** — Added configurable UIUC fetch retry controls (`UIUC_FETCH_RETRIES`, `UIUC_TRANSIENT_RETRY_DELAY_MS`) so known 403-heavy Course Explorer pages can fail fast instead of forcing 30-second waits during broad backfills.
+- **`scripts/backfill-school-sections.js`** — Added `--skip-terms school:Term:Year` support so already completed terms like UIUC Spring 2019 can be skipped cleanly while continuing the historical import.
+
+### Session 64nw (Default UIUC fast failure)
+- **`scripts/seed-uiuc-sections.js`** — Changed the default UIUC fetch retry count to zero so broad UIUC imports no longer pause for 30 seconds on repeated Course Explorer 403 responses unless a retry is explicitly requested through environment variables.
+
+### Session 64nx (Harden UMD section seeding)
+- **`scripts/seed-umd-sections.js`** — Deduplicated UMD department lists before metadata upsert so repeated department codes no longer trigger `ON CONFLICT DO UPDATE command cannot affect row a second time`.
+- **`scripts/seed-umd-sections.js`** — Reduced UMD section-detail request batches, added retry handling for transient fetch/500/429 failures, and added recursive batch splitting so one malformed or overloaded section request no longer fails an entire department.
+
+### Session 64ny (Retry exact failed terms)
+- **`scripts/backfill-school-sections.js`** — Added `--only-terms school:Term:Year` support so failed historical imports can be retried by exact term without re-running already successful years.
+
+### Session 64nz (Harden Cornell section seeding)
+- **`scripts/seed-cornell-sections.js`** — Deduplicated Cornell section rows by generated section id before Supabase upserts so subjects with repeated class numbers no longer trigger `ON CONFLICT DO UPDATE command cannot affect row a second time`.
+- **`scripts/seed-cornell-sections.js`** — Added configurable Cornell fetch retry settings, deduplicated subject metadata rows, and treated roster-subject 404 responses as empty unavailable subjects instead of failed imports.
+
+### Session 64oa (Fix Purdue Spring/Summer term codes)
+- **`scripts/seed-purdue-sections.js`** — Corrected Purdue term-code generation so Fall uses the next academic-year code while Spring and Summer use the same calendar-year code, preventing Spring/Summer imports from being stored one year off.
+
+### Session 64ob (Retry exact failed subjects)
+- **`scripts/backfill-school-sections.js`** — Added `--only-subjects school:Term:Year:SUBJ+SUBJ` support so UMD/Cornell/Purdue failed departments can be retried together without re-running entire terms.
+
+### Session 64oc (Protect term metadata on partial retries)
+- **`scripts/seed-umd-sections.js`**, **`scripts/seed-cornell-sections.js`**, **`scripts/seed-purdue-sections.js`**, and **`scripts/seed-uiuc-sections.js`** — Changed subject/department-limited seed runs to skip `school_terms` count/status updates so retrying a few failed departments does not overwrite full-term metadata with partial counts.
+
+### Session 64od (Clean school picker cards)
+- **`src/screens/UniversitySelectionScreen.tsx`** — Removed the visible availability badge from school cards, switched selected card/button styling to each school's accent color, and improved the fallback monogram logo treatment so newly added schools without image assets still look intentional.
+
+### Session 64oe (School accent course picker)
+- **`src/screens/CoursePickerScreen.tsx`** — Replaced the remaining UCI-blue selection, filter, preview, review, and custom-block controls with the selected school's accent color so multi-school course browsing feels consistent after login.
+
+### Session 64of (Shorten semester timetable labels)
+- **`src/screens/TimetableScreen.tsx`** — Added a timetable-specific term label helper so semester schools show concise labels like `Fall 2026` in the timetable picker and add-term sheet while UCI can still show the quarter system label.
+
+### Session 64og (Remove UCI-only UI paths)
+- **`src/data/schools.ts`** and **`src/data/campusLocations.ts`** — Added shared campus coordinates plus multi-school classroom and athletics venue resolvers for UCI, UMD, Cornell, Purdue, and UIUC, replacing the old UCI-only location resolver.
+- **`src/screens/TimetableScreen.tsx`** and **`src/screens/HomeScreen.tsx`** — Switched course maps, sports venue previews, weather coordinates, and map handoff labels to use the selected school's config/resolvers instead of UCI-specific checks.
+- **`src/data/anonymousAliases.ts`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/MessagesScreen.tsx`**, and **`src/screens/SettingsScreen.tsx`** — Replaced Anteater-only anonymous aliases/copy with school-aware aliases such as Terp, Cornellian, Boilermaker, and Illini.
+- **`src/components/ErrorScreen.tsx`** and **`src/components/FeatureOnboardingScreen.tsx`** — Removed UCI mascot-specific fallback UI/copy from generic error/onboarding surfaces so non-UCI users do not see UCI branding.
+- **`src/components/ReviewsModal.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, and **`src/components/ProfileEditorScreen.tsx`** — Moved remaining UCI-specific integrations behind shared school config or neutral naming so UCI data sources no longer leak into generic app UI.

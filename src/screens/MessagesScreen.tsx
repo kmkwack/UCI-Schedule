@@ -26,7 +26,7 @@ import type {
   ConversationRow,
 } from '../data/messages';
 import { formatMessageTime } from '../data/messages';
-import { anteaterAliasForId } from '../data/anonymousAliases';
+import { campusAliasForId } from '../data/anonymousAliases';
 
 type ConversationPreview = {
   conversationId: string | null;
@@ -235,7 +235,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     return Object.fromEntries(
       ((data ?? []) as ProfileRow[]).map((profile) => [
         profile.id,
-        profile.name?.trim() || profile.email?.split('@')[0] || anteaterAliasForId(profile.id),
+        profile.name?.trim() || profile.email?.split('@')[0] || campusAliasForId(profile.id, school),
       ])
     );
   }, [school]);
@@ -262,8 +262,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     if (!partner) return null;
 
     const name = isAnonymous
-      ? partner.alias_snapshot || anteaterAliasForId(partner.user_id)
-      : namesById[partner.user_id] || anteaterAliasForId(partner.user_id);
+      ? partner.alias_snapshot || campusAliasForId(partner.user_id, school)
+      : namesById[partner.user_id] || campusAliasForId(partner.user_id, school);
     const sortStamp = new Date(lastMessage.created_at).getTime();
     const sourcePost = isAnonymous && conversation.source_post_id
       ? sourcePostsById[conversation.source_post_id] ?? {
@@ -290,7 +290,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       unread,
       sortStamp,
     };
-  }, [userId]);
+  }, [school, userId]);
 
   const fetchConversations = useCallback(async (options: { silent?: boolean } = {}) => {
     if (!hasValidUserId) return;
@@ -530,8 +530,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     try {
       const conversationId = target.conversationId ?? await findExistingConversationId(target);
       const name = target.kind === 'board_anonymous'
-        ? anteaterAliasForId(target.id)
-        : target.name?.trim() || anteaterAliasForId(target.id);
+        ? campusAliasForId(target.id, school)
+        : target.name?.trim() || campusAliasForId(target.id, school);
       const sourcePostsById = target.kind === 'board_anonymous' && target.sourcePostId
         ? await loadSourcePostsById([target.sourcePostId])
         : {};

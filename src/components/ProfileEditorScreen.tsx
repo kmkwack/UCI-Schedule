@@ -23,7 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import type { EditableProfile } from '../data/userPreferences';
 
-const UCI_MAJORS = [
+const MAJOR_OPTIONS = [
   'Aerospace Engineering',
   'African American Studies',
   'Anthropology',
@@ -491,7 +491,7 @@ export default function ProfileEditorScreen({
             label="Major"
             required
             value={form.major}
-            options={UCI_MAJORS}
+            options={MAJOR_OPTIONS}
             onSelect={(value) => setForm((current) => ({ ...current, major: value }))}
             searchable
           />

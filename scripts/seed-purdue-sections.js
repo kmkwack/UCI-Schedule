@@ -44,6 +44,15 @@ const TERM_TO_CODE_SUFFIX = {
   Summer2: '30',
 };
 
+const TERM_TO_YEAR_OFFSET = {
+  Fall: 1,
+  Spring: 0,
+  Summer: 0,
+  Summer1: 0,
+  Summer10wk: 0,
+  Summer2: 0,
+};
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -57,7 +66,7 @@ function termCode(year, term) {
   if (!suffix) {
     throw new Error(`Unsupported Purdue term "${term}". Use one of: ${Object.keys(TERM_TO_CODE_SUFFIX).join(', ')}`);
   }
-  return `${Number(year) + 1}${suffix}`;
+  return `${Number(year) + TERM_TO_YEAR_OFFSET[term]}${suffix}`;
 }
 
 async function fetchJson(path, params = {}, retries = 3) {
@@ -214,24 +223,27 @@ async function upsertRows(rows) {
   }
 }
 
-async function upsertSeedMetadata(subjects, purdueTermCode, qKey, total, errors) {
+async function upsertSeedMetadata(subjects, purdueTermCode, qKey, total, errors, updateTermMetadata = true) {
   if (DRY_RUN) return;
 
   const now = new Date().toISOString();
-  const { error: termError } = await supabase.from('school_terms').upsert({
-    school: SCHOOL,
-    quarter_key: qKey,
-    source: 'purdue.io',
-    source_term_code: purdueTermCode,
-    status: errors > 0 ? 'partial' : 'seeded',
-    section_count: total,
-    department_count: subjects.length,
-    error_count: errors,
-    last_seeded_at: now,
-  }, { onConflict: 'school,quarter_key' });
-  if (termError) console.error(`  ✗ school_terms upsert failed: ${termError.message}`);
+  const uniqueSubjects = uniqueValues(subjects);
+  if (updateTermMetadata) {
+    const { error: termError } = await supabase.from('school_terms').upsert({
+      school: SCHOOL,
+      quarter_key: qKey,
+      source: 'purdue.io',
+      source_term_code: purdueTermCode,
+      status: errors > 0 ? 'partial' : 'seeded',
+      section_count: total,
+      department_count: uniqueSubjects.length,
+      error_count: errors,
+      last_seeded_at: now,
+    }, { onConflict: 'school,quarter_key' });
+    if (termError) console.error(`  ✗ school_terms upsert failed: ${termError.message}`);
+  }
 
-  const departmentRows = subjects.map((subject) => ({
+  const departmentRows = uniqueSubjects.map((subject) => ({
     school: SCHOOL,
     department: subject,
     dept_name: null,
@@ -243,6 +255,10 @@ async function upsertSeedMetadata(subjects, purdueTermCode, qKey, total, errors)
     .from('school_departments')
     .upsert(departmentRows, { onConflict: 'school,department' });
   if (departmentsError) console.error(`  ✗ school_departments upsert failed: ${departmentsError.message}`);
+}
+
+function uniqueValues(values) {
+  return [...new Set(values)];
 }
 
 async function runConcurrent(items, worker, concurrency) {
@@ -283,7 +299,7 @@ async function main() {
   const purdueTermCode = termCode(YEAR, TERM);
   const qKey = quarterKey(YEAR, TERM);
   const subjects = SUBJECT_ARG
-    ? SUBJECT_ARG.split(',').map((subject) => subject.trim().toUpperCase()).filter(Boolean)
+    ? uniqueValues(SUBJECT_ARG.split(',').map((subject) => subject.trim().toUpperCase()).filter(Boolean))
     : await fetchSubjects();
 
   console.log(`Seeding ${SCHOOL} ${TERM} ${YEAR} (${purdueTermCode}, campus ${CAMPUS_CODE})`);
@@ -303,7 +319,7 @@ async function main() {
     }
   }, CONCURRENCY);
 
-  await upsertSeedMetadata(subjects, purdueTermCode, qKey, total, errors);
+  await upsertSeedMetadata(subjects, purdueTermCode, qKey, total, errors, !SUBJECT_ARG);
 
   console.log(`\nDone. ${total.toLocaleString()} sections, ${errors} subject errors.`);
 }

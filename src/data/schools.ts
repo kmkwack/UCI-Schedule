@@ -49,6 +49,11 @@ export type SchoolConfig = {
   campus: string;
   domain: string;
   location: string;
+  timeZone: string;
+  coordinates: {
+    latitude: number;
+    longitude: number;
+  };
   logo: string;
   shortName: string;
   accent: string;
@@ -59,6 +64,8 @@ export type SchoolConfig = {
   terms: string[];
   features: SchoolFeatures;
   sportsFeed?: SportsFeedConfig;
+  gradeDistributionSource?: 'anteaterapi';
+  rmpSchoolId?: string;
   gradeScale: GradeScale;
 };
 
@@ -172,6 +179,8 @@ export const SCHOOL_CONFIGS: Record<string, SchoolConfig> = {
     campus: 'Irvine campus',
     domain: '@uci.edu',
     location: 'Irvine, CA',
+    timeZone: 'America/Los_Angeles',
+    coordinates: { latitude: 33.6405, longitude: -117.8443 },
     logo: 'UCI',
     shortName: 'UCI',
     accent: '#4169E1',
@@ -182,6 +191,8 @@ export const SCHOOL_CONFIGS: Record<string, SchoolConfig> = {
     terms: ['Winter', 'Spring', 'Summer1', 'Summer10wk', 'Summer2', 'Fall'],
     features: { ...DEFAULT_FEATURES, sports: true },
     sportsFeed: { kind: 'uci-calendar', url: 'https://ucirvinesports.com/calendar' },
+    gradeDistributionSource: 'anteaterapi',
+    rmpSchoolId: '1074',
     gradeScale: STANDARD_40_SCALE,
   },
   'University of Maryland, College Park': {
@@ -190,6 +201,8 @@ export const SCHOOL_CONFIGS: Record<string, SchoolConfig> = {
     campus: 'College Park campus',
     domain: '@umd.edu',
     location: 'College Park, MD',
+    timeZone: 'America/New_York',
+    coordinates: { latitude: 38.9869, longitude: -76.9426 },
     logo: 'UMD',
     shortName: 'UMD',
     accent: '#E21833',
@@ -208,6 +221,8 @@ export const SCHOOL_CONFIGS: Record<string, SchoolConfig> = {
     campus: 'Ithaca campus',
     domain: '@cornell.edu',
     location: 'Ithaca, NY',
+    timeZone: 'America/New_York',
+    coordinates: { latitude: 42.4534, longitude: -76.4735 },
     logo: 'CU',
     shortName: 'Cornell',
     accent: '#B31B1B',
@@ -226,6 +241,8 @@ export const SCHOOL_CONFIGS: Record<string, SchoolConfig> = {
     campus: 'West Lafayette campus',
     domain: '@purdue.edu',
     location: 'West Lafayette, IN',
+    timeZone: 'America/Indiana/Indianapolis',
+    coordinates: { latitude: 40.4237, longitude: -86.9212 },
     logo: 'PU',
     shortName: 'Purdue',
     accent: '#8E6F3E',
@@ -244,6 +261,8 @@ export const SCHOOL_CONFIGS: Record<string, SchoolConfig> = {
     campus: 'Urbana-Champaign campus',
     domain: '@illinois.edu',
     location: 'Champaign, IL',
+    timeZone: 'America/Chicago',
+    coordinates: { latitude: 40.102, longitude: -88.2272 },
     logo: 'UIUC',
     shortName: 'Illinois',
     accent: '#FF5F05',
@@ -276,6 +295,8 @@ export function getSchoolConfig(school: string): SchoolConfig {
     campus: 'Campus',
     domain: '',
     location: '',
+    timeZone: 'auto',
+    coordinates: { latitude: 39.8283, longitude: -98.5795 },
     logo: school.slice(0, 4).toUpperCase(),
     shortName: school,
     accent: '#4169E1',

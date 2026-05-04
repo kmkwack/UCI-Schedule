@@ -22,7 +22,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, UCI_DEPARTMENTS, quarterKey } from '../data/courses';
-import { termLabel } from '../data/schools';
+import { getSchoolConfig, termLabel } from '../data/schools';
 import PreviewTimetable from '../components/PreviewTimetable';
 import { supabase } from '../lib/supabase';
 import ReviewsModal from '../components/ReviewsModal';
@@ -227,6 +227,10 @@ export default function CoursePickerScreen({
   onEditingHandled,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const schoolConfig = getSchoolConfig(school);
+  const schoolAccent = schoolConfig.accent;
+  const schoolAccentSoft = `${schoolAccent}12`;
+  const schoolAccentBorder = `${schoolAccent}44`;
   if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
   }
@@ -382,7 +386,7 @@ export default function CoursePickerScreen({
   const hasSelectedDepartments = selectedDepts.length > 0;
   const hasSelectedCategory = hasSelectedDepartments || !!selectedGE;
   const selectedDeptKey = selectedDepts.join('|');
-  const isUciSchool = school === 'UC Irvine';
+  const isUciSchool = schoolConfig.id === 'uci';
   const departmentOptions = availableDepartments.length > 0
     ? availableDepartments
     : isUciSchool
@@ -634,7 +638,7 @@ export default function CoursePickerScreen({
   }, [selectedGE, hasSelectedDepartments, selectedQuarter, school]);
 
   const fetchEnrollment = async (course: CatalogCourse) => {
-    if (school !== 'UC Irvine') return;
+    if (schoolConfig.id !== 'uci') return;
     if (enrollmentLoadingIds.has(course.id)) return;
     // Check if all sections for this course are already cached
     const sections = (isGlobalSearch ? globalSectionsMap : sectionsMap)[course.id] ?? [];
@@ -1044,13 +1048,13 @@ export default function CoursePickerScreen({
             paddingHorizontal: 12,
             paddingVertical: 7,
             borderRadius: 999,
-            backgroundColor: '#eef2ff',
+            backgroundColor: schoolAccentSoft,
             borderWidth: 1,
-            borderColor: '#c7d2fe',
+            borderColor: schoolAccentBorder,
             zIndex: 1,
           }}
         >
-          <Text style={{ color: '#4169E1', fontSize: 12, fontWeight: '700' }}>Customize</Text>
+          <Text style={{ color: schoolAccent, fontSize: 12, fontWeight: '700' }}>Customize</Text>
         </TouchableOpacity>
       </View>
 
@@ -1096,18 +1100,18 @@ export default function CoursePickerScreen({
               flexDirection: 'row',
               justifyContent: 'space-between',
               alignItems: 'center',
-              backgroundColor: hasSelectedCategory ? '#eef1fb' : '#f3f4f6',
+              backgroundColor: hasSelectedCategory ? schoolAccentSoft : '#f3f4f6',
               borderRadius: 14,
               paddingHorizontal: 14,
               paddingVertical: 13,
               marginBottom: 10,
               borderWidth: 1,
-              borderColor: hasSelectedCategory ? '#3b82f6' : '#e5e7eb',
+              borderColor: hasSelectedCategory ? schoolAccent : '#e5e7eb',
             }}
           >
             <Text
               numberOfLines={1}
-              style={{ flex: 1, color: hasSelectedCategory ? '#4169E1' : '#9ca3af', fontSize: 15, fontWeight: hasSelectedCategory ? '600' : '400' }}
+              style={{ flex: 1, color: hasSelectedCategory ? schoolAccent : '#9ca3af', fontSize: 15, fontWeight: hasSelectedCategory ? '600' : '400' }}
             >
               {selectedCategorySummary || 'Department or GE category…'}
             </Text>
@@ -1130,18 +1134,18 @@ export default function CoursePickerScreen({
                     paddingRight: 9,
                     paddingVertical: 8,
                     borderRadius: 999,
-                    backgroundColor: '#eef1fb',
+                    backgroundColor: schoolAccentSoft,
                     borderWidth: 1,
-                    borderColor: '#4169E1',
+                    borderColor: schoolAccent,
                   }}
                 >
                   <Text
                     numberOfLines={1}
-                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: '#4169E1' }}
+                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: schoolAccent }}
                   >
                     {dept}
                   </Text>
-                  <Ionicons name="close" size={14} color="#4169E1" />
+                  <Ionicons name="close" size={14} color={schoolAccent} />
                 </TouchableOpacity>
               ))}
               {!!selectedGELabel && (
@@ -1157,18 +1161,18 @@ export default function CoursePickerScreen({
                     paddingRight: 9,
                     paddingVertical: 8,
                     borderRadius: 999,
-                    backgroundColor: '#eef1fb',
+                    backgroundColor: schoolAccentSoft,
                     borderWidth: 1,
-                    borderColor: '#4169E1',
+                    borderColor: schoolAccent,
                   }}
                 >
                   <Text
                     numberOfLines={1}
-                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: '#4169E1' }}
+                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: schoolAccent }}
                   >
                     {selectedGELabel}
                   </Text>
-                  <Ionicons name="close" size={14} color="#4169E1" />
+                  <Ionicons name="close" size={14} color={schoolAccent} />
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -1178,9 +1182,9 @@ export default function CoursePickerScreen({
                   paddingHorizontal: 12,
                   paddingVertical: 8,
                   borderRadius: 999,
-                  backgroundColor: selectedDayFilters.length === 0 ? '#4169E1' : '#f3f4f6',
+                  backgroundColor: selectedDayFilters.length === 0 ? schoolAccent : '#f3f4f6',
                   borderWidth: 1,
-                  borderColor: selectedDayFilters.length === 0 ? '#4169E1' : '#e5e7eb',
+                  borderColor: selectedDayFilters.length === 0 ? schoolAccent : '#e5e7eb',
                 }}
               >
                 <Text style={{ fontSize: 12, fontWeight: '700', color: selectedDayFilters.length === 0 ? 'white' : '#6b7280' }}>
@@ -1198,12 +1202,12 @@ export default function CoursePickerScreen({
                       paddingHorizontal: 12,
                       paddingVertical: 8,
                       borderRadius: 999,
-                      backgroundColor: selected ? '#eef1fb' : '#f3f4f6',
+                      backgroundColor: selected ? schoolAccentSoft : '#f3f4f6',
                       borderWidth: 1,
-                      borderColor: selected ? '#4169E1' : '#e5e7eb',
+                      borderColor: selected ? schoolAccent : '#e5e7eb',
                     }}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: selected ? '#4169E1' : '#6b7280' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: selected ? schoolAccent : '#6b7280' }}>
                       {day.label}
                     </Text>
                   </TouchableOpacity>
@@ -1244,7 +1248,7 @@ export default function CoursePickerScreen({
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity onPress={() => closeDeptModal()}>
-                    <Text style={{ fontSize: 14, color: '#4169E1', fontWeight: '800' }}>Done</Text>
+                    <Text style={{ fontSize: 14, color: schoolAccent, fontWeight: '800' }}>Done</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -1288,10 +1292,10 @@ export default function CoursePickerScreen({
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ fontSize: 15, color: isSelected ? '#4169E1' : '#111827', fontWeight: isSelected ? '700' : '400' }}>
+                          <Text style={{ fontSize: 15, color: isSelected ? schoolAccent : '#111827', fontWeight: isSelected ? '700' : '400' }}>
                             {ge.label}
                           </Text>
-                          {isSelected && <Ionicons name="checkmark" size={18} color="#4169E1" />}
+                          {isSelected && <Ionicons name="checkmark" size={18} color={schoolAccent} />}
                         </TouchableOpacity>
                       );
                     }}
@@ -1310,10 +1314,10 @@ export default function CoursePickerScreen({
                           onPress={() => { Keyboard.dismiss(); closeDeptModal(clearSelectedCategory); }}
                           style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
                         >
-                          <Text style={{ fontSize: 15, color: !hasSelectedCategory ? '#4169E1' : '#111827', fontWeight: !hasSelectedCategory ? '700' : '400' }}>
+                          <Text style={{ fontSize: 15, color: !hasSelectedCategory ? schoolAccent : '#111827', fontWeight: !hasSelectedCategory ? '700' : '400' }}>
                             All Departments
                           </Text>
-                          {!hasSelectedCategory && <Ionicons name="checkmark" size={18} color="#4169E1" />}
+                          {!hasSelectedCategory && <Ionicons name="checkmark" size={18} color={schoolAccent} />}
                         </TouchableOpacity>
                         {isUciSchool && !deptSearch && (
                           <TouchableOpacity
@@ -1330,7 +1334,7 @@ export default function CoursePickerScreen({
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ fontSize: 15, color: selectedGE ? '#4169E1' : '#111827', fontWeight: selectedGE ? '700' : '500' }}>
+                          <Text style={{ fontSize: 15, color: selectedGE ? schoolAccent : '#111827', fontWeight: selectedGE ? '700' : '500' }}>
                             {selectedGE ? GE_CATEGORIES.find(g => g.code === selectedGE)?.label : 'GE Categories'}
                           </Text>
                           <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
@@ -1352,10 +1356,10 @@ export default function CoursePickerScreen({
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ fontSize: 15, color: isSelected ? '#4169E1' : '#111827', fontWeight: isSelected ? '700' : '400' }}>
+                          <Text style={{ fontSize: 15, color: isSelected ? schoolAccent : '#111827', fontWeight: isSelected ? '700' : '400' }}>
                             {item}
                           </Text>
-                          {isSelected && <Ionicons name="checkmark" size={18} color="#4169E1" />}
+                          {isSelected && <Ionicons name="checkmark" size={18} color={schoolAccent} />}
                         </TouchableOpacity>
                       );
                     }}
@@ -1376,7 +1380,7 @@ export default function CoursePickerScreen({
           </View>
         ) : (catalogLoading && hasSelectedCategory) || (globalSearchLoading && isGlobalSearch) ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
-            <ActivityIndicator size="large" color="#4169E1" />
+            <ActivityIndicator size="large" color={schoolAccent} />
             <Text style={{ color: '#9ca3af', marginTop: 12 }}>
               {isGlobalSearch
                 ? `Searching "${searchText.trim()}"…`
@@ -1465,13 +1469,13 @@ export default function CoursePickerScreen({
                               activeOpacity={0.85}
                               onPress={() => setPreviewCourse(isPreviewing ? null : course)}
                               style={{
-                                backgroundColor: isPreviewing ? '#eef1fb' : '#f9fafb',
+                                backgroundColor: isPreviewing ? schoolAccentSoft : '#f9fafb',
                                 borderRadius: 12,
                                 paddingHorizontal: 10,
                                 paddingVertical: 8,
                                 marginBottom: 6,
                                 borderWidth: 1,
-                                borderColor: isPreviewing ? '#3b82f6' : '#f3f4f6',
+                                borderColor: isPreviewing ? schoolAccent : '#f3f4f6',
                               }}
                             >
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -1530,12 +1534,12 @@ export default function CoursePickerScreen({
                                       alignItems: 'center',
                                       gap: 4,
                                       borderRadius: 999,
-                                      backgroundColor: '#eef1fb',
+                                      backgroundColor: schoolAccentSoft,
                                       paddingHorizontal: 8,
                                       paddingVertical: 4,
                                     }}>
-                                      <Ionicons name="people-outline" size={11} color="#4169E1" />
-                                      <Text style={{ color: '#4169E1', fontSize: 10, fontWeight: '800' }}>
+                                      <Ionicons name="people-outline" size={11} color={schoolAccent} />
+                                      <Text style={{ color: schoolAccent, fontSize: 10, fontWeight: '800' }}>
                                         {savedCount} saved
                                       </Text>
                                     </View>
@@ -1567,7 +1571,7 @@ export default function CoursePickerScreen({
                                     }}
                                     style={{
                                       paddingHorizontal: 10, paddingVertical: 5,
-                                      borderRadius: 999, backgroundColor: '#4169E1',
+                                      borderRadius: 999, backgroundColor: schoolAccent,
                                       alignSelf: 'flex-end',
                                     }}
                                     hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
@@ -1709,9 +1713,9 @@ export default function CoursePickerScreen({
                             paddingHorizontal: 0,
                             paddingVertical: 7,
                             borderRadius: 11,
-                            backgroundColor: isSelected ? '#4169E1' : '#f3f4f6',
+                            backgroundColor: isSelected ? schoolAccent : '#f3f4f6',
                             borderWidth: 1,
-                            borderColor: isSelected ? '#4169E1' : '#e5e7eb',
+                            borderColor: isSelected ? schoolAccent : '#e5e7eb',
                             alignItems: 'center',
                             justifyContent: 'center',
                             flexShrink: 1,
@@ -1816,7 +1820,7 @@ export default function CoursePickerScreen({
                 style={{
                   marginTop: 10,
                   marginBottom: 0,
-                  backgroundColor: '#4169E1',
+                  backgroundColor: schoolAccent,
                   borderRadius: 14,
                   paddingVertical: 12,
                   alignItems: 'center',

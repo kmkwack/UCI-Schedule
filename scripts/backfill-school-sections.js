@@ -9,6 +9,9 @@
 //   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/backfill-school-sections.js
 //   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/backfill-school-sections.js --from-year 2019 --to-year 2026
 //   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/backfill-school-sections.js --schools cornell,purdue,uiuc --terms Spring,Fall
+//   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/backfill-school-sections.js --schools uiuc --skip-terms uiuc:Spring:2019
+//   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/backfill-school-sections.js --only-terms umd:Fall:2025,umd:Fall:2026
+//   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/backfill-school-sections.js --only-subjects "umd:Fall:2025:EPIB+EXST;cornell:Spring:2019:FDSC"
 //   DRY_RUN=1 node scripts/backfill-school-sections.js --schools umd --from-year 2025 --to-year 2026
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -46,6 +49,9 @@ function parseArgs(argv) {
     terms: null,
     fromYear: 2019,
     toYear: CURRENT_YEAR,
+    onlyTerms: new Set(),
+    onlySubjects: new Map(),
+    skipTerms: new Set(),
     continueOnError: true,
   };
 
@@ -64,6 +70,23 @@ function parseArgs(argv) {
       i += 1;
     } else if (arg === '--to-year' && next) {
       options.toYear = Number(next);
+      i += 1;
+    } else if (arg === '--skip-terms' && next) {
+      next.split(',').map((item) => item.trim()).filter(Boolean).forEach((item) => {
+        options.skipTerms.add(parseSkipTerm(item));
+      });
+      i += 1;
+    } else if (arg === '--only-terms' && next) {
+      next.split(',').map((item) => item.trim()).filter(Boolean).forEach((item) => {
+        options.onlyTerms.add(parseSkipTerm(item));
+      });
+      i += 1;
+    } else if (arg === '--only-subjects' && next) {
+      next.split(';').map((item) => item.trim()).filter(Boolean).forEach((item) => {
+        const { key, subjects } = parseOnlySubjectsTerm(item);
+        const existing = options.onlySubjects.get(key) ?? [];
+        options.onlySubjects.set(key, [...new Set([...existing, ...subjects])]);
+      });
       i += 1;
     } else if (arg === '--stop-on-error') {
       options.continueOnError = false;
@@ -87,7 +110,54 @@ function parseArgs(argv) {
     throw new Error(`Unknown school(s): ${unknownSchools.join(', ')}. Use: ${Object.keys(SCHOOL_SEEDERS).join(', ')}`);
   }
 
+  const exactTermKeys = new Set([...options.onlyTerms, ...options.onlySubjects.keys()]);
+  if (exactTermKeys.size > 0) {
+    const exactTerms = [...exactTermKeys].map(parseSkipTermKey);
+    const exactSchools = [...new Set(exactTerms.map((item) => item.school))];
+    const unknownExactSchools = exactSchools.filter((school) => !SCHOOL_SEEDERS[school]);
+    if (unknownExactSchools.length > 0) {
+      throw new Error(`Unknown school(s) in exact-term options: ${unknownExactSchools.join(', ')}. Use: ${Object.keys(SCHOOL_SEEDERS).join(', ')}`);
+    }
+    options.schools = exactSchools;
+    options.fromYear = Math.min(...exactTerms.map((item) => Number(item.year)));
+    options.toYear = Math.max(...exactTerms.map((item) => Number(item.year)));
+  }
+
   return options;
+}
+
+function parseSkipTerm(value) {
+  const [school, term, year] = value.split(':').map((part) => part.trim());
+  if (!school || !term || !year) {
+    throw new Error(`Invalid --skip-terms value "${value}". Use school:Term:Year, for example uiuc:Spring:2019.`);
+  }
+  return skipTermKey(school, term, year);
+}
+
+function parseOnlySubjectsTerm(value) {
+  const [school, term, year, subjectText] = value.split(':').map((part) => part.trim());
+  const subjects = String(subjectText ?? '')
+    .split(/[+,]/)
+    .map((subject) => subject.trim().toUpperCase())
+    .filter(Boolean);
+
+  if (!school || !term || !year || subjects.length === 0) {
+    throw new Error(`Invalid --only-subjects value "${value}". Use school:Term:Year:SUBJ+SUBJ, for example umd:Fall:2025:EPIB+EXST.`);
+  }
+
+  return {
+    key: skipTermKey(school, term, year),
+    subjects,
+  };
+}
+
+function skipTermKey(schoolKey, term, year) {
+  return `${String(schoolKey).toLowerCase()}:${String(term).toLowerCase()}:${String(year)}`;
+}
+
+function parseSkipTermKey(key) {
+  const [school, term, year] = key.split(':');
+  return { school, term, year };
 }
 
 function printHelp() {
@@ -99,14 +169,21 @@ Options:
   --terms Spring,Summer,Fall     Terms to seed. Defaults to each school's standard terms.
   --from-year 2019               First catalog year. Defaults to 2019.
   --to-year 2026                 Last catalog year. Defaults to current year.
+  --skip-terms uiuc:Spring:2019  Comma-separated school:Term:Year entries to skip.
+  --only-terms umd:Fall:2025     Run only exact school:Term:Year entries.
+  --only-subjects "umd:Fall:2025:EPIB+EXST;cornell:Spring:2019:FDSC"
+                                  Run only exact subjects/departments for exact terms.
   --stop-on-error                Stop after the first failed school/term.
   --help                         Show this help.
 `);
 }
 
-function runSeeder(scriptName, term, year) {
+function runSeeder(scriptName, term, year, subjects) {
   const scriptPath = path.join(__dirname, scriptName);
-  const result = spawnSync(process.execPath, [scriptPath, term, String(year)], {
+  const args = [scriptPath, term, String(year)];
+  if (subjects?.length) args.push(subjects.join(','));
+
+  const result = spawnSync(process.execPath, args, {
     cwd: path.join(__dirname, '..'),
     env: process.env,
     stdio: 'inherit',
@@ -126,6 +203,7 @@ function main() {
 
   const failures = [];
   console.log(`Backfilling sections for ${options.schools.join(', ')} (${options.fromYear}-${options.toYear})`);
+  const exactTermKeys = new Set([...options.onlyTerms, ...options.onlySubjects.keys()]);
 
   for (const schoolKey of options.schools) {
     const school = SCHOOL_SEEDERS[schoolKey];
@@ -133,13 +211,24 @@ function main() {
 
     for (const year of years) {
       for (const term of terms) {
+        const exactKey = skipTermKey(schoolKey, term, year);
+        if (exactTermKeys.size > 0 && !exactTermKeys.has(exactKey)) {
+          continue;
+        }
+
+        if (options.skipTerms.has(skipTermKey(schoolKey, term, year))) {
+          console.log(`\nSkipping ${school.label}: ${term} ${year}`);
+          continue;
+        }
+
         console.log(`\n────────────────────────────────────────`);
-        console.log(`${school.label}: ${term} ${year}`);
+        const subjects = options.onlySubjects.get(exactKey) ?? null;
+        console.log(`${school.label}: ${term} ${year}${subjects ? ` (${subjects.join(',')})` : ''}`);
         console.log(`────────────────────────────────────────`);
 
-        const status = runSeeder(school.script, term, year);
+        const status = runSeeder(school.script, term, year, subjects);
         if (status !== 0) {
-          const label = `${schoolKey} ${term} ${year}`;
+          const label = `${schoolKey} ${term} ${year}${subjects ? ` ${subjects.join(',')}` : ''}`;
           failures.push(label);
           console.error(`Failed: ${label}`);
           if (!options.continueOnError) {

@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, getBlockColors, normalizeTimetableTheme } from '../data/courses';
-import { academicSystemNoun, buildTermCandidates, termLabel, termOrderValue } from '../data/schools';
-import { getUciMapLocation, type UciMapLocation } from '../data/uciLocations';
+import { academicSystemNoun, buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
+import { getCampusMapLocation, type CampusMapLocation } from '../data/campusLocations';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import ReviewsModal from '../components/ReviewsModal';
@@ -15,10 +15,8 @@ import * as Sharing from 'expo-sharing';
 import * as Linking from 'expo-linking';
 import MapView, { Marker } from 'react-native-maps';
 
-const RMP_SCHOOL_IDS: Record<string, string> = { 'UC Irvine': '1074' };
-
 function rmpUrl(professor: string, school: string) {
-  const sid = RMP_SCHOOL_IDS[school];
+  const sid = getSchoolConfig(school).rmpSchoolId;
   const lastName = professor.includes(',') ? professor.substring(0, professor.indexOf(',')) : professor;
   return sid
     ? `https://www.ratemyprofessors.com/search/professors/${sid}?q=${encodeURIComponent(lastName)}`
@@ -26,20 +24,20 @@ function rmpUrl(professor: string, school: string) {
 }
 
 function mapSearchUrl(location: string, school: string) {
-  const campusHint = school === 'UC Irvine' ? 'UC Irvine' : school;
+  const campusHint = schoolCampusLabel(school);
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${campusHint} ${location}`)}`;
 }
 
 function appleMapsUrl(location: string, school: string) {
-  const campusHint = school === 'UC Irvine' ? 'UC Irvine' : school;
+  const campusHint = schoolCampusLabel(school);
   return `maps://?q=${encodeURIComponent(`${campusHint} ${location}`)}`;
 }
 
-function appleMapsCoordinateUrl(location: UciMapLocation) {
+function appleMapsCoordinateUrl(location: CampusMapLocation) {
   return `maps://?ll=${location.latitude},${location.longitude}&q=${encodeURIComponent(location.name)}`;
 }
 
-async function openMaps(location: string, school: string, mappedLocation?: UciMapLocation | null) {
+async function openMaps(location: string, school: string, mappedLocation?: CampusMapLocation | null) {
   const appleUrl = mappedLocation ? appleMapsCoordinateUrl(mappedLocation) : appleMapsUrl(location, school);
   const fallbackUrl = mapSearchUrl(location, school);
 
@@ -246,6 +244,8 @@ export default function TimetableScreen({
   scrollToTopTrigger = 0,
 }: Props) {
   const { colors, isDark } = useTheme();
+  const showSystemInTermPicker = academicSystemNoun(school) === 'quarter';
+  const pickerTermLabel = (term: Quarter) => termLabel(term, school, showSystemInTermPicker);
   const [gridWidth, setGridWidth] = useState(
     Math.max(0, Dimensions.get('window').width - GRID_LEFT_PAD - GRID_OUTER_HORIZONTAL_PADDING)
   );
@@ -1136,7 +1136,7 @@ export default function TimetableScreen({
                       }}
                     >
                       <Text style={{ color: isActive ? colors.brand : colors.textSecondary, fontWeight: isActive ? '700' : '400', fontSize: 14 }}>
-                        {termLabel(q, school, true)}
+                        {pickerTermLabel(q)}
                       </Text>
                       {isActive && <Ionicons name="checkmark" size={16} color={colors.brand} />}
                     </TouchableOpacity>
@@ -1278,7 +1278,7 @@ export default function TimetableScreen({
                                 borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.borderSubtle,
                               }}
                             >
-                              <Text style={{ fontSize: 16, color: colors.text }}>{termLabel(q, school, true)}</Text>
+                              <Text style={{ fontSize: 16, color: colors.text }}>{pickerTermLabel(q)}</Text>
                               <Ionicons name="add-circle-outline" size={20} color={colors.brand} />
                             </TouchableOpacity>
                           ))}
@@ -1608,7 +1608,7 @@ export default function TimetableScreen({
               && rawLocation.toLowerCase() !== 'tba'
               && !rawLocation.toLowerCase().includes('online')
               && !rawLocation.toLowerCase().includes('remote');
-            const mappedLocation = school === 'UC Irvine' ? getUciMapLocation(rawLocation) : null;
+            const mappedLocation = getCampusMapLocation(school, rawLocation);
             const mapQuery = mappedLocation?.name ?? rawLocation;
             const courseMapUrl = hasMapLocation ? appleMapsUrl(mapQuery, school) : null;
             const selectedQuarterKey = quarterKey(selectedQuarter);
@@ -1970,7 +1970,7 @@ export default function TimetableScreen({
                 }}
               >
                 <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
-                  {timetables.length === 0 ? '--' : termLabel(selectedQuarter, school, true)}
+                  {timetables.length === 0 ? '--' : pickerTermLabel(selectedQuarter)}
                 </Text>
                 <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
               </TouchableOpacity>
@@ -2382,7 +2382,7 @@ export default function TimetableScreen({
                   CLASSMATE
                 </Text>
                 <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 4 }}>
-                  {termLabel(selectedQuarter, school, true)}
+                  {pickerTermLabel(selectedQuarter)}
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
                   {activeTimetable?.name ?? 'My Schedule'}

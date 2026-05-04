@@ -6,6 +6,7 @@
 // HOW TO RUN:
 //   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/seed-umd-sections.js Fall 2026
 //   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/seed-umd-sections.js Fall 2026 CMSC,MATH
+//   UMD_SECTION_BATCH_SIZE=10 node scripts/seed-umd-sections.js Fall 2026 ENGL
 //
 // BEFORE RUNNING:
 //   1. Run supabase/sql/sections_school.sql in Supabase.
@@ -27,8 +28,11 @@ const supabase = DRY_RUN ? null : createClient(SUPABASE_URL, SUPABASE_SERVICE_KE
 const UMD_API = 'https://api.umd.io/v0';
 const SCHOOL = 'University of Maryland, College Park';
 const PER_PAGE = 100;
-const CONCURRENCY = 4;
-const REQUEST_DELAY_MS = 120;
+const CONCURRENCY = Math.max(1, Math.floor(numberEnv('UMD_CONCURRENCY', 4)));
+const REQUEST_DELAY_MS = numberEnv('UMD_REQUEST_DELAY_MS', 120);
+const FETCH_RETRIES = Math.max(0, Math.floor(numberEnv('UMD_FETCH_RETRIES', 3)));
+const RETRY_DELAY_MS = numberEnv('UMD_RETRY_DELAY_MS', 1200);
+const SECTION_BATCH_SIZE = Math.max(1, Math.floor(numberEnv('UMD_SECTION_BATCH_SIZE', 25)));
 
 const TERM_TO_MONTH = {
   Spring: '01',
@@ -45,6 +49,13 @@ const DEPT_ARG = process.argv[4] ?? null;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function numberEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function quarterKey(year, term) {
@@ -70,13 +81,34 @@ function parseLinkHeader(linkHeader) {
   );
 }
 
-async function fetchJson(url, retries = 3) {
-  const res = await fetch(url);
-  if (res.status === 429 && retries > 0) {
-    await sleep(1500);
+function createHttpError(status, url) {
+  const error = new Error(`HTTP ${status} for ${url}`);
+  error.status = status;
+  error.url = url;
+  return error;
+}
+
+function isRetriableStatus(status) {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+async function fetchJson(url, retries = FETCH_RETRIES) {
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (error) {
+    if (retries > 0) {
+      await sleep(RETRY_DELAY_MS);
+      return fetchJson(url, retries - 1);
+    }
+    throw error;
+  }
+
+  if (isRetriableStatus(res.status) && retries > 0) {
+    await sleep(res.status === 429 ? Math.max(RETRY_DELAY_MS, 1500) : RETRY_DELAY_MS);
     return fetchJson(url, retries - 1);
   }
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  if (!res.ok) throw createHttpError(res.status, url);
   const json = await res.json();
   return { json, links: parseLinkHeader(res.headers.get('link')) };
 }
@@ -108,13 +140,17 @@ async function fetchDepartments() {
   const url = `${UMD_API}/courses/departments`;
   const { json } = await fetchJson(url);
   if (!Array.isArray(json)) throw new Error('Unexpected departments response from umd.io');
-  return json
+  return uniqueValues(json
     .map((department) => (
       typeof department === 'string'
         ? department
         : department?.dept_id
     ))
-    .filter(Boolean);
+    .filter(Boolean));
+}
+
+function uniqueValues(values) {
+  return [...new Set(values)];
 }
 
 function splitCourseCode(courseId) {
@@ -227,24 +263,27 @@ async function upsertRows(rows) {
   }
 }
 
-async function upsertSeedMetadata(departments, qKey, semester, total, errors) {
+async function upsertSeedMetadata(departments, qKey, semester, total, errors, updateTermMetadata = true) {
   if (DRY_RUN) return;
 
   const now = new Date().toISOString();
-  const { error: termError } = await supabase.from('school_terms').upsert({
-    school: SCHOOL,
-    quarter_key: qKey,
-    source: 'umd.io',
-    source_term_code: semester,
-    status: errors > 0 ? 'partial' : 'seeded',
-    section_count: total,
-    department_count: departments.length,
-    error_count: errors,
-    last_seeded_at: now,
-  }, { onConflict: 'school,quarter_key' });
-  if (termError) console.error(`  ✗ school_terms upsert failed: ${termError.message}`);
+  const uniqueDepartments = uniqueValues(departments);
+  if (updateTermMetadata) {
+    const { error: termError } = await supabase.from('school_terms').upsert({
+      school: SCHOOL,
+      quarter_key: qKey,
+      source: 'umd.io',
+      source_term_code: semester,
+      status: errors > 0 ? 'partial' : 'seeded',
+      section_count: total,
+      department_count: uniqueDepartments.length,
+      error_count: errors,
+      last_seeded_at: now,
+    }, { onConflict: 'school,quarter_key' });
+    if (termError) console.error(`  ✗ school_terms upsert failed: ${termError.message}`);
+  }
 
-  const departmentRows = departments.map((department) => ({
+  const departmentRows = uniqueDepartments.map((department) => ({
     school: SCHOOL,
     department,
     dept_name: null,
@@ -283,29 +322,52 @@ async function seedDepartment(department, semester, qKey) {
   const sectionIds = [...new Set(courses.flatMap((course) => course.sections ?? []))];
   if (sectionIds.length === 0) return 0;
 
-  const sectionBatches = [];
-  for (let i = 0; i < sectionIds.length; i += 80) {
-    sectionBatches.push(sectionIds.slice(i, i + 80));
-  }
-
-  const sections = [];
-  for (const batch of sectionBatches) {
-    await sleep(REQUEST_DELAY_MS);
-    const { json } = await fetchJson(`${UMD_API}/courses/sections/${batch.join(',')}`);
-    if (Array.isArray(json)) sections.push(...json);
-    else if (json) sections.push(json);
-  }
+  const sections = await fetchSectionsByIds(sectionIds);
 
   const rows = buildRows(courses, sections, qKey);
   await upsertRows(rows);
   return rows.length;
 }
 
+async function fetchSectionsByIds(sectionIds) {
+  const sections = [];
+  for (let i = 0; i < sectionIds.length; i += SECTION_BATCH_SIZE) {
+    const batch = sectionIds.slice(i, i + SECTION_BATCH_SIZE);
+    sections.push(...await fetchSectionBatch(batch));
+  }
+  return sections;
+}
+
+async function fetchSectionBatch(sectionIds) {
+  if (sectionIds.length === 0) return [];
+  await sleep(REQUEST_DELAY_MS);
+
+  try {
+    const { json } = await fetchJson(`${UMD_API}/courses/sections/${sectionIds.map(encodeURIComponent).join(',')}`);
+    if (Array.isArray(json)) return json;
+    return json ? [json] : [];
+  } catch (error) {
+    if (sectionIds.length === 1) {
+      console.warn(`    skipping section ${sectionIds[0]}: ${error.message}`);
+      return [];
+    }
+
+    const status = error?.status;
+    const shouldSplit = !status || status === 400 || status === 414 || status >= 500;
+    if (!shouldSplit) throw error;
+
+    const midpoint = Math.ceil(sectionIds.length / 2);
+    const left = await fetchSectionBatch(sectionIds.slice(0, midpoint));
+    const right = await fetchSectionBatch(sectionIds.slice(midpoint));
+    return [...left, ...right];
+  }
+}
+
 async function main() {
   const semester = semesterCode(YEAR, TERM);
   const qKey = quarterKey(YEAR, TERM);
   const departments = DEPT_ARG
-    ? DEPT_ARG.split(',').map((dept) => dept.trim().toUpperCase()).filter(Boolean)
+    ? uniqueValues(DEPT_ARG.split(',').map((dept) => dept.trim().toUpperCase()).filter(Boolean))
     : await fetchDepartments();
 
   console.log(`Seeding ${SCHOOL} ${TERM} ${YEAR} (${semester})`);
@@ -325,7 +387,7 @@ async function main() {
     }
   }, CONCURRENCY);
 
-  await upsertSeedMetadata(departments, qKey, semester, total, errors);
+  await upsertSeedMetadata(departments, qKey, semester, total, errors, !DEPT_ARG);
 
   console.log(`\nDone. ${total.toLocaleString()} sections, ${errors} department errors.`);
 }

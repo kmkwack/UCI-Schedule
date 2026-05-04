@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import { QUARTERS, quarterLabel } from '../data/courses';
+import { getSchoolConfig } from '../data/schools';
 
 type FinalExam = {
   day?: number; month?: number; bldg?: string;
@@ -179,7 +180,7 @@ export default function ReviewsModal({
     if (!visible) return;
     const cacheKey = `${department}${courseNumber}${instructor}`;
     if (cacheKey in gradesCache) return;
-    if (school !== 'UC Irvine') {
+    if (getSchoolConfig(school).gradeDistributionSource !== 'anteaterapi') {
       setGradesCache((prev) => ({ ...prev, [cacheKey]: null }));
       return;
     }
@@ -403,7 +404,7 @@ export default function ReviewsModal({
                           const prof = instructor || professors[0] || '';
                           if (!prof || prof === 'STAFF' || prof.trim() === '') return null;
                           const lastName = prof.includes(',') ? prof.substring(0, prof.indexOf(',')) : prof;
-                          const sid = school === 'UC Irvine' ? '1074' : '';
+                          const sid = getSchoolConfig(school).rmpSchoolId ?? '';
                           const url = sid
                             ? `https://www.ratemyprofessors.com/search/professors/${sid}?q=${encodeURIComponent(lastName)}`
                             : `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(lastName)}`;

@@ -6,6 +6,7 @@
 // HOW TO RUN:
 //   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/seed-uiuc-sections.js Fall 2026
 //   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/seed-uiuc-sections.js Fall 2026 CS,MATH
+//   UIUC_FETCH_RETRIES=1 UIUC_RETRY_DELAY_MS=5000 node scripts/seed-uiuc-sections.js Spring 2019 CS
 //   DRY_RUN=1 node scripts/seed-uiuc-sections.js Fall 2026 CS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -23,9 +24,11 @@ const supabase = DRY_RUN ? null : createClient(SUPABASE_URL, SUPABASE_SERVICE_KE
 
 const UIUC_BASE = 'https://courses.illinois.edu';
 const SCHOOL = 'University of Illinois Urbana-Champaign';
-const CONCURRENCY = Number(process.env.UIUC_CONCURRENCY || 1);
-const REQUEST_DELAY_MS = Number(process.env.UIUC_REQUEST_DELAY_MS || 900);
-const RETRY_DELAY_MS = Number(process.env.UIUC_RETRY_DELAY_MS || 30000);
+const CONCURRENCY = Math.max(1, Math.floor(numberEnv('UIUC_CONCURRENCY', 1)));
+const REQUEST_DELAY_MS = numberEnv('UIUC_REQUEST_DELAY_MS', 900);
+const FETCH_RETRIES = Math.max(0, Math.floor(numberEnv('UIUC_FETCH_RETRIES', 0)));
+const RETRY_DELAY_MS = numberEnv('UIUC_RETRY_DELAY_MS', 30000);
+const TRANSIENT_RETRY_DELAY_MS = numberEnv('UIUC_TRANSIENT_RETRY_DELAY_MS', 5000);
 const FETCH_HEADERS = {
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9',
@@ -44,6 +47,13 @@ const TERM_TO_PATH = {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function numberEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function quarterKey(year, term) {
@@ -91,12 +101,23 @@ function appMeetingParts(value) {
   return parts.length > 0 ? parts : [stripHtml(html)].filter(Boolean);
 }
 
-async function fetchHtml(path, retries = 3) {
+async function fetchHtml(path, retries = FETCH_RETRIES) {
   await sleep(REQUEST_DELAY_MS);
   const url = `${UIUC_BASE}${path}`;
-  const res = await fetch(url, { headers: FETCH_HEADERS });
+  let res;
+  try {
+    res = await fetch(url, { headers: FETCH_HEADERS });
+  } catch (error) {
+    if (retries > 0) {
+      console.warn(`    waiting ${Math.round(TRANSIENT_RETRY_DELAY_MS / 1000)}s after fetch failed for ${url}`);
+      await sleep(TRANSIENT_RETRY_DELAY_MS);
+      return fetchHtml(path, retries - 1);
+    }
+    throw error;
+  }
+
   if ((res.status === 403 || res.status === 429 || res.status >= 500) && retries > 0) {
-    const waitMs = res.status === 403 ? RETRY_DELAY_MS : 5000;
+    const waitMs = res.status === 403 ? RETRY_DELAY_MS : TRANSIENT_RETRY_DELAY_MS;
     console.warn(`    waiting ${Math.round(waitMs / 1000)}s after HTTP ${res.status} for ${url}`);
     await sleep(waitMs);
     return fetchHtml(path, retries - 1);
@@ -286,24 +307,27 @@ async function upsertRows(rows) {
   }
 }
 
-async function upsertSeedMetadata(subjects, termCode, qKey, total, errors) {
+async function upsertSeedMetadata(subjects, termCode, qKey, total, errors, updateTermMetadata = true) {
   if (DRY_RUN) return;
 
   const now = new Date().toISOString();
-  const { error: termError } = await supabase.from('school_terms').upsert({
-    school: SCHOOL,
-    quarter_key: qKey,
-    source: 'uiuc-course-explorer',
-    source_term_code: termCode,
-    status: errors > 0 ? 'partial' : 'seeded',
-    section_count: total,
-    department_count: subjects.length,
-    error_count: errors,
-    last_seeded_at: now,
-  }, { onConflict: 'school,quarter_key' });
-  if (termError) console.error(`  ✗ school_terms upsert failed: ${termError.message}`);
+  const uniqueSubjects = uniqueSubjectRows(subjects);
+  if (updateTermMetadata) {
+    const { error: termError } = await supabase.from('school_terms').upsert({
+      school: SCHOOL,
+      quarter_key: qKey,
+      source: 'uiuc-course-explorer',
+      source_term_code: termCode,
+      status: errors > 0 ? 'partial' : 'seeded',
+      section_count: total,
+      department_count: uniqueSubjects.length,
+      error_count: errors,
+      last_seeded_at: now,
+    }, { onConflict: 'school,quarter_key' });
+    if (termError) console.error(`  ✗ school_terms upsert failed: ${termError.message}`);
+  }
 
-  const departmentRows = subjects.map((subject) => ({
+  const departmentRows = uniqueSubjects.map((subject) => ({
     school: SCHOOL,
     department: subject.department,
     dept_name: subject.deptName,
@@ -315,6 +339,14 @@ async function upsertSeedMetadata(subjects, termCode, qKey, total, errors) {
     .from('school_departments')
     .upsert(departmentRows, { onConflict: 'school,department' });
   if (departmentsError) console.error(`  ✗ school_departments upsert failed: ${departmentsError.message}`);
+}
+
+function uniqueSubjectRows(subjects) {
+  const byDepartment = new Map();
+  subjects.forEach((subject) => {
+    if (subject?.department) byDepartment.set(subject.department, subject);
+  });
+  return [...byDepartment.values()];
 }
 
 async function runConcurrent(items, worker, concurrency) {
@@ -373,7 +405,7 @@ async function main() {
     }
   }, CONCURRENCY);
 
-  await upsertSeedMetadata(subjects, termCode, qKey, total, errors);
+  await upsertSeedMetadata(subjects, termCode, qKey, total, errors, !SUBJECT_ARG);
 
   console.log(`\nDone. ${total.toLocaleString()} sections, ${errors} subject errors.`);
 }

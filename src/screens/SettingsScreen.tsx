@@ -16,6 +16,7 @@ import type {
   UserSettingsState,
 } from '../data/userPreferences';
 import { abbreviateMajor } from '../data/userPreferences';
+import { getSchoolConfig } from '../data/schools';
 
 type Props = {
   visible: boolean;
@@ -239,16 +240,19 @@ function PrivacySecurityScreen({
   onBack,
   initialVisibility,
   initialBoardProfileVisible,
+  school,
   onSave,
   saving,
 }: {
   onBack: () => void;
   initialVisibility: TimetableVisibility;
   initialBoardProfileVisible: boolean;
+  school: string;
   onSave: (privacy: { timetableVisibility: TimetableVisibility; boardProfileVisible: boolean }) => Promise<boolean>;
   saving?: boolean;
 }) {
   const { colors } = useTheme();
+  const aliasName = getSchoolConfig(school).welcomeName || 'Classmate';
   const [visibility, setVisibility] = useState<TimetableVisibility>(initialVisibility);
   const [boardProfileVisible, setBoardProfileVisible] = useState(initialBoardProfileVisible);
 
@@ -313,7 +317,7 @@ function PrivacySecurityScreen({
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 15, fontWeight: '500', color: colors.text }}>Show my profile on board posts</Text>
             <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
-              Off by default. When disabled, your posts and comments appear as an Anteater alias.
+              Off by default. When disabled, your posts and comments appear as a {aliasName} alias.
             </Text>
           </View>
           <Switch
@@ -1979,6 +1983,7 @@ export default function SettingsScreen({
             onBack={goBack}
             initialVisibility={userSettings.timetableVisibility}
             initialBoardProfileVisible={userSettings.boardProfileVisible}
+            school={school}
             onSave={onSaveVisibility}
             saving={savingVisibility}
           />

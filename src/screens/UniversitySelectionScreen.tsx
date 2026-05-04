@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Alert, View, Text, TextInput, TouchableOpacity, ScrollView, Image, Keyboard, type ImageSourcePropType } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Keyboard, type ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { SUPPORTED_UNIVERSITIES, type University } from '../data/schools';
+import { getSchoolConfig, SUPPORTED_UNIVERSITIES, type University } from '../data/schools';
 
 const UNIVERSITY_LOGOS: Partial<Record<string, ImageSourcePropType>> = {
   uci: require('../../assets/ucirvine-monogram.png'),
@@ -70,19 +70,13 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
         <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
           {filtered.map((uni) => {
             const isSelected = selected?.id === uni.id;
-            const isAvailable = uni.status !== 'coming-soon';
+            const schoolConfig = getSchoolConfig(uni.name);
+            const accent = schoolConfig.accent;
             return (
               <TouchableOpacity
                 key={uni.id}
                 onPress={() => {
                   Keyboard.dismiss();
-                  if (!isAvailable) {
-                    Alert.alert(
-                      'Coming soon',
-                      `${uni.name} is next on the roadmap. ClassMate is preparing course, community, and campus data support before opening it.`
-                    );
-                    return;
-                  }
                   setSelected(uni);
                 }}
                 activeOpacity={0.85}
@@ -94,18 +88,17 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
                   borderRadius: 16,
                   marginBottom: 10,
                   borderWidth: 2,
-                  borderColor: isSelected ? '#4169E1' : '#e5e7eb',
-                  backgroundColor: isSelected ? 'rgba(65,105,225,0.06)' : isAvailable ? 'white' : '#f9fafb',
-                  opacity: isAvailable ? 1 : 0.72,
+                  borderColor: isSelected ? accent : '#e5e7eb',
+                  backgroundColor: isSelected ? `${accent}10` : 'white',
                 }}
               >
                 {/* Logo */}
                 <View style={{
                   width: 76, height: 56, borderRadius: 14,
-                  backgroundColor: isAvailable ? 'white' : '#eef0f4',
+                  backgroundColor: UNIVERSITY_LOGOS[uni.id] ? 'white' : `${accent}12`,
                   alignItems: 'center', justifyContent: 'center',
                   borderWidth: 1,
-                  borderColor: isAvailable ? '#edf1f7' : '#e5e7eb',
+                  borderColor: UNIVERSITY_LOGOS[uni.id] ? '#edf1f7' : `${accent}22`,
                   marginRight: 14,
                   overflow: 'hidden',
                 }}>
@@ -119,33 +112,19 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
                       resizeMode="contain"
                     />
                   ) : (
-                    <Text style={{ color: isAvailable ? '#4169E1' : '#9ca3af', fontWeight: 'bold', fontSize: 13 }}>{uni.logo}</Text>
+                    <Text style={{ color: accent, fontWeight: '900', fontSize: 18 }}>{uni.logo}</Text>
                   )}
                 </View>
 
                 {/* Info */}
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                    <Text
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                      style={{ flex: 1, fontSize: 16, fontWeight: '600', color: isAvailable ? '#111827' : '#6b7280' }}
-                    >
-                      {uni.name}
-                    </Text>
-                    <View
-                      style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
-                        borderRadius: 999,
-                        backgroundColor: isAvailable ? 'rgba(65,105,225,0.10)' : '#e5e7eb',
-                      }}
-                    >
-                      <Text style={{ fontSize: 10, fontWeight: '800', color: isAvailable ? '#4169E1' : '#6b7280' }}>
-                        {isAvailable ? 'AVAILABLE' : 'COMING SOON'}
-                      </Text>
-                    </View>
-                  </View>
+                  <Text
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    style={{ fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 2 }}
+                  >
+                    {uni.name}
+                  </Text>
                   <Text style={{ fontSize: 13, color: '#6b7280' }}>{uni.location}</Text>
                   <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{uni.domain}</Text>
                 </View>
@@ -154,7 +133,7 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
                 {isSelected && (
                   <View style={{
                     width: 26, height: 26, borderRadius: 13,
-                    backgroundColor: '#4169E1', alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: accent, alignItems: 'center', justifyContent: 'center',
                   }}>
                     <Ionicons name="checkmark" size={15} color="white" />
                   </View>
@@ -181,7 +160,7 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
               onContinue(selected);
             }}
             style={{
-              backgroundColor: '#4169E1', borderRadius: 16,
+              backgroundColor: getSchoolConfig(selected.name).accent, borderRadius: 16,
               paddingVertical: 18, alignItems: 'center',
             }}
           >

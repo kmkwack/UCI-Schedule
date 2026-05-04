@@ -5,8 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, blockColorKey, pastelForCourse, quarterKey } from '../data/courses';
+import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
-import { academicSystemNoun, schoolCampusLabel, schoolFeatureEnabled, termLabel } from '../data/schools';
+import { academicSystemNoun, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -76,12 +77,6 @@ type SportsEventRsvpRow = {
   event_id?: string;
   user_id: string;
   status: StoredSportsEventRsvpStatus;
-};
-
-type SportsVenue = {
-  name: string;
-  latitude: number;
-  longitude: number;
 };
 
 type HeroCardItem =
@@ -209,38 +204,6 @@ function timeAgo(isoString: string): string {
   return new Date(isoString).toLocaleDateString();
 }
 
-function sportsEventVenueFor(event: SportsEvent): SportsVenue | null {
-  if (!event.isHome) return null;
-  const sport = event.sport.toLowerCase();
-  const location = event.location.toLowerCase();
-  const hasSpecificVenue = !!location.trim()
-    && !['uci athletics', 'uci campus', 'venue tba', 'tba'].includes(location.trim())
-    && location !== 'away';
-
-  if (!hasSpecificVenue) return null;
-
-  if (location.includes('bren')) {
-    return { name: 'Bren Events Center', latitude: 33.64979, longitude: -117.84678 };
-  }
-  if (sport.includes('baseball') || location.includes('ballpark') || location.includes('cicerone')) {
-    return { name: 'Cicerone Field at Anteater Ballpark', latitude: 33.65087, longitude: -117.85047 };
-  }
-  if (sport.includes('soccer') || sport.includes('track') || location.includes('stadium')) {
-    return { name: "Anteater Stadium & Vince O'Boyle Track", latitude: 33.64996, longitude: -117.84872 };
-  }
-  if (sport.includes('water polo') || location.includes('aquatics')) {
-    return { name: 'Anteater Aquatics Complex', latitude: 33.65027, longitude: -117.84633 };
-  }
-  if (sport.includes('tennis') || location.includes('tennis')) {
-    return { name: 'Anteater Tennis Stadium', latitude: 33.65098, longitude: -117.84835 };
-  }
-  if (location.includes('crawford')) {
-    return { name: 'Crawford Court', latitude: 33.65035, longitude: -117.84676 };
-  }
-
-  return null;
-}
-
 function normalizeSportsEventForDisplay(event: SportsEvent): SportsEvent {
   const lower = event.location.toLowerCase();
   const looksLikePageChrome =
@@ -258,8 +221,8 @@ function normalizeSportsEventForDisplay(event: SportsEvent): SportsEvent {
   };
 }
 
-async function openSportsVenueInMaps(venue: SportsVenue) {
-  const query = encodeURIComponent(`UC Irvine ${venue.name}`);
+async function openSportsVenueInMaps(venue: SportsVenue, school: string) {
+  const query = encodeURIComponent(`${schoolCampusLabel(school)} ${venue.name}`);
   const appleMapsUrl = `https://maps.apple.com/?ll=${venue.latitude},${venue.longitude}&q=${query}`;
   try {
     await Linking.openURL(appleMapsUrl);
@@ -556,7 +519,9 @@ export default function HomeScreen({
 
   useEffect(() => {
     async function loadWeather() {
-      const cached = await AsyncStorage.getItem('weather_cache');
+      const weatherConfig = getSchoolConfig(school);
+      const weatherCacheKey = `weather_cache_${weatherConfig.id}`;
+      const cached = await AsyncStorage.getItem(weatherCacheKey);
       if (cached) {
         const parsed = JSON.parse(cached);
         setTempC(parsed.tempC ?? null);
@@ -565,7 +530,16 @@ export default function HomeScreen({
         setSunsetTime(parsed.sunsetTime ?? null);
       }
       try {
-        const response = await fetch('https://api.open-meteo.com/v1/forecast?latitude=33.6405&longitude=-117.8443&current=temperature_2m,weathercode&daily=sunrise,sunset&timezone=America%2FLos_Angeles&forecast_days=1&temperature_unit=celsius');
+        const params = new URLSearchParams({
+          latitude: String(weatherConfig.coordinates.latitude),
+          longitude: String(weatherConfig.coordinates.longitude),
+          current: 'temperature_2m,weathercode',
+          daily: 'sunrise,sunset',
+          timezone: weatherConfig.timeZone,
+          forecast_days: '1',
+          temperature_unit: 'celsius',
+        });
+        const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
         const json = await response.json();
         const nextTempC = json.current?.temperature_2m ?? null;
         const nextWeatherCode = json.current?.weathercode ?? null;
@@ -575,7 +549,7 @@ export default function HomeScreen({
         setWeatherCode(nextWeatherCode);
         setSunriseTime(nextSunriseTime);
         setSunsetTime(nextSunsetTime);
-        void AsyncStorage.setItem('weather_cache', JSON.stringify({
+        void AsyncStorage.setItem(weatherCacheKey, JSON.stringify({
           tempC: nextTempC,
           weatherCode: nextWeatherCode,
           sunriseTime: nextSunriseTime,
@@ -585,7 +559,7 @@ export default function HomeScreen({
     }
 
     void loadWeather();
-  }, []);
+  }, [school]);
 
   useEffect(() => {
     async function loadSports() {
@@ -807,7 +781,7 @@ export default function HomeScreen({
     : activeHeroItem?.type === 'upcomingSummary'
       ? colors.brand
     : colors.brand;
-  const selectedSportsVenue = selectedSportsEvent ? sportsEventVenueFor(selectedSportsEvent) : null;
+  const selectedSportsVenue = selectedSportsEvent ? getSportsVenueForEvent(school, selectedSportsEvent) : null;
   const selectedSportsEventLocationLabel = selectedSportsEvent?.location === 'Venue TBA'
     ? 'Venue TBA'
     : selectedSportsEvent?.location === 'Away'
@@ -1967,7 +1941,7 @@ export default function HomeScreen({
                       </Text>
                       <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 3 }}>
                         {selectedSportsVenue
-                          ? 'UC Irvine venue'
+                          ? `${schoolCampusLabel(school)} venue`
                           : selectedSportsEvent.location === 'Venue TBA'
                             ? 'Venue not listed yet'
                             : 'Event location'}
@@ -1975,7 +1949,7 @@ export default function HomeScreen({
                     </View>
                     {selectedSportsVenue ? (
                       <TouchableOpacity
-                        onPress={() => void openSportsVenueInMaps(selectedSportsVenue)}
+                        onPress={() => void openSportsVenueInMaps(selectedSportsVenue, school)}
                         style={{
                           paddingHorizontal: 12,
                           paddingVertical: 8,

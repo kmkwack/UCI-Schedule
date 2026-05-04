@@ -813,5 +813,5 @@ export async function fetchSportsEventsForSchool(school: string, options?: { max
   if (feed.kind === 'sidearm-components') return parseSidearmComponentsEvents(text, options);
 
   const events = parseSportsCalendar(text, options);
-  return school === 'UC Irvine' ? enrichSportsEventsWithScheduleVenues(events) : events;
+  return feed.kind === 'uci-calendar' ? enrichSportsEventsWithScheduleVenues(events) : events;
 }

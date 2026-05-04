@@ -1,5 +1,6 @@
-import { View, Text, Image, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, Modal } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
+import ClassMateMonogram from './ClassMateMonogram';
 
 type Props = {
   visible: boolean;
@@ -14,7 +15,7 @@ export default function ErrorScreen({
   message = 'An unexpected error occurred. Please try again.',
   onDismiss,
 }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
@@ -24,14 +25,9 @@ export default function ErrorScreen({
           paddingTop: 32, paddingBottom: 28, paddingHorizontal: 28, width: '100%', maxWidth: 360,
           shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 24, elevation: 12,
         }}>
-          <Image
-            source={require('../../assets/anteater-mascot.png')}
-            style={{ width: 220, height: 120, marginBottom: 6 }}
-            resizeMode="contain"
-          />
-          <Text style={{ fontSize: 9, color: colors.textTertiary, textAlign: 'center', opacity: 0.5, marginBottom: 16 }}>
-            Peter the Anteater™
-          </Text>
+          <View style={{ marginBottom: 18 }}>
+            <ClassMateMonogram size={94} isDark={isDark} />
+          </View>
           <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: 10 }}>
             {title}
           </Text>

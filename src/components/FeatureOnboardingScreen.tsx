@@ -93,7 +93,7 @@ const COMMON_MAJORS = [
 const SLIDES: Slide[] = [
   {
     eyebrow: '01 · Arrival',
-    title: 'Welcome, Anteater.',
+    title: 'Welcome.',
     body: "Let's set up the campus app built around your schedule, classmates, and college life.",
     accent: '#4169E1',
     kind: 'arrival',
@@ -156,16 +156,6 @@ function getOnboardingSchoolBrand(schoolName?: string): SchoolOnboardingBrand {
       mascotName: config.mascotName,
       communityName: config.communityName,
       accent: config.accent,
-    };
-  }
-
-  if (normalized.includes('irvine')) {
-    return {
-      badge: 'UC IRVINE',
-      welcomeName: 'Anteater',
-      mascotName: 'Peter the Anteater',
-      communityName: 'Anteaters',
-      accent: '#4169E1',
     };
   }
 

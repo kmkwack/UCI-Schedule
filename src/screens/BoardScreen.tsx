@@ -33,7 +33,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
-import { anteaterAliasForId } from '../data/anonymousAliases';
+import { campusAliasForId } from '../data/anonymousAliases';
 import { colorForDepartment } from '../data/courses';
 import type { ChatTarget } from '../data/messages';
 import { abbreviateMajor } from '../data/userPreferences';
@@ -506,7 +506,7 @@ function removeCommentFromTree(nodes: CommentNode[], commentId: string): Comment
   });
 }
 
-function buildCommentTree(rows: CommentRow[], votes: CommentVoteRow[], userId: string, authorNames: Record<string, string>) {
+function buildCommentTree(rows: CommentRow[], votes: CommentVoteRow[], userId: string, authorNames: Record<string, string>, school: string) {
   const likeCountMap: Record<string, number> = {};
   const likedCommentIds = new Set<string>();
 
@@ -521,7 +521,7 @@ function buildCommentTree(rows: CommentRow[], votes: CommentVoteRow[], userId: s
       id: row.id,
       post_id: row.post_id,
       user_id: row.user_id,
-      author_name: authorNames[row.user_id] ?? row.author_name ?? anteaterAliasForId(row.user_id),
+      author_name: authorNames[row.user_id] ?? row.author_name ?? campusAliasForId(row.user_id, school),
       author_meta: null,
       content: row.content,
       created_at: row.created_at,
@@ -731,7 +731,7 @@ export default function BoardScreen({
     const invalidAuthorMap = Object.fromEntries(
       uniqueIds
         .filter((id) => !isUuid(id))
-        .map((id) => [id, { displayName: anteaterAliasForId(id), meta: null }])
+        .map((id) => [id, { displayName: campusAliasForId(id, school), meta: null }])
     );
 
     if (validIds.length === 0) return invalidAuthorMap;
@@ -756,7 +756,7 @@ export default function BoardScreen({
           return [
             id,
             {
-              displayName: anteaterAliasForId(id),
+              displayName: campusAliasForId(id, school),
               meta: formatAuthorMeta(profile?.major, profile?.year),
             },
           ];
@@ -1059,7 +1059,7 @@ export default function BoardScreen({
       const freshPosts = postsData.map((post: any) => ({
         id: post.id,
         user_id: post.user_id,
-        author_name: authorSummaries[post.user_id]?.displayName ?? anteaterAliasForId(post.user_id),
+        author_name: authorSummaries[post.user_id]?.displayName ?? campusAliasForId(post.user_id, school),
         author_meta: authorSummaries[post.user_id]?.meta ?? null,
         category: post.category ?? 'General',
         title: post.title,
@@ -1238,7 +1238,7 @@ export default function BoardScreen({
     const authorNames = Object.fromEntries(
       Object.entries(authorSummaries).map(([id, summary]) => [id, summary.displayName])
     );
-    const commentTree = buildCommentTree(commentRows, ((commentVoteData ?? []) as CommentVoteRow[]), userId, authorNames).map(
+    const commentTree = buildCommentTree(commentRows, ((commentVoteData ?? []) as CommentVoteRow[]), userId, authorNames, school).map(
       (comment) => comment
     );
     const attachMeta = (nodes: CommentNode[]): CommentNode[] =>
@@ -1436,7 +1436,7 @@ export default function BoardScreen({
       return;
     }
 
-    const authorName = anteaterAliasForId(userId);
+    const authorName = campusAliasForId(userId, school);
     const { error } = await supabase.from('post_comments').insert({
       school,
       post_id: selectedPost.id,
@@ -1477,7 +1477,7 @@ export default function BoardScreen({
 
     const board = composerBoards.find((entry) => entry.id === newPostBoardId) ?? boards[0];
     const category = board.category ?? 'General';
-    const authorName = anteaterAliasForId(userId);
+    const authorName = campusAliasForId(userId, school);
     try {
       const attachments = await Promise.all(newPostAttachments.map((attachment) => uploadAttachment(attachment)));
       const payload = {
@@ -1897,7 +1897,7 @@ export default function BoardScreen({
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{comment.author_name ?? anteaterAliasForId(comment.user_id)}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{comment.author_name ?? campusAliasForId(comment.user_id, school)}</Text>
                 {selectedPost?.user_id === comment.user_id ? (
                   <View
                     style={{

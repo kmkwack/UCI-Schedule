@@ -841,7 +841,7 @@ function HelpCenterScreen({ onBack }: { onBack: () => void }) {
     { title: 'Tracking Grades', icon: '📊', faqs: [
       { q: '⚠️ Important: Are these my official grades?', a: "NO. The grades in ClassMate are for simulation and tracking purposes only. This is NOT your official transcript. Always check your university's official student portal for your real grades. ClassMate is a grade calculator and organizer, not an official grade system." },
       { q: 'How do I add grades for my courses?', a: 'Go to the Grades tab and select a course. Enter your assignment grades, exam scores, and their weights. ClassMate will automatically calculate your overall grade.' },
-      { q: 'Can I track my GPA?', a: 'Yes! ClassMate automatically calculates your semester GPA and cumulative GPA based on the grades you enter for each course.' },
+      { q: 'Can I track my GPA?', a: 'Yes! ClassMate automatically calculates your term GPA and cumulative GPA based on the grades you enter for each course.' },
       { q: 'How do I set grade goals?', a: 'In the Grades section, you can set target grades for each course. ClassMate will show you what scores you need on remaining assignments to reach your goal.' },
     ]},
     { title: 'Community Guidelines', icon: '👥', faqs: [

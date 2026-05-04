@@ -131,7 +131,10 @@ type ReviewSummary = {
   count: number;
 };
 
-
+const SECTION_SELECT_COLUMNS = 'id,code,title,department,professor,days,time,location,units,section_label';
+const COURSE_PICKER_ACCENT = '#4169E1';
+const COURSE_PICKER_ACCENT_SOFT = '#EEF3FF';
+const COURSE_PICKER_ACCENT_BORDER = '#C7D4FF';
 
 function getDaysArray(daysString: string) {
   const result: string[] = [];
@@ -228,9 +231,9 @@ export default function CoursePickerScreen({
 }: Props) {
   const insets = useSafeAreaInsets();
   const schoolConfig = getSchoolConfig(school);
-  const schoolAccent = schoolConfig.accent;
-  const schoolAccentSoft = `${schoolAccent}12`;
-  const schoolAccentBorder = `${schoolAccent}44`;
+  const courseAccent = COURSE_PICKER_ACCENT;
+  const courseAccentSoft = COURSE_PICKER_ACCENT_SOFT;
+  const courseAccentBorder = COURSE_PICKER_ACCENT_BORDER;
   if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
   }
@@ -274,6 +277,7 @@ export default function CoursePickerScreen({
   const [enrollmentLoadingIds, setEnrollmentLoadingIds] = useState<Set<string>>(new Set());
   const [reviewSummaryCache, setReviewSummaryCache] = useState<Record<string, ReviewSummary>>({});
   const [savedCountCache, setSavedCountCache] = useState<Record<string, number>>({});
+  const [savedByCurrentUserSectionIds, setSavedByCurrentUserSectionIds] = useState<Set<string>>(new Set());
   const [reviewsCourse, setReviewsCourse] = useState<Course | null>(null);
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
   const [customCourseDraft, setCustomCourseDraft] = useState<CustomCourseDraft>(EMPTY_CUSTOM_DRAFT);
@@ -387,6 +391,7 @@ export default function CoursePickerScreen({
   const hasSelectedCategory = hasSelectedDepartments || !!selectedGE;
   const selectedDeptKey = selectedDepts.join('|');
   const isUciSchool = schoolConfig.id === 'uci';
+  const activeCourseIds = useMemo(() => new Set(activeCourses.map((course) => course.id)), [activeCourses]);
   const departmentOptions = availableDepartments.length > 0
     ? availableDepartments
     : isUciSchool
@@ -411,6 +416,10 @@ export default function CoursePickerScreen({
         departmentRows.forEach((row: any) => {
           if (row.department) departmentsSet.add(row.department);
         });
+        if (departmentsSet.size > 0) {
+          setAvailableDepartments([...departmentsSet].sort((a, b) => a.localeCompare(b)));
+          return;
+        }
       }
 
       const PAGE_SIZE = 1000;
@@ -492,7 +501,7 @@ export default function CoursePickerScreen({
         : baseClauses;
       const { data, error } = await supabase
         .from('sections')
-        .select('*')
+        .select(SECTION_SELECT_COLUMNS)
         .eq('school', school)
         .eq('quarter_key', qk)
         .or(orClause)
@@ -525,10 +534,12 @@ export default function CoursePickerScreen({
       if (error) {
         console.error('Failed to load ClassMate saved counts:', error);
         setSavedCountCache({});
+        setSavedByCurrentUserSectionIds(new Set());
         return;
       }
 
       const sectionUsers = new Map<string, Set<string>>();
+      const currentUserSectionIds = new Set<string>();
       ((data ?? []) as Array<{ user_id: string; courses: Course[] | null }>).forEach((row) => {
         const uid = row.user_id;
         const seenSections = new Set<string>();
@@ -540,18 +551,20 @@ export default function CoursePickerScreen({
           const users = sectionUsers.get(sectionId) ?? new Set<string>();
           users.add(uid);
           sectionUsers.set(sectionId, users);
+          if (uid === userId) currentUserSectionIds.add(sectionId);
         });
       });
 
       setSavedCountCache(
         Object.fromEntries(Array.from(sectionUsers.entries()).map(([sectionId, users]) => [sectionId, users.size]))
       );
+      setSavedByCurrentUserSectionIds(currentUserSectionIds);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [selectedQuarter, school]);
+  }, [selectedQuarter, school, userId]);
 
   // Fetch courses from Supabase when one or more departments are selected
   useEffect(() => {
@@ -577,10 +590,11 @@ export default function CoursePickerScreen({
       try {
         const { data, error } = await supabase
           .from('sections')
-          .select('*')
+          .select(SECTION_SELECT_COLUMNS)
           .eq('school', school)
           .in('department', selectedDepts)
-          .eq('quarter_key', qk);
+          .eq('quarter_key', qk)
+          .order('code', { ascending: true });
         if (cancelled) return;
         if (error) { console.error('Supabase fetch failed:', error); return; }
         const { catalog, sections } = buildCatalogFromRows(data ?? []);
@@ -619,7 +633,7 @@ export default function CoursePickerScreen({
       try {
         const { data, error } = await supabase
           .from('sections')
-          .select('*')
+          .select(SECTION_SELECT_COLUMNS)
           .eq('school', school)
           .eq('quarter_key', qk)
           .contains('ge_categories', [selectedGE]);
@@ -739,6 +753,18 @@ export default function CoursePickerScreen({
     setPreviewCourse(null);
   };
 
+  const visibleSavedCountForSection = (sectionId: string) => {
+    const cachedCount = savedCountCache[sectionId] ?? 0;
+    const wasSavedByCurrentUser = savedByCurrentUserSectionIds.has(sectionId);
+    const isCurrentlySaved = activeCourseIds.has(sectionId);
+    return Math.max(
+      0,
+      cachedCount
+        + (isCurrentlySaved && !wasSavedByCurrentUser ? 1 : 0)
+        - (!isCurrentlySaved && wasSavedByCurrentUser ? 1 : 0)
+    );
+  };
+
   const isConflict = (candidate: Course) => {
     if (candidate.time === 'TBA' || candidate.days === 'TBA') return undefined;
     const candidateDays = getDaysArray(candidate.days);
@@ -757,7 +783,7 @@ export default function CoursePickerScreen({
   };
 
   const handleAddToTable = (course: Course) => {
-    const isAdded = activeCourses.some((c) => c.id === course.id);
+    const isAdded = activeCourseIds.has(course.id);
     if (isAdded) {
       onToggleCourse(course);
       onFocusCourse(null);
@@ -1048,13 +1074,13 @@ export default function CoursePickerScreen({
             paddingHorizontal: 12,
             paddingVertical: 7,
             borderRadius: 999,
-            backgroundColor: schoolAccentSoft,
+            backgroundColor: courseAccentSoft,
             borderWidth: 1,
-            borderColor: schoolAccentBorder,
+            borderColor: courseAccentBorder,
             zIndex: 1,
           }}
         >
-          <Text style={{ color: schoolAccent, fontSize: 12, fontWeight: '700' }}>Customize</Text>
+          <Text style={{ color: courseAccent, fontSize: 12, fontWeight: '700' }}>Customize</Text>
         </TouchableOpacity>
       </View>
 
@@ -1100,18 +1126,18 @@ export default function CoursePickerScreen({
               flexDirection: 'row',
               justifyContent: 'space-between',
               alignItems: 'center',
-              backgroundColor: hasSelectedCategory ? schoolAccentSoft : '#f3f4f6',
+              backgroundColor: hasSelectedCategory ? courseAccentSoft : '#f3f4f6',
               borderRadius: 14,
               paddingHorizontal: 14,
               paddingVertical: 13,
               marginBottom: 10,
               borderWidth: 1,
-              borderColor: hasSelectedCategory ? schoolAccent : '#e5e7eb',
+              borderColor: hasSelectedCategory ? courseAccent : '#e5e7eb',
             }}
           >
             <Text
               numberOfLines={1}
-              style={{ flex: 1, color: hasSelectedCategory ? schoolAccent : '#9ca3af', fontSize: 15, fontWeight: hasSelectedCategory ? '600' : '400' }}
+              style={{ flex: 1, color: hasSelectedCategory ? courseAccent : '#9ca3af', fontSize: 15, fontWeight: hasSelectedCategory ? '600' : '400' }}
             >
               {selectedCategorySummary || 'Department or GE category…'}
             </Text>
@@ -1134,18 +1160,18 @@ export default function CoursePickerScreen({
                     paddingRight: 9,
                     paddingVertical: 8,
                     borderRadius: 999,
-                    backgroundColor: schoolAccentSoft,
+                    backgroundColor: courseAccentSoft,
                     borderWidth: 1,
-                    borderColor: schoolAccent,
+                    borderColor: courseAccent,
                   }}
                 >
                   <Text
                     numberOfLines={1}
-                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: schoolAccent }}
+                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: courseAccent }}
                   >
                     {dept}
                   </Text>
-                  <Ionicons name="close" size={14} color={schoolAccent} />
+                  <Ionicons name="close" size={14} color={courseAccent} />
                 </TouchableOpacity>
               ))}
               {!!selectedGELabel && (
@@ -1161,18 +1187,18 @@ export default function CoursePickerScreen({
                     paddingRight: 9,
                     paddingVertical: 8,
                     borderRadius: 999,
-                    backgroundColor: schoolAccentSoft,
+                    backgroundColor: courseAccentSoft,
                     borderWidth: 1,
-                    borderColor: schoolAccent,
+                    borderColor: courseAccent,
                   }}
                 >
                   <Text
                     numberOfLines={1}
-                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: schoolAccent }}
+                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: courseAccent }}
                   >
                     {selectedGELabel}
                   </Text>
-                  <Ionicons name="close" size={14} color={schoolAccent} />
+                  <Ionicons name="close" size={14} color={courseAccent} />
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -1182,9 +1208,9 @@ export default function CoursePickerScreen({
                   paddingHorizontal: 12,
                   paddingVertical: 8,
                   borderRadius: 999,
-                  backgroundColor: selectedDayFilters.length === 0 ? schoolAccent : '#f3f4f6',
+                  backgroundColor: selectedDayFilters.length === 0 ? courseAccent : '#f3f4f6',
                   borderWidth: 1,
-                  borderColor: selectedDayFilters.length === 0 ? schoolAccent : '#e5e7eb',
+                  borderColor: selectedDayFilters.length === 0 ? courseAccent : '#e5e7eb',
                 }}
               >
                 <Text style={{ fontSize: 12, fontWeight: '700', color: selectedDayFilters.length === 0 ? 'white' : '#6b7280' }}>
@@ -1202,12 +1228,12 @@ export default function CoursePickerScreen({
                       paddingHorizontal: 12,
                       paddingVertical: 8,
                       borderRadius: 999,
-                      backgroundColor: selected ? schoolAccentSoft : '#f3f4f6',
+                      backgroundColor: selected ? courseAccentSoft : '#f3f4f6',
                       borderWidth: 1,
-                      borderColor: selected ? schoolAccent : '#e5e7eb',
+                      borderColor: selected ? courseAccent : '#e5e7eb',
                     }}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: selected ? schoolAccent : '#6b7280' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: selected ? courseAccent : '#6b7280' }}>
                       {day.label}
                     </Text>
                   </TouchableOpacity>
@@ -1248,7 +1274,7 @@ export default function CoursePickerScreen({
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity onPress={() => closeDeptModal()}>
-                    <Text style={{ fontSize: 14, color: schoolAccent, fontWeight: '800' }}>Done</Text>
+                    <Text style={{ fontSize: 14, color: courseAccent, fontWeight: '800' }}>Done</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -1292,10 +1318,10 @@ export default function CoursePickerScreen({
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ fontSize: 15, color: isSelected ? schoolAccent : '#111827', fontWeight: isSelected ? '700' : '400' }}>
+                          <Text style={{ fontSize: 15, color: isSelected ? courseAccent : '#111827', fontWeight: isSelected ? '700' : '400' }}>
                             {ge.label}
                           </Text>
-                          {isSelected && <Ionicons name="checkmark" size={18} color={schoolAccent} />}
+                          {isSelected && <Ionicons name="checkmark" size={18} color={courseAccent} />}
                         </TouchableOpacity>
                       );
                     }}
@@ -1314,10 +1340,10 @@ export default function CoursePickerScreen({
                           onPress={() => { Keyboard.dismiss(); closeDeptModal(clearSelectedCategory); }}
                           style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
                         >
-                          <Text style={{ fontSize: 15, color: !hasSelectedCategory ? schoolAccent : '#111827', fontWeight: !hasSelectedCategory ? '700' : '400' }}>
+                          <Text style={{ fontSize: 15, color: !hasSelectedCategory ? courseAccent : '#111827', fontWeight: !hasSelectedCategory ? '700' : '400' }}>
                             All Departments
                           </Text>
-                          {!hasSelectedCategory && <Ionicons name="checkmark" size={18} color={schoolAccent} />}
+                          {!hasSelectedCategory && <Ionicons name="checkmark" size={18} color={courseAccent} />}
                         </TouchableOpacity>
                         {isUciSchool && !deptSearch && (
                           <TouchableOpacity
@@ -1334,7 +1360,7 @@ export default function CoursePickerScreen({
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ fontSize: 15, color: selectedGE ? schoolAccent : '#111827', fontWeight: selectedGE ? '700' : '500' }}>
+                          <Text style={{ fontSize: 15, color: selectedGE ? courseAccent : '#111827', fontWeight: selectedGE ? '700' : '500' }}>
                             {selectedGE ? GE_CATEGORIES.find(g => g.code === selectedGE)?.label : 'GE Categories'}
                           </Text>
                           <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
@@ -1356,10 +1382,10 @@ export default function CoursePickerScreen({
                             alignItems: 'center',
                           }}
                         >
-                          <Text style={{ fontSize: 15, color: isSelected ? schoolAccent : '#111827', fontWeight: isSelected ? '700' : '400' }}>
+                          <Text style={{ fontSize: 15, color: isSelected ? courseAccent : '#111827', fontWeight: isSelected ? '700' : '400' }}>
                             {item}
                           </Text>
-                          {isSelected && <Ionicons name="checkmark" size={18} color={schoolAccent} />}
+                          {isSelected && <Ionicons name="checkmark" size={18} color={courseAccent} />}
                         </TouchableOpacity>
                       );
                     }}
@@ -1380,7 +1406,7 @@ export default function CoursePickerScreen({
           </View>
         ) : (catalogLoading && hasSelectedCategory) || (globalSearchLoading && isGlobalSearch) ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
-            <ActivityIndicator size="large" color={schoolAccent} />
+            <ActivityIndicator size="large" color={courseAccent} />
             <Text style={{ color: '#9ca3af', marginTop: 12 }}>
               {isGlobalSearch
                 ? `Searching "${searchText.trim()}"…`
@@ -1441,12 +1467,12 @@ export default function CoursePickerScreen({
                         </Text>
                       ) : (
                         sections.map((course) => {
-                          const isAdded = activeCourses.some((c) => c.id === course.id);
+                          const isAdded = activeCourseIds.has(course.id);
                           const isPreviewing = previewCourse?.id === course.id;
                           const enroll = enrollmentCache[course.id];
                           const sectionType = course.sectionLabel?.split(' ')[0] ?? '';
                           const reviewSummary = reviewSummaryCache[`${item.department} ${item.courseNumber}::${sectionType}`.trim()] ?? { average: null, count: 0 };
-                          const savedCount = savedCountCache[course.id] ?? 0;
+                          const savedCount = visibleSavedCountForSection(course.id);
                           const statusColor = !enroll ? '#9ca3af'
                             : enroll.status === 'OPEN' ? '#16a34a'
                             : enroll.status === 'Waitl' ? '#d97706'
@@ -1469,13 +1495,13 @@ export default function CoursePickerScreen({
                               activeOpacity={0.85}
                               onPress={() => setPreviewCourse(isPreviewing ? null : course)}
                               style={{
-                                backgroundColor: isPreviewing ? schoolAccentSoft : '#f9fafb',
+                                backgroundColor: isPreviewing ? courseAccentSoft : '#f9fafb',
                                 borderRadius: 12,
                                 paddingHorizontal: 10,
                                 paddingVertical: 8,
                                 marginBottom: 6,
                                 borderWidth: 1,
-                                borderColor: isPreviewing ? schoolAccent : '#f3f4f6',
+                                borderColor: isPreviewing ? courseAccent : '#f3f4f6',
                               }}
                             >
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -1534,12 +1560,12 @@ export default function CoursePickerScreen({
                                       alignItems: 'center',
                                       gap: 4,
                                       borderRadius: 999,
-                                      backgroundColor: schoolAccentSoft,
+                                      backgroundColor: courseAccentSoft,
                                       paddingHorizontal: 8,
                                       paddingVertical: 4,
                                     }}>
-                                      <Ionicons name="people-outline" size={11} color={schoolAccent} />
-                                      <Text style={{ color: schoolAccent, fontSize: 10, fontWeight: '800' }}>
+                                      <Ionicons name="people-outline" size={11} color={courseAccent} />
+                                      <Text style={{ color: courseAccent, fontSize: 10, fontWeight: '800' }}>
                                         {savedCount} saved
                                       </Text>
                                     </View>
@@ -1571,7 +1597,7 @@ export default function CoursePickerScreen({
                                     }}
                                     style={{
                                       paddingHorizontal: 10, paddingVertical: 5,
-                                      borderRadius: 999, backgroundColor: schoolAccent,
+                                      borderRadius: 999, backgroundColor: courseAccent,
                                       alignSelf: 'flex-end',
                                     }}
                                     hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
@@ -1713,9 +1739,9 @@ export default function CoursePickerScreen({
                             paddingHorizontal: 0,
                             paddingVertical: 7,
                             borderRadius: 11,
-                            backgroundColor: isSelected ? schoolAccent : '#f3f4f6',
+                            backgroundColor: isSelected ? courseAccent : '#f3f4f6',
                             borderWidth: 1,
-                            borderColor: isSelected ? schoolAccent : '#e5e7eb',
+                            borderColor: isSelected ? courseAccent : '#e5e7eb',
                             alignItems: 'center',
                             justifyContent: 'center',
                             flexShrink: 1,
@@ -1820,7 +1846,7 @@ export default function CoursePickerScreen({
                 style={{
                   marginTop: 10,
                   marginBottom: 0,
-                  backgroundColor: schoolAccent,
+                  backgroundColor: courseAccent,
                   borderRadius: 14,
                   paddingVertical: 12,
                   alignItems: 'center',

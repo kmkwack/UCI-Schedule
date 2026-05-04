@@ -332,13 +332,15 @@ export function schoolCampusLabel(school: string) {
 }
 
 export function academicSystemNoun(school: string, capitalize = false) {
-  const noun = getSchoolConfig(school).academicSystem === 'quarter' ? 'quarter' : 'semester';
+  const noun = getSchoolConfig(school).academicSystem === 'quarter' ? 'quarter' : 'term';
   return capitalize ? noun.charAt(0).toUpperCase() + noun.slice(1) : noun;
 }
 
 export function termLabel(term: Quarter, school: string, includeSystem = false) {
   const base = `${term.quarter} ${term.year}`;
-  return includeSystem ? `${base} ${academicSystemNoun(school, true)}` : base;
+  return includeSystem && getSchoolConfig(school).academicSystem === 'quarter'
+    ? `${base} ${academicSystemNoun(school, true)}`
+    : base;
 }
 
 export function termOrderValue(termName: string, school: string) {

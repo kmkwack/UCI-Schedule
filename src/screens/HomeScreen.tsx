@@ -79,6 +79,11 @@ type SportsEventRsvpRow = {
   status: StoredSportsEventRsvpStatus;
 };
 
+function isOnConflictTargetError(error: any) {
+  const message = String(error?.message ?? '').toLowerCase();
+  return error?.code === '42P10' || message.includes('no unique or exclusion constraint');
+}
+
 type HeroCardItem =
   | { type: 'completedSummary'; courses: Course[] }
   | { type: 'upcomingSummary'; courses: Course[] }
@@ -127,6 +132,12 @@ const WMO_DESCRIPTIONS: Record<number, { label: string; icon: ComponentProps<typ
   96: { label: 'Thunderstorm', icon: 'thunderstorm-outline' },
   99: { label: 'Thunderstorm', icon: 'thunderstorm-outline' },
 };
+
+const SUMMARY_CARD_HEIGHT = 204;
+const SUMMARY_CARD_PADDING = 18;
+const WEATHER_DOT_ROW_HEIGHT = 20;
+const WEATHER_INSIGHT_LINE_HEIGHT = 18;
+const WEATHER_INSIGHT_LINES = 3;
 
 function getQuarterBounds(selectedQuarter: Quarter) {
   const key = `${selectedQuarter.year}-${selectedQuarter.quarter}`;
@@ -205,6 +216,7 @@ function timeAgo(isoString: string): string {
 }
 
 function normalizeSportsEventForDisplay(event: SportsEvent): SportsEvent {
+  const normalizedEvent = { ...event, isHome: event.isHome === true };
   const lower = event.location.toLowerCase();
   const looksLikePageChrome =
     lower.includes('select sport') ||
@@ -213,12 +225,16 @@ function normalizeSportsEventForDisplay(event: SportsEvent): SportsEvent {
     lower.includes('upcoming event') ||
     event.location.length > 90;
 
-  if (!looksLikePageChrome) return event;
+  if (!looksLikePageChrome) return normalizedEvent;
 
   return {
-    ...event,
-    location: event.isHome ? 'Venue TBA' : 'Away',
+    ...normalizedEvent,
+    location: normalizedEvent.isHome ? 'Venue TBA' : 'Away',
   };
+}
+
+function sportsHomeAwayLabel(event: SportsEvent) {
+  return event.isHome ? 'Home' : 'Away';
 }
 
 async function openSportsVenueInMaps(venue: SportsVenue, school: string) {
@@ -773,7 +789,8 @@ export default function HomeScreen({
   } as const;
 
   const twoColumnWidth = Math.max((windowWidth - 18 * 2 - 12) / 2, 0);
-  const weatherPageWidth = Math.max(twoColumnWidth - 36, 0);
+  const weatherPageWidth = Math.max(twoColumnWidth - SUMMARY_CARD_PADDING * 2, 0);
+  const weatherPagerHeight = SUMMARY_CARD_HEIGHT - SUMMARY_CARD_PADDING * 2 - WEATHER_DOT_ROW_HEIGHT;
   const heroCardWidth = Math.max(windowWidth - 36, 0);
   const activeHeroItem = heroItems[activeHeroIndex] ?? null;
   const heroAccent = activeHeroItem?.type === 'course'
@@ -782,6 +799,8 @@ export default function HomeScreen({
       ? colors.brand
     : colors.brand;
   const selectedSportsVenue = selectedSportsEvent ? getSportsVenueForEvent(school, selectedSportsEvent) : null;
+  const sportsGoingAccent = getSchoolConfig(school).accent;
+  const sportsGoingAccentBg = `${sportsGoingAccent}14`;
   const selectedSportsEventLocationLabel = selectedSportsEvent?.location === 'Venue TBA'
     ? 'Venue TBA'
     : selectedSportsEvent?.location === 'Away'
@@ -954,6 +973,7 @@ export default function HomeScreen({
     setSportsEventRsvp(sportsEventUserRsvps[event.id] ?? null);
     setSportsEventGoingCount(sportsEventListParticipation[event.id] ?? 0);
     setSportsEventComments([]);
+    setSavingSportsEventRsvp(false);
     resetSportsEventDetailScroll();
     void loadSportsEventSocial(event);
   }
@@ -974,6 +994,10 @@ export default function HomeScreen({
 
   async function handleSportsEventRsvp() {
     if (!selectedSportsEvent || savingSportsEventRsvp) return;
+    if (!userId) {
+      Alert.alert('Sign in required', 'Please sign in to mark sports events.');
+      return;
+    }
     const event = selectedSportsEvent;
     const previousStatus = sportsEventRsvp;
     const previousGoingCount = sportsEventGoingCount;
@@ -999,24 +1023,53 @@ export default function HomeScreen({
     });
     setSavingSportsEventRsvp(true);
 
-    const result = nextStatus
-      ? await supabase
+    let result;
+    if (nextStatus) {
+      const payload = {
+        school,
+        event_id: event.id,
+        user_id: userId,
+        status: nextStatus,
+        updated_at: new Date().toISOString(),
+      };
+      result = await supabase
+        .from('sports_event_rsvps')
+        .upsert(payload, { onConflict: 'school,event_id,user_id' });
+
+      if (result.error && (isMissingSchoolColumnError(result.error) || isOnConflictTargetError(result.error))) {
+        const fallbackPayload = isMissingSchoolColumnError(result.error)
+          ? {
+              event_id: event.id,
+              user_id: userId,
+              status: nextStatus,
+              updated_at: payload.updated_at,
+            }
+          : payload;
+        result = await supabase
           .from('sports_event_rsvps')
-          .upsert({
-            school,
-            event_id: event.id,
-            user_id: userId,
-            status: nextStatus,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'school,event_id,user_id' })
-      : await supabase
+          .upsert(fallbackPayload, { onConflict: 'event_id,user_id' });
+      }
+    } else {
+      result = await supabase
+        .from('sports_event_rsvps')
+        .delete()
+        .eq('school', school)
+        .eq('event_id', event.id)
+        .eq('user_id', userId);
+
+      if (result.error && isMissingSchoolColumnError(result.error)) {
+        result = await supabase
           .from('sports_event_rsvps')
           .delete()
-          .eq('school', school)
           .eq('event_id', event.id)
           .eq('user_id', userId);
+      }
+    }
 
-    if (selectedSportsEventRef.current?.id !== event.id) return;
+    if (selectedSportsEventRef.current?.id !== event.id) {
+      setSavingSportsEventRsvp(false);
+      return;
+    }
 
     if (result.error) {
       if (result.error.code !== 'PGRST205') console.error('Failed to save sports event RSVP:', result.error);
@@ -1536,8 +1589,9 @@ export default function HomeScreen({
         <View style={{
           ...raisedCardStyle,
           width: twoColumnWidth,
+          height: SUMMARY_CARD_HEIGHT,
           backgroundColor: colors.card,
-          padding: 18,
+          padding: SUMMARY_CARD_PADDING,
         }}>
           <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
             {termLabel(selectedQuarter, school)}
@@ -1545,7 +1599,7 @@ export default function HomeScreen({
           <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 3 }}>
             {academicSystemNoun(school, true)} progress
           </Text>
-          <View style={{ alignItems: 'center', marginTop: 12 }}>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 4 }}>
             <ProgressRing
               progress={quarterProgress}
               primaryLabel={`${Math.round(quarterProgress * 100)}%`}
@@ -1563,8 +1617,9 @@ export default function HomeScreen({
         <View style={{
           ...raisedCardStyle,
           width: twoColumnWidth,
+          height: SUMMARY_CARD_HEIGHT,
           backgroundColor: colors.card,
-          padding: 18,
+          padding: SUMMARY_CARD_PADDING,
         }}>
           <ScrollView
             ref={weatherPagerRef}
@@ -1576,7 +1631,7 @@ export default function HomeScreen({
             onMomentumScrollEnd={(event) => {
               setActiveWeatherIndex(clamp(Math.round(event.nativeEvent.contentOffset.x / Math.max(weatherPageWidth, 1)), 0, 1));
             }}
-            style={{ width: weatherPageWidth }}
+            style={{ width: weatherPageWidth, height: weatherPagerHeight, flexGrow: 0 }}
           >
             <View style={{ width: weatherPageWidth }}>
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -1587,7 +1642,7 @@ export default function HomeScreen({
                   <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text, lineHeight: 32, marginTop: 8 }}>
                     {displayTemperature(tempC, useCelsius)}
                   </Text>
-                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
+                  <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
                     {weatherCode === null ? 'Loading...' : (WMO_DESCRIPTIONS[weatherCode]?.label ?? 'Clear Sky')}
                   </Text>
                 </View>
@@ -1651,7 +1706,16 @@ export default function HomeScreen({
                   </TouchableOpacity>
                 </View>
               </View>
-              <Text style={{ fontSize: 12, lineHeight: 18, color: colors.textTertiary, marginTop: 12 }}>
+              <Text
+                numberOfLines={WEATHER_INSIGHT_LINES}
+                style={{
+                  fontSize: 12,
+                  lineHeight: WEATHER_INSIGHT_LINE_HEIGHT,
+                  color: colors.textTertiary,
+                  marginTop: 12,
+                  height: WEATHER_INSIGHT_LINE_HEIGHT * WEATHER_INSIGHT_LINES,
+                }}
+              >
                 {weatherInsightText(tempC, weatherCode, useCelsius)}
               </Text>
             </View>
@@ -1748,22 +1812,38 @@ export default function HomeScreen({
                         <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
                           {event.title}
                         </Text>
-                        <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-                          {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 5, flexWrap: 'wrap' }}>
+                          <View
+                            style={{
+                              borderRadius: 999,
+                              backgroundColor: event.isHome ? colors.brandBg : colors.bgTertiary,
+                              borderWidth: 1,
+                              borderColor: event.isHome ? `${colors.brand}44` : colors.borderSubtle,
+                              paddingHorizontal: 7,
+                              paddingVertical: 3,
+                            }}
+                          >
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: event.isHome ? colors.brand : colors.textSecondary }}>
+                              {sportsHomeAwayLabel(event)}
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                            {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
+                          </Text>
+                        </View>
                         <View style={{
                           flexDirection: 'row',
                           alignItems: 'center',
                           gap: 4,
                           alignSelf: 'flex-start',
                           borderRadius: 999,
-                          backgroundColor: '#eef1fb',
+                          backgroundColor: sportsGoingAccentBg,
                           paddingHorizontal: 8,
                           paddingVertical: 4,
                           marginTop: 7,
                         }}>
-                          <Ionicons name="people-outline" size={11} color="#4169E1" />
-                          <Text style={{ color: '#4169E1', fontSize: 10, fontWeight: '800' }}>
+                          <Ionicons name="people-outline" size={11} color={sportsGoingAccent} />
+                          <Text style={{ color: sportsGoingAccent, fontSize: 10, fontWeight: '800' }}>
                             {participationCount > 99 ? '99+' : participationCount} going
                           </Text>
                         </View>
@@ -1847,9 +1927,25 @@ export default function HomeScreen({
                     <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 5 }}>
                       {formatSportsEventDetailDate(selectedSportsEvent)}
                     </Text>
-                    <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 3 }}>
-                      {selectedSportsEventLocationLabel} · {selectedSportsEvent.sport}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 7, flexWrap: 'wrap' }}>
+                      <View
+                        style={{
+                          borderRadius: 999,
+                          backgroundColor: selectedSportsEvent.isHome ? colors.brandBg : colors.bgTertiary,
+                          borderWidth: 1,
+                          borderColor: selectedSportsEvent.isHome ? `${colors.brand}44` : colors.borderSubtle,
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: selectedSportsEvent.isHome ? colors.brand : colors.textSecondary }}>
+                          {sportsHomeAwayLabel(selectedSportsEvent)}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 13, color: colors.textTertiary }}>
+                        {selectedSportsEventLocationLabel} · {selectedSportsEvent.sport}
+                      </Text>
+                    </View>
                   </View>
                   <TouchableOpacity
                     onPress={closeSportsEvent}
@@ -1874,9 +1970,9 @@ export default function HomeScreen({
                   style={{
                     minHeight: 52,
                     borderRadius: 16,
-                    backgroundColor: sportsEventRsvp === 'going' ? selectedSportsEvent.color : colors.card,
+                    backgroundColor: sportsEventRsvp === 'going' ? sportsGoingAccent : colors.card,
                     borderWidth: 1,
-                    borderColor: sportsEventRsvp === 'going' ? selectedSportsEvent.color : colors.border,
+                    borderColor: sportsEventRsvp === 'going' ? sportsGoingAccent : colors.border,
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexDirection: 'row',

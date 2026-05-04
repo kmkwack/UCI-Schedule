@@ -1986,3 +1986,30 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/data/anonymousAliases.ts`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/MessagesScreen.tsx`**, and **`src/screens/SettingsScreen.tsx`** — Replaced Anteater-only anonymous aliases/copy with school-aware aliases such as Terp, Cornellian, Boilermaker, and Illini.
 - **`src/components/ErrorScreen.tsx`** and **`src/components/FeatureOnboardingScreen.tsx`** — Removed UCI mascot-specific fallback UI/copy from generic error/onboarding surfaces so non-UCI users do not see UCI branding.
 - **`src/components/ReviewsModal.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, and **`src/components/ProfileEditorScreen.tsx`** — Moved remaining UCI-specific integrations behind shared school config or neutral naming so UCI data sources no longer leak into generic app UI.
+
+### Session 64oh (Stabilize home summary cards)
+- **`src/screens/HomeScreen.tsx`** — Fixed the progress/weather two-column cards to a stable shared height and reserved a three-line weather insight area so weather copy wrapping no longer changes the row height or leaves the progress card with shifting whitespace.
+
+### Session 64oi (Speed course picker and live saved count)
+- **`src/screens/CoursePickerScreen.tsx`** — Made section `saved` counts reconcile with the current user's local add/remove state so the pill updates immediately instead of waiting for the next Supabase count refresh.
+- **`src/screens/CoursePickerScreen.tsx`** — Stopped scanning the large `sections` table when `school_departments` already has metadata, and narrowed course search queries to only the columns the picker renders, reducing Cornell/Purdue/UMD department loading time.
+
+### Session 64oj (Remove semester wording from term UI)
+- **`src/data/schools.ts`** — Changed shared term labeling so semester schools render concise labels like `Spring 2026` even when callers request the academic-system suffix, while quarter schools can still show `Spring 2026 Quarter`.
+- **`src/data/schools.ts`** and **`src/screens/SettingsScreen.tsx`** — Replaced semester-specific display wording with neutral `term` wording for actions/help copy such as add-term and GPA text.
+
+### Session 64ok (Harden sports Going RSVP)
+- **`src/screens/HomeScreen.tsx`** — Added sign-in guarding and legacy-schema fallbacks for sports event Going saves/deletes, so the button still works when Supabase has the old `event_id,user_id` RSVP key or lacks the newer `school` column.
+
+### Session 64ol (Stabilize sports Going color)
+- **`src/screens/HomeScreen.tsx`** — Changed sports Going button and list count pill styling to use the selected school's accent color instead of each sport's event color, so RSVP state no longer changes color from game to game.
+
+### Session 64om (Restore Course Picker brand color)
+- **`src/screens/CoursePickerScreen.tsx`** — Reverted Course Picker controls, filters, preview outlines, saved pills, review buttons, and custom-block selections to ClassMate's main blue instead of per-school accent colors, preserving school colors for university identity surfaces only.
+
+### Session 64on (Show sports home-away badges)
+- **`src/screens/HomeScreen.tsx`** — Added Home/Away badges to every sports event row and sports event detail sheet, using the shared `isHome` event field already supplied by each school's sports parser.
+
+### Session 64oo (Update company website positioning)
+- **`the-seans-site/index.html`** — Reworked the company website copy around ClassMate's current multi-school direction: real course-data scheduling, course reviews, verified anonymous campus discussion, and the five currently supported schools instead of a UC-system-first roadmap.
+- **`the-seans-site/styles.css`** — Adjusted review metric pills in the website mockup so numeric course-review signals fit cleanly inside the product preview.

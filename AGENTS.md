@@ -2070,3 +2070,9 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64pe (Update website contact links)
 - **`the-seans-site/index.html`** — Updated all homepage contact mailto links from the placeholder domain email to `heyy.seans@gmail.com` and `hii.seans@gmail.com`, and changed the footer text to show both addresses.
 - **`the-seans-site/index.html`** and **`the-seans-site/styles.css`** — Removed the unexplained `TS` closing monogram so the final thesis screen no longer shows a confusing placeholder mark.
+
+### Session 64pf (Title-case company brand)
+- **`the-seans-site/index.html`** — Updated visible and metadata company-name references from `the seans` to `The Seans` so the homepage follows proper title-case brand capitalization.
+
+### Session 64pg (Simplify homepage hero)
+- **`the-seans-site/index.html`** — Removed the hero eyebrow `Education and campus community company` from the first screen so the opening page leads with the brand name and main thesis instead of a category label.

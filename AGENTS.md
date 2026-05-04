@@ -2020,3 +2020,53 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64oq (Reposition the seans website as company-first)
 - **`the-seans-site/index.html`** — Rewrote the website copy so `the seans` reads first as an education and campus community company, with ClassMate framed as the first product instead of the whole company identity. Replaced the prominent boxed school-support display with a small supported-schools line and updated the narrative around campus trust, verified anonymity, and student-native software.
 - **`the-seans-site/styles.css`** — Added a subtle supported-schools line style and preserved the existing visual design while keeping the product heading text treatment stable after adding the small school list.
+
+### Session 64or (Simplify hero background)
+- **`the-seans-site/index.html`** — Removed the text-filled floating hero boxes behind the main `the seans` headline so the opening screen keeps the grid/orbit atmosphere without competing with the primary company message.
+
+### Session 64os (Clarify verified-anonymous community copy)
+- **`the-seans-site/index.html`** — Rewrote the scroll-showcase and phone mockup copy so ClassMate is framed as a school-verified, personally anonymous student community rather than a company that directly provides trustworthy information.
+- **`the-seans-site/styles.css`** — Increased the scroll-showcase copy area and added spacing above the progress meter so the progress bar no longer overlaps long step text.
+
+### Session 64ot (Make website phone mockup more app-like)
+- **`the-seans-site/index.html`** — Reworked the scrolling phone preview, especially the final timetable state, to resemble the actual app structure with term context, schedule pills, a weekly timetable grid, course blocks, and bottom tabs instead of abstract keyword cards.
+- **`the-seans-site/styles.css`** — Added app-like schedule pill, timetable time-label, and bottom-tab styles, and tightened the mini timetable dimensions so the final phone mockup contents stay aligned inside the device frame.
+
+### Session 64ou (Full-screen hero grid)
+- **`the-seans-site/styles.css`** — Removed the rounded hero grid frame and oval line decoration, replacing them with a full-screen grid background so the opening section feels cleaner and less shape-heavy.
+
+### Session 64ov (Remove phone-side floating labels)
+- **`the-seans-site/index.html`** and **`the-seans-site/styles.css`** — Removed the floating pill labels around the scrolling ClassMate phone preview so the app mockup stands on its own without side decorations competing with the screen content.
+
+### Session 64ow (Move full product idea section)
+- **`the-seans-site/index.html`** — Moved the entire four-step product-idea screen, including the `01/02/03/04` copy and ClassMate phone preview, underneath the `First product / ClassMate` heading and removed the older static phone preview.
+- **`the-seans-site/index.html`** — Kept the ClassMate heading visible without the reveal animation so direct navigation to `#product` does not show a blank white intro area before the moved four-step screen.
+- **`the-seans-site/styles.css`** — Restored the two-column scroll-showcase layout in its new position so the numbered story and app mockup remain one complete section under the ClassMate introduction.
+- **`the-seans-site/script.js`** — Kept the moved four-step screen driven by the existing scroll-showcase interaction instead of a separate product-preview carousel.
+
+### Session 64ox (Soften why-started website copy)
+- **`the-seans-site/index.html`** — Replaced the sharper “no trusted student layer” framing with a softer disconnected-campus-life message, keeping the focus on fragmented student workflows and ClassMate's role in making campus feel more connected.
+
+### Session 64oy (Reframe founder section)
+- **`the-seans-site/index.html`** — Changed the founder section from name-forward copy to an international-student perspective about feeling the gap between connected Korean campus platforms and fragmented U.S. campus life.
+- **`the-seans-site/styles.css`** — Reduced the visual weight of the founder name cards so the lived founder perspective leads the section while names remain present as secondary context.
+
+### Session 64oz (Remove operating principles section)
+- **`the-seans-site/index.html`** — Removed the `Operating principles` section entirely so the company website moves directly from founder perspective into the roadmap without repeating the product thesis.
+
+### Session 64pa (Expand website roadmap)
+- **`the-seans-site/index.html`** — Replaced the smaller `Now / Next / Later` roadmap with a four-step company roadmap from academic-week utility to verified campus communities, campus-by-campus expansion, and a broader student network for American universities.
+
+### Session 64pb (Make website publishing-ready)
+- **`the-seans-site/index.html`** — Added social preview metadata, changed the hero footer to foreground the international-student company origin instead of founder names, and rewrote the product-connection section so it clearly explains how schedule, reviews, boards, sports, classmates, and notifications fit into one verified campus context.
+
+### Session 64pc (Clarify ClassMate feature band)
+- **`the-seans-site/index.html`** — Rewrote the four product feature panels from abstract principles into concrete ClassMate benefits: real course data, one-tap schedules, same-campus reviews, and school-verified anonymous community.
+- **`the-seans-site/styles.css`** — Tightened the ClassMate intro section spacing so the product heading leads naturally into the four-step app showcase.
+
+### Session 64pd (Clean unused website styles)
+- **`the-seans-site/styles.css`** — Removed leftover CSS for deleted hero boxes, the old static phone mockup, floating labels, school cards, and the removed operating-principles section so the published homepage stylesheet matches the current site structure.
+
+### Session 64pe (Update website contact links)
+- **`the-seans-site/index.html`** — Updated all homepage contact mailto links from the placeholder domain email to `heyy.seans@gmail.com` and `hii.seans@gmail.com`, and changed the footer text to show both addresses.
+- **`the-seans-site/index.html`** and **`the-seans-site/styles.css`** — Removed the unexplained `TS` closing monogram so the final thesis screen no longer shows a confusing placeholder mark.

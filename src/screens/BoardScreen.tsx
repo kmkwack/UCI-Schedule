@@ -24,7 +24,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
-import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image as ExpoImage } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -937,11 +936,21 @@ export default function BoardScreen({
   }
 
   async function handlePickFiles() {
-    const result = await DocumentPicker.getDocumentAsync({
-      multiple: true,
-      copyToCacheDirectory: true,
-      type: '*/*',
-    });
+    let result;
+    try {
+      const DocumentPicker = await import('expo-document-picker');
+      result = await DocumentPicker.getDocumentAsync({
+        multiple: true,
+        copyToCacheDirectory: true,
+        type: '*/*',
+      });
+    } catch (error: any) {
+      Alert.alert(
+        'Files need the installed app',
+        'File attachments are available in the TestFlight app or a development build, but not in this Expo Go preview.'
+      );
+      return;
+    }
 
     if (result.canceled || !result.assets?.length) return;
 

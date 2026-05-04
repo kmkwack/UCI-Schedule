@@ -2076,3 +2076,12 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64pg (Simplify homepage hero)
 - **`the-seans-site/index.html`** — Removed the hero eyebrow `Education and campus community company` from the first screen so the opening page leads with the brand name and main thesis instead of a category label.
+
+### Session 64ph (Guard file picker in Expo Go)
+- **`src/screens/BoardScreen.tsx`** — Moved `expo-document-picker` from a top-level import to a lazy import inside the file-attachment handler and added a fallback alert, so Expo Go previews do not crash on launch when the native document picker module is unavailable.
+
+### Session 64pi (Shrink EAS upload archive)
+- **`.easignore`** — Added generated iOS dependency/build folders and Xcode user-state files to the EAS ignore list so production builds upload only source files instead of sending local Pods/build artifacts to the remote builder.
+
+### Session 64pj (Refresh Expo lockfile for EAS)
+- **`package-lock.json`** — Refreshed the npm lockfile with `npm install` so the locked Expo SDK 55 patch packages match `package.json`, fixing the remote `npm ci` failure during the EAS install-dependencies phase.

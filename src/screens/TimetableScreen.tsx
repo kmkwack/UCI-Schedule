@@ -148,7 +148,6 @@ async function openDiscordInvite(url: string) {
 const seededQuartersCacheBySchool: Record<string, Set<string>> = {};
 
 async function loadSeededQuarterKeys(school: string) {
-  const candidates = buildTermCandidates(school, 2019, new Date().getFullYear() + 2);
   const seededKeys = new Set<string>();
 
   const { data, error } = await supabase
@@ -160,22 +159,6 @@ async function loadSeededQuarterKeys(school: string) {
   if (error) console.error('Failed to load seeded quarters from school_terms:', error);
   (data ?? []).forEach((row: any) => {
     if (row.quarter_key) seededKeys.add(row.quarter_key);
-  });
-
-  const missingCandidates = candidates.filter((term) => !seededKeys.has(quarterKey(term)));
-  const sectionBackedKeys = await Promise.all(
-    missingCandidates.map(async (term) => {
-      const qKey = quarterKey(term);
-      const { count } = await supabase
-        .from('sections')
-        .select('id', { count: 'exact', head: true })
-        .eq('school', school)
-        .eq('quarter_key', qKey);
-      return (count ?? 0) > 0 ? qKey : null;
-    })
-  );
-  sectionBackedKeys.forEach((qKey) => {
-    if (qKey) seededKeys.add(qKey);
   });
 
   return seededKeys;
@@ -816,7 +799,7 @@ export default function TimetableScreen({
   async function openAddQuarterModal() {
     const existingQks = new Set(timetables.map((t) => t.quarterKey));
 
-    const allCandidates = buildTermCandidates(school, 2019, new Date().getFullYear() + 2);
+    const allCandidates = buildTermCandidates(school, 2019, new Date().getFullYear() + 1);
 
     setLoadingAddableQuarters(true);
     setAddableQuarters([]);

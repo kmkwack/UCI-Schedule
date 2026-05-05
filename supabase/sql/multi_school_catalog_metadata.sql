@@ -53,6 +53,26 @@ create table if not exists public.school_departments (
 create index if not exists school_departments_school_active_idx
   on public.school_departments (school, active, department);
 
+alter table public.school_terms enable row level security;
+alter table public.school_departments enable row level security;
+
+grant select on public.school_terms to anon, authenticated;
+grant select on public.school_departments to anon, authenticated;
+
+drop policy if exists "Public can read school terms" on public.school_terms;
+create policy "Public can read school terms"
+  on public.school_terms
+  for select
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "Public can read school departments" on public.school_departments;
+create policy "Public can read school departments"
+  on public.school_departments
+  for select
+  to anon, authenticated
+  using (true);
+
 create table if not exists public.section_source_payloads (
   section_id text primary key references public.sections(id) on delete cascade,
   school text not null,

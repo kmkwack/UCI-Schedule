@@ -109,7 +109,7 @@ function parseQuarterKeyValue(key: string): Quarter | null {
 }
 
 async function fetchPreferredSeededQuarter(school: string, preferredKey: string): Promise<Quarter | null> {
-  const candidates = buildTermCandidates(school, 2019, new Date().getFullYear() + 2);
+  const candidates = buildTermCandidates(school, 2019, new Date().getFullYear() + 1);
   const seededKeys = new Set<string>();
 
   const { data, error } = await supabase
@@ -121,22 +121,6 @@ async function fetchPreferredSeededQuarter(school: string, preferredKey: string)
   if (error) console.error('Failed to resolve seeded quarter from school_terms:', error);
   (data ?? []).forEach((row: any) => {
     if (row.quarter_key) seededKeys.add(row.quarter_key);
-  });
-
-  const missingCandidates = candidates.filter((term) => !seededKeys.has(quarterKey(term)));
-  const sectionBackedTerms = await Promise.all(
-    missingCandidates.map(async (term) => {
-      const qKey = quarterKey(term);
-      const { count } = await supabase
-        .from('sections')
-        .select('id', { count: 'exact', head: true })
-        .eq('school', school)
-        .eq('quarter_key', qKey);
-      return (count ?? 0) > 0 ? qKey : null;
-    })
-  );
-  sectionBackedTerms.forEach((qKey) => {
-    if (qKey) seededKeys.add(qKey);
   });
 
   if (seededKeys.has(preferredKey)) return parseQuarterKeyValue(preferredKey);

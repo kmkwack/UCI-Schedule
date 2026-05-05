@@ -2215,3 +2215,10 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64qq (Refresh add-quarter terms on open)
 - **`src/screens/TimetableScreen.tsx`** — Removed the early return from the cached Add Quarter path so opening the sheet always reloads seeded terms from the metadata-plus-sections source of truth, preventing stale empty caches from hiding terms that exist in the database.
+
+### Session 64qr (Fast term metadata reconciliation)
+- **`App.tsx` and `src/screens/TimetableScreen.tsx`** — Removed runtime `sections` count fallbacks from seeded-term discovery so startup and Add Quarter read only the lightweight `school_terms` metadata table.
+- **`scripts/reconcile-school-terms.js`, `supabase/sql/reconcile_school_terms_from_sections.sql`, and `package.json`** — Added a reconciliation path that rebuilds `school_terms` from actual `sections` rows, plus an npm script, so every section-backed term can appear quickly without the mobile app scanning the large sections table.
+
+### Session 64qs (Expose catalog metadata to the app)
+- **`supabase/sql/public_catalog_metadata_read_policy.sql` and `supabase/sql/multi_school_catalog_metadata.sql`** — Added anon/authenticated SELECT grants and public read RLS policies for `school_terms` and `school_departments`, allowing the mobile app to read the lightweight catalog metadata that was already populated server-side.

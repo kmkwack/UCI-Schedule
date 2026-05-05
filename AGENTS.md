@@ -2299,3 +2299,9 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64ro (Remove conflicting class atomically)
 - **`src/screens/CoursePickerScreen.tsx`** — Changed conflict detection to collect all overlapping classes and call a dedicated conflict resolver instead of toggling the old and new sections separately.
 - **`App.tsx`** — Added an atomic conflict-resolution update that removes the existing conflicting classes and inserts the new class in one saved timetable update, preventing removed conflicts from reappearing when the new class is later deleted.
+
+### Session 64rp (Keep inline comment action above tab bar)
+- **`src/screens/BoardScreen.tsx`** — Increased post-detail scroll bottom padding when the comment composer is idle so long image posts can scroll the inline `Add a comment...` action fully above the floating tab bar.
+
+### Session 64rq (Redesign grade picker)
+- **`src/screens/GradesScreen.tsx`** — Reworked the letter-grade picker from a loose wrapping button list into a cleaner bottom sheet with A/B/C/D/F rows, separate non-letter grade chips, and always-visible unit chips for faster grade entry.

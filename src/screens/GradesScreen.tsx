@@ -301,6 +301,25 @@ function GradeBadge({ grade, onPress }: { grade?: string; onPress: () => void })
 
 // ── grade picker modal ────────────────────────────────────────────────────────
 
+function groupedLetterGrades(gradeOptions: string[]) {
+  const used = new Set<string>();
+  const rows = ['A', 'B', 'C', 'D'].map((letter) => {
+    const grades = [`${letter}+`, letter, `${letter}-`].filter((grade) => gradeOptions.includes(grade));
+    grades.forEach((grade) => used.add(grade));
+    return { letter, grades };
+  }).filter((row) => row.grades.length > 0);
+
+  if (gradeOptions.includes('F')) {
+    rows.push({ letter: 'F', grades: ['F'] });
+    used.add('F');
+  }
+
+  return {
+    rows,
+    otherGrades: gradeOptions.filter((grade) => !used.has(grade)),
+  };
+}
+
 function GradePickerModal({
   visible, current, currentUnits, gradeOptions, onSelect, onSetUnits, onClose,
 }: {
@@ -313,9 +332,8 @@ function GradePickerModal({
   onClose: () => void;
 }) {
   const { colors } = useTheme();
-  const [showUnitsPicker, setShowUnitsPicker] = useState(false);
-
-  useEffect(() => { if (!visible) setShowUnitsPicker(false); }, [visible]);
+  const { rows: letterGradeRows, otherGrades } = useMemo(() => groupedLetterGrades(gradeOptions), [gradeOptions]);
+  const sheetMaxHeight = Math.min(Dimensions.get('window').height * 0.72, 580);
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
@@ -324,54 +342,124 @@ function GradePickerModal({
         <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
           <View style={{
             backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-            padding: 20, paddingBottom: 36,
+            paddingHorizontal: 20, paddingTop: 12, paddingBottom: 34,
+            maxHeight: sheetMaxHeight,
           }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 16 }}>Select Grade</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              {gradeOptions.map(g => {
-                const selected = current === g;
-                const isWide = g.length > 1;
-                return (
-                  <TouchableOpacity
-                    key={g}
-                    onPress={() => { onSelect(g); onClose(); }}
-                    style={{
-                      width: isWide ? 76 : 58, height: 44, borderRadius: 12,
-                      backgroundColor: selected ? colors.brand : colors.inputBg,
-                      alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: selected ? 'white' : colors.textSecondary }}>{g}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-              <TouchableOpacity
-                onPress={() => setShowUnitsPicker(v => !v)}
-                style={{
-                  height: 44, borderRadius: 12, paddingHorizontal: 14,
-                  backgroundColor: showUnitsPicker ? colors.brand : colors.inputBg,
-                  alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <Text style={{ fontSize: 13, fontWeight: '700', color: showUnitsPicker ? 'white' : colors.textSecondary }}>
-                  Edit Units
-                </Text>
-              </TouchableOpacity>
+            <View style={{ alignItems: 'center', paddingBottom: 14 }}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Grade</Text>
+              </View>
+              {current ? (
+                <View style={{ minWidth: 48, height: 36, borderRadius: 18, backgroundColor: colors.brandBg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: colors.brand }}>{current}</Text>
+                </View>
+              ) : null}
             </View>
 
-            {showUnitsPicker && (
-              <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: colors.borderSubtle, paddingTop: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginBottom: 12 }}>
-                  Units (current: {currentUnits})
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 18, overflow: 'hidden', backgroundColor: colors.bgTertiary }}>
+                {letterGradeRows.map((row, index) => (
+                  <View
+                    key={row.letter}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      borderTopWidth: index === 0 ? 0 : 1,
+                      borderTopColor: colors.borderSubtle,
+                    }}
+                  >
+                    <View style={{ width: 30 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textTertiary }}>{row.letter}</Text>
+                    </View>
+                    <View style={{ flex: 1, flexDirection: 'row', gap: 8 }}>
+                      {row.grades.map((grade) => {
+                        const selected = current === grade;
+                        return (
+                          <TouchableOpacity
+                            key={grade}
+                            onPress={() => { onSelect(grade); onClose(); }}
+                            activeOpacity={0.78}
+                            style={{
+                              flex: row.grades.length === 1 ? 0 : 1,
+                              minWidth: row.grades.length === 1 ? 78 : 0,
+                              height: 44,
+                              borderRadius: 14,
+                              backgroundColor: selected ? colors.brand : colors.card,
+                              borderWidth: 1,
+                              borderColor: selected ? colors.brand : colors.borderSubtle,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ fontSize: 16, fontWeight: '800', color: selected ? 'white' : colors.text }}>
+                              {grade}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              {otherGrades.length > 0 ? (
+                <View style={{ marginTop: 18 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textTertiary, marginBottom: 10 }}>
+                    Other
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {otherGrades.map((grade) => {
+                      const selected = current === grade;
+                      return (
+                        <TouchableOpacity
+                          key={grade}
+                          onPress={() => { onSelect(grade); onClose(); }}
+                          activeOpacity={0.78}
+                          style={{
+                            minWidth: 62,
+                            height: 42,
+                            borderRadius: 14,
+                            paddingHorizontal: 14,
+                            backgroundColor: selected ? colors.brand : colors.inputBg,
+                            borderWidth: 1,
+                            borderColor: selected ? colors.brand : colors.border,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: selected ? 'white' : colors.textSecondary }}>
+                            {grade}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle, paddingTop: 16 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textTertiary, marginBottom: 10 }}>
+                  Units
                 </Text>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
                   {[1, 2, 3, 4, 5].map(u => (
                     <TouchableOpacity
                       key={u}
-                      onPress={() => { onSetUnits(u); setShowUnitsPicker(false); }}
+                      onPress={() => onSetUnits(u)}
+                      activeOpacity={0.78}
                       style={{
-                        width: 52, height: 44, borderRadius: 12,
+                        flex: 1,
+                        height: 42,
+                        borderRadius: 14,
                         backgroundColor: currentUnits === u ? colors.brand : colors.inputBg,
+                        borderWidth: 1,
+                        borderColor: currentUnits === u ? colors.brand : colors.border,
                         alignItems: 'center', justifyContent: 'center',
                       }}
                     >
@@ -382,7 +470,7 @@ function GradePickerModal({
                   ))}
                 </View>
               </View>
-            )}
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </TouchableOpacity>

@@ -632,7 +632,7 @@ export default function BoardScreen({
   const commentComposerBottomMargin = boardKeyboardVisible ? 0 : bottomInset + BOARD_TAB_BAR_CLEARANCE;
   const selectedPostScrollBottomPadding = shouldShowCommentComposer
     ? (boardKeyboardVisible ? 88 : 112 + bottomInset + BOARD_TAB_BAR_CLEARANCE)
-    : bottomInset + 24;
+    : bottomInset + BOARD_TAB_BAR_CLEARANCE + 40;
   const scrollSelectedPostToComposer = useCallback((animated = true, delay = 0) => {
     const run = () => selectedPostScrollRef.current?.scrollToEnd({ animated });
     if (delay > 0) {

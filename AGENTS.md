@@ -2222,3 +2222,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64qs (Expose catalog metadata to the app)
 - **`supabase/sql/public_catalog_metadata_read_policy.sql` and `supabase/sql/multi_school_catalog_metadata.sql`** — Added anon/authenticated SELECT grants and public read RLS policies for `school_terms` and `school_departments`, allowing the mobile app to read the lightweight catalog metadata that was already populated server-side.
+
+### Session 64qt (Make App Store icon opaque)
+- **`assets/icon.png` and `ios/ClassMate/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png`** — Flattened alpha pixels onto a blue background so the iOS App Store large icon has no transparency/alpha channel while keeping in-app ClassMate logo assets transparent.

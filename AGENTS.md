@@ -2117,3 +2117,101 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64ps (Merge live departments after instant render)
 - **`src/screens/CoursePickerScreen.tsx`** — Changed the instant department list from a hard authority into a fast initial cache. The picker now renders local departments immediately, then merges in `school_departments` and the selected term's live `sections` departments in the background so newly seeded departments can appear without blocking the sheet opening.
+
+### Session 64pt (Apply new square ClassMate logo globally)
+- **`assets/icon.png`, `assets/splash-icon.png`, `assets/favicon.png`, `assets/android-icon-foreground.png`, `assets/android-icon-monochrome.png`, `assets/classmate-logo-approved.png`, `assets/classmate-logo-approved-transparent.png`, `assets/classmate-logo-full.png`, `assets/classmate-logo-mark.png`, and `assets/classmate-logo-icon.png`** — Replaced the existing ClassMate app icon and in-app brand-logo assets with the supplied square blue ClassMate logo so Expo, Android, web favicon, splash, and in-app branding all resolve to the same approved mark.
+
+### Session 64pu (Glossy dimensional brand refresh)
+- **`src/context/ThemeContext.tsx`** — Shifted the shared light/dark palettes toward luminous blues, brighter surfaces, and cooler borders so screens using the common theme inherit a glossier visual tone.
+- **`src/components/ClassMateMonogram.tsx`** — Replaced the old text monogram tile with the new logo image inside a shadowed, highlighted app-icon shell so onboarding and welcome branding looks dimensional.
+- **`App.tsx`** — Restyled the bottom tab bar and active tab pill with stronger blue glass, highlights, and deeper shadows to make the always-visible navigation match the new logo finish.
+- **`src/screens/WelcomeScreen.tsx`, `src/components/ClassMateIntroScreen.tsx`, and `src/screens/SettingsScreen.tsx`** — Added glossy background bands, brighter logo frames, elevated feature chips, and highlighted primary/about-logo surfaces so the main brand touchpoints feel more polished and 3D.
+
+### Session 64pv (Replace app logo with full-bleed fixed mark)
+- **`assets/icon.png`, `assets/splash-icon.png`, `assets/favicon.png`, `assets/android-icon-foreground.png`, `assets/android-icon-monochrome.png`, `assets/classmate-logo-approved.png`, `assets/classmate-logo-approved-transparent.png`, `assets/classmate-logo-full.png`, `assets/classmate-logo-mark.png`, and `assets/classmate-logo-icon.png`** — Replaced the previous logo exports with the supplied full-bleed square fixed logo so the blue app icon fills the canvas without visible black outer padding.
+
+### Session 64pw (Tone down glossy depth)
+- **`src/context/ThemeContext.tsx`** — Softened the bright blue theme refresh into calmer app blues and lighter neutral surfaces so the whole UI feels less saturated.
+- **`App.tsx`, `src/components/ClassMateMonogram.tsx`, `src/screens/WelcomeScreen.tsx`, `src/components/ClassMateIntroScreen.tsx`, and `src/screens/SettingsScreen.tsx`** — Reduced highlight opacity, shadow strength, and elevation on the tab bar, brand icon frame, welcome CTA, intro chips, and About logo so the app keeps subtle depth without the overly glossy 3D look.
+
+### Session 64px (Retry failed UIUC seeding subjects only)
+- **`scripts/retry-uiuc-failed-subjects.js`** — Added a UIUC-only retry runner containing the failed subject groups from the 2019–2026 backfill logs (`Spring 2021 ENGL`, `Fall 2022 NPRE`, and the failed `Fall 2026` subjects) so only missing/error departments are fetched again instead of reseeding every term.
+- **`scripts/seed-uiuc-sections.js`** — Marks the process as failed when any subject errors remain, allowing the retry runner/backfill tooling to detect partial UIUC runs instead of treating them as success.
+- **`package.json`** — Added `npm run retry:uiuc-failed` as a short command for rerunning only the known failed UIUC subject list.
+
+### Session 64py (Transparent logo cutout assets)
+- **`assets/icon.png`, `assets/splash-icon.png`, `assets/favicon.png`, `assets/android-icon-foreground.png`, `assets/android-icon-background.png`, `assets/android-icon-monochrome.png`, `assets/classmate-logo-approved.png`, `assets/classmate-logo-approved-transparent.png`, `assets/classmate-logo-full.png`, `assets/classmate-logo-mark.png`, `assets/classmate-logo-icon.png`, `the-seans-site/assets/classmate-logo-approved-transparent.png`, `the-seans-site/assets/classmate-logo-mark.png`, `the-seans-site/assets/favicon.png`, and `ClassMate_logo_option_1_square.png`** — Rebuilt the logo exports from the supplied fixed square source with the connected dark outer background removed to alpha, so the blue ClassMate icon itself remains full-size while black/white backing no longer appears around the rounded logo.
+
+### Session 64pz (Use full-bleed opaque app logo)
+- **`assets/icon.png`, `assets/splash-icon.png`, `assets/android-icon-foreground.png`, `assets/android-icon-background.png`, `assets/classmate-logo-approved.png`, `assets/classmate-logo-approved-transparent.png`, `assets/classmate-logo-full.png`, `assets/classmate-logo-mark.png`, `assets/classmate-logo-icon.png`, `assets/favicon.png`, `the-seans-site/assets/classmate-logo-approved-transparent.png`, `the-seans-site/assets/classmate-logo-mark.png`, and `the-seans-site/assets/favicon.png`** — Replaced the transparent cutout exports with full-bleed opaque logo exports so the app icon fills iOS/Android/web icon slots instead of showing white backing through transparent corners.
+- **`ios/ClassMate/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png`** — Updated the native iOS AppIcon source directly to the same full-bleed opaque logo because the simulator-installed app uses the iOS asset catalog, not only `app.json`.
+
+### Session 64qa (Robust UIUC sectionData parser)
+- **`scripts/seed-uiuc-sections.js`** — Replaced the regex-only `sectionDataObj` extractor with a bracket/string-aware scanner so older UIUC Course Explorer pages whose section data contains embedded `];`-like text no longer truncate JSON mid-string. Verified `DRY_RUN=1 ... Spring 2021 ENGL` now parses successfully with 123 sections and 0 subject errors.
+
+### Session 64qb (Remove logo frames and reuse school logos)
+- **`src/components/ClassMateMonogram.tsx`, `src/screens/WelcomeScreen.tsx`, and `src/components/ClassMateIntroScreen.tsx`** — Removed the extra inset, overlay, and white framing around the ClassMate logo so the supplied app icon artwork fills its visible slot instead of sitting inside another rounded white tile.
+- **`src/components/UniversityLogo.tsx`, `src/screens/UniversitySelectionScreen.tsx`, `src/screens/SignInScreen.tsx`, and `src/screens/SignUpScreen.tsx`** — Added one shared school-logo component and used it on selection, sign-in, and sign-up screens so school cards show the actual university logo assets instead of fallback text tiles like `CU`.
+- **`App.tsx`** — Stopped forcing review-account onboarding during automatic saved-session hydration; review onboarding is now only forced immediately after an explicit review-account sign-in, preventing cold starts from jumping back into a stale Cornellian welcome flow.
+- **`src/screens/BoardScreen.tsx`** — Replaced the top-level `expo-image` render dependency with React Native `Image` and lazy-loaded image picker/manipulator/media/share modules so Expo Go/simulator previews do not crash on launch when optional native attachment modules are unavailable.
+
+### Session 64qc (Use raw school logos without tiles)
+- **`src/components/UniversityLogo.tsx`** — Removed the rounded white tile, border, and per-school fixed mini sizes so university logos render as the raw image artwork with `contain` sizing instead of being clipped inside a small square.
+- **`src/screens/UniversitySelectionScreen.tsx`, `src/screens/SignInScreen.tsx`, and `src/screens/SignUpScreen.tsx`** — Enlarged the school logo slot and let the adjacent school name wrap to two lines on sign screens so every supported school logo has enough horizontal space without cropping.
+- **`assets/uci-logo-white.png`, `assets/umd-logo.png`, `assets/cornell-logo-white.png`, `assets/purdue-logo-white.png`, and `assets/uiuc-logo-white.png`** — Removed connected white image backgrounds and cropped transparent padding from the school-logo PNGs so the sign and school-selection screens display only the logo artwork.
+
+### Session 64qd (Fix oversized launch splash logo)
+- **`assets/splash-icon.png`** — Rebuilt the splash-only image with the ClassMate app icon centered at a smaller size on a transparent canvas so Expo/iOS launch splash no longer shows the full 1024px icon oversized or clipped on the first frame.
+
+### Session 64qe (Render logos as images only)
+- **`src/components/ClassMateMonogram.tsx`** — Removed the shadowed wrapper, clipping, and radius shell so all ClassMate logo placements render the logo image directly instead of putting it inside another app-icon box.
+- **`src/screens/SettingsScreen.tsx`** — Removed the About screen's brand-logo card, border, highlight overlay, and background so the ClassMate logo appears as the raw image only.
+- **`src/components/UniversityLogo.tsx`** — Removed the unused border-radius prop from the school logo component now that school logos no longer render inside any tile.
+
+### Session 64qf (Replace every ClassMate logo with supplied source)
+- **`assets/icon.png`, `assets/splash-icon.png`, `assets/android-icon-foreground.png`, `assets/android-icon-background.png`, `assets/android-icon-monochrome.png`, `assets/classmate-logo-approved.png`, `assets/classmate-logo-approved-transparent.png`, `assets/classmate-logo-full.png`, `assets/classmate-logo-mark.png`, `assets/classmate-logo-icon.png`, `assets/favicon.png`, `ClassMate_logo_option_1_square.png`, `the-seans-site/assets/classmate-logo-approved-transparent.png`, `the-seans-site/assets/classmate-logo-mark.png`, `the-seans-site/assets/favicon.png`, and `ios/ClassMate/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png`** — Rebuilt every ClassMate logo/icon asset from the supplied `/Users/parksihyun/Desktop/logo.png` source at 1024x1024 so app icon, splash, in-app logo, Android adaptive icon assets, web favicon, website logo exports, and native iOS AppIcon all use the exact same square artwork without mismatched variants.
+
+### Session 64qg (Remove black background from supplied logo)
+- **`assets/icon.png`, `assets/splash-icon.png`, `assets/android-icon-foreground.png`, `assets/android-icon-background.png`, `assets/android-icon-monochrome.png`, `assets/classmate-logo-approved.png`, `assets/classmate-logo-approved-transparent.png`, `assets/classmate-logo-full.png`, `assets/classmate-logo-mark.png`, `assets/classmate-logo-icon.png`, `assets/favicon.png`, `ClassMate_logo_option_1_square.png`, `the-seans-site/assets/classmate-logo-approved-transparent.png`, `the-seans-site/assets/classmate-logo-mark.png`, `the-seans-site/assets/favicon.png`, and `ios/ClassMate/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png`** — Reprocessed the supplied logo source by removing only the edge-connected black background to alpha before writing every ClassMate logo asset, so in-app logo renders no black square around the rounded blue mark.
+
+### Session 64qh (Remove glossy UI and fix home warnings)
+- **`src/context/ThemeContext.tsx`, `src/screens/WelcomeScreen.tsx`, `src/components/ClassMateIntroScreen.tsx`, and `App.tsx`** — Removed the glossy background bands, highlight strips, elevated shadows, glass tab pill overlays, and bright glossy palette added during the brand refresh so the app returns to a flatter visual treatment.
+- **`src/screens/HomeScreen.tsx`** — Added a missing-column fallback for the home classmate query when `friend_requests.school` is not present, preventing the red warning/error toast from appearing on startup against older Supabase schemas.
+- **`App.tsx`** — Added the configured EAS project id as the final push-token fallback so Expo push registration does not warn that no project id is configured when Expo Go omits config metadata.
+- **`src/components/UniversityLogo.tsx`, `src/screens/UniversitySelectionScreen.tsx`, `src/screens/SignInScreen.tsx`, and `src/screens/SignUpScreen.tsx`** — Widened school logo rendering slots so UCI and other long horizontal wordmarks are shown with more room instead of appearing clipped or cramped.
+
+### Session 64qi (Pad UCI wordmark)
+- **`assets/uci-logo-white.png`** — Added transparent vertical safety padding around the UCI wordmark so the bottom of the logo text does not appear clipped after white-background removal.
+- **`src/screens/UniversitySelectionScreen.tsx`** — Increased the university-selection logo row height to give horizontal school wordmarks enough vertical breathing room.
+
+### Session 64qj (Fix Purdue sports schedule parsing)
+- **`src/data/sportsEvents.ts`** — Updated the WMT schedule parser used by Purdue to detect the actual `Schedule Events` heading and the split `Fri` / `May 8` date layout rendered by Purdue Sports, so upcoming Boilermakers games are no longer parsed as an empty list.
+- **`src/data/schools.ts`** — Corrected Purdue sports schedule paths for swimming/diving and track & field to match the official `purduesports.com` URLs, preventing those sports from silently returning no events.
+
+### Session 64qk (Revert school logo cards)
+- **`src/components/UniversityLogo.tsx`** — Reverted the school-logo renderer back to compact colored initial tiles instead of raw wide university image assets, so the auth cards stop showing oversized or awkwardly cropped school wordmarks while waiting for a new UCI logo source.
+- **`src/screens/UniversitySelectionScreen.tsx`** — Restored the university picker cards to the original horizontal layout with the compact logo tile on the left and school details on the right.
+
+### Session 64ql (Use supplied UCI logo only)
+- **`assets/uci-logo-white.png`** — Replaced the prior UCI wordmark asset with the newly supplied seal-and-wordmark PNG.
+- **`src/components/UniversityLogo.tsx`** — Added a UCI-only image path while keeping every other school on the compact initial tile fallback.
+- **`src/screens/UniversitySelectionScreen.tsx`** — Gave only the UCI row a wider logo slot so the supplied horizontal UCI artwork fits without forcing the rest of the school list back into oversized image cards.
+
+### Session 64qm (Restore small image school logos)
+- **`src/components/UniversityLogo.tsx`** — Restored actual image-logo rendering for all supported school logo assets instead of colored initials, while keeping the text fallback only for schools without an asset.
+- **`src/screens/UniversitySelectionScreen.tsx`** — Standardized the school-logo slot to a small contained image area so UCI, UMD, Cornell, Purdue, and UIUC logos sit on the white card without oversized cropping.
+
+### Session 64qn (Remove UCI checkerboard background)
+- **`assets/uci-logo-white.png`** — Removed the baked-in light checkerboard background pixels from the supplied UCI PNG by making them transparent, leaving only the UCI seal-and-wordmark artwork visible on white cards.
+
+### Session 64qo (Use school_terms for term discovery)
+- **`App.tsx`** — Changed initial seeded-term selection to read the small `school_terms` metadata table first instead of scanning the large `sections` table, falling back only when metadata lookup fails.
+- **`src/screens/TimetableScreen.tsx`** — Changed Add Quarter availability and prefetch caching to load seeded terms from `school_terms` in one query instead of running per-term `sections` count checks.
+- **`scripts/seed-sections.js` and `scripts/seed-summer.js`** — Added mandatory UCI `school_terms` and `school_departments` metadata upserts after each seed run so future UCI backfills publish the term/dept “table of contents” the app now reads.
+
+### Session 64qp (Guarantee section-backed terms still show)
+- **`App.tsx`** — Changed seeded-term resolution to use the union of `school_terms` metadata and actual `sections` checks, so a term present in course data is still selected even if metadata is missing or incomplete.
+- **`src/screens/TimetableScreen.tsx`** — Updated Add Quarter and seeded-term prefetch to include every term found by `sections` count checks in addition to `school_terms`, and expanded candidate discovery back to 2019 so older seeded data can appear.
+
+### Session 64qq (Refresh add-quarter terms on open)
+- **`src/screens/TimetableScreen.tsx`** — Removed the early return from the cached Add Quarter path so opening the sheet always reloads seeded terms from the metadata-plus-sections source of truth, preventing stale empty caches from hiding terms that exist in the database.

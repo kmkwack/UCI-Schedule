@@ -651,15 +651,27 @@ export default function HomeScreen({
         } catch {}
       }
 
-      const { data: requestRows, error: requestError } = await supabase
+      let { data: requestRows, error: requestError } = await supabase
         .from('friend_requests')
         .select('sender_id, receiver_id, status')
         .eq('school', school)
         .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
 
       if (cancelled) return;
+      if (requestError && isMissingSchoolColumnError(requestError)) {
+        const fallback = await supabase
+          .from('friend_requests')
+          .select('sender_id, receiver_id, status')
+          .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+        requestRows = fallback.data;
+        requestError = fallback.error;
+      }
+
+      if (cancelled) return;
       if (requestError) {
-        console.error('Failed to load classmates for home:', requestError);
+        if (!isMissingSchoolColumnError(requestError)) {
+          console.error('Failed to load classmates for home:', requestError);
+        }
         return;
       }
 

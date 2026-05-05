@@ -1,24 +1,9 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Keyboard, type ImageSourcePropType } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getSchoolConfig, SUPPORTED_UNIVERSITIES, type University } from '../data/schools';
-
-const UNIVERSITY_LOGOS: Partial<Record<string, ImageSourcePropType>> = {
-  uci: require('../../assets/uci-logo-white.png'),
-  umd: require('../../assets/umd-logo.png'),
-  cornell: require('../../assets/cornell-logo-white.png'),
-  purdue: require('../../assets/purdue-logo-white.png'),
-  uiuc: require('../../assets/uiuc-logo-white.png'),
-};
-
-const UNIVERSITY_LOGO_SIZES: Record<string, { width: number; height: number }> = {
-  uci: { width: 78, height: 22 },
-  umd: { width: 66, height: 34 },
-  cornell: { width: 72, height: 26 },
-  purdue: { width: 74, height: 22 },
-  uiuc: { width: 74, height: 20 },
-};
+import UniversityLogo from '../components/UniversityLogo';
 
 type Props = {
   onBack: () => void;
@@ -81,7 +66,6 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
             const isSelected = selected?.id === uni.id;
             const schoolConfig = getSchoolConfig(uni.name);
             const accent = schoolConfig.accent;
-            const logoSize = UNIVERSITY_LOGO_SIZES[uni.id] ?? { width: 66, height: 34 };
             return (
               <TouchableOpacity
                 key={uni.id}
@@ -91,8 +75,9 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
                 }}
                 activeOpacity={0.85}
                 style={{
-                  flexDirection: 'row', alignItems: 'center',
-                  height: 92,
+                  minHeight: 88,
+                  flexDirection: 'row',
+                  alignItems: 'center',
                   paddingHorizontal: 16,
                   paddingVertical: 14,
                   borderRadius: 16,
@@ -102,29 +87,15 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
                   backgroundColor: isSelected ? `${accent}10` : 'white',
                 }}
               >
-                {/* Logo */}
-                <View style={{
-                  width: 84, height: 56, borderRadius: 14,
-                  backgroundColor: UNIVERSITY_LOGOS[uni.id] ? 'white' : `${accent}12`,
-                  alignItems: 'center', justifyContent: 'center',
-                  borderWidth: 1,
-                  borderColor: UNIVERSITY_LOGOS[uni.id] ? '#edf1f7' : `${accent}22`,
-                  marginRight: 14,
-                  overflow: 'hidden',
-                }}>
-                  {UNIVERSITY_LOGOS[uni.id] ? (
-                    <Image
-                      source={UNIVERSITY_LOGOS[uni.id]}
-                      style={logoSize}
-                      resizeMode="contain"
-                    />
-                  ) : (
-                    <Text style={{ color: accent, fontWeight: '900', fontSize: 18 }}>{uni.logo}</Text>
-                  )}
-                </View>
+                <UniversityLogo
+                  university={uni}
+                  width={118}
+                  height={50}
+                  marginRight={14}
+                />
 
                 {/* Info */}
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, paddingRight: isSelected ? 10 : 0 }}>
                   <Text
                     numberOfLines={1}
                     ellipsizeMode="tail"

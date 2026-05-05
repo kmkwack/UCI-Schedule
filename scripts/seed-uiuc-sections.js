@@ -8,6 +8,7 @@
 //   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/seed-uiuc-sections.js Fall 2026 CS,MATH
 //   UIUC_FETCH_RETRIES=1 UIUC_RETRY_DELAY_MS=5000 node scripts/seed-uiuc-sections.js Spring 2019 CS
 //   DRY_RUN=1 node scripts/seed-uiuc-sections.js Fall 2026 CS
+//   node scripts/retry-uiuc-failed-subjects.js # retries known failed UIUC subjects
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { createClient } = require('@supabase/supabase-js');
@@ -170,10 +171,51 @@ function extractCourseDescription(html) {
 }
 
 function parseSectionData(html) {
-  const match = html.match(/var\s+sectionDataObj\s*=\s*(\[[\s\S]*?\]);/);
-  if (!match) return [];
+  const marker = html.match(/var\s+sectionDataObj\s*=/);
+  if (!marker) return [];
+  const arrayStart = html.indexOf('[', marker.index);
+  if (arrayStart === -1) return [];
+
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+  let arrayEnd = -1;
+
+  for (let i = arrayStart; i < html.length; i += 1) {
+    const char = html[i];
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '[') depth += 1;
+    if (char === ']') {
+      depth -= 1;
+      if (depth === 0) {
+        arrayEnd = i + 1;
+        break;
+      }
+    }
+  }
+
+  if (arrayEnd === -1) {
+    throw new Error('Could not parse sectionDataObj: missing closing array bracket');
+  }
+
+  const json = html.slice(arrayStart, arrayEnd);
   try {
-    return JSON.parse(match[1]);
+    return JSON.parse(json);
   } catch (error) {
     throw new Error(`Could not parse sectionDataObj: ${error.message}`);
   }
@@ -408,6 +450,7 @@ async function main() {
   await upsertSeedMetadata(subjects, termCode, qKey, total, errors, !SUBJECT_ARG);
 
   console.log(`\nDone. ${total.toLocaleString()} sections, ${errors} subject errors.`);
+  if (errors > 0) process.exitCode = 1;
 }
 
 main().catch((error) => {

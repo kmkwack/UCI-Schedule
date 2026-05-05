@@ -22,7 +22,7 @@ import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
 import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey } from './src/data/courses';
-import { DEFAULT_UNIVERSITY, getAcademicTermForDate, resolveCurrentTerm, schoolFeatureEnabled, universityForName, type University } from './src/data/schools';
+import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, resolveCurrentTerm, schoolFeatureEnabled, universityForName, type University } from './src/data/schools';
 import {
   buildDisplayName,
   DEFAULT_NOTIFICATION_PREFERENCES,
@@ -109,28 +109,39 @@ function parseQuarterKeyValue(key: string): Quarter | null {
 }
 
 async function fetchPreferredSeededQuarter(school: string, preferredKey: string): Promise<Quarter | null> {
-  const { count: preferredCount } = await supabase
-    .from('sections')
-    .select('id', { count: 'exact', head: true })
-    .eq('school', school)
-    .eq('quarter_key', preferredKey);
-
-  if ((preferredCount ?? 0) > 0) return parseQuarterKeyValue(preferredKey);
+  const candidates = buildTermCandidates(school, 2019, new Date().getFullYear() + 2);
+  const seededKeys = new Set<string>();
 
   const { data, error } = await supabase
-    .from('sections')
-    .select('quarter_key')
+    .from('school_terms')
+    .select('quarter_key, section_count')
     .eq('school', school)
-    .limit(5000);
+    .gt('section_count', 0);
 
-  if (error) {
-    console.error('Failed to resolve seeded quarter:', error);
-    return null;
-  }
+  if (error) console.error('Failed to resolve seeded quarter from school_terms:', error);
+  (data ?? []).forEach((row: any) => {
+    if (row.quarter_key) seededKeys.add(row.quarter_key);
+  });
 
-  const seededKeys = [...new Set((data ?? []).map((row: any) => row.quarter_key).filter(Boolean))]
-    .sort((a, b) => b.localeCompare(a));
-  return seededKeys.length > 0 ? parseQuarterKeyValue(seededKeys[0]) : null;
+  const missingCandidates = candidates.filter((term) => !seededKeys.has(quarterKey(term)));
+  const sectionBackedTerms = await Promise.all(
+    missingCandidates.map(async (term) => {
+      const qKey = quarterKey(term);
+      const { count } = await supabase
+        .from('sections')
+        .select('id', { count: 'exact', head: true })
+        .eq('school', school)
+        .eq('quarter_key', qKey);
+      return (count ?? 0) > 0 ? qKey : null;
+    })
+  );
+  sectionBackedTerms.forEach((qKey) => {
+    if (qKey) seededKeys.add(qKey);
+  });
+
+  if (seededKeys.has(preferredKey)) return parseQuarterKeyValue(preferredKey);
+
+  return candidates.reverse().find((term) => seededKeys.has(quarterKey(term))) ?? null;
 }
 
 const REVIEW_ACCOUNT_EMAILS = new Set(['review@classmate.app']);
@@ -383,7 +394,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   const hydrateUserFromSession = (sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> }) => {
     const email = sessionUser.email ?? '';
-    const isReviewAccount = isReviewAccountEmail(email);
     setUserBootstrapLoading(true);
     setUserId(sessionUser.id);
     setUserEmail(email);
@@ -395,12 +405,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     const hydratedUniversity = universityForName(school);
     setSelectedUniversity(hydratedUniversity);
     setSelectedQuarter(getAcademicTermForDate(hydratedUniversity.name, new Date()));
-    if (isReviewAccount) {
-      setForceReviewOnboardingOnce(true);
-      setNeedsFeatureOnboarding(true);
-      setShowNotificationPermissionPrompt(false);
-      setShowBrandIntro(false);
-    }
   };
 
   const clearSignedOutState = () => {
@@ -1757,7 +1761,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     return (
       Constants.easConfig?.projectId ||
       (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ||
-      undefined
+      '29e496cc-1ff6-4471-9d56-e1b9128d7196'
     );
   };
 
@@ -2308,12 +2312,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           borderRadius: 28,
           borderWidth: 1,
           borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.86)',
-          backgroundColor: isDark ? 'rgba(30,30,34,0.72)' : 'rgba(236,242,255,0.80)',
-          shadowColor: '#0f172a',
-          shadowOffset: { width: 0, height: 14 },
-          shadowOpacity: isDark ? 0.28 : 0.16,
-          shadowRadius: 24,
-          elevation: 14,
+          backgroundColor: isDark ? 'rgba(30,30,34,0.72)' : 'rgba(255,255,255,0.86)',
           overflow: 'hidden',
         }}
       >
@@ -2337,7 +2336,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               }
             }}
           >
-            {/* Glass pill — behind tab items so icons render on top */}
+            {/* Active pill */}
             {tabBarReady && (
               <Animated.View
                 pointerEvents="none"
@@ -2347,14 +2346,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
                   bottom: 0,
                   width: tabBarWidthRef.current / 5,
                   borderRadius: 19,
-                  overflow: 'hidden',
                   backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.38)',
                   borderWidth: 1,
                   borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.7)',
-                  shadowColor: '#fff',
-                  shadowOffset: { width: 0, height: 1 },
-                  shadowOpacity: isDark ? 0.06 : 0.35,
-                  shadowRadius: 6,
                   transform: [{ translateX: pillXAnim }, { scale: pillScaleAnim }],
                 }}
               />

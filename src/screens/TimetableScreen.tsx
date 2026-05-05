@@ -147,21 +147,43 @@ async function openDiscordInvite(url: string) {
 
 const seededQuartersCacheBySchool: Record<string, Set<string>> = {};
 
-async function prefetchSeededQuarters(school: string) {
-  if (seededQuartersCacheBySchool[school]) return;
-  const allCandidates = buildTermCandidates(school, 2020, 2026);
-  const results = await Promise.all(
-    allCandidates.map(async (q) => {
+async function loadSeededQuarterKeys(school: string) {
+  const candidates = buildTermCandidates(school, 2019, new Date().getFullYear() + 2);
+  const seededKeys = new Set<string>();
+
+  const { data, error } = await supabase
+    .from('school_terms')
+    .select('quarter_key, section_count')
+    .eq('school', school)
+    .gt('section_count', 0);
+
+  if (error) console.error('Failed to load seeded quarters from school_terms:', error);
+  (data ?? []).forEach((row: any) => {
+    if (row.quarter_key) seededKeys.add(row.quarter_key);
+  });
+
+  const missingCandidates = candidates.filter((term) => !seededKeys.has(quarterKey(term)));
+  const sectionBackedKeys = await Promise.all(
+    missingCandidates.map(async (term) => {
+      const qKey = quarterKey(term);
       const { count } = await supabase
         .from('sections')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('school', school)
-        .eq('quarter_key', quarterKey(q));
-      return (count ?? 0) > 0 ? q : null;
+        .eq('quarter_key', qKey);
+      return (count ?? 0) > 0 ? qKey : null;
     })
   );
-  const seeded = results.filter((q): q is Quarter => q !== null);
-  seededQuartersCacheBySchool[school] = new Set(seeded.map((q) => quarterKey(q)));
+  sectionBackedKeys.forEach((qKey) => {
+    if (qKey) seededKeys.add(qKey);
+  });
+
+  return seededKeys;
+}
+
+async function prefetchSeededQuarters(school: string) {
+  if (seededQuartersCacheBySchool[school]) return;
+  seededQuartersCacheBySchool[school] = await loadSeededQuarterKeys(school);
 }
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
@@ -794,44 +816,16 @@ export default function TimetableScreen({
   async function openAddQuarterModal() {
     const existingQks = new Set(timetables.map((t) => t.quarterKey));
 
-    const allCandidates = buildTermCandidates(school, 2020, 2026);
-
-    // If we already know which quarters are seeded, skip the network call
-    const seededQuartersCache = seededQuartersCacheBySchool[school] ?? null;
-    if (seededQuartersCache) {
-      const available = allCandidates
-        .filter((q) => !existingQks.has(quarterKey(q)) && seededQuartersCache.has(quarterKey(q)))
-        .reverse();
-      const uniqueYears = [...new Set(available.map((q) => q.year))].length;
-      const h = Math.min(360, uniqueYears * 53);
-      contentHeightAnim.setValue(h);
-      yearListHeightRef.current = h;
-      setAddableQuarters(available);
-      triggerAddSheetAnim();
-      setShowAddQuarterModal(true);
-      return;
-    }
+    const allCandidates = buildTermCandidates(school, 2019, new Date().getFullYear() + 2);
 
     setLoadingAddableQuarters(true);
+    setAddableQuarters([]);
     triggerAddSheetAnim();
     setShowAddQuarterModal(true);
 
-    // Filter out quarters the user already has, then check Supabase in parallel
-    const unclaimed = allCandidates.filter((q) => !existingQks.has(quarterKey(q)));
-
-    const results = await Promise.all(
-      unclaimed.map(async (q) => {
-        const { count } = await supabase
-          .from('sections')
-          .select('*', { count: 'exact', head: true })
-          .eq('school', school)
-          .eq('quarter_key', quarterKey(q));
-        return (count ?? 0) > 0 ? q : null;
-      })
-    );
-
-    const seeded = results.filter((q): q is Quarter => q !== null);
-    seededQuartersCacheBySchool[school] = new Set(seeded.map((q) => quarterKey(q)));
+    const seededKeys = await loadSeededQuarterKeys(school);
+    seededQuartersCacheBySchool[school] = seededKeys;
+    const seeded = allCandidates.filter((q) => !existingQks.has(quarterKey(q)) && seededKeys.has(quarterKey(q)));
 
     const uniqueYears = [...new Set(seeded.map((q) => q.year))].length;
     const h = Math.min(360, uniqueYears * 53);

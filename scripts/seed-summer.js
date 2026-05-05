@@ -18,6 +18,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !ANTEATER_API_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const SCHOOL = 'UC Irvine';
 
 const SUMMER_SESSIONS = ['Summer1', 'Summer10wk', 'Summer2'];
 const CONCURRENCY     = 8;
@@ -117,6 +118,39 @@ async function upsertRows(rows) {
   }
 }
 
+async function upsertSeedMetadata(departments, qKey, total, errors) {
+  const now = new Date().toISOString();
+  const uniqueDepartments = [...new Set(departments)].sort();
+
+  const { error: termError } = await supabase.from('school_terms').upsert({
+    school: SCHOOL,
+    quarter_key: qKey,
+    source: 'anteaterapi',
+    source_term_code: qKey,
+    status: errors > 0 ? 'partial' : 'seeded',
+    section_count: total,
+    department_count: uniqueDepartments.length,
+    error_count: errors,
+    last_seeded_at: now,
+  }, { onConflict: 'school,quarter_key' });
+  if (termError) console.error(`  ✗ school_terms upsert failed: ${termError.message}`);
+
+  const departmentRows = uniqueDepartments.map((department) => ({
+    school: SCHOOL,
+    department,
+    dept_name: null,
+    source: 'anteaterapi',
+    active: true,
+    last_seen_at: now,
+  }));
+  if (departmentRows.length > 0) {
+    const { error: departmentsError } = await supabase
+      .from('school_departments')
+      .upsert(departmentRows, { onConflict: 'school,department' });
+    if (departmentsError) console.error(`  ✗ school_departments upsert failed: ${departmentsError.message}`);
+  }
+}
+
 async function runConcurrent(items, worker, concurrency) {
   const queue = [...items];
   const active = new Set();
@@ -133,6 +167,7 @@ async function runConcurrent(items, worker, concurrency) {
 async function seedQuarter(year, quarter, departments) {
   console.log(`\n── ${quarter} ${year} ${'─'.repeat(30)}`);
   let sections = 0, errors = 0;
+  const successfulDepartments = new Set();
   await runConcurrent(departments, async (dept) => {
     try {
       await sleep(REQUEST_DELAY);
@@ -141,6 +176,7 @@ async function seedQuarter(year, quarter, departments) {
         await upsertRows(rows);
         console.log(`  ✓ ${dept.padEnd(12)} ${rows.length} sections`);
         sections += rows.length;
+        successfulDepartments.add(dept);
       }
     } catch (err) {
       console.error(`  ✗ ${dept.padEnd(12)} ${err.message}`);
@@ -148,6 +184,7 @@ async function seedQuarter(year, quarter, departments) {
     }
   }, CONCURRENCY);
   console.log(`  → ${sections.toLocaleString()} sections, ${errors} errors`);
+  await upsertSeedMetadata([...successfulDepartments], `${year}-${quarter}`, sections, errors);
   return { sections, errors };
 }
 

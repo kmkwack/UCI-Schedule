@@ -56,12 +56,12 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
                 paddingHorizontal: 15,
                 paddingVertical: 8,
                 borderRadius: 999,
-                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.8)',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.82)',
                 borderWidth: 1,
-                borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(188,199,221,0.35)',
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(188,199,221,0.34)',
               }}
             >
-              <Text style={{ color: '#4169E1', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }}>
+              <Text style={{ color: colors.brand, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>
                 ORGANIZE CAMPUS LIFE
               </Text>
             </View>
@@ -74,22 +74,7 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
             }}
           >
             <View style={{ alignItems: 'center', marginBottom: 22 }}>
-              <View
-                style={{
-                  padding: 14,
-                  borderRadius: 34,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.5)',
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(188,199,221,0.32)',
-                  shadowColor: '#0f172a',
-                  shadowOffset: { width: 0, height: 16 },
-                  shadowOpacity: isDark ? 0.22 : 0.08,
-                  shadowRadius: 28,
-                  elevation: 6,
-                }}
-              >
-                <ClassMateMonogram isDark={isDark} />
-              </View>
+              <ClassMateMonogram size={132} isDark={isDark} />
 
               <Text
                 style={{
@@ -115,7 +100,7 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
                 }}
               >
                 <Text style={{ color: isDark ? '#edf2ff' : '#16285b' }}>Class</Text>
-                <Text style={{ color: '#4169E1' }}>Mate</Text>
+                <Text style={{ color: colors.brand }}>Mate</Text>
               </Text>
               <Text
                 style={{
@@ -151,15 +136,15 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
                       width: 46,
                       height: 46,
                       borderRadius: 15,
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.68)',
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)',
                       borderWidth: 1,
-                      borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(188,199,221,0.28)',
+                      borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(188,199,221,0.28)',
                       alignItems: 'center',
                       justifyContent: 'center',
                       marginRight: 14,
                     }}
                   >
-                    <Ionicons name={feature.icon} size={20} color="#4169E1" />
+                    <Ionicons name={feature.icon} size={20} color={colors.brand} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
@@ -180,18 +165,13 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
             onPress={onGetStarted}
             activeOpacity={0.92}
             style={{
-              backgroundColor: '#4169E1',
+              backgroundColor: colors.brand,
               borderRadius: 22,
               paddingVertical: 18,
               alignItems: 'center',
               flexDirection: 'row',
               justifyContent: 'center',
               gap: 8,
-              shadowColor: '#4169E1',
-              shadowOffset: { width: 0, height: 12 },
-              shadowOpacity: 0.22,
-              shadowRadius: 22,
-              elevation: 8,
             }}
           >
             <Text style={{ color: 'white', fontSize: 17, fontWeight: '700' }}>Get Started</Text>
@@ -210,7 +190,7 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
               fontSize={9.5}
               lineHeight={13}
               color={colors.textTertiary}
-              linkColor="#4169E1"
+              linkColor={colors.brand}
             />
           </View>
         </View>

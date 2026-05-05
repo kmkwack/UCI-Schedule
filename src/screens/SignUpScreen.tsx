@@ -9,6 +9,7 @@ import Constants from 'expo-constants';
 import { DEFAULT_UNIVERSITY, type University } from '../data/schools';
 import LegalConsentText from '../components/LegalConsentText';
 import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
+import UniversityLogo from '../components/UniversityLogo';
 import { supabase } from '../lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -128,15 +129,9 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
           borderWidth: 1, borderColor: 'rgba(65,105,225,0.18)',
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-            <View style={{
-              width: 60, height: 60, borderRadius: 16,
-              backgroundColor: '#4169E1', alignItems: 'center', justifyContent: 'center',
-              marginRight: 14,
-            }}>
-              <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>{uni.logo}</Text>
-            </View>
-            <View>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: '#111827' }}>{uni.name}</Text>
+            <UniversityLogo university={uni} width={168} height={48} marginRight={14} />
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={2} style={{ fontSize: 17, fontWeight: '700', color: '#111827' }}>{uni.name}</Text>
               <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{uni.location}</Text>
             </View>
           </View>

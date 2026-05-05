@@ -961,13 +961,11 @@ function AboutScreen({ onBack }: { onBack: () => void }) {
       <SubHeader title="About ClassMate" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         <View style={{ alignItems: 'center', paddingVertical: 32 }}>
-          <View style={{ width: 116, height: 94, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-            <Image
-              source={require('../../assets/classmate-logo-approved-transparent.png')}
-              style={{ width: 116, height: 94 }}
-              resizeMode="contain"
-            />
-          </View>
+          <Image
+            source={require('../../assets/classmate-logo-approved.png')}
+            style={{ width: 118, height: 118, marginBottom: 16 }}
+            resizeMode="contain"
+          />
           <Text style={{ fontSize: 26, fontWeight: '800', color: colors.text }}>ClassMate</Text>
           <Text style={{ fontSize: 14, color: colors.textTertiary, marginTop: 4 }}>Version 1.0.0</Text>
           <Text style={{ fontSize: 12, color: colors.border, marginTop: 4 }}>Your Campus Life, Organized</Text>

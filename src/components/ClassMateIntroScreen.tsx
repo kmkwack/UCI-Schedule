@@ -92,25 +92,20 @@ export default function ClassMateIntroScreen({ onComplete }: Props) {
 
   return (
     <Animated.View style={{ flex: 1, opacity: overlayOpacity }}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#08111d' : '#f3f7ff' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ flex: 1, paddingHorizontal: 28, justifyContent: 'center', alignItems: 'center' }}>
           <Animated.View
             style={{
               opacity: logoOpacity,
               transform: [{ scale: logoScale }],
-              width: 154,
-              height: 144,
+              width: 148,
+              height: 148,
               justifyContent: 'center',
               alignItems: 'center',
               marginBottom: 24,
-              shadowColor: '#3D6CFF',
-              shadowOffset: { width: 0, height: 18 },
-              shadowOpacity: 0.32,
-              shadowRadius: 24,
-              elevation: 12,
             }}
           >
-            <ClassMateMonogram size={136} isDark={isDark} />
+            <ClassMateMonogram size={148} isDark={isDark} />
           </Animated.View>
 
           <Animated.View
@@ -121,12 +116,12 @@ export default function ClassMateIntroScreen({ onComplete }: Props) {
               marginBottom: 28,
             }}
           >
-            <Text style={{ fontSize: 14, fontWeight: '700', letterSpacing: 0.8, color: isDark ? '#d7e4ff' : '#5e73a8', marginBottom: 8 }}>
+            <Text style={{ fontSize: 14, fontWeight: '800', letterSpacing: 0.8, color: isDark ? '#d7e4ff' : '#5e73a8', marginBottom: 8 }}>
               ENTERING CLASSMATE
             </Text>
             <Text style={{ fontSize: 48, fontWeight: '800', letterSpacing: -2.2 }}>
               <Text style={{ color: isDark ? '#eef3ff' : '#16285b' }}>Class</Text>
-              <Text style={{ color: '#3D6CFF' }}>Mate</Text>
+              <Text style={{ color: colors.brand }}>Mate</Text>
             </Text>
             <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 15, lineHeight: 23, textAlign: 'center', maxWidth: 320 }}>
               Your campus life is coming together in one place.
@@ -148,22 +143,17 @@ export default function ClassMateIntroScreen({ onComplete }: Props) {
                   flexDirection: 'row',
                   alignItems: 'center',
                   alignSelf: index === 1 ? 'center' : index === 2 ? 'flex-end' : 'flex-start',
-                  backgroundColor: isDark ? 'rgba(15, 23, 42, 0.62)' : 'rgba(255,255,255,0.86)',
+                  backgroundColor: isDark ? 'rgba(15, 23, 42, 0.62)' : 'rgba(255,255,255,0.84)',
                   borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(61,108,255,0.08)',
+                  borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(188,199,221,0.28)',
                   borderRadius: 999,
                   paddingHorizontal: 14,
                   paddingVertical: 10,
                   gap: 8,
-                  shadowColor: '#0f172a',
-                  shadowOffset: { width: 0, height: 10 },
-                  shadowOpacity: 0.08,
-                  shadowRadius: 16,
-                  elevation: 5,
                 }}
               >
-                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(61,108,255,0.14)', alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name={chip.icon} size={16} color="#3D6CFF" />
+                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isDark ? 'rgba(49,168,255,0.18)' : 'rgba(9,107,255,0.14)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name={chip.icon} size={16} color={colors.brand} />
                 </View>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{chip.label}</Text>
               </View>

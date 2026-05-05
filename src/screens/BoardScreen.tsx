@@ -25,11 +25,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Image as ExpoImage } from 'expo-image';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as ImagePicker from 'expo-image-picker';
-import * as MediaLibrary from 'expo-media-library';
-import * as Sharing from 'expo-sharing';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import { campusAliasForId } from '../data/anonymousAliases';
@@ -272,11 +267,9 @@ function BoardAttachmentImage({
   }
 
   return (
-    <ExpoImage
+    <RNImage
       source={{ uri }}
-      contentFit={contentFit}
-      cachePolicy="memory-disk"
-      transition={120}
+      resizeMode={contentFit === 'cover' ? 'cover' : 'contain'}
       onError={() => {
         setFailed(true);
       }}
@@ -812,6 +805,7 @@ export default function BoardScreen({
     if (isImageAttachment(resolvedAttachment)) return;
 
     try {
+      const Sharing = await import('expo-sharing');
       const sharingAvailable = await Sharing.isAvailableAsync();
       if (!sharingAvailable || !FileSystem.cacheDirectory) {
         await Linking.openURL(resolvedAttachment.url);
@@ -875,6 +869,7 @@ export default function BoardScreen({
 
     try {
       setSavingImage(true);
+      const MediaLibrary = await import('expo-media-library');
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Photos access needed', 'Allow photo library access to save this image.');
@@ -892,6 +887,17 @@ export default function BoardScreen({
   }
 
   async function handlePickImages() {
+    let ImagePicker;
+    try {
+      ImagePicker = await import('expo-image-picker');
+    } catch {
+      Alert.alert(
+        'Images need the installed app',
+        'Image attachments are available in the TestFlight app or a development build, but not in this Expo Go preview.'
+      );
+      return;
+    }
+
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Photos access needed', 'Allow photo library access so you can attach images to your post.');
@@ -912,17 +918,24 @@ export default function BoardScreen({
         result.assets.map(async (asset, index) => {
           const fallbackName = `image-${index + 1}.jpg`;
           const originalName = asset.fileName || fallbackName;
+          let localUri = asset.uri;
 
-          const converted = await ImageManipulator.manipulateAsync(asset.uri, [], {
-            compress: 0.9,
-            format: ImageManipulator.SaveFormat.JPEG,
-          });
+          try {
+            const ImageManipulator = await import('expo-image-manipulator');
+            const converted = await ImageManipulator.manipulateAsync(asset.uri, [], {
+              compress: 0.9,
+              format: ImageManipulator.SaveFormat.JPEG,
+            });
+            localUri = converted.uri;
+          } catch {
+            localUri = asset.uri;
+          }
 
           return {
             id: `${Date.now()}-image-${index}-${Math.random().toString(36).slice(2, 8)}`,
             name: jpegNameForImage(originalName, fallbackName),
             type: 'image' as const,
-            localUri: converted.uri,
+            localUri,
             mimeType: 'image/jpeg',
             size: null,
           };

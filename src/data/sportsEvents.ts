@@ -460,10 +460,23 @@ function filterSportsEventsByWindow(events: SportsEvent[], options?: { maxDaysAh
   });
 }
 
-function scheduleYearFromLines(lines: string[]) {
+function scheduleYearFromLines(lines: string[], month?: string) {
   const heading = lines.find((line) => /\b\d{4}\b.*\bSchedule\b/i.test(line));
+  const seasonMatch = heading?.match(/\b(\d{4})\s*[-–]\s*(\d{2}|\d{4})\b/);
+  if (seasonMatch && month) {
+    const startYear = parseInt(seasonMatch[1], 10);
+    const endYear = seasonMatch[2].length === 2
+      ? parseInt(`${String(startYear).slice(0, 2)}${seasonMatch[2]}`, 10)
+      : parseInt(seasonMatch[2], 10);
+    const monthIdx = MONTH_ABBR[month.slice(0, 3)];
+    if (monthIdx !== undefined) return monthIdx <= 7 ? endYear : startYear;
+  }
   const match = heading?.match(/\b(\d{4})\b/);
   return match ? parseInt(match[1], 10) : new Date().getFullYear();
+}
+
+function scheduleDateFromLines(lines: string[], month: string, day: string, timeLabel: string): Date | null {
+  return scheduleDateFromParts(scheduleYearFromLines(lines, month), month, day, timeLabel);
 }
 
 function parseUmdTextScheduleEvents(text: string, page: SchedulePageConfig, options?: SportsFetchOptions) {
@@ -520,11 +533,32 @@ function parseUmdTextScheduleEvents(text: string, page: SchedulePageConfig, opti
 }
 
 function isShortScheduleDateLine(line: string) {
-  return /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+([A-Za-z]{3})\s+(\d{1,2})$/i.test(line);
+  return /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s*([A-Za-z]{3})\.?\s+(\d{1,2})$/i.test(line);
+}
+
+function parseWmtScheduleDateAt(lines: string[], index: number) {
+  const singleLineMatch = lines[index]?.match(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s*([A-Za-z]{3})\.?\s+(\d{1,2})$/i);
+  if (singleLineMatch) {
+    return {
+      month: singleLineMatch[2],
+      day: singleLineMatch[3],
+      nextIndex: index + 1,
+    };
+  }
+
+  const weekdayMatch = lines[index]?.match(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)$/i);
+  const monthDayMatch = lines[index + 1]?.match(/^([A-Za-z]{3})\.?\s+(\d{1,2})$/i);
+  if (!weekdayMatch || !monthDayMatch) return null;
+
+  return {
+    month: monthDayMatch[1],
+    day: monthDayMatch[2],
+    nextIndex: index + 2,
+  };
 }
 
 function isAtVsLine(line: string) {
-  return /^(at(?:#\d+)?|vs\.?(?:#\d+)?)$/i.test(line.trim());
+  return /^(?:#\d+\s*)?(at|vs\.?)(?:\s*#\d+)?$/i.test(line.trim());
 }
 
 function isScheduleTimeLine(line: string) {
@@ -560,20 +594,21 @@ function isSchedulePageNoise(line: string) {
 
 function parseWmtScheduleEvents(text: string, page: SchedulePageConfig, options?: SportsFetchOptions) {
   const lines = htmlToLines(text);
-  const year = scheduleYearFromLines(lines);
-  const startIndex = lines.findIndex((line) => line === '## Schedule Events');
+  const startIndex = lines.findIndex((line) => line.replace(/^#+\s*/, '').trim() === 'Schedule Events');
   if (startIndex < 0) return [];
 
   const scheduleLines = lines.slice(startIndex + 1);
   const events: SportsEvent[] = [];
 
   for (let index = 0; index < scheduleLines.length; index += 1) {
-    const dateLine = scheduleLines[index];
-    const dateMatch = dateLine.match(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+([A-Za-z]{3})\s+(\d{1,2})$/i);
-    if (!dateMatch) continue;
+    const parsedDate = parseWmtScheduleDateAt(scheduleLines, index);
+    if (!parsedDate) continue;
 
-    const nextDateIndex = scheduleLines.findIndex((line, innerIndex) => innerIndex > index && isShortScheduleDateLine(line));
-    const rawBlock = scheduleLines.slice(index + 1, nextDateIndex >= 0 ? nextDateIndex : scheduleLines.length);
+    const nextDateIndex = scheduleLines.findIndex((line, innerIndex) => (
+      innerIndex >= parsedDate.nextIndex
+        && (isShortScheduleDateLine(line) || !!parseWmtScheduleDateAt(scheduleLines, innerIndex))
+    ));
+    const rawBlock = scheduleLines.slice(parsedDate.nextIndex, nextDateIndex >= 0 ? nextDateIndex : scheduleLines.length);
     const block = rawBlock.filter((line) => !isSchedulePageNoise(line));
     if (block.length < 2) continue;
 
@@ -581,7 +616,7 @@ function parseWmtScheduleEvents(text: string, page: SchedulePageConfig, options?
     let isHome = true;
     const marker = block[cursor] ?? '';
     if (isAtVsLine(marker)) {
-      isHome = !marker.toLowerCase().startsWith('at');
+      isHome = !marker.replace(/^#\d+\s*/, '').toLowerCase().startsWith('at');
       cursor += 1;
     }
 
@@ -591,10 +626,12 @@ function parseWmtScheduleEvents(text: string, page: SchedulePageConfig, options?
     if (/^(Canceled|Cancelled|Postponed)$/i.test(timeLabel)) continue;
     if (!opponent || isScheduleResultLine(opponent)) continue;
 
-    const date = scheduleDateFromParts(year, dateMatch[2], dateMatch[3], timeLabel);
+    const date = scheduleDateFromLines(lines, parsedDate.month, parsedDate.day, timeLabel);
     if (!date) continue;
     const event = makeSchedulePageEvent(page.sport, date, timeLabel, opponent, location, isHome);
     if (event) events.push(event);
+
+    if (nextDateIndex >= 0) index = nextDateIndex - 1;
   }
 
   return dedupeSportsEvents(filterSportsEventsByWindow(events, options).sort((a, b) => a.date.getTime() - b.date.getTime()));

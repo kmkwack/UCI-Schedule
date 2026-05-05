@@ -34,6 +34,10 @@ import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import type { ChatTarget } from '../data/messages';
 
+function plainTermLabel(term: Quarter) {
+  return `${term.quarter} ${term.year}`;
+}
+
 type Friend = {
   id: string;
   name: string;
@@ -1284,7 +1288,7 @@ export default function FriendsScreen({
                       <Ionicons name="calendar-outline" size={17} color={colors.textTertiary} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>No classes in {termLabel(selectedQuarter, school, true)}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>No classes in {plainTermLabel(selectedQuarter)}</Text>
                       <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>Add classes to see overlaps here.</Text>
                     </View>
                   </View>
@@ -1544,7 +1548,7 @@ export default function FriendsScreen({
                         }}
                       >
                         <Text style={{ color: active ? colors.brand : colors.text, fontWeight: active ? '700' : '400', fontSize: 14 }}>
-                          {termLabel(q, school, true)}
+                          {plainTermLabel(q)}
                         </Text>
                         {active && <Ionicons name="checkmark" size={16} color={colors.brand} />}
                       </TouchableOpacity>
@@ -1586,7 +1590,7 @@ export default function FriendsScreen({
                     borderWidth: 1, borderColor: colors.border, gap: 4,
                   }}
                 >
-                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{termLabel(friendQuarter, school, true)}</Text>
+                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{plainTermLabel(friendQuarter)}</Text>
                   <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>

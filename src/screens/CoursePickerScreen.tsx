@@ -1095,7 +1095,7 @@ export default function CoursePickerScreen({
             color: '#374151',
           }}
         >
-          {termLabel(selectedQuarter, school, true)}
+          {termLabel(selectedQuarter, school)}
         </Text>
 
         <TouchableOpacity
@@ -1484,7 +1484,7 @@ export default function CoursePickerScreen({
                         <Text style={{ color: '#9ca3af', fontSize: 13, paddingVertical: 8 }}>
                           {selectedDayFilters.length > 0
                             ? 'No sections match selected days'
-                            : `No sections found for ${termLabel(selectedQuarter, school, true)}`}
+                            : `No sections found for ${termLabel(selectedQuarter, school)}`}
                         </Text>
                       ) : (
                         sections.map((course) => {

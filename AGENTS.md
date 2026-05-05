@@ -2305,3 +2305,13 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64rq (Redesign grade picker)
 - **`src/screens/GradesScreen.tsx`** — Reworked the letter-grade picker from a loose wrapping button list into a cleaner bottom sheet with A/B/C/D/F rows, separate non-letter grade chips, and always-visible unit chips for faster grade entry.
+
+### Session 64rr (Remove friend timetable system suffix)
+- **`src/screens/FriendsScreen.tsx`** — Removed the `includeSystem` flag from friend timetable term labels so the friend schedule picker and empty-state copy show `Spring 2026` instead of appending quarter/semester wording.
+
+### Session 64rs (Remove remaining term-system suffixes)
+- **`src/screens/CoursePickerScreen.tsx`** — Removed the remaining `includeSystem` usage from the add-course header and no-results copy so the course picker shows `Spring 2026` instead of `Spring 2026 Quarter`.
+- **`src/screens/FriendsScreen.tsx`** — Added a plain local term formatter for friend timetable dropdown and empty-state labels so those controls cannot append quarter/semester wording from school config.
+
+### Session 64rt (Align Expo SDK package patches)
+- **`package.json` / `package-lock.json`** — Updated Expo SDK 55 companion packages to the expected patch ranges reported by Expo so local runs stop warning about incompatible installed versions.

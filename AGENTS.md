@@ -2281,3 +2281,11 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/screens/CoursePickerScreen.tsx`** — Removed the large spinner/text loading state from course search and department fetch results so the picker stays responsive while results update.
 - **`src/screens/HomeScreen.tsx`** — Replaced passive weather/sports loading copy with neutral empty-state copy so the home screen does not show loading text while background refreshes run.
 - **`src/screens/BoardScreen.tsx`, `src/screens/MessagesScreen.tsx`, `src/screens/FriendsScreen.tsx`, and `src/screens/SettingsScreen.tsx`** — Removed or bypassed passive loading branches in regular browsing flows so screens stay tappable with cached/empty content instead of blocking on spinners.
+
+### Session 64rk (Remove visible system wording)
+- **`src/screens/TimetableScreen.tsx`** — Removed visible `Quarter`/`Semester`-style wording from the term picker and add-term menu, using generic term labels instead so multi-school UI does not expose academic-system copy.
+- **`src/screens/GradesScreen.tsx`** — Removed the GPA scale/source label from the grade trend card and changed visible quarter headings/empty copy to generic term wording so the grades screen no longer shows scale 기준 text or quarter-specific labels.
+
+### Session 64rl (Fix sports event comment school fallback)
+- **`src/screens/HomeScreen.tsx`** — Added missing fallback paths for sports event comment insert/delete when Supabase has not yet exposed the `school` column in schema cache. This matches the existing read fallback and prevents comment actions from failing with the schema-cache error.
+- **`supabase/sql/sports_event_comments_school_repair.sql`** — Added a focused Supabase repair migration that creates/adds/backfills `school` on sports event RSVP/comment tables, fixes the RSVP primary key to include school, recreates school-aware indexes, grants permissions, and reloads PostgREST schema cache.

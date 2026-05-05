@@ -139,7 +139,7 @@ function GpaChart({ history, maxGpa }: { history: { label: string; gpa: number }
   if (history.length === 0) {
     return (
       <View style={{ height: 80, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: colors.textTertiary, fontSize: 13 }}>No past quarter data yet</Text>
+        <Text style={{ color: colors.textTertiary, fontSize: 13 }}>No past term data yet</Text>
       </View>
     );
   }
@@ -732,18 +732,13 @@ export default function GradesScreen({ timetables, userId, school, bottomInset =
         shadowRadius: 20,
         elevation: 5,
       }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>GPA Trend</Text>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary, textAlign: 'right', flexShrink: 1 }}>
-            {gradeScale.sourceLabel}
-          </Text>
-        </View>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 14 }}>GPA Trend</Text>
         <GpaChart history={gpaHistory} maxGpa={gradeScale.maxGpa} />
       </View>
 
-      {/* Current quarter */}
+      {/* Current term */}
       <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 12 }}>
-        Current Quarter
+        Current Term
       </Text>
       <PastQuarterSection
         label={quarterLabel(CURRENT_QUARTER)}
@@ -756,11 +751,11 @@ export default function GradesScreen({ timetables, userId, school, bottomInset =
         defaultExpanded={false}
       />
 
-      {/* Past quarters */}
+      {/* Past terms */}
       {pastQuarterItems.length > 0 && (
         <>
           <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 12 }}>
-            Past Quarters
+            Past Terms
           </Text>
           {pastQuarterItems.map((item, idx) => (
             <PastQuarterSection

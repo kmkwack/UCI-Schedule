@@ -1179,7 +1179,7 @@ export default function HomeScreen({
     ]);
     settleSportsEventComposer(true);
 
-    const { data, error } = await supabase
+    let result = await supabase
       .from('sports_event_comments')
       .insert({
         school,
@@ -1190,7 +1190,21 @@ export default function HomeScreen({
       .select('id, event_id, user_id, content, created_at')
       .single();
 
+    if (result.error && isMissingSchoolColumnError(result.error)) {
+      result = await supabase
+        .from('sports_event_comments')
+        .insert({
+          event_id: event.id,
+          user_id: userId,
+          content,
+        })
+        .select('id, event_id, user_id, content, created_at')
+        .single();
+    }
+
     if (selectedSportsEventRef.current?.id !== event.id) return;
+
+    const { data, error } = result;
 
     if (error) {
       console.warn('Failed to post sports event comment:', error);
@@ -1275,17 +1289,27 @@ export default function HomeScreen({
     setDeletingSportsEventCommentId(comment.id);
     setSportsEventComments((current) => current.filter((item) => item.id !== comment.id));
 
-    const { error } = await supabase
+    let result = await supabase
       .from('sports_event_comments')
       .delete()
       .eq('school', school)
       .eq('id', comment.id)
       .eq('user_id', userId);
 
+    if (result.error && isMissingSchoolColumnError(result.error)) {
+      result = await supabase
+        .from('sports_event_comments')
+        .delete()
+        .eq('id', comment.id)
+        .eq('user_id', userId);
+    }
+
     if (selectedSportsEventRef.current?.id !== event.id) {
       setDeletingSportsEventCommentId(null);
       return;
     }
+
+    const { error } = result;
 
     if (error) {
       console.warn('Failed to delete sports event comment:', error);

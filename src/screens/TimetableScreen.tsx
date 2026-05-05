@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, getBlockColors, normalizeTimetableTheme } from '../data/courses';
-import { academicSystemNoun, buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
+import { buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
 import { getCampusMapLocation, type CampusMapLocation } from '../data/campusLocations';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -249,8 +249,7 @@ export default function TimetableScreen({
   scrollToTopTrigger = 0,
 }: Props) {
   const { colors, isDark } = useTheme();
-  const showSystemInTermPicker = academicSystemNoun(school) === 'quarter';
-  const pickerTermLabel = (term: Quarter) => termLabel(term, school, showSystemInTermPicker);
+  const pickerTermLabel = (term: Quarter) => termLabel(term, school, false);
   const [gridWidth, setGridWidth] = useState(
     Math.max(0, Dimensions.get('window').width - GRID_LEFT_PAD - GRID_OUTER_HORIZONTAL_PADDING)
   );
@@ -1153,7 +1152,7 @@ export default function TimetableScreen({
             {[
               { icon: 'add', label: 'Add Course', onPress: () => { if (timetables.length > 0) { closeAddMenu(); onOpenCoursePicker(); } }, disabled: timetables.length === 0 },
               { icon: 'calendar-outline', label: 'Add Timetable', onPress: () => { closeAddMenu(); onCreateTimetable(); }, disabled: false },
-              { icon: 'earth-outline', label: `Add ${academicSystemNoun(school, true)}`, onPress: () => { closeAddMenu(); setTimeout(() => openAddQuarterModal(), 200); }, disabled: false },
+              { icon: 'earth-outline', label: 'Add Term', onPress: () => { closeAddMenu(); setTimeout(() => openAddQuarterModal(), 200); }, disabled: false },
             ].map((item, i) => (
               <Animated.View
                 key={item.label}
@@ -1204,7 +1203,7 @@ export default function TimetableScreen({
 
               {addableQuarters.length === 0 ? (
                 <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-                  <Text style={{ color: colors.textTertiary, fontSize: 14 }}>No new {academicSystemNoun(school)}s available</Text>
+                  <Text style={{ color: colors.textTertiary, fontSize: 14 }}>No new terms available</Text>
                 </View>
               ) : (
                 <Animated.View style={{ height: contentHeightAnim, overflow: 'hidden' }}>
@@ -1227,7 +1226,7 @@ export default function TimetableScreen({
                             >
                               <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>{year}</Text>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <Text style={{ fontSize: 14, color: colors.textTertiary }}>{count} {academicSystemNoun(school)}{count !== 1 ? 's' : ''}</Text>
+                                <Text style={{ fontSize: 14, color: colors.textTertiary }}>{count} term{count !== 1 ? 's' : ''}</Text>
                                 <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
                               </View>
                             </TouchableOpacity>

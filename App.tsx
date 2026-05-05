@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Easing, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, Easing, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -118,7 +118,7 @@ async function fetchPreferredSeededQuarter(school: string, preferredKey: string)
     .eq('school', school)
     .gt('section_count', 0);
 
-  if (error) console.error('Failed to resolve seeded quarter from school_terms:', error);
+  if (error) console.warn('Failed to resolve seeded quarter from school_terms:', error);
   (data ?? []).forEach((row: any) => {
     if (row.quarter_key) seededKeys.add(row.quarter_key);
   });
@@ -128,10 +128,26 @@ async function fetchPreferredSeededQuarter(school: string, preferredKey: string)
   return candidates.reverse().find((term) => seededKeys.has(quarterKey(term))) ?? null;
 }
 
+const AUTH_VALIDATION_TIMEOUT_MS = 8000;
+const USER_BOOTSTRAP_TIMEOUT_MS = 7000;
+const MESSAGE_BADGE_INITIAL_DELAY_MS = 1000;
+const MESSAGE_BADGE_REFRESH_INTERVAL_MS = 60000;
+const SOCIAL_NOTIFICATION_BOOTSTRAP_DELAY_MS = 8000;
+const SOCIAL_NOTIFICATION_REFRESH_INTERVAL_MS = 120000;
+const REMINDER_RESCHEDULE_DELAY_MS = 4000;
 const REVIEW_ACCOUNT_EMAILS = new Set(['review@classmate.app']);
 
 function isReviewAccountEmail(email: string | null | undefined) {
   return REVIEW_ACCOUNT_EMAILS.has((email ?? '').trim().toLowerCase());
+}
+
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+    Promise.resolve(promise)
+      .then(resolve, reject)
+      .finally(() => clearTimeout(timer));
+  });
 }
 
 type AppContentProps = { themePreference: ThemePreference; onThemeChange: (v: ThemePreference) => void };
@@ -369,6 +385,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [userEmail, setUserEmail] = useState<string>('');
   const [authInitializing, setAuthInitializing] = useState(true);
   const [userBootstrapLoading, setUserBootstrapLoading] = useState(false);
+  const [userBootstrapRequestId, setUserBootstrapRequestId] = useState(0);
   // Ref so the onAuthStateChange closure (created once) always sees current userId.
   const userIdRef = useRef<string | null>(null);
   userIdRef.current = userId;
@@ -376,9 +393,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const suppressNextSignedOutClearRef = useRef(false);
   const pendingAuthUniversityRef = useRef<University | null>(null);
 
+  const requestUserBootstrap = () => {
+    setUserBootstrapLoading(true);
+    setUserBootstrapRequestId((value) => value + 1);
+  };
+
   const hydrateUserFromSession = (sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> }) => {
     const email = sessionUser.email ?? '';
-    setUserBootstrapLoading(true);
+    setForceReviewOnboardingOnce(isReviewAccountEmail(email));
+    requestUserBootstrap();
     setUserId(sessionUser.id);
     setUserEmail(email);
     const metadataSchool =
@@ -411,6 +434,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setSavingOnboarding(false);
     setForceReviewOnboardingOnce(false);
     setDeletingAccount(false);
+    setUserBootstrapRequestId(0);
     setUserBootstrapLoading(false);
     setAuthStack(returnToUniversityAfterSignOutRef.current ? ['welcome', 'university'] : ['welcome']);
     returnToUniversityAfterSignOutRef.current = false;
@@ -420,17 +444,25 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> },
     active = true
   ) => {
-    const { data, error } = await supabase.auth.getUser();
+    let verifiedUser: typeof sessionUser | null = null;
+    let error: unknown = null;
+    try {
+      const result = await withTimeout(supabase.auth.getUser(), AUTH_VALIDATION_TIMEOUT_MS, 'auth session validation');
+      verifiedUser = result.data.user;
+      error = result.error;
+    } catch (caught) {
+      error = caught;
+    }
     if (!active) return;
 
-    if (error || !data.user || data.user.id !== sessionUser.id) {
+    if (error || !verifiedUser || verifiedUser.id !== sessionUser.id) {
       await supabase.auth.signOut();
       clearSignedOutState();
       setAuthInitializing(false);
       return;
     }
 
-    hydrateUserFromSession(data.user);
+    hydrateUserFromSession(verifiedUser);
     setAuthInitializing(false);
   };
 
@@ -442,7 +474,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       if (!active) return;
 
       if (error) {
-        console.error('Failed to restore auth session:', error);
+        console.warn('Failed to restore auth session:', error);
         setAuthInitializing(false);
         return;
       }
@@ -651,7 +683,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       .select('id, conversation_id, sender_id, created_at, deleted_at')
       .in('conversation_id', scopedConversationIds)
       .neq('sender_id', USER_ID)
-      .is('deleted_at', null);
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(500);
 
     if (messageError) {
       if (messageError.code !== 'PGRST205') {
@@ -679,16 +713,19 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }
 
     let cancelled = false;
+    let startupTimer: ReturnType<typeof setTimeout> | null = null;
 
     const refreshUnreadMessages = async () => {
       const count = await loadUnreadMessageCount();
       if (!cancelled) setUnreadMessageCount(count);
     };
 
-    void refreshUnreadMessages();
+    startupTimer = setTimeout(() => {
+      void refreshUnreadMessages();
+    }, MESSAGE_BADGE_INITIAL_DELAY_MS);
     const interval = setInterval(() => {
       void refreshUnreadMessages();
-    }, 30000);
+    }, MESSAGE_BADGE_REFRESH_INTERVAL_MS);
 
     const channel = supabase
       .channel(`message-badge:${USER_ID}`)
@@ -717,6 +754,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
     return () => {
       cancelled = true;
+      if (startupTimer) clearTimeout(startupTimer);
       clearInterval(interval);
       void supabase.removeChannel(channel);
     };
@@ -741,80 +779,99 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const fallback = fallbackProfileFromEmail(userEmail || `student${DEFAULT_UNIVERSITY.domain}`);
       let settingsDetails: Record<string, any> | null | undefined;
 
-      const { data: profileRow, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .eq('school', currentSchool)
-        .maybeSingle();
+      try {
+        const { data: profileRow, error: profileError } = await withTimeout(
+          supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .eq('school', currentSchool)
+            .maybeSingle(),
+          USER_BOOTSTRAP_TIMEOUT_MS,
+          'profile bootstrap'
+        );
 
-      if (profileError) {
-        console.error('Failed to load profile:', profileError);
-      }
+        if (profileError) {
+          console.warn('Failed to load profile:', profileError);
+        }
 
-      const { data: settingsRow, error: settingsError } = await supabase
-        .from('user_settings')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
+        const { data: settingsRow, error: settingsError } = await withTimeout(
+          supabase
+            .from('user_settings')
+            .select('*')
+            .eq('user_id', userId)
+            .maybeSingle(),
+          USER_BOOTSTRAP_TIMEOUT_MS,
+          'settings bootstrap'
+        );
 
-      if (settingsError && settingsError.code !== 'PGRST205') {
-        console.error('Failed to load user settings:', settingsError);
-      }
+        if (settingsError && settingsError.code !== 'PGRST205') {
+          console.warn('Failed to load user settings:', settingsError);
+        }
 
-      if (!active) return;
+        if (!active) return;
 
-      settingsDetails =
-        (settingsRow as Record<string, any> | null | undefined)?.profile_details as Record<string, any> | null | undefined;
-      const forceFeatureOnboarding = forceReviewOnboardingOnce && isReviewAccountEmail(userEmail);
+        settingsDetails =
+          (settingsRow as Record<string, any> | null | undefined)?.profile_details as Record<string, any> | null | undefined;
+        const forceFeatureOnboarding = forceReviewOnboardingOnce && isReviewAccountEmail(userEmail);
 
-      setUserProfile(
-        profileFromSources(
-          (profileRow as Record<string, any> | null | undefined) ?? null,
-          userEmail || fallback.email,
-          settingsDetails
-        )
-      );
-
-      if (!profileRow && !settingsRow) {
+        setUserProfile(
+          profileFromSources(
+            (profileRow as Record<string, any> | null | undefined) ?? null,
+            userEmail || fallback.email,
+            settingsDetails
+          )
+        );
         setNeedsProfileSetup(false);
-        setNeedsFeatureOnboarding(true);
-        setShowNotificationPermissionPrompt(false);
-      } else if (!settingsRow) {
-        setNeedsProfileSetup(false);
-        setNeedsFeatureOnboarding(true);
-        setShowNotificationPermissionPrompt(false);
-      } else if (settingsDetails?.profileSetupComplete === false) {
-        setNeedsProfileSetup(false);
-        setNeedsFeatureOnboarding(true);
-        setShowNotificationPermissionPrompt(false);
-      } else if (hasCompletedProfileSetup(settingsDetails)) {
-        setNeedsProfileSetup(false);
-        if (forceFeatureOnboarding || needsInitialOnboarding(settingsDetails)) {
+
+        if (!profileRow && !settingsRow) {
           setNeedsFeatureOnboarding(true);
           setShowNotificationPermissionPrompt(false);
-        } else {
-          setNeedsFeatureOnboarding(false);
+        } else if (!settingsRow) {
+          setNeedsFeatureOnboarding(true);
           setShowNotificationPermissionPrompt(false);
+        } else if (settingsDetails?.profileSetupComplete === false) {
+          setNeedsFeatureOnboarding(true);
+          setShowNotificationPermissionPrompt(false);
+        } else if (hasCompletedProfileSetup(settingsDetails)) {
+          if (forceFeatureOnboarding || needsInitialOnboarding(settingsDetails)) {
+            setNeedsFeatureOnboarding(true);
+            setShowNotificationPermissionPrompt(false);
+          } else {
+            setNeedsFeatureOnboarding(false);
+            setShowNotificationPermissionPrompt(false);
+          }
+        }
+
+        setUserSettings({
+          timetableVisibility: ((settingsRow as Record<string, any> | null | undefined)?.timetable_visibility as TimetableVisibility | undefined) ?? DEFAULT_USER_SETTINGS.timetableVisibility,
+          boardProfileVisible: settingsDetails?.boardProfileVisible === true,
+          notifications: {
+            ...DEFAULT_NOTIFICATION_PREFERENCES,
+            ...(((settingsRow as Record<string, any> | null | undefined)?.notification_settings as NotificationPreferences | undefined) ?? {}),
+            messages: true,
+          },
+          pushPermissionStatus: ((settingsRow as Record<string, any> | null | undefined)?.push_permission_status as PushPermissionStatus | undefined) ?? DEFAULT_USER_SETTINGS.pushPermissionStatus,
+          language: normalizeLanguagePreference(settingsDetails?.language),
+          timeZone: normalizeTimeZonePreference(settingsDetails?.timeZone),
+          dateFormat: normalizeDateFormatPreference(settingsDetails?.dateFormat),
+        });
+        setExpoPushToken(((settingsRow as Record<string, any> | null | undefined)?.expo_push_token as string | undefined) ?? null);
+      } catch (error) {
+        console.warn('Failed to bootstrap user preferences:', error);
+        if (!active) return;
+        setUserProfile(fallback);
+        setUserSettings(DEFAULT_USER_SETTINGS);
+        setExpoPushToken(null);
+        setNeedsProfileSetup(false);
+        setNeedsFeatureOnboarding(false);
+        setShowNotificationPermissionPrompt(false);
+      } finally {
+        if (active) {
+          pendingAuthUniversityRef.current = null;
+          setUserBootstrapLoading(false);
         }
       }
-
-      setUserSettings({
-        timetableVisibility: ((settingsRow as Record<string, any> | null | undefined)?.timetable_visibility as TimetableVisibility | undefined) ?? DEFAULT_USER_SETTINGS.timetableVisibility,
-        boardProfileVisible: settingsDetails?.boardProfileVisible === true,
-        notifications: {
-          ...DEFAULT_NOTIFICATION_PREFERENCES,
-          ...(((settingsRow as Record<string, any> | null | undefined)?.notification_settings as NotificationPreferences | undefined) ?? {}),
-          messages: true,
-        },
-        pushPermissionStatus: ((settingsRow as Record<string, any> | null | undefined)?.push_permission_status as PushPermissionStatus | undefined) ?? DEFAULT_USER_SETTINGS.pushPermissionStatus,
-        language: normalizeLanguagePreference(settingsDetails?.language),
-        timeZone: normalizeTimeZonePreference(settingsDetails?.timeZone),
-        dateFormat: normalizeDateFormatPreference(settingsDetails?.dateFormat),
-      });
-      setExpoPushToken(((settingsRow as Record<string, any> | null | undefined)?.expo_push_token as string | undefined) ?? null);
-      pendingAuthUniversityRef.current = null;
-      setUserBootstrapLoading(false);
     }
 
     loadUserPreferences();
@@ -822,13 +879,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     return () => {
       active = false;
     };
-  }, [currentSchool, forceReviewOnboardingOnce, userEmail, userId]);
+  }, [currentSchool, forceReviewOnboardingOnce, userBootstrapRequestId, userEmail, userId]);
 
   useEffect(() => {
     if (!userId) return;
 
     let cancelled = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
+    let bootstrapTimerId: ReturnType<typeof setTimeout> | null = null;
 
     const buildLikeKey = (like: LikeNotificationRow) => `${like.target_type}:${like.target_id}:${like.user_id}`;
     const notificationEnabled =
@@ -847,7 +905,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         console.warn(`${label}: network unavailable, will retry quietly.`);
         return;
       }
-      console.error(label, error);
+      console.warn(label, error);
     }
 
     function logSnapshotQueryError(label: string, error: unknown) {
@@ -869,7 +927,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           trigger: null,
         });
       } catch (error) {
-        console.error('Failed to present in-app notification:', error);
+        console.warn('Failed to present in-app notification:', error);
       }
     }
 
@@ -937,14 +995,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             .select('id, conversation_id, sender_id, content, created_at')
             .in('conversation_id', scopedConversationIds)
             .neq('sender_id', userId)
-            .order('created_at', { ascending: true });
+            .order('created_at', { ascending: false })
+            .limit(100);
 
           if (messageError) {
             if (messageError.code !== 'PGRST205') {
               logSnapshotQueryError('Failed to load message notifications:', messageError);
             }
           } else {
-            messageRows = (messageData ?? []) as ConversationMessageNotificationRow[];
+            messageRows = ((messageData ?? []) as ConversationMessageNotificationRow[]).reverse();
           }
           }
         }
@@ -991,6 +1050,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             .in('post_id', postIds)
             .neq('user_id', userId)
             .order('created_at', { ascending: true })
+            .limit(100)
         );
       }
       if (myCommentIdList.length > 0) {
@@ -1002,6 +1062,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             .in('parent_comment_id', myCommentIdList)
             .neq('user_id', userId)
             .order('created_at', { ascending: true })
+            .limit(100)
         );
       }
 
@@ -1188,15 +1249,18 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       seenLikeKeysRef.current = new Set(snapshot.likes.map(buildLikeKey));
     }
 
-    void bootstrapSocialNotificationState().then(() => {
-      if (cancelled) return;
-      intervalId = setInterval(() => {
-        void pollSocialNotifications();
-      }, 30000);
-    });
+    bootstrapTimerId = setTimeout(() => {
+      void bootstrapSocialNotificationState().then(() => {
+        if (cancelled) return;
+        intervalId = setInterval(() => {
+          void pollSocialNotifications();
+        }, SOCIAL_NOTIFICATION_REFRESH_INTERVAL_MS);
+      });
+    }, SOCIAL_NOTIFICATION_BOOTSTRAP_DELAY_MS);
 
     return () => {
       cancelled = true;
+      if (bootstrapTimerId) clearTimeout(bootstrapTimerId);
       if (intervalId) clearInterval(intervalId);
     };
   }, [currentSchool, userId, userSettings.notifications, userSettings.pushPermissionStatus]);
@@ -1205,6 +1269,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     if (!userId) return;
 
     let cancelled = false;
+    let rescheduleTimerId: ReturnType<typeof setTimeout> | null = null;
 
     async function rescheduleReminderNotifications() {
       await Notifications.cancelAllScheduledNotificationsAsync();
@@ -1282,15 +1347,18 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             });
           }
         } catch (error) {
-          console.error('Failed to schedule sports reminders:', error);
+          console.warn('Failed to schedule sports reminders:', error);
         }
       }
     }
 
-    void rescheduleReminderNotifications();
+    rescheduleTimerId = setTimeout(() => {
+      void rescheduleReminderNotifications();
+    }, REMINDER_RESCHEDULE_DELAY_MS);
 
     return () => {
       cancelled = true;
+      if (rescheduleTimerId) clearTimeout(rescheduleTimerId);
     };
   }, [activeCourses, currentSchool, selectedQuarter.quarter, selectedQuarter.year, userId, userSettings]);
 
@@ -1305,21 +1373,21 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
       let { data, error } = await supabase
         .from('timetables')
-        .select('*')
+        .select('id, name, quarter_key, courses, order')
         .eq('user_id', USER_ID)
         .eq('school', currentSchool);
 
       if (error && currentSchool === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(error)) {
         const fallback = await supabase
           .from('timetables')
-          .select('*')
+          .select('id, name, quarter_key, courses, order')
           .eq('user_id', USER_ID);
         data = fallback.data;
         error = fallback.error;
       }
 
       if (cancelled) return;
-      if (error) { console.error('Failed to load timetables:', error); return; }
+      if (error) { console.warn('Failed to load timetables:', error); return; }
 
       const loaded: Timetable[] = (data ?? [])
         .map((row: any, i: number) => ({
@@ -1383,7 +1451,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       });
       error = fallback.error;
     }
-    if (error) console.error('Failed to save timetable:', error);
+    if (error) console.warn('Failed to save timetable:', error);
   }
 
   async function createTimetable(qKey: string, name: string): Promise<Timetable | null> {
@@ -1404,7 +1472,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       error = fallback.error;
     }
 
-    if (error || !data) { console.error('Failed to create timetable:', error); return null; }
+    if (error || !data) { console.warn('Failed to create timetable:', error); return null; }
 
     const created: Timetable = {
       id: data.id,
@@ -1505,7 +1573,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const fallback = await supabase.from('timetables').delete().eq('id', activeTimetable.id);
       error = fallback.error;
     }
-    if (error) { console.error('Failed to delete timetable:', error); return; }
+    if (error) { console.warn('Failed to delete timetable:', error); return; }
 
     const remaining = quarterTimetables.filter((t) => t.id !== activeTimetable.id);
     let updatedTimetables = timetables.filter((t) => t.id !== activeTimetable.id);
@@ -1730,7 +1798,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
     const { error } = await supabase.from('user_settings').upsert(payload);
     if (error) {
-      console.error('Failed to save user settings:', error);
+      console.warn('Failed to save user settings:', error);
       Alert.alert(
         'Could not save settings',
         error.code === 'PGRST205'
@@ -1966,7 +2034,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       if (status === 'denied') return 'denied';
       return 'undetermined';
     } catch (error) {
-      console.error('Failed to request notification permissions:', error);
+      console.warn('Failed to request notification permissions:', error);
       return 'unavailable';
     }
   };
@@ -2050,7 +2118,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   // ── auth screens ─────────────────────────────────────────────────────────────
 
   if (authInitializing) {
-    return <View style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff' }} />;
+    return (
+      <View style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="small" color={colors.brand} />
+      </View>
+    );
   }
 
   if (!userId) {
@@ -2081,7 +2153,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               pendingAuthUniversityRef.current = university;
               setSelectedUniversity(university);
               setSelectedQuarter(getAcademicTermForDate(university.name, new Date()));
-              setUserBootstrapLoading(true);
+              requestUserBootstrap();
               setUserId(id);
               setUserEmail(email);
               setUserProfile(fallbackProfileFromEmail(email));
@@ -2105,9 +2177,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             pendingAuthUniversityRef.current = university;
             setSelectedUniversity(university);
             setSelectedQuarter(getAcademicTermForDate(university.name, new Date()));
-            setUserBootstrapLoading(true);
             setForceReviewOnboardingOnce(shouldForceReviewOnboarding);
             setNeedsFeatureOnboarding(shouldForceReviewOnboarding);
+            requestUserBootstrap();
             setUserId(id);
             setUserEmail(email);
             setUserProfile(fallbackProfileFromEmail(email));
@@ -2123,8 +2195,23 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     return <AuthNavigator stack={authStack} onPop={popAuth} renderScreen={renderAuthScreen} />;
   }
 
-  if (userBootstrapLoading) {
-    return <View style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff' }} />;
+  const renderFeatureOnboarding = () => (
+    <FeatureOnboardingScreen
+      onFinish={handleCompleteFeatureOnboarding}
+      onCompleteNotifications={handleCompleteNotificationPrompt}
+      onBackToUniversity={handleBackToUniversityFromOnboarding}
+      finishing={savingOnboarding}
+      initialProfile={userProfile}
+      userEmail={userEmail}
+      schoolName={selectedUniversity?.name ?? DEFAULT_UNIVERSITY.name}
+      onSaveProfile={handleSaveOnboardingProfile}
+    />
+  );
+  const reviewAccountRequiresOnboarding =
+    isReviewAccountEmail(userEmail) && (forceReviewOnboardingOnce || needsFeatureOnboarding);
+
+  if (reviewAccountRequiresOnboarding) {
+    return renderFeatureOnboarding();
   }
 
   if (showNotificationPermissionPrompt) {
@@ -2142,18 +2229,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   }
 
   if (needsFeatureOnboarding) {
-    return (
-      <FeatureOnboardingScreen
-        onFinish={handleCompleteFeatureOnboarding}
-        onCompleteNotifications={handleCompleteNotificationPrompt}
-        onBackToUniversity={handleBackToUniversityFromOnboarding}
-        finishing={savingOnboarding}
-        initialProfile={userProfile}
-        userEmail={userEmail}
-        schoolName={selectedUniversity?.name ?? DEFAULT_UNIVERSITY.name}
-        onSaveProfile={handleSaveOnboardingProfile}
-      />
-    );
+    return renderFeatureOnboarding();
   }
 
   // ── main app ──────────────────────────────────────────────────────────────────

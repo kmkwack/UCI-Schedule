@@ -1151,7 +1151,7 @@ function ModerationScreen({ school, onBack }: { school: string; onBack: () => vo
           </View>
         </View>
 
-        {loading ? (
+        {false ? (
           <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />
         ) : filteredReports.length === 0 ? (
           <View
@@ -1553,7 +1553,7 @@ function ManageBoardsView({ school, onBack }: { school: string; onBack: () => vo
     <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
       <SubHeader title="Manage Boards" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-        {loading ? (
+        {false ? (
           <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />
         ) : boards.length === 0 ? (
           <View style={{ backgroundColor: colors.card, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: colors.borderSubtle, alignItems: 'center' }}>
@@ -1789,7 +1789,7 @@ function BoardRequestsScreen({ school, onBack }: { school: string; onBack: () =>
           </View>
         </View>
 
-        {loading ? (
+        {false ? (
           <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />
         ) : filtered.length === 0 ? (
           <View style={{ backgroundColor: colors.card, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: colors.borderSubtle, alignItems: 'center' }}>

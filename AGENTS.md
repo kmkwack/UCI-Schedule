@@ -2225,3 +2225,59 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64qt (Make App Store icon opaque)
 - **`assets/icon.png` and `ios/ClassMate/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png`** — Flattened alpha pixels onto a blue background so the iOS App Store large icon has no transparency/alpha channel while keeping in-app ClassMate logo assets transparent.
+
+### Session 64qu (Prevent blank auth bootstrap screen)
+- **`App.tsx`** — Wrapped auth/session and user-preference bootstrap paths in error-safe handling so failed profile/settings loads cannot leave the app stuck on a blank loading screen after switching schools and signing in. Replaced blank auth/bootstrap placeholders with visible loading indicators.
+
+### Session 64qv (Timeout auth bootstrap queries)
+- **`App.tsx`** — Added a small timeout wrapper around session validation and profile/settings bootstrap queries so a stalled Supabase request falls back instead of leaving the app stuck during school-switch sign-in.
+
+### Session 64qw (Repair school-scoped board comments)
+- **`supabase/sql/board_comments_school_repair.sql`** — Added a Supabase repair migration that adds/backfills `school` on board comment, post-like, and comment-like tables, recreates school-aware unique indexes, grants comment permissions, adds own-comment update/delete policies, and updates `delete_own_comment` to stay within the comment's school. This fixes board comments after the app started filtering comments and likes by school.
+
+### Session 64qx (Align Expo SDK patch)
+- **`package.json` and `package-lock.json`** — Updated `expo` from `~55.0.18`/resolved `55.0.19` to `~55.0.20` so Expo's compatibility check stops warning that the installed SDK patch is behind the expected version.
+
+### Session 64qy (Fix school-switch sign-in loading race)
+- **`App.tsx`** — Added a user-bootstrap request counter and routed session hydration, sign-up, and sign-in through it so profile/settings bootstrap reruns even when the same review account signs into a different school with unchanged user id/email. This prevents the `Loading ClassMate...` screen from staying on forever after switching from Cornell review access back to UCI.
+
+### Session 64qz (Replace native iOS launch logo)
+- **`ios/ClassMate/Images.xcassets/SplashScreenLegacy.imageset/image*.png`** — Replaced the leftover native LaunchScreen splash images with the approved ClassMate logo asset so iOS no longer flashes the old pre-React splash logo during the first instant of app launch.
+
+### Session 64ra (Clean gitignore conflict markers)
+- **`.gitignore`** — Removed leftover merge-conflict markers while preserving the existing ignored paths. This keeps repo tooling clean before rebuilding the iOS app with the corrected native splash asset.
+
+### Session 64rb (Rename iOS splash asset to avoid launch cache)
+- **`ios/ClassMate/SplashScreen.storyboard` and `ios/ClassMate/Images.xcassets/SplashScreenClassMate.imageset/`** — Pointed the native launch storyboard at a newly named ClassMate splash image set, with the approved logo copied into all scales. Renaming the asset helps avoid iOS showing a cached `SplashScreenLegacy` launch snapshot after app updates.
+
+### Session 64rc (Lighten startup and background loading)
+- **`App.tsx`** — Deferred non-critical unread badge, social notification polling, and reminder scheduling work until after the first screen has time to render; reduced auth/profile/settings timeout windows; limited background message/comment notification queries; and narrowed timetable startup selects to only the columns the app uses. This keeps login and app start from competing with heavy background Supabase work.
+- **`src/screens/CoursePickerScreen.tsx`** — Stopped scanning the large `sections` table for departments when local or `school_departments` metadata already exists, and delayed ClassMate saved-count aggregation until the user actually searches or chooses a category. This makes opening Add Class much lighter.
+- **`src/screens/HomeScreen.tsx`** — Added a weather cache TTL, deferred sports refresh and classmate matching, and downgraded non-fatal home/social errors to warnings so background cards no longer overload startup or trigger development red screens.
+- **`src/screens/TimetableScreen.tsx`** — Downgraded seeded-term metadata failures to warnings because Add Quarter can stay usable without surfacing a development error overlay.
+
+### Session 64rd (Remove unused legacy splash asset)
+- **`ios/ClassMate/Images.xcassets/SplashScreenLegacy.imageset/`** — Deleted the unused legacy launch-screen image set after the storyboard moved to `SplashScreenClassMate`, so the next native build no longer packages a stale splash asset that could be mistaken for the active app launch logo.
+
+### Session 64re (Keep visible loading responsive)
+- **`App.tsx` and `src/screens/HomeScreen.tsx`** — Shortened the visible-facing startup deferrals for unread badges, sports refresh, and home classmate matching so the app still gets lighter background behavior without making user-facing cards feel intentionally slower.
+
+### Session 64rf (Remove review-account onboarding force)
+- **`App.tsx`** — Removed the review-account-specific onboarding override so existing review accounts no longer get forced back into the feature onboarding screen after sign-in or school switching. Onboarding now appears only for genuinely new/incomplete profiles based on saved user settings.
+
+### Session 64rg (Restore review-account onboarding)
+- **`App.tsx`** — Restored the review-account-specific onboarding path for `review@classmate.app` so App Review sees the onboarding flow immediately after sign-in, while normal returning accounts still skip onboarding unless their saved setup is incomplete.
+
+### Session 64rh (Block main app before review onboarding)
+- **`App.tsx`** — Added a render-level review-account guard before the bootstrap loading and main-app branches, and set the review-onboarding flag before bootstrap starts. This prevents the home screen from rendering even briefly before the App Review onboarding flow appears.
+
+### Session 64ri (Remove blocking board loading)
+- **`src/screens/BoardScreen.tsx`** — Removed the large `sections` table scan from department-board discovery and switched the department list to local school metadata plus the lightweight `school_departments` table. This makes department boards appear immediately instead of waiting on a full course-data scan.
+- **`src/screens/BoardScreen.tsx`** — Removed passive loading indicators from board posts and department-board picker, capped the initial post refresh to the latest 100 posts, and kept cached/empty UI interactive while refreshes happen in the background.
+- **`App.tsx`** — Removed the full-screen `Loading ClassMate...` branch for normal signed-in users so profile/settings bootstrap no longer blocks the main app; review accounts are still intercepted by the onboarding guard before main app render.
+
+### Session 64rj (Keep screens interactive during refresh)
+- **`src/screens/TimetableScreen.tsx`** — Changed Add Quarter to open immediately with cached term data when available and removed the visible loading state from the term picker.
+- **`src/screens/CoursePickerScreen.tsx`** — Removed the large spinner/text loading state from course search and department fetch results so the picker stays responsive while results update.
+- **`src/screens/HomeScreen.tsx`** — Replaced passive weather/sports loading copy with neutral empty-state copy so the home screen does not show loading text while background refreshes run.
+- **`src/screens/BoardScreen.tsx`, `src/screens/MessagesScreen.tsx`, `src/screens/FriendsScreen.tsx`, and `src/screens/SettingsScreen.tsx`** — Removed or bypassed passive loading branches in regular browsing flows so screens stay tappable with cached/empty content instead of blocking on spinners.

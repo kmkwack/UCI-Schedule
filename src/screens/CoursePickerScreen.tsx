@@ -391,6 +391,7 @@ export default function CoursePickerScreen({
 
   const hasSelectedDepartments = selectedDepts.length > 0;
   const hasSelectedCategory = hasSelectedDepartments || !!selectedGE;
+  const shouldLoadSavedCounts = hasSelectedCategory || searchText.trim().length >= 2;
   const selectedDeptKey = selectedDepts.join('|');
   const isUciSchool = schoolConfig.id === 'uci';
   const localDepartmentOptions = useMemo(() => departmentsForSchoolId(schoolConfig.id), [schoolConfig.id]);
@@ -409,6 +410,7 @@ export default function CoursePickerScreen({
 
     void (async () => {
       const departmentsSet = new Set<string>(instantDepartments);
+      let hasAuthoritativeDepartments = departmentsSet.size > 0;
       const { data: departmentRows, error: departmentError } = await supabase
         .from('school_departments')
         .select('department')
@@ -421,6 +423,7 @@ export default function CoursePickerScreen({
         departmentRows.forEach((row: any) => {
           if (row.department) departmentsSet.add(row.department);
         });
+        hasAuthoritativeDepartments = departmentsSet.size > 0;
         if (departmentsSet.size > 0) {
           const departments = [...departmentsSet].sort((a, b) => a.localeCompare(b));
           departmentMemoryCache.set(school, departments);
@@ -462,19 +465,21 @@ export default function CoursePickerScreen({
         }
       }
 
-      await scanSectionDepartments(qk);
+      if (!hasAuthoritativeDepartments) {
+        await scanSectionDepartments(qk);
+      }
 
       // If the selected term has no rows yet, still show the school's departments
       // so the picker is not blank while the user switches to a seeded term.
       // For supported schools with local indexes, avoid scanning every historical
       // row; seeders should backfill school_departments as the long-term source.
-      if (!cancelled && selectedTermDepartmentCount === 0 && localDepartmentOptions.length === 0) {
+      if (!cancelled && !hasAuthoritativeDepartments && selectedTermDepartmentCount === 0 && localDepartmentOptions.length === 0) {
         await scanSectionDepartments();
       }
 
       if (cancelled) return;
       if (departmentsSet.size === 0 && (departmentError || sectionError)) {
-        console.error('Failed to load departments:', departmentError ?? sectionError);
+        console.warn('Failed to load departments:', departmentError ?? sectionError);
         setAvailableDepartments([]);
         return;
       }
@@ -529,6 +534,12 @@ export default function CoursePickerScreen({
   }, [searchText, hasSelectedCategory, selectedQuarter, school]);
 
   useEffect(() => {
+    if (!shouldLoadSavedCounts || !userId) {
+      setSavedCountCache({});
+      setSavedByCurrentUserSectionIds(new Set());
+      return;
+    }
+
     const qk = quarterKey(selectedQuarter);
     let cancelled = false;
 
@@ -541,7 +552,7 @@ export default function CoursePickerScreen({
 
       if (cancelled) return;
       if (error) {
-        console.error('Failed to load ClassMate saved counts:', error);
+        console.warn('Failed to load ClassMate saved counts:', error);
         setSavedCountCache({});
         setSavedByCurrentUserSectionIds(new Set());
         return;
@@ -573,7 +584,7 @@ export default function CoursePickerScreen({
     return () => {
       cancelled = true;
     };
-  }, [selectedQuarter, school, userId]);
+  }, [selectedQuarter, school, shouldLoadSavedCounts, userId]);
 
   // Fetch courses from Supabase when one or more departments are selected
   useEffect(() => {
@@ -605,7 +616,7 @@ export default function CoursePickerScreen({
           .eq('quarter_key', qk)
           .order('code', { ascending: true });
         if (cancelled) return;
-        if (error) { console.error('Supabase fetch failed:', error); return; }
+        if (error) { console.warn('Supabase fetch failed:', error); return; }
         const { catalog, sections } = buildCatalogFromRows(data ?? []);
         setCatalogCourses(catalog);
         setSectionsMap(sections);
@@ -647,7 +658,7 @@ export default function CoursePickerScreen({
           .eq('quarter_key', qk)
           .contains('ge_categories', [selectedGE]);
         if (cancelled) return;
-        if (error) { console.error('GE fetch failed:', error); return; }
+        if (error) { console.warn('GE fetch failed:', error); return; }
         const { catalog, sections } = buildCatalogFromRows(data ?? []);
         setCatalogCourses(catalog);
         setSectionsMap(sections);
@@ -711,7 +722,7 @@ export default function CoursePickerScreen({
       .eq('section_type', sectionType);
 
     if (error) {
-      console.error('Failed to load ClassMate review summary:', error);
+      console.warn('Failed to load ClassMate review summary:', error);
       setReviewSummaryCache((prev) => ({ ...prev, [cacheKey]: { average: null, count: 0 } }));
       return;
     }
@@ -1413,22 +1424,13 @@ export default function CoursePickerScreen({
               Search by course name, code, or professor — or select departments below
             </Text>
           </View>
-        ) : (catalogLoading && hasSelectedCategory) || (globalSearchLoading && isGlobalSearch) ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
-            <ActivityIndicator size="large" color={courseAccent} />
-            <Text style={{ color: '#9ca3af', marginTop: 12 }}>
-              {isGlobalSearch
-                ? `Searching "${searchText.trim()}"…`
-                : selectedGE
-                ? `Loading ${GE_CATEGORIES.find(g => g.code === selectedGE)?.label ?? selectedGE} for ${termLabel(selectedQuarter, school, true)}…`
-                : selectedDepts.length === 1
-                ? `Loading ${selectedDepts[0]} courses for ${termLabel(selectedQuarter, school, true)}…`
-                : `Loading ${selectedDepts.length} departments for ${termLabel(selectedQuarter, school, true)}…`}
-            </Text>
-          </View>
         ) : filteredCatalog.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
-            <Text style={{ color: '#9ca3af', fontSize: 15 }}>No courses found</Text>
+            <Text style={{ color: '#9ca3af', fontSize: 15 }}>
+              {(catalogLoading && hasSelectedCategory) || (globalSearchLoading && isGlobalSearch)
+                ? 'Courses will appear here'
+                : 'No courses found'}
+            </Text>
           </View>
         ) : (
           <FlatList

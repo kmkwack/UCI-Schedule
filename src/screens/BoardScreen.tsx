@@ -29,6 +29,8 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import { campusAliasForId } from '../data/anonymousAliases';
 import { colorForDepartment } from '../data/courses';
+import { departmentsForSchoolId } from '../data/schoolDepartments';
+import { getSchoolConfig } from '../data/schools';
 import type { ChatTarget } from '../data/messages';
 import { abbreviateMajor } from '../data/userPreferences';
 
@@ -574,7 +576,6 @@ export default function BoardScreen({
 }: Props) {
   const { colors, isDark } = useTheme();
   const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(false);
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<CommentNode[]>([]);
@@ -610,7 +611,6 @@ export default function BoardScreen({
   const [showDepartmentBoards, setShowDepartmentBoards] = useState(false);
   const [departmentSearch, setDepartmentSearch] = useState('');
   const [departmentCodes, setDepartmentCodes] = useState<string[]>([]);
-  const [departmentsLoading, setDepartmentsLoading] = useState(false);
 
   const SCREEN_W = Dimensions.get('window').width;
   const boardSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
@@ -635,6 +635,8 @@ export default function BoardScreen({
   const settleSelectedPostComposer = useCallback((animated = true) => {
     [0, 80, 180, 340].forEach((delay) => scrollSelectedPostToComposer(animated, delay));
   }, [scrollSelectedPostToComposer]);
+  const schoolConfig = useMemo(() => getSchoolConfig(school), [school]);
+  const localDepartmentOptions = useMemo(() => departmentsForSchoolId(schoolConfig.id), [schoolConfig.id]);
   const departmentBoards = useMemo(() => departmentCodes.map(departmentBoardFor), [departmentCodes]);
   const hotPosts = useMemo(() => {
     return posts
@@ -672,10 +674,11 @@ export default function BoardScreen({
   ).current;
 
   useEffect(() => {
+    setDepartmentCodes(localDepartmentOptions);
     void fetchBoards();
     void fetchDepartmentBoards();
     void fetchPosts();
-  }, [boardAuthorName, boardProfileVisible, school, userId]);
+  }, [boardAuthorName, boardProfileVisible, localDepartmentOptions, school, userId]);
 
   useEffect(() => {
     postsRef.current = posts;
@@ -1013,8 +1016,6 @@ export default function BoardScreen({
   }
 
   async function fetchPosts() {
-    const hadPosts = postsRef.current.length > 0;
-
     try {
       const cached = await AsyncStorage.getItem(postsCacheKey);
       if (cached) {
@@ -1025,16 +1026,10 @@ export default function BoardScreen({
           }));
           postsRef.current = cachedPosts;
           setPosts(cachedPosts);
-          setLoading(false);
           hydrateAttachmentUrlsForPosts(cachedPosts);
-        } catch {
-          if (!hadPosts) setLoading(true);
-        }
-      } else if (!hadPosts) {
-        setLoading(true);
+        } catch {}
       }
     } catch (error) {
-      if (!hadPosts) setLoading(true);
       if (!isNetworkRequestError(error)) console.warn('Failed to read cached board posts:', error);
     }
 
@@ -1043,10 +1038,10 @@ export default function BoardScreen({
         .from('posts')
         .select('*')
         .eq('school', school)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(100);
 
       if (error || !postsData) {
-        setLoading(false);
         if (error && !isNetworkRequestError(error)) console.warn('Failed to refresh board posts:', error);
         return;
       }
@@ -1054,7 +1049,6 @@ export default function BoardScreen({
       if (postsData.length === 0) {
         postsRef.current = [];
         setPosts([]);
-        setLoading(false);
         await AsyncStorage.setItem(postsCacheKey, JSON.stringify([]));
         return;
       }
@@ -1097,11 +1091,9 @@ export default function BoardScreen({
 
       postsRef.current = freshPosts;
       setPosts(freshPosts);
-      setLoading(false);
       await AsyncStorage.setItem(postsCacheKey, JSON.stringify(freshPosts));
       hydrateAttachmentUrlsForPosts(freshPosts);
     } catch (error) {
-      setLoading(false);
       if (!isNetworkRequestError(error)) console.warn('Failed to refresh board posts:', error);
     }
   }
@@ -1157,8 +1149,7 @@ export default function BoardScreen({
   }
 
   async function fetchDepartmentBoards() {
-    setDepartmentsLoading(true);
-    const departmentsSet = new Set<string>();
+    const departmentsSet = new Set<string>(localDepartmentOptions);
 
     try {
       const { data: departmentRows, error: departmentError } = await supabase
@@ -1178,30 +1169,6 @@ export default function BoardScreen({
         });
       }
 
-      const PAGE_SIZE = 1000;
-      let from = 0;
-      while (true) {
-        const { data: sectionRows, error: sectionError } = await supabase
-          .from('sections')
-          .select('department')
-          .eq('school', school)
-          .range(from, from + PAGE_SIZE - 1);
-
-        if (sectionError) {
-          if (!isMissingSchemaError(sectionError) && !isNetworkRequestError(sectionError)) {
-            console.warn('Failed to load section-backed department boards:', sectionError);
-          }
-          break;
-        }
-
-        (sectionRows ?? []).forEach((row: any) => {
-          if (row.department) departmentsSet.add(String(row.department).trim());
-        });
-
-        if (!sectionRows || sectionRows.length < PAGE_SIZE) break;
-        from += PAGE_SIZE;
-      }
-
       const nextDepartments = Array.from(departmentsSet)
         .map((department) => department.trim())
         .filter(Boolean)
@@ -1209,9 +1176,7 @@ export default function BoardScreen({
       setDepartmentCodes(nextDepartments);
     } catch (error) {
       if (!isNetworkRequestError(error)) console.warn('Failed to refresh department boards:', error);
-      setDepartmentCodes([]);
-    } finally {
-      setDepartmentsLoading(false);
+      setDepartmentCodes(localDepartmentOptions);
     }
   }
 
@@ -2446,23 +2411,7 @@ export default function BoardScreen({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {departmentsLoading ? (
-              <View
-                style={{
-                  borderRadius: 18,
-                  padding: 18,
-                  backgroundColor: colors.card,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 10,
-                }}
-              >
-                <ActivityIndicator size="small" color={colors.brand} />
-                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Loading department boards</Text>
-              </View>
-            ) : filteredDepartmentBoards.length === 0 ? (
+            {filteredDepartmentBoards.length === 0 ? (
               <View
                 style={{
                   borderRadius: 18,
@@ -2743,9 +2692,7 @@ export default function BoardScreen({
                       <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 14 }}>
                         Comments ({selectedPostCommentCount})
                       </Text>
-                      {commentsLoading ? (
-                        <ActivityIndicator color={colors.brand} style={{ marginVertical: 16 }} />
-                      ) : comments.length > 0 ? (
+                      {comments.length > 0 ? (
                         comments.map((comment) => renderComment(comment))
                       ) : (
                         <Text style={{ fontSize: 14, color: colors.textTertiary, marginBottom: 18 }}>No comments yet.</Text>
@@ -2946,11 +2893,7 @@ export default function BoardScreen({
                 ))}
               </View>
 
-              {loading ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <ActivityIndicator color={colors.brand} />
-                </View>
-              ) : filteredPosts.length === 0 ? (
+              {filteredPosts.length === 0 ? (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <Ionicons name={isHotBoard(selectedBoard) ? 'flame-outline' : 'clipboard-outline'} size={40} color={colors.border} />
                   <Text style={{ fontSize: 16, color: colors.textTertiary }}>

@@ -1023,7 +1023,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
             </View>
           ) : null}
 
-          {loadingMessages || openingConversation ? (
+          {false ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
               <ActivityIndicator size="small" color={colors.brand} />
               <Text style={{ fontSize: 14, color: colors.textTertiary }}>
@@ -1215,7 +1215,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         </View>
       </View>
 
-      {loadingChats ? (
+      {false ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <ActivityIndicator size="small" color={colors.brand} />
           <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading messages...</Text>

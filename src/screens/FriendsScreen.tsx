@@ -1293,7 +1293,7 @@ export default function FriendsScreen({
             </View>
           </View>
 
-          {friendsLoading ? (
+          {false ? (
             <View style={{ minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
               <Text style={{ fontSize: 15, color: colors.textTertiary }}>Loading classmates...</Text>
             </View>
@@ -1405,7 +1405,7 @@ export default function FriendsScreen({
             </>
           )}
           </ScrollView>
-        ) : friendsLoading ? (
+        ) : false ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
             <Text style={{ fontSize: 15, color: colors.textTertiary }}>Loading requests...</Text>
           </View>
@@ -1513,7 +1513,7 @@ export default function FriendsScreen({
                 minWidth: 160, overflow: 'hidden',
                 opacity: quarterDropdownAnim,
               }}>
-                {fetchingQuarters && friendAvailableQuarters.length === 0 ? (
+                {false ? (
                   <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
                     <Text style={{ color: colors.textSecondary, fontSize: 14 }}>Loading…</Text>
                   </View>

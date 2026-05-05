@@ -108,6 +108,9 @@ const QUARTER_DATES: Record<string, { start: string; end: string }> = {
 };
 
 const RAINY_CODES = new Set([51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99]);
+const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000;
+const HOME_SPORTS_FETCH_DELAY_MS = 250;
+const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
 
 const WMO_DESCRIPTIONS: Record<number, { label: string; icon: ComponentProps<typeof Ionicons>['name'] }> = {
   0: { label: 'Clear Sky', icon: 'sunny-outline' },
@@ -345,7 +348,7 @@ function displayTemperature(tempC: number | null, useCelsius: boolean) {
 }
 
 function weatherInsightText(tempC: number | null, weatherCode: number | null, useCelsius: boolean) {
-  if (tempC === null) return 'Weather is loading for campus.';
+  if (tempC === null) return 'Campus weather will update here.';
   const tempLabel = displayTemperature(tempC, useCelsius);
   if (weatherCode !== null && RAINY_CODES.has(weatherCode)) {
     return `${tempLabel} and wet on campus right now. Umbrella recommended.`;
@@ -449,7 +452,7 @@ export default function HomeScreen({
   const weatherPagerRef = useRef<ScrollView>(null);
   const [activeWeatherIndex, setActiveWeatherIndex] = useState(0);
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
-  const [sportsLoading, setSportsLoading] = useState(true);
+  const [sportsLoading, setSportsLoading] = useState(false);
   const [tempC, setTempC] = useState<number | null>(null);
   const [weatherCode, setWeatherCode] = useState<number | null>(null);
   const [sunriseTime, setSunriseTime] = useState<string | null>(null);
@@ -534,17 +537,29 @@ export default function HomeScreen({
   }, [useCelsius, tempUnitLoaded]);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadWeather() {
       const weatherConfig = getSchoolConfig(school);
       const weatherCacheKey = `weather_cache_${weatherConfig.id}`;
       const cached = await AsyncStorage.getItem(weatherCacheKey);
+      let shouldRefresh = true;
       if (cached) {
-        const parsed = JSON.parse(cached);
-        setTempC(parsed.tempC ?? null);
-        setWeatherCode(parsed.weatherCode ?? null);
-        setSunriseTime(parsed.sunriseTime ?? null);
-        setSunsetTime(parsed.sunsetTime ?? null);
+        try {
+          const parsed = JSON.parse(cached);
+          if (!cancelled) {
+            setTempC(parsed.tempC ?? null);
+            setWeatherCode(parsed.weatherCode ?? null);
+            setSunriseTime(parsed.sunriseTime ?? null);
+            setSunsetTime(parsed.sunsetTime ?? null);
+          }
+          shouldRefresh = Date.now() - Number(parsed.fetchedAt ?? 0) > WEATHER_CACHE_TTL_MS;
+        } catch {
+          shouldRefresh = true;
+        }
       }
+
+      if (!shouldRefresh || cancelled) return;
       try {
         const params = new URLSearchParams({
           latitude: String(weatherConfig.coordinates.latitude),
@@ -561,6 +576,7 @@ export default function HomeScreen({
         const nextWeatherCode = json.current?.weathercode ?? null;
         const nextSunriseTime = json.daily?.sunrise?.[0] ?? null;
         const nextSunsetTime = json.daily?.sunset?.[0] ?? null;
+        if (cancelled) return;
         setTempC(nextTempC);
         setWeatherCode(nextWeatherCode);
         setSunriseTime(nextSunriseTime);
@@ -570,15 +586,20 @@ export default function HomeScreen({
           weatherCode: nextWeatherCode,
           sunriseTime: nextSunriseTime,
           sunsetTime: nextSunsetTime,
+          fetchedAt: Date.now(),
         }));
       } catch {}
     }
 
     void loadWeather();
+    return () => {
+      cancelled = true;
+    };
   }, [school]);
 
   useEffect(() => {
     let cancelled = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function loadSports() {
       const sportsCacheKey = `sports_cache_${school}`;
@@ -590,7 +611,7 @@ export default function HomeScreen({
       setSportsEventRsvp(null);
       setSportsEventGoingCount(0);
       setSportsEventComments([]);
-      setSportsLoading(true);
+      setSportsLoading(false);
 
       if (!schoolFeatureEnabled(school, 'sports')) {
         if (!cancelled) setSportsLoading(false);
@@ -604,19 +625,25 @@ export default function HomeScreen({
         )));
         setSportsLoading(false);
       }
-      try {
-        const events = await fetchSportsEventsForSchool(school, { maxDaysAhead: 7, includePastDays: 0 });
-        const normalizedEvents = events.map(normalizeSportsEventForDisplay);
-        if (cancelled) return;
-        setSportsEvents(normalizedEvents);
-        void AsyncStorage.setItem(sportsCacheKey, JSON.stringify(normalizedEvents));
-      } catch {}
-      if (!cancelled) setSportsLoading(false);
+
+      refreshTimer = setTimeout(() => {
+        void (async () => {
+          try {
+            const events = await fetchSportsEventsForSchool(school, { maxDaysAhead: 7, includePastDays: 0 });
+            const normalizedEvents = events.map(normalizeSportsEventForDisplay);
+            if (cancelled) return;
+            setSportsEvents(normalizedEvents);
+            void AsyncStorage.setItem(sportsCacheKey, JSON.stringify(normalizedEvents));
+          } catch {}
+          if (!cancelled) setSportsLoading(false);
+        })();
+      }, HOME_SPORTS_FETCH_DELAY_MS);
     }
 
     void loadSports();
     return () => {
       cancelled = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
     };
   }, [school]);
 
@@ -641,6 +668,7 @@ export default function HomeScreen({
     }
 
     let cancelled = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function loadClassmates() {
       const cacheKey = `home_classmates_${userId}_${school}_${selectedQuarterKey}_${homeScheduleSignature}`;
@@ -670,7 +698,7 @@ export default function HomeScreen({
       if (cancelled) return;
       if (requestError) {
         if (!isMissingSchoolColumnError(requestError)) {
-          console.error('Failed to load classmates for home:', requestError);
+          console.warn('Failed to load classmates for home:', requestError);
         }
         return;
       }
@@ -700,9 +728,9 @@ export default function HomeScreen({
       ]);
 
       if (cancelled) return;
-      if (profilesError) console.error('Failed to load home classmate profiles:', profilesError);
-      if (settingsError) console.error('Failed to load home classmate visibility:', settingsError);
-      if (timetableError) console.error('Failed to load home classmate timetables:', timetableError);
+      if (profilesError) console.warn('Failed to load home classmate profiles:', profilesError);
+      if (settingsError) console.warn('Failed to load home classmate visibility:', settingsError);
+      if (timetableError) console.warn('Failed to load home classmate timetables:', timetableError);
 
       const profilesById = Object.fromEntries(
         ((profilesData ?? []) as ProfileRow[]).map((row) => [row.id, row])
@@ -750,10 +778,13 @@ export default function HomeScreen({
       void AsyncStorage.setItem(cacheKey, JSON.stringify(matches));
     }
 
-    void loadClassmates();
+    refreshTimer = setTimeout(() => {
+      void loadClassmates();
+    }, HOME_CLASSMATES_FETCH_DELAY_MS);
 
     return () => {
       cancelled = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
     };
   }, [activeCourses, homeScheduleSignature, school, selectedQuarterKey, userId]);
 
@@ -861,7 +892,7 @@ export default function HomeScreen({
 
       if (cancelled) return;
       if (error) {
-        if (error.code !== 'PGRST205' && !isMissingSchoolColumnError(error)) console.error('Failed to load sports event participation:', error);
+        if (error.code !== 'PGRST205' && !isMissingSchoolColumnError(error)) console.warn('Failed to load sports event participation:', error);
         return;
       }
 
@@ -951,7 +982,7 @@ export default function HomeScreen({
         return next;
       });
     } else if (rsvpResult.error.code !== 'PGRST205' && !isMissingSchoolColumnError(rsvpResult.error)) {
-      console.error('Failed to load sports event RSVPs:', rsvpResult.error);
+      console.warn('Failed to load sports event RSVPs:', rsvpResult.error);
     }
 
     if (!commentsResult.error) {
@@ -987,7 +1018,7 @@ export default function HomeScreen({
         createdAt: row.created_at,
       })));
     } else if (commentsResult.error.code !== 'PGRST205' && !isMissingSchoolColumnError(commentsResult.error)) {
-      console.error('Failed to load sports event comments:', commentsResult.error);
+      console.warn('Failed to load sports event comments:', commentsResult.error);
     }
 
     setSportsEventDetailLoading(false);
@@ -1099,7 +1130,7 @@ export default function HomeScreen({
     }
 
     if (result.error) {
-      if (result.error.code !== 'PGRST205') console.error('Failed to save sports event RSVP:', result.error);
+      if (result.error.code !== 'PGRST205') console.warn('Failed to save sports event RSVP:', result.error);
       if (result.error.code !== 'PGRST205') {
         setSportsEventRsvp(previousStatus);
         setSportsEventGoingCount(previousGoingCount);
@@ -1162,7 +1193,7 @@ export default function HomeScreen({
     if (selectedSportsEventRef.current?.id !== event.id) return;
 
     if (error) {
-      console.error('Failed to post sports event comment:', error);
+      console.warn('Failed to post sports event comment:', error);
       setSportsEventComments((current) => current.filter((comment) => comment.id !== optimisticId));
       setSportsEventCommentInput(content);
       setSubmittingSportsEventComment(false);
@@ -1257,7 +1288,7 @@ export default function HomeScreen({
     }
 
     if (error) {
-      console.error('Failed to delete sports event comment:', error);
+      console.warn('Failed to delete sports event comment:', error);
       setSportsEventComments(previousComments);
       Alert.alert(
         'Delete failed',
@@ -1670,7 +1701,7 @@ export default function HomeScreen({
                     {displayTemperature(tempC, useCelsius)}
                   </Text>
                   <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
-                    {weatherCode === null ? 'Loading...' : (WMO_DESCRIPTIONS[weatherCode]?.label ?? 'Clear Sky')}
+                    {weatherCode === null ? 'Campus Weather' : (WMO_DESCRIPTIONS[weatherCode]?.label ?? 'Clear Sky')}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
@@ -1883,7 +1914,7 @@ export default function HomeScreen({
             </View>
           ) : (
             <Text style={{ fontSize: 14, color: colors.textSecondary }}>
-              {sportsLoading ? 'Loading sports events...' : 'No upcoming sports events right now.'}
+              No upcoming sports events right now.
             </Text>
           )}
         </View>

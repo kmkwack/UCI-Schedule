@@ -156,7 +156,7 @@ async function loadSeededQuarterKeys(school: string) {
     .eq('school', school)
     .gt('section_count', 0);
 
-  if (error) console.error('Failed to load seeded quarters from school_terms:', error);
+  if (error) console.warn('Failed to load seeded quarters from school_terms:', error);
   (data ?? []).forEach((row: any) => {
     if (row.quarter_key) seededKeys.add(row.quarter_key);
   });
@@ -314,7 +314,6 @@ export default function TimetableScreen({
 
   const [showAddQuarterModal, setShowAddQuarterModal] = useState(false);
   const [addableQuarters, setAddableQuarters] = useState<Quarter[]>([]);
-  const [loadingAddableQuarters, setLoadingAddableQuarters] = useState(false);
   const [selectedAddYear, setSelectedAddYear] = useState<string | null>(null); // drives header
   const [mountedYear, setMountedYear] = useState<string | null>(null); // keeps quarter list alive during slide-out
   const addYearSlideAnim = useRef(new Animated.Value(Dimensions.get('window').width)).current;
@@ -801,10 +800,17 @@ export default function TimetableScreen({
 
     const allCandidates = buildTermCandidates(school, 2019, new Date().getFullYear() + 1);
 
-    setLoadingAddableQuarters(true);
-    setAddableQuarters([]);
     triggerAddSheetAnim();
     setShowAddQuarterModal(true);
+
+    const cachedSeededKeys = seededQuartersCacheBySchool[school];
+    if (cachedSeededKeys) {
+      setAddableQuarters(
+        allCandidates
+          .filter((q) => !existingQks.has(quarterKey(q)) && cachedSeededKeys.has(quarterKey(q)))
+          .reverse()
+      );
+    }
 
     const seededKeys = await loadSeededQuarterKeys(school);
     seededQuartersCacheBySchool[school] = seededKeys;
@@ -817,7 +823,6 @@ export default function TimetableScreen({
 
     // Show most recent first
     setAddableQuarters(seeded.reverse());
-    setLoadingAddableQuarters(false);
   }
 
   function openSettings() {
@@ -1197,11 +1202,7 @@ export default function TimetableScreen({
                 </TouchableOpacity>
               </View>
 
-              {loadingAddableQuarters ? (
-                <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-                  <Text style={{ color: colors.textTertiary, fontSize: 14 }}>Loading {academicSystemNoun(school)}s...</Text>
-                </View>
-              ) : addableQuarters.length === 0 ? (
+              {addableQuarters.length === 0 ? (
                 <View style={{ paddingVertical: 32, alignItems: 'center' }}>
                   <Text style={{ color: colors.textTertiary, fontSize: 14 }}>No new {academicSystemNoun(school)}s available</Text>
                 </View>

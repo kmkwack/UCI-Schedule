@@ -1516,6 +1516,40 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     await saveTimetable(updated);
   };
 
+  const handleResolveCourseConflicts = async (oldIds: string[], newCourse: Course) => {
+    let target: Timetable | null = activeTimetable;
+
+    if (!target) {
+      const created = await createTimetable(activeKey, 'My Schedule');
+      if (!created) return;
+      target = created;
+    }
+
+    const oldIdSet = new Set(oldIds);
+    let insertedNewCourse = false;
+    const newCourses: Course[] = [];
+
+    target.courses.forEach((existingCourse) => {
+      if (oldIdSet.has(existingCourse.id)) {
+        if (!insertedNewCourse) {
+          newCourses.push(newCourse);
+          insertedNewCourse = true;
+        }
+        return;
+      }
+
+      if (existingCourse.id !== newCourse.id) {
+        newCourses.push(existingCourse);
+      }
+    });
+
+    if (!insertedNewCourse) newCourses.push(newCourse);
+
+    const updated = { ...target, courses: newCourses };
+    setTimetables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    await saveTimetable(updated);
+  };
+
   const openSettingsSheet = () => {
     settingsBackdropAnim.setValue(0);
     settingsSheetAnim.setValue(Dimensions.get('window').height);
@@ -2511,6 +2545,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             school={currentSchool}
             editingCustomCourse={editingCustomCourse}
             onReplaceCourse={handleReplaceCourse}
+            onResolveCourseConflicts={handleResolveCourseConflicts}
             onEditingHandled={() => setEditingCustomCourse(null)}
           />
         </Animated.View>

@@ -2289,3 +2289,13 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64rl (Fix sports event comment school fallback)
 - **`src/screens/HomeScreen.tsx`** — Added missing fallback paths for sports event comment insert/delete when Supabase has not yet exposed the `school` column in schema cache. This matches the existing read fallback and prevents comment actions from failing with the schema-cache error.
 - **`supabase/sql/sports_event_comments_school_repair.sql`** — Added a focused Supabase repair migration that creates/adds/backfills `school` on sports event RSVP/comment tables, fixes the RSVP primary key to include school, recreates school-aware indexes, grants permissions, and reloads PostgREST schema cache.
+
+### Session 64rm (Hide idle board comment composer)
+- **`src/screens/BoardScreen.tsx`** — Changed the post-detail comment composer so it no longer floats above the tab bar while idle. The fixed composer now appears only when adding, replying, editing, or typing; otherwise the comments section shows an inline `Add a comment...` action.
+
+### Session 64rn (Remove hardcoded shared-class quarter label)
+- **`src/screens/FriendsScreen.tsx`** — Replaced the hardcoded `SHARED CLASSES THIS QUARTER` heading with `SHARED CLASSES THIS TERM` so semester-based schools do not show quarter-specific copy.
+
+### Session 64ro (Remove conflicting class atomically)
+- **`src/screens/CoursePickerScreen.tsx`** — Changed conflict detection to collect all overlapping classes and call a dedicated conflict resolver instead of toggling the old and new sections separately.
+- **`App.tsx`** — Added an atomic conflict-resolution update that removes the existing conflicting classes and inserts the new class in one saved timetable update, preventing removed conflicts from reappearing when the new class is later deleted.

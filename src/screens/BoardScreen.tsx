@@ -581,6 +581,7 @@ export default function BoardScreen({
   const [comments, setComments] = useState<CommentNode[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentInput, setCommentInput] = useState('');
+  const [commentComposerOpen, setCommentComposerOpen] = useState(false);
   const [replyingToComment, setReplyingToComment] = useState<{ id: string; authorName: string } | null>(null);
   const [editingComment, setEditingComment] = useState<{ id: string; authorName: string } | null>(null);
   const [showNewPost, setShowNewPost] = useState(false);
@@ -621,9 +622,17 @@ export default function BoardScreen({
   const commentInputRef = useRef<TextInput>(null);
   const postsRef = useRef<Post[]>([]);
   const [boardKeyboardVisible, setBoardKeyboardVisible] = useState(false);
+  const shouldShowCommentComposer =
+    commentComposerOpen ||
+    boardKeyboardVisible ||
+    !!replyingToComment ||
+    !!editingComment ||
+    commentInput.trim().length > 0;
   const commentComposerBottomPadding = boardKeyboardVisible ? 8 : 12;
   const commentComposerBottomMargin = boardKeyboardVisible ? 0 : bottomInset + BOARD_TAB_BAR_CLEARANCE;
-  const selectedPostScrollBottomPadding = boardKeyboardVisible ? 88 : 20;
+  const selectedPostScrollBottomPadding = shouldShowCommentComposer
+    ? (boardKeyboardVisible ? 88 : 112 + bottomInset + BOARD_TAB_BAR_CLEARANCE)
+    : bottomInset + 24;
   const scrollSelectedPostToComposer = useCallback((animated = true, delay = 0) => {
     const run = () => selectedPostScrollRef.current?.scrollToEnd({ animated });
     if (delay > 0) {
@@ -635,6 +644,13 @@ export default function BoardScreen({
   const settleSelectedPostComposer = useCallback((animated = true) => {
     [0, 80, 180, 340].forEach((delay) => scrollSelectedPostToComposer(animated, delay));
   }, [scrollSelectedPostToComposer]);
+  const openSelectedPostCommentComposer = useCallback(() => {
+    setCommentComposerOpen(true);
+    requestAnimationFrame(() => {
+      commentInputRef.current?.focus();
+      settleSelectedPostComposer(true);
+    });
+  }, [settleSelectedPostComposer]);
   const schoolConfig = useMemo(() => getSchoolConfig(school), [school]);
   const localDepartmentOptions = useMemo(() => departmentsForSchoolId(schoolConfig.id), [schoolConfig.id]);
   const departmentBoards = useMemo(() => departmentCodes.map(departmentBoardFor), [departmentCodes]);
@@ -1243,6 +1259,7 @@ export default function BoardScreen({
     setReplyingToComment(null);
     setEditingComment(null);
     setCommentInput('');
+    setCommentComposerOpen(false);
     await loadCommentsForPost(post.id);
   }
 
@@ -1261,6 +1278,7 @@ export default function BoardScreen({
     setReplyingToComment(null);
     setEditingComment(null);
     setCommentInput('');
+    setCommentComposerOpen(false);
     Animated.spring(boardSlideAnim, {
       toValue: 0,
       useNativeDriver: true,
@@ -1324,6 +1342,8 @@ export default function BoardScreen({
     setEditingComment({ id: comment.id, authorName: comment.author_name });
     setReplyingToComment(null);
     setCommentInput(comment.content);
+    setCommentComposerOpen(true);
+    requestAnimationFrame(() => commentInputRef.current?.focus());
   }
 
   async function handleDeleteComment(comment: CommentNode) {
@@ -1418,7 +1438,8 @@ export default function BoardScreen({
       );
       setEditingComment(null);
       setCommentInput('');
-      requestAnimationFrame(() => commentInputRef.current?.focus());
+      setCommentComposerOpen(false);
+      Keyboard.dismiss();
       settleSelectedPostComposer(true);
       return;
     }
@@ -1450,7 +1471,8 @@ export default function BoardScreen({
     );
     setCommentInput('');
     setReplyingToComment(null);
-    requestAnimationFrame(() => commentInputRef.current?.focus());
+    setCommentComposerOpen(false);
+    Keyboard.dismiss();
     settleSelectedPostComposer(true);
     await loadCommentsForPost(selectedPost.id);
     settleSelectedPostComposer(true);
@@ -1691,6 +1713,7 @@ export default function BoardScreen({
       setReplyingToComment(null);
       setEditingComment(null);
       setCommentInput('');
+      setCommentComposerOpen(false);
       setSearch('');
       setSort('recent');
       boardSlideAnim.setValue(SCREEN_W);
@@ -1940,6 +1963,8 @@ export default function BoardScreen({
                   setEditingComment(null);
                   setCommentInput('');
                   setReplyingToComment({ id: comment.id, authorName: comment.author_name });
+                  setCommentComposerOpen(true);
+                  requestAnimationFrame(() => commentInputRef.current?.focus());
                 }}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
               >
@@ -2505,6 +2530,7 @@ export default function BoardScreen({
                     setComments([]);
                     setReplyingToComment(null);
                     setCommentInput('');
+                    setCommentComposerOpen(false);
                   }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
@@ -2697,8 +2723,30 @@ export default function BoardScreen({
                       ) : (
                         <Text style={{ fontSize: 14, color: colors.textTertiary, marginBottom: 18 }}>No comments yet.</Text>
                       )}
+                      {!shouldShowCommentComposer ? (
+                        <TouchableOpacity
+                          onPress={openSelectedPostCommentComposer}
+                          activeOpacity={0.75}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 10,
+                            borderRadius: 18,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            backgroundColor: colors.inputBg,
+                            paddingHorizontal: 14,
+                            paddingVertical: 12,
+                            marginBottom: 18,
+                          }}
+                        >
+                          <Ionicons name="chatbubble-outline" size={17} color={colors.textTertiary} />
+                          <Text style={{ flex: 1, fontSize: 14, color: colors.placeholder }}>Add a comment...</Text>
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
                   </ScrollView>
+                  {shouldShowCommentComposer ? (
                   <View
                     style={{
                       paddingHorizontal: 12,
@@ -2730,6 +2778,8 @@ export default function BoardScreen({
                           onPress={() => {
                             setEditingComment(null);
                             setCommentInput('');
+                            setCommentComposerOpen(false);
+                            Keyboard.dismiss();
                           }}
                         >
                           <Ionicons name="close" size={18} color={colors.textSecondary} />
@@ -2753,7 +2803,15 @@ export default function BoardScreen({
                         <Text style={{ fontSize: 13, color: colors.brand, fontWeight: '600', flex: 1 }}>
                           Replying to {replyingToComment.authorName}
                         </Text>
-                        <TouchableOpacity onPress={() => setReplyingToComment(null)}>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setReplyingToComment(null);
+                            if (!commentInput.trim()) {
+                              setCommentComposerOpen(false);
+                              Keyboard.dismiss();
+                            }
+                          }}
+                        >
                           <Ionicons name="close" size={18} color={colors.brand} />
                         </TouchableOpacity>
                       </View>
@@ -2771,6 +2829,11 @@ export default function BoardScreen({
                         value={commentInput}
                         onChangeText={setCommentInput}
                         onFocus={() => settleSelectedPostComposer(true)}
+                        onBlur={() => {
+                          if (!commentInput.trim() && !replyingToComment && !editingComment) {
+                            setCommentComposerOpen(false);
+                          }
+                        }}
                         placeholder={editingComment ? 'Edit your comment...' : replyingToComment ? 'Write a reply...' : 'Add a comment...'}
                         placeholderTextColor={colors.placeholder}
                         multiline
@@ -2811,6 +2874,7 @@ export default function BoardScreen({
                       </TouchableOpacity>
                     </View>
                   </View>
+                  ) : null}
                   </>
                 );
               })()}

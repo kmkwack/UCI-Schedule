@@ -1151,7 +1151,7 @@ export default function FriendsScreen({
             }}>
               <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 5 }}>
                 <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.2, color: colors.textTertiary }}>
-                  SHARED CLASSES THIS QUARTER
+                  SHARED CLASSES THIS TERM
                 </Text>
               </View>
               {sharedClassGroups.length > 0 ? (

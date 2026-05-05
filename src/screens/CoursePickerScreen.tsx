@@ -53,6 +53,7 @@ type Props = {
   school: string;
   editingCustomCourse?: Course | null;
   onReplaceCourse?: (oldId: string, newCourse: Course) => void;
+  onResolveCourseConflicts?: (oldIds: string[], newCourse: Course) => void;
   onEditingHandled?: () => void;
 };
 
@@ -229,6 +230,7 @@ export default function CoursePickerScreen({
   school,
   editingCustomCourse,
   onReplaceCourse,
+  onResolveCourseConflicts,
   onEditingHandled,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -785,13 +787,13 @@ export default function CoursePickerScreen({
     );
   };
 
-  const isConflict = (candidate: Course) => {
-    if (candidate.time === 'TBA' || candidate.days === 'TBA') return undefined;
+  const getConflicts = (candidate: Course) => {
+    if (candidate.time === 'TBA' || candidate.days === 'TBA') return [];
     const candidateDays = getDaysArray(candidate.days);
     const candidateStart = getCourseStartHour(candidate.time);
     const candidateEnd = getCourseEndHour(candidate.time);
 
-    return activeCourses.find((existing) => {
+    return activeCourses.filter((existing) => {
       if (existing.id === candidate.id) return false;
       if (existing.time === 'TBA' || existing.days === 'TBA') return false;
       const existingDays = getDaysArray(existing.days);
@@ -811,18 +813,26 @@ export default function CoursePickerScreen({
       return;
     }
 
-    const conflictCourse = isConflict(course);
-    if (conflictCourse) {
+    const conflictCourses = getConflicts(course);
+    if (conflictCourses.length > 0) {
+      const conflictLabel = conflictCourses.length === 1
+        ? `'${conflictCourses[0].title}'`
+        : `${conflictCourses.length} existing classes`;
       Alert.alert(
         'Add subject',
-        `This schedule conflicts with '${conflictCourse.title}'. The subject will be removed if you add this. Add this subject?`,
+        `This schedule conflicts with ${conflictLabel}. The existing ${conflictCourses.length === 1 ? 'class' : 'classes'} will be removed from your timetable if you add this. Add this subject?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Add',
             onPress: () => {
-              onToggleCourse(conflictCourse);
-              onToggleCourse(course);
+              if (onResolveCourseConflicts) {
+                onResolveCourseConflicts(conflictCourses.map((conflict) => conflict.id), course);
+              } else if (onReplaceCourse && conflictCourses.length === 1) {
+                onReplaceCourse(conflictCourses[0].id, course);
+              } else {
+                onToggleCourse(course);
+              }
               onFocusCourse(course.id);
               setPreviewCourse(course);
             },

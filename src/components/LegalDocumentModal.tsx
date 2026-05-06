@@ -17,7 +17,7 @@ type LegalDocument = {
 const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
   terms: {
     title: 'Terms of Service',
-    updatedLabel: 'Last updated April 22, 2026',
+    updatedLabel: 'Last updated May 6, 2026',
     sections: [
       {
         heading: 'Eligibility and Acceptance',
@@ -27,7 +27,7 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
       {
         heading: 'What ClassMate Provides',
         body:
-          'ClassMate provides schedule planning, course browsing, grade-tracking tools, reviews, community posts, direct messaging, friend connections, notifications, and related campus-life features. Some features rely on third-party services or school data feeds and may change, be delayed, or become unavailable at any time.',
+          'ClassMate provides schedule planning, course browsing, manually entered grade-tracking tools, assignment deadline checklists, reviews, community posts, direct messaging, friend connections, notifications, and related campus-life features. Some features rely on third-party services, public or school-provided course data feeds, user-provided calendar links, or app-store infrastructure and may change, be delayed, or become unavailable at any time.',
       },
       {
         heading: 'Accounts and Security',
@@ -37,7 +37,22 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
       {
         heading: 'Academic and School Information',
         body:
-          'ClassMate is a convenience and planning tool only. Course listings, enrollment status, grade calculations, reminders, maps, and similar information may be incomplete or inaccurate. Official registration, academic standing, financial obligations, transcripts, and institutional records must always be confirmed through your university’s official systems.',
+          'ClassMate is a convenience and planning tool only. Course listings, public section enrollment counts, enrollment status labels, grade calculations, reminders, maps, and similar information may be incomplete or inaccurate. ClassMate does not replace official registration, learning-management-system, advising, transcript, or registrar systems. Official registration, academic standing, financial obligations, transcripts, and institutional records must always be confirmed through your university’s official systems.',
+      },
+      {
+        heading: 'User-Saved Timetables and ClassMates',
+        body:
+          'ClassMates and shared-class indicators are based on courses that users voluntarily save to their own ClassMate timetables, not on official enrollment rosters. ClassMate does not show everyone enrolled in a course. Shared classes are shown only between accepted friends and only when timetable visibility settings allow sharing. If a user makes their timetable private, their saved timetable and shared-class indicators are not shown to friends.',
+      },
+      {
+        heading: 'LMS Assignment Imports',
+        body:
+          'If you paste a Canvas, Brightspace, Blackboard, Moodle, Sakai, Google Classroom, or other iCal feed link, ClassMate uses that link to import assignment-style calendar deadlines into a checklist. This feature is for deadlines only and does not add class meetings to your timetable. ClassMate does not access LMS rosters, submissions, grades, private course files, or official school records through this feature.',
+      },
+      {
+        heading: 'Grades and Enrollment Counts',
+        body:
+          'Grades in ClassMate are manually entered by you for personal tracking and calculation. They are not imported from your university, Canvas, or any other LMS. Enrollment counts or status labels shown in course browsing come from public or aggregate course/section data when available and do not identify individual students.',
       },
       {
         heading: 'Your Content',
@@ -62,7 +77,7 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
       {
         heading: 'Visibility, Messaging, and Notifications',
         body:
-          'Some information is shared according to the privacy and visibility settings available in the app, such as timetable-sharing preferences and social-notification settings. Direct messages and other social features are provided for convenience and community use, not for emergency communications. Notification timing and delivery are not guaranteed.',
+          'Some information is shared according to the privacy and visibility settings available in the app, such as timetable-sharing preferences, accepted friend connections, board profile visibility, and social-notification settings. Direct messages and other social features are provided for convenience and community use, not for emergency communications. Notification timing and delivery are not guaranteed.',
       },
       {
         heading: 'Third-Party Services',
@@ -88,17 +103,37 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
   },
   privacy: {
     title: 'Privacy Policy',
-    updatedLabel: 'Last updated April 22, 2026',
+    updatedLabel: 'Last updated May 6, 2026',
     sections: [
       {
         heading: 'Overview',
         body:
-          'This Privacy Policy explains how ClassMate collects, uses, stores, and shares information when you use the app. It is written to reflect the app’s current features, including university sign-in, timetable planning, reviews, community posts, friend connections, direct messages, notifications, and support or moderation tools.',
+          'This Privacy Policy explains how ClassMate collects, uses, stores, and shares information when you use the app. It is written to reflect the app’s current features, including university sign-in, timetable planning, manually entered grade tracking, LMS assignment deadline imports, reviews, community posts, friend connections, direct messages, notifications, support, and moderation tools.',
       },
       {
         heading: 'Information We Collect',
         body:
-          'Depending on how you use ClassMate, we may collect information such as your university email address, selected school, profile details you choose to add, timetable data, saved courses, grade-tracking entries, course reviews, posts, comments, direct messages, friend requests, attachment metadata, reports you submit, notification preferences, push-token information, and limited device or app usage information needed to keep the service working.',
+          'Depending on how you use ClassMate, we may collect information such as your university email address, selected school, profile details you choose to add, accepted friend connections and friend requests, timetable visibility settings, user-saved timetable data, saved courses, manually entered grade-tracking entries, course reviews, posts, comments, direct messages, attachment metadata, reports you submit, notification preferences, push-token information, and limited device or app usage information needed to keep the service working.',
+      },
+      {
+        heading: 'Information We Do Not Pull From Schools or LMSs',
+        body:
+          'ClassMate does not pull Canvas rosters, LMS participant lists, official enrollment records, student IDs, transcripts, official grades, Canvas submissions, or registrar records. Shared-class indicators are not based on official school rosters. Course browsing may use public or aggregate course/section data, such as section status or enrollment counts, but those counts do not identify individual students.',
+      },
+      {
+        heading: 'Timetables, ClassMates, and Shared Classes',
+        body:
+          'ClassMates only works between users who have added each other as friends. Shared classes are calculated by comparing courses that each friend voluntarily saved in their own ClassMate timetable. If your timetable visibility is set to private, your timetable and shared-class matches are not visible to friends. ClassMate does not expose a list of everyone enrolled in a class.',
+      },
+      {
+        heading: 'LMS Assignment Calendar Feeds',
+        body:
+          'If you paste an LMS calendar feed link, ClassMate fetches that feed to create assignment deadline checklist items. The current import stores the selected provider, feed link, parsed assignment deadlines, completion state, and last-sync time on your device. It is intended for assignment deadlines only, not class meetings, LMS rosters, Canvas submissions, or official grade data. Disconnecting the calendar removes the local feed link and cached assignment data from the app.',
+      },
+      {
+        heading: 'Grades and GPA Tracking',
+        body:
+          'Grades and GPA calculations in ClassMate are based on values you manually enter for personal planning. They are not imported from your university, Canvas, or any other LMS. If you use grade tracking while signed in, ClassMate may store those manually entered grade values so they can be shown across app sessions.',
       },
       {
         heading: 'How We Use Information',
@@ -108,7 +143,7 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
       {
         heading: 'What Other Users Can See',
         body:
-          'What other users can see depends on the feature and your settings. For example, timetable visibility is controlled through privacy settings, social content is visible to the audience allowed by that feature, reviews are scoped by school, and messages are visible to the participants in the conversation. Information you choose to post, review, message, or share with classmates may be copied, retained, or re-shared by recipients.',
+          'What other users can see depends on the feature and your settings. Accepted friends may see your saved timetable and shared-class matches only when your timetable visibility allows it. Board posts, comments, reviews, and messages are visible according to the audience and participants of those features. Information you choose to post, review, message, or share with friends may be copied, retained, or re-shared by recipients.',
       },
       {
         heading: 'How We Share Information',
@@ -128,12 +163,12 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
       {
         heading: 'Data Retention',
         body:
-          'We keep information for as long as reasonably necessary to provide the app, maintain records of community activity, resolve disputes, enforce our agreements, and meet legal, operational, or safety needs. Some data may remain in backups, logs, or safety records for a limited period after deletion requests or account changes.',
+          'We keep information for as long as reasonably necessary to provide the app, maintain records of community activity, resolve disputes, enforce our agreements, and meet legal, operational, or safety needs. Local assignment calendar feed data remains on your device until you disconnect the feed, clear app data, or delete the app. Some server data may remain in backups, logs, or safety records for a limited period after deletion requests or account changes.',
       },
       {
         heading: 'Your Choices and Requests',
         body:
-          'You can control some information directly in the app, including profile details, timetable visibility, and notification settings. For account-access issues, privacy questions, or deletion requests, use the support contact provided in the app.',
+          'You can control some information directly in the app, including profile details, timetable visibility, board profile exposure, notification settings, friend connections, and LMS calendar feed connection. You can initiate account deletion from Settings; deletion is intended to remove your account and account-related personal data that we are not required to keep. For account-access issues, privacy questions, or deletion requests, use the support contact provided in the app.',
       },
       {
         heading: 'Security',

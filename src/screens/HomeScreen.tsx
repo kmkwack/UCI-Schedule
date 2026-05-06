@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
@@ -179,7 +179,7 @@ const CALENDAR_PROVIDER_OPTIONS: CalendarProviderOption[] = [
 ];
 
 const CANVAS_CALENDAR_SETUP_STEPS = [
-  'Open Canvas in your browser or app.',
+  'Open the Canvas mobile app.',
   'Tap the top-left three-line menu.',
   'Go to Settings.',
   'Tap Subscribe to Calendar Feed, then copy and paste the link here.',
@@ -2479,10 +2479,10 @@ export default function HomeScreen({
                 <Ionicons name="calendar-outline" size={24} color={colors.brand} />
               </View>
               <Text style={{ fontSize: 21, lineHeight: 25, fontWeight: '800', color: colors.text, textAlign: 'center' }}>
-                Connect Calendar
+                Import Assignments
               </Text>
               <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 7 }}>
-                Choose your LMS, paste its calendar feed once, then ClassMate turns deadlines into a checklist.
+                Connect your LMS calendar feed to turn assignment deadlines into a checklist.
               </Text>
               <TouchableOpacity
                 onPress={() => setShowCalendarSetup(true)}
@@ -2495,7 +2495,7 @@ export default function HomeScreen({
                 }}
               >
                 <Text style={{ fontSize: 13, fontWeight: '800', color: 'white' }}>
-                  Add Calendar Feed
+                  Import Assignments
                 </Text>
               </TouchableOpacity>
             </View>
@@ -2776,53 +2776,66 @@ export default function HomeScreen({
         animationType="slide"
         onRequestClose={() => setShowCalendarSetup(false)}
       >
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={() => setShowCalendarSetup(false)}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-          />
-          <View
-            style={{
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              backgroundColor: colors.bg,
-              paddingHorizontal: 18,
-              paddingTop: 10,
-              paddingBottom: Math.max(bottomInset, 18) + 12,
-            }}
-          >
-            <View style={{ alignItems: 'center', paddingBottom: 12 }}>
-              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
-                  Assignment Calendar
-                </Text>
-                <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
-                  Pick your LMS and paste its .ics or iCal feed link to keep deadlines synced on this device.
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowCalendarSetup(false)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 17,
-                  backgroundColor: colors.bgTertiary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}
+          style={{ flex: 1 }}
+        >
+          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => setShowCalendarSetup(false)}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            />
+            <View
+              style={{
+                maxHeight: '88%',
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
+                backgroundColor: colors.bg,
+                overflow: 'hidden',
+              }}
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{
+                  paddingHorizontal: 18,
+                  paddingTop: 10,
+                  paddingBottom: Math.max(bottomInset, 18) + 12,
                 }}
               >
-                <Ionicons name="close" size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
+                <View style={{ alignItems: 'center', paddingBottom: 12 }}>
+                  <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
+                      Import Assignments
+                    </Text>
+                    <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
+                      Pick your LMS and paste its .ics or iCal feed link. ClassMate imports deadlines only, not class meetings.
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setShowCalendarSetup(false)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      backgroundColor: colors.bgTertiary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="close" size={20} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
 
-            <View style={{ marginTop: 18 }}>
-              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary, marginBottom: 9 }}>
-                LMS source
+                <View style={{ marginTop: 18 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary, marginBottom: 9 }}>
+                Assignment source
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {CALENDAR_PROVIDER_OPTIONS.map((provider) => {
@@ -2964,8 +2977,10 @@ export default function HomeScreen({
                 </Text>
               </TouchableOpacity>
             ) : null}
+              </ScrollView>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal

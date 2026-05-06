@@ -279,7 +279,7 @@ function PrivacySecurityScreen({
   }, [initialBoardProfileVisible]);
 
   const options: { value: 'friends' | 'private'; label: string; desc: string }[] = [
-    { value: 'friends', label: 'Friends', desc: 'Only your classmates can see' },
+    { value: 'friends', label: 'Friends', desc: 'Only accepted friends can see your saved timetable' },
     { value: 'private', label: 'Private', desc: 'Only you can see your timetable' },
   ];
 
@@ -910,9 +910,10 @@ function HelpCenterScreen({ onBack }: { onBack: () => void }) {
       { q: 'Can I edit or delete my posts?', a: "Yes! Tap the three dots on your post to edit or delete it. Note that edits will show an 'edited' label for transparency." },
     ]},
     { title: 'Account & Privacy', icon: '🔒', faqs: [
-      { q: 'Who can see my timetable?', a: 'By default, only your classmates (friends) can see your timetable. You can change this in Settings > Privacy & Security > Timetable Visibility.' },
+      { q: 'Who can see my timetable?', a: 'Only accepted friends can see your saved timetable, and only when timetable visibility is set to Friends. Shared classes are calculated from courses each friend saved in ClassMate, not from official school rosters. You can turn sharing off in Settings > Privacy & Security > Timetable Visibility.' },
+      { q: 'Does ClassMate pull Canvas rosters or official grades?', a: 'No. ClassMate does not pull Canvas rosters, official enrollment records, official grades, student IDs, or registrar records. LMS calendar import is for assignment deadlines only, and grades are manually entered by you for personal tracking.' },
       { q: 'How do I change my password?', a: "Since ClassMate uses Google authentication, you'll need to update your password through your Google account settings." },
-      { q: 'Can I delete my account?', a: 'Yes. Go to Settings and contact support to request account deletion. All your data will be permanently removed within 30 days.' },
+      { q: 'Can I delete my account?', a: 'Yes. Use Delete Account in Settings to initiate account deletion. This removes your profile, friends, timetables, manually entered grades, messages, board content, reviews, and uploaded files that ClassMate is not required to keep.' },
     ]},
     { title: 'Troubleshooting', icon: '🔧', faqs: [
       { q: "The app won't load my courses", a: 'Make sure you have a stable internet connection. Try refreshing the page or logging out and back in. If the problem persists, contact support.' },

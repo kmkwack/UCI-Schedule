@@ -2440,3 +2440,13 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sah (Canvas feed setup instructions)
 - **`src/screens/HomeScreen.tsx`** — Added a Canvas-only instruction card to the assignment calendar setup sheet explaining how to open Canvas, use the top-left menu, go to Settings, tap `Subscribe to Calendar Feed`, and paste the copied link. This helps users find the feed before syncing assignments.
+
+### Session 64sai (Avoid keyboard covering calendar link input)
+- **`src/screens/HomeScreen.tsx`** — Wrapped the assignment calendar setup sheet in a `KeyboardAvoidingView` and made the sheet content scrollable. This keeps the LMS feed link input visible and reachable when the phone keyboard opens.
+
+### Session 64saj (Clarify LMS import is for assignments)
+- **`src/screens/HomeScreen.tsx`** — Renamed the LMS calendar connection entry points to `Import Assignments`, clarified that the feed imports deadlines only and not class meetings, and updated the Canvas instructions to explicitly start from the Canvas mobile app.
+
+### Session 64sak (Tighten privacy and FERPA-facing legal copy)
+- **`src/components/LegalDocumentModal.tsx`** — Updated Terms and Privacy Policy dates and content to match the current app model: user-saved timetables, accepted-friend ClassMates sharing, no official rosters or LMS private records, aggregate/public enrollment counts, LMS feeds for assignment deadlines only, and manually entered grade tracking.
+- **`src/screens/SettingsScreen.tsx`** — Clarified timetable visibility wording and Help Center privacy FAQs so shared classes are described as accepted-friend, user-saved timetable comparisons rather than official roster access.

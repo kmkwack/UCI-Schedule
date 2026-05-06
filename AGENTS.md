@@ -2453,3 +2453,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sal (Move sports behind Home hero)
 - **`src/screens/HomeScreen.tsx`** — Moved the Home sports events summary out of the main feed and into the hero carousel as a hidden sports page. The carousel indicator now uses a small trophy icon for the sports page while the main feed jumps from the hero card directly to assignments, keeping assignment deadlines visually prioritized.
+
+### Session 64sam (Show all classes in Home hero timeline)
+- **`src/screens/HomeScreen.tsx`** — Reworked the primary Home hero page to show the total number of classes today instead of separate completed/current/upcoming pages. The `Today's timeline` section now lists every class for the day, with past classes dimmed and greyed out so they read as completed without becoming a separate hero state.

@@ -1176,20 +1176,12 @@ export default function HomeScreen({
   );
 
   const nowHour = now.getHours() + now.getMinutes() / 60;
-  const upcomingClasses = todayCourses.filter((course) => extractStartHour(course.time) > nowHour);
   const completedClasses = todayCourses.filter((course) => extractEndHour(course.time) <= nowHour).length;
-  const currentClass = todayCourses.find((course) => extractStartHour(course.time) <= nowHour && extractEndHour(course.time) >= nowHour) ?? null;
-  const nextClass = upcomingClasses[0] ?? null;
-  const completedCourseList = todayCourses.filter((course) => extractEndHour(course.time) <= nowHour);
-  const upcomingCourseList = todayCourses.filter((course) => extractStartHour(course.time) > nowHour);
   const shouldShowSportsHeroPage = schoolFeatureEnabled(school, 'sports');
-  const scheduleHeroItems: HeroCardItem[] = [
-    ...(completedCourseList.length > 0 ? [{ type: 'completedSummary' as const, courses: completedCourseList }] : []),
-    ...(currentClass ? [{ type: 'course' as const, course: currentClass }] : []),
-    ...(upcomingCourseList.length > 0 ? [{ type: 'upcomingSummary' as const, courses: upcomingCourseList }] : []),
-  ];
   const heroItems: HeroCardItem[] = [
-    ...(scheduleHeroItems.length > 0 ? scheduleHeroItems : [{ type: 'idleSummary' as const }]),
+    todayCourses.length > 0
+      ? { type: 'upcomingSummary' as const, courses: todayCourses }
+      : { type: 'idleSummary' as const },
     ...(shouldShowSportsHeroPage ? [{ type: 'sportsEvents' as const }] : []),
   ];
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
@@ -1721,20 +1713,11 @@ export default function HomeScreen({
   }
 
   useEffect(() => {
-    if (heroItems.length === 0) {
-      setActiveHeroIndex(0);
-      activeHeroIndexRef.current = 0;
-      return;
-    }
-
-    const targetIndex = currentClass
-      ? Math.max(0, heroItems.findIndex((item) => item.type === 'course' && buildCourseMatchKey(item.course) === buildCourseMatchKey(currentClass)))
-      : nextClass
-        ? Math.max(0, heroItems.findIndex((item) => item.type === 'upcomingSummary'))
-        : 0;
-    setActiveHeroIndex(targetIndex);
-    activeHeroIndexRef.current = targetIndex;
-  }, [heroItems.length, currentClass?.id, nextClass?.id]);
+    const maxIndex = Math.max(heroItems.length - 1, 0);
+    if (activeHeroIndexRef.current <= maxIndex) return;
+    setActiveHeroIndex(maxIndex);
+    activeHeroIndexRef.current = maxIndex;
+  }, [heroItems.length]);
 
   function moveHeroTo(nextIndex: number) {
     const boundedNextIndex = clamp(nextIndex, 0, Math.max(heroItems.length - 1, 0));
@@ -2042,14 +2025,8 @@ export default function HomeScreen({
                   : [];
                 const progress = isCurrent
                   ? clamp((now.getTime() - startDate.getTime()) / Math.max(endDate.getTime() - startDate.getTime(), 1), 0, 1)
-                  : item.type === 'completedSummary'
-                    ? 1
                     : 0;
-                const label = item.type === 'completedSummary'
-                  ? 'Completed'
-                  : item.type === 'upcomingSummary'
-                    ? 'Coming up'
-                    : 'Ends in';
+                const label = item.type === 'course' ? 'Ends in' : 'Today';
                 const value = item.type === 'course'
                   ? formatDuration((endDate.getTime() - now.getTime()) / 60000)
                   : `${summaryCourses.length} class${summaryCourses.length === 1 ? '' : 'es'}`;
@@ -2182,12 +2159,17 @@ export default function HomeScreen({
                               </Text>
                             </View>
                             {summaryCourses.map((summaryCourse, index) => {
-                              const summaryCourseAccent = item.type === 'completedSummary'
-                                ? colors.textTertiary
-                                : pastelForCourse(blockColorKey(summaryCourse)).border;
                               const rowStartDate = dateFromHour(now, extractStartHour(summaryCourse.time));
+                              const rowEndDate = dateFromHour(now, extractEndHour(summaryCourse.time));
                               const rowStartClock = formatTimelineClockParts(rowStartDate);
                               const rowLocationLabel = formatHeroTimelineLocation(summaryCourse.location);
+                              const rowIsPast = rowEndDate.getTime() < now.getTime();
+                              const rowIsCurrent = rowStartDate.getTime() <= now.getTime() && rowEndDate.getTime() >= now.getTime();
+                              const summaryCourseAccent = rowIsPast
+                                ? colors.border
+                                : pastelForCourse(blockColorKey(summaryCourse)).border;
+                              const rowPrimaryColor = rowIsPast ? colors.textTertiary : colors.text;
+                              const rowSecondaryColor = rowIsPast ? colors.textTertiary : colors.textSecondary;
                               return (
                                 <View
                                   key={buildCourseMatchKey(summaryCourse)}
@@ -2197,15 +2179,16 @@ export default function HomeScreen({
                                     gap: 7,
                                     paddingTop: index === 0 ? 0 : 7,
                                     paddingBottom: index === summaryCourses.length - 1 ? 0 : 7,
+                                    opacity: rowIsPast ? 0.46 : 1,
                                   }}
                                 >
                                   <View style={{ width: 57 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
-                                      <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
+                                      <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: rowPrimaryColor }}>
                                         {rowStartClock.time}
                                       </Text>
                                       {rowStartClock.period ? (
-                                        <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: colors.text }}>
+                                        <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: rowPrimaryColor }}>
                                           {rowStartClock.period}
                                         </Text>
                                       ) : null}
@@ -2219,14 +2202,15 @@ export default function HomeScreen({
                                         minHeight: 39,
                                         borderRadius: 999,
                                         backgroundColor: summaryCourseAccent,
+                                        opacity: rowIsCurrent ? 1 : 0.82,
                                       }}
                                     />
                                     <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, lineHeight: 19, fontWeight: '800', color: colors.text }}>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, lineHeight: 19, fontWeight: '800', color: rowPrimaryColor }}>
                                         {summaryCourse.code}
                                       </Text>
                                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 17, color: colors.textSecondary }}>
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 17, color: rowSecondaryColor }}>
                                           {summaryCourse.title}
                                         </Text>
                                         {rowLocationLabel ? (

@@ -272,6 +272,24 @@ const QUARTERS = [
 ### Session 76 (Friend timetable header — long name truncation + first/last only in all name displays)
 - `src/screens/FriendsScreen.tsx` — Left section of friend timetable header given `flex: 1` + `minWidth: 0` so it never crowds the quarter pill. Name and email texts get `numberOfLines={1} ellipsizeMode="tail"`. Avatar marked `flexShrink: 0` so it never collapses. Added `firstLastName()` helper; applied to every name display site: Add Friend search results, friends list rows, incoming request rows, sent request rows, and friend timetable header.
 
+### Session 86 (Import Assignments modal — animated backdrop + sheet)
+- `src/screens/HomeScreen.tsx` — Added `calendarSetupBackdropAnim` + `calendarSetupSheetAnim`. Added `openCalendarSetup()` / `closeCalendarSetup()` helpers. Replaced all `setShowCalendarSetup(true/false)` call sites. Restructured modal: `KeyboardAvoidingView` moved inside the `Animated.View` backdrop, sheet wrapped in `Animated.View` with translateY. Matches the same animation pattern as all other modals.
+
+### Session 85 (Past assignments modal — animated backdrop + sheet)
+- `src/screens/HomeScreen.tsx` — Added `pastAssignmentsBackdropAnim` + `pastAssignmentsSheetAnim` animated values. Added `openPastAssignments()` and `closePastAssignments()` helpers. Replaced `setShowPastAssignments(true/false)` call sites with the helpers. Changed modal from `animationType="slide"` to `animationType="none"` with `Animated.View` backdrop and sheet. Matches the sports More and event detail modal pattern.
+
+### Session 84 (Sports event detail modal — animated backdrop + sheet)
+- `src/screens/HomeScreen.tsx` — Added `sportsEventBackdropAnim` + `sportsEventSheetAnim` animated values. Updated `openSportsEvent` to reset anims and trigger parallel spring+fade-in. Updated `closeSportsEvent` to animate out first, then clear state in the callback. Changed sports event Modal from `animationType="slide"` to `animationType="none"` with `Animated.View` backdrop (interpolated color) and `Animated.View` sheet (translateY). Matches the sports More modal and Add Term patterns.
+
+### Session 83 (Sports hero card — sport icon on each event row)
+- `src/screens/HomeScreen.tsx` — Added the same 38×38 sport icon badge on the left of each event row in the home screen sports hero card (matching the More modal rows).
+
+### Session 82 (Sports More modal — sport icon on each event row)
+- `src/screens/HomeScreen.tsx` — Added a 38×38 rounded icon badge (using `event.bg`/`event.color`/`event.icon`) on the left of each event row in the sports More modal.
+
+### Session 81 (Home sports More modal — animated backdrop + sheet)
+- `src/screens/HomeScreen.tsx` — Added `Easing` to RN imports. Added `sportsListBackdropAnim` + `sportsListSheetAnim` animated values. Added `openSportsMoreList()` (sets anims, shows modal, runs parallel spring+backdrop-fade) and `closeSportsMoreList()` (fades out, slides down, then hides modal). Changed More button `onPress` to `openSportsMoreList`. Rewrote sports Modal from `animationType="slide"` to `animationType="none"` with `Animated.View` backdrop (interpolated color) and `Animated.View` sheet (translateY transform). Matches Add Term modal pattern in TimetableScreen.
+
 ### Session 80 (Classmates — simplify no-shared-classes state)
 - `src/screens/FriendsScreen.tsx` — Replaced the per-course "No overlap" row list (shown when the user has classes but no shared ones) with a single "No shared classes this term" text line.
 

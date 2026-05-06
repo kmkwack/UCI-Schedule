@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
@@ -721,6 +721,14 @@ export default function HomeScreen({
   const [now, setNow] = useState(() => new Date());
   const [selectedSportsEvent, setSelectedSportsEvent] = useState<SportsEvent | null>(null);
   const [showSportsEventsList, setShowSportsEventsList] = useState(false);
+  const sportsListBackdropAnim = useRef(new Animated.Value(0)).current;
+  const sportsListSheetAnim = useRef(new Animated.Value(600)).current;
+  const sportsEventBackdropAnim = useRef(new Animated.Value(0)).current;
+  const sportsEventSheetAnim = useRef(new Animated.Value(600)).current;
+  const pastAssignmentsBackdropAnim = useRef(new Animated.Value(0)).current;
+  const pastAssignmentsSheetAnim = useRef(new Animated.Value(600)).current;
+  const calendarSetupBackdropAnim = useRef(new Animated.Value(0)).current;
+  const calendarSetupSheetAnim = useRef(new Animated.Value(600)).current;
   const selectedSportsEventRef = useRef<SportsEvent | null>(null);
   const [sportsEventRsvp, setSportsEventRsvp] = useState<SportsEventRsvpStatus | null>(null);
   const [sportsEventGoingCount, setSportsEventGoingCount] = useState(0);
@@ -897,7 +905,7 @@ export default function HomeScreen({
       return;
     }
     setCalendarFeedUrl(trimmedUrl);
-    setShowCalendarSetup(false);
+    closeCalendarSetup();
     await AsyncStorage.multiSet([
       [calendarProviderStorageKey, calendarProvider],
       [calendarFeedStorageKey, trimmedUrl],
@@ -924,7 +932,7 @@ export default function HomeScreen({
       legacyCalendarLastSyncStorageKey,
     ]);
     onAssignmentCalendarChange?.();
-    setShowCalendarSetup(false);
+    closeCalendarSetup();
   }
 
   function toggleCalendarTask(assignment: CalendarTask) {
@@ -1412,8 +1420,61 @@ export default function HomeScreen({
     setSportsEventDetailLoading(false);
   }
 
+  function openCalendarSetup() {
+    calendarSetupBackdropAnim.setValue(0);
+    calendarSetupSheetAnim.setValue(600);
+    setShowCalendarSetup(true);
+    Animated.parallel([
+      Animated.spring(calendarSetupSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.timing(calendarSetupBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }
+
+  function closeCalendarSetup() {
+    Animated.parallel([
+      Animated.timing(calendarSetupBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(calendarSetupSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+    ]).start(() => setShowCalendarSetup(false));
+  }
+
+  function openPastAssignments() {
+    pastAssignmentsBackdropAnim.setValue(0);
+    pastAssignmentsSheetAnim.setValue(600);
+    setShowPastAssignments(true);
+    Animated.parallel([
+      Animated.spring(pastAssignmentsSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.timing(pastAssignmentsBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }
+
+  function closePastAssignments() {
+    Animated.parallel([
+      Animated.timing(pastAssignmentsBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(pastAssignmentsSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+    ]).start(() => setShowPastAssignments(false));
+  }
+
+  function openSportsMoreList() {
+    sportsListBackdropAnim.setValue(0);
+    sportsListSheetAnim.setValue(600);
+    setShowSportsEventsList(true);
+    Animated.parallel([
+      Animated.spring(sportsListSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.timing(sportsListBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }
+
+  function closeSportsMoreList(then?: () => void) {
+    Animated.parallel([
+      Animated.timing(sportsListBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(sportsListSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+    ]).start(() => { setShowSportsEventsList(false); then?.(); });
+  }
+
   function openSportsEvent(event: SportsEvent) {
-    setShowSportsEventsList(false);
+    closeSportsMoreList();
+    sportsEventBackdropAnim.setValue(0);
+    sportsEventSheetAnim.setValue(600);
     selectedSportsEventRef.current = event;
     setSelectedSportsEvent(event);
     setSportsEventCommentInput('');
@@ -1422,21 +1483,30 @@ export default function HomeScreen({
     setSportsEventComments([]);
     setSavingSportsEventRsvp(false);
     resetSportsEventDetailScroll();
+    Animated.parallel([
+      Animated.spring(sportsEventSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.timing(sportsEventBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
     void loadSportsEventSocial(event);
   }
 
   function closeSportsEvent() {
     Keyboard.dismiss();
-    selectedSportsEventRef.current = null;
-    setSelectedSportsEvent(null);
-    setSportsEventCommentInput('');
-    setSportsEventComments([]);
-    setSportsEventDetailLoading(false);
-    setSavingSportsEventRsvp(false);
-    setSubmittingSportsEventComment(false);
-    setDeletingSportsEventCommentId(null);
-    setSportsEventKeyboardVisible(false);
-    setSportsEventKeyboardHeight(0);
+    Animated.parallel([
+      Animated.timing(sportsEventBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(sportsEventSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+    ]).start(() => {
+      selectedSportsEventRef.current = null;
+      setSelectedSportsEvent(null);
+      setSportsEventCommentInput('');
+      setSportsEventComments([]);
+      setSportsEventDetailLoading(false);
+      setSavingSportsEventRsvp(false);
+      setSubmittingSportsEventComment(false);
+      setDeletingSportsEventCommentId(null);
+      setSportsEventKeyboardVisible(false);
+      setSportsEventKeyboardHeight(0);
+    });
   }
 
   async function handleSportsEventRsvp() {
@@ -1853,6 +1923,9 @@ export default function HomeScreen({
                                 }}
                               >
                                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                                  <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: event.bg, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    <Ionicons name={event.icon} size={20} color={event.color} />
+                                  </View>
                                   <View style={{ flex: 1, minWidth: 0 }}>
                                     <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
                                       {event.title}
@@ -1876,7 +1949,7 @@ export default function HomeScreen({
                                     </Text>
                                   </View>
                                 </View>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7, paddingLeft: 48 }}>
                                   <Ionicons name="people-outline" size={12} color={sportsGoingAccent} />
                                   <Text style={{ color: sportsGoingAccent, fontSize: 11, fontWeight: '800' }}>
                                     {(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going
@@ -1905,7 +1978,7 @@ export default function HomeScreen({
 
                         {visibleCampusEvents.length > 0 ? (
                           <TouchableOpacity
-                            onPress={() => setShowSportsEventsList(true)}
+                            onPress={openSportsMoreList}
                             activeOpacity={0.72}
                             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
                           >
@@ -2347,7 +2420,7 @@ export default function HomeScreen({
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               {pastCalendarTaskCount > 0 ? (
                 <TouchableOpacity
-                  onPress={() => setShowPastAssignments(true)}
+                  onPress={openPastAssignments}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{
                     minHeight: 34,
@@ -2401,7 +2474,7 @@ export default function HomeScreen({
                   {incompleteCalendarTaskCount} open
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setShowCalendarSetup(true)}
+                  onPress={openCalendarSetup}
                   style={{
                     paddingHorizontal: 11,
                     paddingVertical: 7,
@@ -2520,7 +2593,7 @@ export default function HomeScreen({
                 </Text>
               ) : null}
               <TouchableOpacity
-                onPress={() => setShowCalendarSetup(true)}
+                onPress={openCalendarSetup}
                 style={{
                   marginTop: 14,
                   paddingHorizontal: 16,
@@ -2535,7 +2608,7 @@ export default function HomeScreen({
               </TouchableOpacity>
               {pastCalendarTaskCount > 0 ? (
                 <TouchableOpacity
-                  onPress={() => setShowPastAssignments(true)}
+                  onPress={openPastAssignments}
                   style={{
                     marginTop: 10,
                     paddingHorizontal: 16,
@@ -2570,7 +2643,7 @@ export default function HomeScreen({
                 Connect your LMS calendar feed to turn assignment deadlines into a checklist.
               </Text>
               <TouchableOpacity
-                onPress={() => setShowCalendarSetup(true)}
+                onPress={openCalendarSetup}
                 style={{
                   marginTop: 15,
                   paddingHorizontal: 18,
@@ -2592,16 +2665,16 @@ export default function HomeScreen({
       <Modal
         visible={showSportsEventsList}
         transparent
-        animationType="slide"
-        onRequestClose={() => setShowSportsEventsList(false)}
+        animationType="none"
+        onRequestClose={() => closeSportsMoreList()}
       >
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
+        <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: sportsListBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(15,23,42,0.34)'] }) }}>
           <TouchableOpacity
             activeOpacity={1}
-            onPress={() => setShowSportsEventsList(false)}
+            onPress={() => closeSportsMoreList()}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           />
-          <View
+          <Animated.View
             style={{
               maxHeight: '78%',
               height: sportsListSheetHeight,
@@ -2611,6 +2684,7 @@ export default function HomeScreen({
               paddingTop: 10,
               paddingBottom: Math.max(bottomInset, 18) + 8,
               overflow: 'hidden',
+              transform: [{ translateY: sportsListSheetAnim }],
             }}
           >
             <View style={{ alignItems: 'center', paddingBottom: 12 }}>
@@ -2626,7 +2700,7 @@ export default function HomeScreen({
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={() => setShowSportsEventsList(false)}
+                onPress={() => closeSportsMoreList()}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{
                   width: 34,
@@ -2660,6 +2734,9 @@ export default function HomeScreen({
                       }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                        <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: event.bg, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Ionicons name={event.icon} size={20} color={event.color} />
+                        </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text numberOfLines={2} style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
                             {event.title}
@@ -2683,7 +2760,7 @@ export default function HomeScreen({
                           </Text>
                         </View>
                       </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 9 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 9, paddingLeft: 48 }}>
                         <Ionicons name="people-outline" size={12} color={sportsGoingAccent} />
                         <Text style={{ color: sportsGoingAccent, fontSize: 11, fontWeight: '800' }}>
                           {(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going
@@ -2703,23 +2780,23 @@ export default function HomeScreen({
                 </View>
               )}
             </ScrollView>
-          </View>
-        </View>
+          </Animated.View>
+        </Animated.View>
       </Modal>
 
       <Modal
         visible={showPastAssignments}
         transparent
-        animationType="slide"
-        onRequestClose={() => setShowPastAssignments(false)}
+        animationType="none"
+        onRequestClose={closePastAssignments}
       >
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
+        <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: pastAssignmentsBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(15,23,42,0.34)'] }) }}>
           <TouchableOpacity
             activeOpacity={1}
-            onPress={() => setShowPastAssignments(false)}
+            onPress={closePastAssignments}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           />
-          <View
+          <Animated.View
             style={{
               maxHeight: '80%',
               height: pastAssignmentsSheetHeight,
@@ -2729,6 +2806,7 @@ export default function HomeScreen({
               paddingTop: 10,
               paddingBottom: Math.max(bottomInset, 18) + 8,
               overflow: 'hidden',
+              transform: [{ translateY: pastAssignmentsSheetAnim }],
             }}
           >
             <View style={{ alignItems: 'center', paddingBottom: 12 }}>
@@ -2744,7 +2822,7 @@ export default function HomeScreen({
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={() => setShowPastAssignments(false)}
+                onPress={closePastAssignments}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{
                   width: 34,
@@ -2851,34 +2929,35 @@ export default function HomeScreen({
                 </View>
               )}
             </ScrollView>
-          </View>
-        </View>
+          </Animated.View>
+        </Animated.View>
       </Modal>
 
       <Modal
         visible={showCalendarSetup}
         transparent
-        animationType="slide"
-        onRequestClose={() => setShowCalendarSetup(false)}
+        animationType="none"
+        onRequestClose={closeCalendarSetup}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={0}
-          style={{ flex: 1 }}
-        >
-          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
-            <TouchableOpacity
-              activeOpacity={1}
-              onPress={() => setShowCalendarSetup(false)}
-              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-            />
-            <View
+        <Animated.View style={{ flex: 1, backgroundColor: calendarSetupBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(15,23,42,0.34)'] }) }}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={closeCalendarSetup}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={0}
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+          >
+            <Animated.View
               style={{
                 maxHeight: '88%',
                 borderTopLeftRadius: 28,
                 borderTopRightRadius: 28,
                 backgroundColor: colors.bg,
                 overflow: 'hidden',
+                transform: [{ translateY: calendarSetupSheetAnim }],
               }}
             >
               <ScrollView
@@ -2903,7 +2982,7 @@ export default function HomeScreen({
                     </Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => setShowCalendarSetup(false)}
+                    onPress={closeCalendarSetup}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={{
                       width: 34,
@@ -3063,19 +3142,19 @@ export default function HomeScreen({
               </TouchableOpacity>
             ) : null}
               </ScrollView>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
+            </Animated.View>
+          </KeyboardAvoidingView>
+        </Animated.View>
       </Modal>
 
       <Modal
         visible={!!selectedSportsEvent}
         transparent
-        animationType="slide"
+        animationType="none"
         onRequestClose={closeSportsEvent}
       >
-        <View
-          style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}
+        <Animated.View
+          style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: sportsEventBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(15,23,42,0.34)'] }) }}
         >
           <TouchableOpacity
             activeOpacity={1}
@@ -3083,7 +3162,7 @@ export default function HomeScreen({
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}
           />
           {selectedSportsEvent ? (
-            <View
+            <Animated.View
               style={{
                 zIndex: 1,
                 elevation: 1,
@@ -3095,6 +3174,7 @@ export default function HomeScreen({
                 paddingTop: 10,
                 paddingBottom: 0,
                 overflow: 'hidden',
+                transform: [{ translateY: sportsEventSheetAnim }],
               }}
             >
               <View style={{ alignItems: 'center', paddingBottom: 8 }}>
@@ -3404,9 +3484,9 @@ export default function HomeScreen({
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>
+            </Animated.View>
           ) : null}
-        </View>
+        </Animated.View>
       </Modal>
     </>
   );

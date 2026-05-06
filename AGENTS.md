@@ -2450,3 +2450,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64sak (Tighten privacy and FERPA-facing legal copy)
 - **`src/components/LegalDocumentModal.tsx`** — Updated Terms and Privacy Policy dates and content to match the current app model: user-saved timetables, accepted-friend ClassMates sharing, no official rosters or LMS private records, aggregate/public enrollment counts, LMS feeds for assignment deadlines only, and manually entered grade tracking.
 - **`src/screens/SettingsScreen.tsx`** — Clarified timetable visibility wording and Help Center privacy FAQs so shared classes are described as accepted-friend, user-saved timetable comparisons rather than official roster access.
+
+### Session 64sal (Move sports behind Home hero)
+- **`src/screens/HomeScreen.tsx`** — Moved the Home sports events summary out of the main feed and into the hero carousel as a hidden sports page. The carousel indicator now uses a small trophy icon for the sports page while the main feed jumps from the hero card directly to assignments, keeping assignment deadlines visually prioritized.

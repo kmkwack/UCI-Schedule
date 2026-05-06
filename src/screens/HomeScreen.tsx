@@ -105,9 +105,11 @@ function isOnConflictTargetError(error: any) {
 }
 
 type HeroCardItem =
+  | { type: 'idleSummary' }
   | { type: 'completedSummary'; courses: Course[] }
   | { type: 'upcomingSummary'; courses: Course[] }
-  | { type: 'course'; course: Course };
+  | { type: 'course'; course: Course }
+  | { type: 'sportsEvents' };
 
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -130,8 +132,6 @@ const QUARTER_DATES: Record<string, { start: string; end: string }> = {
 const HOME_SPORTS_FETCH_DELAY_MS = 250;
 const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
 
-const SUMMARY_CARD_HEIGHT = 204;
-const SUMMARY_CARD_PADDING = 18;
 const DEFAULT_CALENDAR_PROVIDER_ID: CalendarProviderId = 'canvas';
 const CALENDAR_PROVIDER_OPTIONS: CalendarProviderOption[] = [
   {
@@ -994,6 +994,7 @@ export default function HomeScreen({
         return;
       }
 
+      setSportsLoading(true);
       const cached = await AsyncStorage.getItem(sportsCacheKey);
       if (cached && !cancelled) {
         setSportsEvents(JSON.parse(cached).map((event: any) => (
@@ -1178,14 +1179,18 @@ export default function HomeScreen({
   const upcomingClasses = todayCourses.filter((course) => extractStartHour(course.time) > nowHour);
   const completedClasses = todayCourses.filter((course) => extractEndHour(course.time) <= nowHour).length;
   const currentClass = todayCourses.find((course) => extractStartHour(course.time) <= nowHour && extractEndHour(course.time) >= nowHour) ?? null;
-  const previousClass = [...todayCourses].reverse().find((course) => extractEndHour(course.time) <= nowHour) ?? null;
   const nextClass = upcomingClasses[0] ?? null;
   const completedCourseList = todayCourses.filter((course) => extractEndHour(course.time) <= nowHour);
   const upcomingCourseList = todayCourses.filter((course) => extractStartHour(course.time) > nowHour);
-  const heroItems: HeroCardItem[] = [
+  const shouldShowSportsHeroPage = schoolFeatureEnabled(school, 'sports');
+  const scheduleHeroItems: HeroCardItem[] = [
     ...(completedCourseList.length > 0 ? [{ type: 'completedSummary' as const, courses: completedCourseList }] : []),
     ...(currentClass ? [{ type: 'course' as const, course: currentClass }] : []),
     ...(upcomingCourseList.length > 0 ? [{ type: 'upcomingSummary' as const, courses: upcomingCourseList }] : []),
+  ];
+  const heroItems: HeroCardItem[] = [
+    ...(scheduleHeroItems.length > 0 ? scheduleHeroItems : [{ type: 'idleSummary' as const }]),
+    ...(shouldShowSportsHeroPage ? [{ type: 'sportsEvents' as const }] : []),
   ];
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
   const activeHeroIndexRef = useRef(0);
@@ -1237,16 +1242,17 @@ export default function HomeScreen({
     elevation: 6,
   } as const;
 
-  const twoColumnWidth = Math.max((windowWidth - 18 * 2 - 12) / 2, 0);
   const heroCardWidth = Math.max(windowWidth - 36, 0);
   const activeHeroItem = heroItems[activeHeroIndex] ?? null;
+  const sportsGoingAccent = getSchoolConfig(school).accent;
   const heroAccent = activeHeroItem?.type === 'course'
     ? pastelForCourse(blockColorKey(activeHeroItem.course)).border
+    : activeHeroItem?.type === 'sportsEvents'
+      ? sportsGoingAccent
     : activeHeroItem?.type === 'upcomingSummary'
       ? colors.brand
     : colors.brand;
   const selectedSportsVenue = selectedSportsEvent ? getSportsVenueForEvent(school, selectedSportsEvent) : null;
-  const sportsGoingAccent = getSchoolConfig(school).accent;
   const selectedSportsEventLocationLabel = selectedSportsEvent?.location === 'Venue TBA'
     ? 'Venue TBA'
     : selectedSportsEvent?.location === 'Away'
@@ -1829,6 +1835,187 @@ export default function HomeScreen({
           <>
             {(() => {
                 const item = activeHeroItem;
+                if (item.type === 'sportsEvents') {
+                  return (
+                    <Animated.View
+                      key={`sports-events-${visibleSportsEventIds || school}`}
+                      style={{
+                        width: heroCardWidth,
+                        opacity: heroOpacityAnim,
+                        transform: [{ translateX: heroSlideAnim }],
+                      }}
+                      {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
+                    >
+                      <View style={{
+                        ...raisedCardStyle,
+                        backgroundColor: colors.card,
+                        padding: 22,
+                        shadowOpacity: 0,
+                        shadowRadius: 0,
+                        elevation: 0,
+                      }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 }}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary }}>
+                              Campus
+                            </Text>
+                            <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text, marginTop: 3 }}>
+                              Sports Events
+                            </Text>
+                            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
+                              {visibleCampusEvents.length} upcoming
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => setShowSportsEventsList(true)}
+                            activeOpacity={0.75}
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 18,
+                              backgroundColor: colors.bgTertiary,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Ionicons name="chevron-forward" size={18} color={sportsGoingAccent} />
+                          </TouchableOpacity>
+                        </View>
+
+                        {homeSportsEvents.length > 0 ? (
+                          <View style={{ marginTop: 16 }}>
+                            {homeSportsEvents.map((event, index, shownEvents) => (
+                              <TouchableOpacity
+                                key={`hero-${event.id}`}
+                                onPress={() => openSportsEvent(event)}
+                                activeOpacity={0.76}
+                                style={{
+                                  paddingTop: index === 0 ? 0 : 11,
+                                  paddingBottom: index === shownEvents.length - 1 ? 0 : 11,
+                                  borderTopWidth: index === 0 ? 0 : 1,
+                                  borderTopColor: colors.borderSubtle,
+                                }}
+                              >
+                                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                                  <View style={{ flex: 1, minWidth: 0 }}>
+                                    <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
+                                      {event.title}
+                                    </Text>
+                                    <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                                      {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
+                                    </Text>
+                                  </View>
+                                  <View
+                                    style={{
+                                      borderRadius: 999,
+                                      backgroundColor: event.isHome ? colors.brandBg : colors.bgTertiary,
+                                      borderWidth: 1,
+                                      borderColor: event.isHome ? `${colors.brand}44` : colors.borderSubtle,
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 4,
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 10, fontWeight: '800', color: event.isHome ? colors.brand : colors.textSecondary }}>
+                                      {sportsHomeAwayLabel(event)}
+                                    </Text>
+                                  </View>
+                                </View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7 }}>
+                                  <Ionicons name="people-outline" size={12} color={sportsGoingAccent} />
+                                  <Text style={{ color: sportsGoingAccent, fontSize: 11, fontWeight: '800' }}>
+                                    {(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        ) : sportsLoading ? (
+                          <View style={{ alignItems: 'center', marginTop: 18, paddingVertical: 16 }}>
+                            <ActivityIndicator size="small" color={sportsGoingAccent} />
+                            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 9 }}>
+                              Loading sports events
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={{ marginTop: 16, paddingVertical: 8 }}>
+                            <Text style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
+                              No upcoming sports events
+                            </Text>
+                            <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
+                              Events will appear here when the athletics calendar has something coming up.
+                            </Text>
+                          </View>
+                        )}
+
+                        {visibleCampusEvents.length > 0 ? (
+                          <TouchableOpacity
+                            onPress={() => setShowSportsEventsList(true)}
+                            activeOpacity={0.72}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
+                              {`${remainingHomeSportsEventCount} more event${remainingHomeSportsEventCount === 1 ? '' : 's'}`}
+                            </Text>
+                            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    </Animated.View>
+                  );
+                }
+
+                if (item.type === 'idleSummary') {
+                  return (
+                    <Animated.View
+                      key="idle-summary"
+                      style={{
+                        width: heroCardWidth,
+                        opacity: heroOpacityAnim,
+                        transform: [{ translateX: heroSlideAnim }],
+                      }}
+                      {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
+                    >
+                      <View style={{
+                        ...raisedCardStyle,
+                        backgroundColor: colors.card,
+                        paddingHorizontal: 18,
+                        paddingVertical: 17,
+                      }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
+                              {todayCourses.length > 0 ? 'You are clear for the rest of today' : 'No classes on your schedule today'}
+                            </Text>
+                          </View>
+                          <View style={{ alignItems: 'center', alignSelf: 'flex-start' }}>
+                            <DualProgressRing
+                              outerProgress={quarterProgress}
+                              outerColor={colors.brand}
+                              outerTrackColor={colors.bgTertiary}
+                              innerProgress={heroProgress}
+                              innerColor={colors.brand}
+                              innerTrackColor={colors.bgTertiary}
+                              primaryLabel={heroProgressLabel}
+                              secondaryLabel={heroProgressSubLabel}
+                              textColor={colors.text}
+                              subTextColor={colors.textTertiary}
+                              size={76}
+                              outerStrokeWidth={4}
+                              innerStrokeWidth={5}
+                            />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, marginTop: 5 }}>
+                              {termLabel(selectedQuarter, school)}
+                            </Text>
+                            <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 1 }}>
+                              {`${Math.round(quarterProgress * 100)}% · ${daysRemaining}d left`}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    </Animated.View>
+                  );
+                }
+
                 const course = item.type === 'course' ? item.course : null;
                 const summaryCourses = item.type !== 'course' ? item.courses : [];
                 const firstSummaryCourse = summaryCourses[0] ?? null;
@@ -2100,29 +2287,49 @@ export default function HomeScreen({
             })()}
             {heroItems.length > 1 ? (
               <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 }}>
-                {heroItems.map((item, index) => (
-                  <TouchableOpacity
-                    key={`${item.type}-${index}-dot`}
-                    onPress={() => moveHeroTo(index)}
-                    hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                    activeOpacity={0.75}
-                    style={{
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      minWidth: 18,
-                      height: 18,
-                    }}
-                  >
-                    <View
+                {heroItems.map((item, index) => {
+                  const isActive = index === activeHeroIndex;
+                  return (
+                    <TouchableOpacity
+                      key={`${item.type}-${index}-dot`}
+                      onPress={() => moveHeroTo(index)}
+                      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                      activeOpacity={0.75}
                       style={{
-                      width: index === activeHeroIndex ? 16 : 6,
-                      height: 6,
-                      borderRadius: 3,
-                      backgroundColor: index === activeHeroIndex ? heroAccent : colors.bgTertiary,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minWidth: item.type === 'sportsEvents' ? 24 : 18,
+                        height: 18,
                       }}
-                    />
-                  </TouchableOpacity>
-                ))}
+                    >
+                      {item.type === 'sportsEvents' ? (
+                        <View
+                          style={{
+                            width: isActive ? 24 : 18,
+                            height: 18,
+                            borderRadius: 9,
+                            backgroundColor: isActive ? `${sportsGoingAccent}1F` : 'transparent',
+                            borderWidth: isActive ? 1 : 0,
+                            borderColor: `${sportsGoingAccent}55`,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Ionicons name="trophy-outline" size={12} color={isActive ? sportsGoingAccent : colors.textTertiary} />
+                        </View>
+                      ) : (
+                        <View
+                          style={{
+                            width: isActive ? 16 : 6,
+                            height: 6,
+                            borderRadius: 3,
+                            backgroundColor: isActive ? heroAccent : colors.bgTertiary,
+                          }}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             ) : null}
           </>
@@ -2167,85 +2374,6 @@ export default function HomeScreen({
             </View>
           </View>
         )}
-      </View>
-
-      <View style={{ marginBottom: 14 }}>
-        <View
-          style={{
-            ...raisedCardStyle,
-            backgroundColor: colors.card,
-            padding: SUMMARY_CARD_PADDING,
-            justifyContent: 'space-between',
-          }}
-        >
-          <View>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
-              Sports Events
-            </Text>
-            {homeSportsEvents.length > 0 ? (
-              <View style={{ marginTop: 10 }}>
-                {homeSportsEvents.map((event, index, shownEvents) => (
-                  <TouchableOpacity
-                    key={event.id}
-                    onPress={() => openSportsEvent(event)}
-                    activeOpacity={0.75}
-                    style={{
-                      paddingTop: index === 0 ? 0 : 12,
-                      paddingBottom: index === shownEvents.length - 1 ? 0 : 12,
-                      borderTopWidth: index === 0 ? 0 : 1,
-                      borderTopColor: colors.borderSubtle,
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
-                          {event.title}
-                        </Text>
-                        <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-                          {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
-                        </Text>
-                      </View>
-                      <View
-                        style={{
-                          borderRadius: 999,
-                          backgroundColor: event.isHome ? colors.brandBg : colors.bgTertiary,
-                          borderWidth: 1,
-                          borderColor: event.isHome ? `${colors.brand}44` : colors.borderSubtle,
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                        }}
-                      >
-                        <Text style={{ fontSize: 10, fontWeight: '800', color: event.isHome ? colors.brand : colors.textSecondary }}>
-                          {sportsHomeAwayLabel(event)}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7 }}>
-                      <Ionicons name="people-outline" size={12} color={sportsGoingAccent} />
-                      <Text style={{ color: sportsGoingAccent, fontSize: 11, fontWeight: '800' }}>
-                        {(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : (
-              <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 10 }}>
-                No upcoming sports events
-              </Text>
-            )}
-          </View>
-          <TouchableOpacity
-            onPress={() => setShowSportsEventsList(true)}
-            activeOpacity={0.7}
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
-              {`${remainingHomeSportsEventCount} more event${remainingHomeSportsEventCount === 1 ? '' : 's'}`}
-            </Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-          </TouchableOpacity>
-        </View>
       </View>
 
       <View>

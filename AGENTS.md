@@ -2315,3 +2315,59 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64rt (Align Expo SDK package patches)
 - **`package.json` / `package-lock.json`** — Updated Expo SDK 55 companion packages to the expected patch ranges reported by Expo so local runs stop warning about incompatible installed versions.
+
+### Session 64ru (Force Android preview APK builds)
+- **`eas.json`** — Set the Android `preview` profile to `buildType: "apk"` so Reddit/TestFlight-style Android beta requests produce directly installable APK artifacts instead of Play Store bundles.
+
+### Session 64rv (Report unmapped classroom locations)
+- **`scripts/report-unmapped-classrooms.js`** — Added a Supabase-backed report that scans all schools' section locations and lists classroom strings that do not resolve through the app's campus map resolver. This makes it easy to fill missing building aliases and reduce courses without map previews.
+- **`package.json`** — Added `npm run report:unmapped-classrooms` so the unmapped-location audit can be run without remembering the script path.
+
+### Session 64rw (Avoid report query timeout)
+- **`scripts/report-unmapped-classrooms.js`** — Removed database-side sorting from the unmapped classroom report so Supabase can return paged section rows without timing out on the large shared `sections` table. Sorting is still handled locally before printing.
+
+### Session 64rx (Scan unmapped locations by seeded term)
+- **`scripts/report-unmapped-classrooms.js`** — Changed the report to read `school_terms` first and scan `sections` by `(school, quarter_key)` pages instead of full-table pages. This avoids statement timeouts on the large catalog while still reporting every school.
+
+### Session 64ry (Ignore non-classroom map placeholders)
+- **`src/data/campusLocations.ts`** — Expanded the unmappable-location guard to ignore common non-classroom placeholders like `ON LINE`, `TBA TBA`, `Location Pending`, generic main-campus labels, and off-campus markers. This prevents the app from treating those values as missing map previews.
+- **`scripts/report-unmapped-classrooms.js`** — Mirrored the same placeholder guard in the unmapped classroom report so the audit focuses on real building aliases worth mapping.
+
+### Session 64rz (Group unmapped rooms by building)
+- **`scripts/report-unmapped-classrooms.js`** — Added `--group-buildings`, which collapses repeated room-level misses like `HICF 100P` and `HICF 100K` into a single building candidate. This turns the map-audit problem from thousands of rooms into a manageable school-by-school building list.
+
+### Session 64sa (Map high-frequency UCI classroom buildings)
+- **`src/data/campusLocations.ts`** — Added official UCI campus-map coordinates for high-frequency unmapped classroom building codes including HICF, PSCB, ET, SBSG, IAB, MPAA, EDUC, CAC, COHS, arts buildings, engineering trailers, law/health-sciences buildings, and the remaining verified low-frequency UCI building codes. This lets all rooms under those codes resolve to in-app map previews without asking for room-by-room coordinates.
+
+### Session 64sb (Canvas assignment checklist on Home)
+- **`src/screens/HomeScreen.tsx`** — Replaced the Home weather card with a compact sports summary card and moved the main lower card to Canvas assignments. Added Canvas calendar feed setup, local `.ics` parsing, cached assignment sync, checklist completion state, deadline labels, refresh/manage actions, and clear empty states for users who have not connected Canvas yet.
+
+### Session 64sc (Generalize assignment calendar providers)
+- **`src/screens/HomeScreen.tsx`** — Generalized the Canvas checklist into an LMS assignment calendar import. Added provider options for Canvas, Brightspace, Blackboard, Moodle, Sakai, Google Classroom, and Other; updated visible copy and errors away from Canvas-only wording; moved storage to `assignment_calendar_*` keys while migrating existing local Canvas feed/cache data.
+
+### Session 64sd (Polish compact sports card)
+- **`src/screens/HomeScreen.tsx`** — Reworked the small Home sports card from a cramped two-row list into a single next-game summary with a larger sport icon, Home/Away badge, readable title/date, going count, and `+N more`/details affordance. Tightened the no-event state so the card reads cleaner in the former weather slot.
+
+### Session 64se (Show multiple compact sports events)
+- **`src/screens/HomeScreen.tsx`** — Adjusted the compact Home sports card to show up to three upcoming events instead of only one featured event. Each row now uses a small sport icon, one-line event title, date/time, and compact H/A badge so the card shows more schedule context without overflowing the former weather slot.
+
+### Session 64sf (Remove compact sports icons)
+- **`src/screens/HomeScreen.tsx`** — Renamed the Home card to `Sports Events` and removed the header/row/empty-state sports icons from the compact card so up to three events have more room for readable titles and times.
+
+### Session 64sg (Past assignments and sports list sheet)
+- **`src/screens/HomeScreen.tsx`** — Changed the Home assignments card to show only upcoming incomplete deadlines; past deadlines are hidden from Home and available in a new `Past Assignments` bottom sheet where they can still be checked off or opened. Simplified the sports card into an `Upcoming Sports Events` summary CTA that opens a full sports events list sheet instead of rendering a cramped event list directly in the small card.
+
+### Session 64sh (Trim sports card helper copy)
+- **`src/screens/HomeScreen.tsx`** — Removed the explanatory `Tap to see...` helper text from the compact upcoming sports events card so the small card is cleaner and relies on its count/list affordance.
+
+### Session 64si (Rename past assignment chip)
+- **`src/screens/HomeScreen.tsx`** — Changed the assignment header chip from `Past N` to `Past Assignments N` so the action label is clearer.
+
+### Session 64sj (Show all upcoming assignments)
+- **`src/screens/HomeScreen.tsx`** — Removed the five-item cap from the Home assignments checklist so every upcoming incomplete assignment renders in the card.
+
+### Session 64sk (Tighten sports summary spacing)
+- **`src/screens/HomeScreen.tsx`** — Removed `space-between` from the compact upcoming sports events card and tightened the vertical stack so the count/action no longer float with an awkward middle gap.
+
+### Session 64sl (Default past assignments to complete)
+- **`src/screens/HomeScreen.tsx`** — Changed assignment completion semantics so past-deadline tasks default to completed/struck-through in `Past Assignments`. Unchecking a past assignment now stores an explicit incomplete override, moves it back onto the Home checklist, and shows it with red `Past due` styling; checking it again moves it back into past assignments and updates the count.

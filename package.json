@@ -8,7 +8,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "retry:uiuc-failed": "node scripts/retry-uiuc-failed-subjects.js",
-    "reconcile:school-terms": "node scripts/reconcile-school-terms.js"
+    "reconcile:school-terms": "node scripts/reconcile-school-terms.js",
+    "report:unmapped-classrooms": "node scripts/report-unmapped-classrooms.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

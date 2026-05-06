@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -79,6 +79,25 @@ type SportsEventRsvpRow = {
   status: StoredSportsEventRsvpStatus;
 };
 
+type CalendarTask = {
+  id: string;
+  title: string;
+  courseCode: string;
+  dueAt: string;
+  allDay: boolean;
+  url?: string;
+  description?: string;
+};
+
+type CalendarProviderId = 'canvas' | 'brightspace' | 'blackboard' | 'moodle' | 'sakai' | 'google-classroom' | 'other';
+
+type CalendarProviderOption = {
+  id: CalendarProviderId;
+  label: string;
+  helper: string;
+  placeholder: string;
+};
+
 function isOnConflictTargetError(error: any) {
   const message = String(error?.message ?? '').toLowerCase();
   return error?.code === '42P10' || message.includes('no unique or exclusion constraint');
@@ -107,40 +126,200 @@ const QUARTER_DATES: Record<string, { start: string; end: string }> = {
   '2027-Spring': { start: '2027-03-29', end: '2027-06-11T23:59:59' },
 };
 
-const RAINY_CODES = new Set([51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99]);
-const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000;
 const HOME_SPORTS_FETCH_DELAY_MS = 250;
 const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
 
-const WMO_DESCRIPTIONS: Record<number, { label: string; icon: ComponentProps<typeof Ionicons>['name'] }> = {
-  0: { label: 'Clear Sky', icon: 'sunny-outline' },
-  1: { label: 'Mainly Clear', icon: 'sunny-outline' },
-  2: { label: 'Partly Cloudy', icon: 'partly-sunny-outline' },
-  3: { label: 'Overcast', icon: 'cloud-outline' },
-  45: { label: 'Foggy', icon: 'cloud-outline' },
-  48: { label: 'Icy Fog', icon: 'cloud-outline' },
-  51: { label: 'Light Drizzle', icon: 'rainy-outline' },
-  53: { label: 'Drizzle', icon: 'rainy-outline' },
-  55: { label: 'Heavy Drizzle', icon: 'rainy-outline' },
-  61: { label: 'Light Rain', icon: 'rainy-outline' },
-  63: { label: 'Rain', icon: 'rainy-outline' },
-  65: { label: 'Heavy Rain', icon: 'rainy-outline' },
-  71: { label: 'Light Snow', icon: 'snow-outline' },
-  73: { label: 'Snow', icon: 'snow-outline' },
-  75: { label: 'Heavy Snow', icon: 'snow-outline' },
-  80: { label: 'Rain Showers', icon: 'rainy-outline' },
-  81: { label: 'Rain Showers', icon: 'rainy-outline' },
-  82: { label: 'Heavy Showers', icon: 'thunderstorm-outline' },
-  95: { label: 'Thunderstorm', icon: 'thunderstorm-outline' },
-  96: { label: 'Thunderstorm', icon: 'thunderstorm-outline' },
-  99: { label: 'Thunderstorm', icon: 'thunderstorm-outline' },
-};
-
 const SUMMARY_CARD_HEIGHT = 204;
 const SUMMARY_CARD_PADDING = 18;
-const WEATHER_DOT_ROW_HEIGHT = 20;
-const WEATHER_INSIGHT_LINE_HEIGHT = 18;
-const WEATHER_INSIGHT_LINES = 3;
+const DEFAULT_CALENDAR_PROVIDER_ID: CalendarProviderId = 'canvas';
+const CALENDAR_PROVIDER_OPTIONS: CalendarProviderOption[] = [
+  {
+    id: 'canvas',
+    label: 'Canvas',
+    helper: 'Use the calendar feed link from your Canvas calendar settings.',
+    placeholder: 'https://your-school.instructure.com/feeds/calendars/...',
+  },
+  {
+    id: 'brightspace',
+    label: 'Brightspace',
+    helper: 'Use the iCal or calendar feed link from your Brightspace calendar.',
+    placeholder: 'https://your-school.brightspace.com/d2l/le/calendar/feed/...',
+  },
+  {
+    id: 'blackboard',
+    label: 'Blackboard',
+    helper: 'Use the external calendar link from your Blackboard calendar.',
+    placeholder: 'https://your-school.blackboard.com/calendar/ical/...',
+  },
+  {
+    id: 'moodle',
+    label: 'Moodle',
+    helper: 'Use the export or subscription URL from your Moodle calendar.',
+    placeholder: 'https://moodle.your-school.edu/calendar/export_execute.php?...',
+  },
+  {
+    id: 'sakai',
+    label: 'Sakai',
+    helper: 'Use the private publish or subscribe link from your Sakai calendar.',
+    placeholder: 'https://sakai.your-school.edu/ical/...',
+  },
+  {
+    id: 'google-classroom',
+    label: 'Google Classroom',
+    helper: 'Use the secret iCal address from the Google Calendar that receives Classroom deadlines.',
+    placeholder: 'https://calendar.google.com/calendar/ical/...',
+  },
+  {
+    id: 'other',
+    label: 'Other',
+    helper: 'Any assignment calendar feed should work if it provides an .ics or iCal URL.',
+    placeholder: 'https://...',
+  },
+];
+
+function getCalendarProviderOption(providerId: string | null | undefined) {
+  return CALENDAR_PROVIDER_OPTIONS.find((provider) => provider.id === providerId) ?? CALENDAR_PROVIDER_OPTIONS[0];
+}
+
+function userScopedStorageKey(base: string, userId: string) {
+  return `${base}_${userId || 'guest'}`;
+}
+
+function unfoldIcsLines(text: string) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const unfolded: string[] = [];
+  lines.forEach((line) => {
+    if ((line.startsWith(' ') || line.startsWith('\t')) && unfolded.length > 0) {
+      unfolded[unfolded.length - 1] += line.slice(1);
+      return;
+    }
+    unfolded.push(line);
+  });
+  return unfolded;
+}
+
+function decodeIcsText(value: string) {
+  return value
+    .replace(/\\n/g, '\n')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+function stripHtml(value: string) {
+  return decodeIcsText(value.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+function getIcsField(lines: string[], fieldName: string) {
+  const prefix = `${fieldName}`;
+  const line = lines.find((candidate) => candidate.startsWith(`${prefix}:`) || candidate.startsWith(`${prefix};`));
+  if (!line) return null;
+  const separatorIndex = line.indexOf(':');
+  if (separatorIndex < 0) return null;
+  return {
+    raw: line,
+    value: line.slice(separatorIndex + 1),
+  };
+}
+
+function parseIcsDate(value: string, allDay: boolean) {
+  const dateOnly = value.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+    return new Date(Number(year), Number(month) - 1, Number(day), allDay ? 23 : 0, allDay ? 59 : 0, 0);
+  }
+
+  const dateTime = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?(Z)?$/);
+  if (!dateTime) return null;
+  const [, year, month, day, hour, minute, second, isUtc] = dateTime;
+  if (isUtc) {
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second ?? 0)));
+  }
+  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second ?? 0));
+}
+
+function splitCalendarSummary(summary: string) {
+  const contextMatch = summary.match(/\s*\[([^\]]+)\]\s*$/);
+  const title = summary.replace(/\s*\[[^\]]+\]\s*$/, '').trim();
+  const context = contextMatch?.[1]?.replace(/\.\.\.$/, '').trim() ?? 'Calendar';
+  const courseMatch = context.match(/\b([A-Z][A-Z&]*(?:\s+[A-Z][A-Z&]*)?\s+\d+[A-Z]?)\b/);
+  const sectionlessContext = context
+    .split(':')[0]
+    .replace(/\s+(LEC|DIS|LAB|SEM|STU|ACT|QIZ|TUT)\b.*$/i, '')
+    .trim();
+  return {
+    title: title || summary.trim(),
+    courseCode: courseMatch?.[1] ?? sectionlessContext ?? 'Calendar',
+  };
+}
+
+function parseCalendarTasksFromIcs(text: string): CalendarTask[] {
+  const lines = unfoldIcsLines(text);
+  const assignments: CalendarTask[] = [];
+  let current: string[] | null = null;
+
+  lines.forEach((line) => {
+    if (line === 'BEGIN:VEVENT') {
+      current = [];
+      return;
+    }
+    if (line === 'END:VEVENT') {
+      if (!current) return;
+      const uid = decodeIcsText(getIcsField(current, 'UID')?.value ?? '');
+      const summary = decodeIcsText(getIcsField(current, 'SUMMARY')?.value ?? '');
+      const start = getIcsField(current, 'DTSTART');
+      const url = decodeIcsText(getIcsField(current, 'URL')?.value ?? '');
+      const description = stripHtml(getIcsField(current, 'DESCRIPTION')?.value ?? getIcsField(current, 'X-ALT-DESC')?.value ?? '');
+      const allDay = start?.raw.includes('VALUE=DATE') ?? false;
+      const dueAt = start ? parseIcsDate(start.value.trim(), allDay) : null;
+
+      if (uid && summary && dueAt && !Number.isNaN(dueAt.getTime())) {
+        const parsedSummary = splitCalendarSummary(summary);
+        assignments.push({
+          id: uid || url || `${parsedSummary.title}-${dueAt.toISOString()}`,
+          title: parsedSummary.title,
+          courseCode: parsedSummary.courseCode,
+          dueAt: dueAt.toISOString(),
+          allDay,
+          url: url || undefined,
+          description: description || undefined,
+        });
+      }
+      current = null;
+      return;
+    }
+    if (current) current.push(line);
+  });
+
+  return assignments.sort((left, right) => new Date(left.dueAt).getTime() - new Date(right.dueAt).getTime());
+}
+
+function formatCalendarTaskDueLabel(assignment: CalendarTask, now: Date) {
+  const due = new Date(assignment.dueAt);
+  const dayLabel = formatRelativeEventDayLabel(due, now);
+  const prefix = due.getTime() < now.getTime() ? 'Past due' : 'Due';
+  if (assignment.allDay) return `${prefix} ${dayLabel}`;
+  return `${prefix} ${dayLabel} · ${due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+function isCalendarTaskOverdue(assignment: CalendarTask, completed: boolean, now: Date) {
+  return !completed && new Date(assignment.dueAt).getTime() < now.getTime();
+}
+
+function isPastCalendarTask(assignment: CalendarTask, now: Date) {
+  return new Date(assignment.dueAt).getTime() < now.getTime();
+}
+
+function isCalendarTaskCompleted(assignment: CalendarTask, completedTasks: Record<string, boolean>, now: Date) {
+  const stored = completedTasks[assignment.id];
+  if (stored !== undefined) return stored;
+  return isPastCalendarTask(assignment, now);
+}
 
 function getQuarterBounds(selectedQuarter: Quarter) {
   const key = `${selectedQuarter.year}-${selectedQuarter.quarter}`;
@@ -342,29 +521,6 @@ function coursesMatch(a: Pick<Course, 'id' | 'code' | 'days' | 'time'>, b: Pick<
     || (a.code === b.code && a.days === b.days && a.time === b.time);
 }
 
-function displayTemperature(tempC: number | null, useCelsius: boolean) {
-  if (tempC === null) return '--°';
-  return useCelsius ? `${Math.round(tempC)}°` : `${Math.round((tempC * 9) / 5 + 32)}°`;
-}
-
-function weatherInsightText(tempC: number | null, weatherCode: number | null, useCelsius: boolean) {
-  if (tempC === null) return 'Campus weather will update here.';
-  const tempLabel = displayTemperature(tempC, useCelsius);
-  if (weatherCode !== null && RAINY_CODES.has(weatherCode)) {
-    return `${tempLabel} and wet on campus right now. Umbrella recommended.`;
-  }
-  if (tempC <= 12) return `${tempLabel} on campus. A light layer should feel better on the walk over.`;
-  if (tempC >= 27) return `${tempLabel} on campus. Expect a warmer walk between buildings.`;
-  return `${tempLabel} and comfortable for getting around campus.`;
-}
-
-function formatSunTime(value: string | null) {
-  if (!value) return '--';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '--';
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-}
-
 function ProgressRing({
   progress,
   color,
@@ -445,21 +601,22 @@ export default function HomeScreen({
   const scrollRef = useRef<ScrollView>(null);
   const sportsEventScrollRef = useRef<ScrollView>(null);
   const sportsEventCommentInputRef = useRef<TextInput>(null);
-  const [useCelsius, setUseCelsius] = useState(true);
-  const [tempUnitLoaded, setTempUnitLoaded] = useState(false);
-  const tempToggleAnim = useRef(new Animated.Value(0)).current;
-  const [tempPillWidth, setTempPillWidth] = useState(0);
-  const weatherPagerRef = useRef<ScrollView>(null);
-  const [activeWeatherIndex, setActiveWeatherIndex] = useState(0);
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
   const [sportsLoading, setSportsLoading] = useState(false);
-  const [tempC, setTempC] = useState<number | null>(null);
-  const [weatherCode, setWeatherCode] = useState<number | null>(null);
-  const [sunriseTime, setSunriseTime] = useState<string | null>(null);
-  const [sunsetTime, setSunsetTime] = useState<string | null>(null);
+  const [calendarProvider, setCalendarProvider] = useState<CalendarProviderId>(DEFAULT_CALENDAR_PROVIDER_ID);
+  const [calendarFeedUrl, setCalendarFeedUrl] = useState<string | null>(null);
+  const [calendarFeedInput, setCalendarFeedInput] = useState('');
+  const [showCalendarSetup, setShowCalendarSetup] = useState(false);
+  const [calendarTasks, setCalendarTasks] = useState<CalendarTask[]>([]);
+  const [calendarTasksLoading, setCalendarTasksLoading] = useState(false);
+  const [calendarTasksError, setCalendarTasksError] = useState<string | null>(null);
+  const [calendarLastSyncedAt, setCalendarLastSyncedAt] = useState<string | null>(null);
+  const [completedCalendarTasks, setCompletedCalendarTasks] = useState<Record<string, boolean>>({});
+  const [showPastAssignments, setShowPastAssignments] = useState(false);
   const [classmateMatches, setClassmateMatches] = useState<ClassmateMatch[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [selectedSportsEvent, setSelectedSportsEvent] = useState<SportsEvent | null>(null);
+  const [showSportsEventsList, setShowSportsEventsList] = useState(false);
   const selectedSportsEventRef = useRef<SportsEvent | null>(null);
   const [sportsEventRsvp, setSportsEventRsvp] = useState<SportsEventRsvpStatus | null>(null);
   const [sportsEventGoingCount, setSportsEventGoingCount] = useState(0);
@@ -475,8 +632,19 @@ export default function HomeScreen({
   const [sportsEventKeyboardHeight, setSportsEventKeyboardHeight] = useState(0);
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
+  const calendarProviderStorageKey = userScopedStorageKey('assignment_calendar_provider', userId);
+  const calendarFeedStorageKey = userScopedStorageKey('assignment_calendar_feed', userId);
+  const calendarTasksStorageKey = userScopedStorageKey('assignment_calendar_tasks_cache', userId);
+  const calendarCompletedStorageKey = userScopedStorageKey('assignment_calendar_completed', userId);
+  const calendarLastSyncStorageKey = userScopedStorageKey('assignment_calendar_last_sync', userId);
+  const legacyCalendarFeedStorageKey = userScopedStorageKey('canvas_calendar_feed', userId);
+  const legacyCalendarTasksStorageKey = userScopedStorageKey('canvas_assignments_cache', userId);
+  const legacyCalendarCompletedStorageKey = userScopedStorageKey('canvas_assignments_completed', userId);
+  const legacyCalendarLastSyncStorageKey = userScopedStorageKey('canvas_assignments_last_sync', userId);
   const { start: quarterStart, end: quarterEnd } = getQuarterBounds(selectedQuarter);
   const sportsEventSheetHeight = Math.round(windowHeight * 0.88);
+  const sportsListSheetHeight = Math.round(windowHeight * 0.72);
+  const pastAssignmentsSheetHeight = Math.round(windowHeight * 0.74);
   const sportsEventCommentFooterPadding = sportsEventKeyboardVisible ? 8 : Math.max(bottomInset, 12) + 10;
   const sportsEventScrollBottomPadding = sportsEventKeyboardVisible ? 92 : 18;
   const resetSportsEventDetailScroll = useCallback(() => {
@@ -500,6 +668,185 @@ export default function HomeScreen({
     selectedSportsEventRef.current = selectedSportsEvent;
   }, [selectedSportsEvent]);
 
+  const selectedCalendarProvider = getCalendarProviderOption(calendarProvider);
+
+  const syncCalendarTasks = useCallback(async (feedUrl: string) => {
+    const trimmedUrl = feedUrl.trim();
+    if (!trimmedUrl) return;
+    setCalendarTasksLoading(true);
+    setCalendarTasksError(null);
+    try {
+      const response = await fetch(trimmedUrl);
+      if (!response.ok) throw new Error(`Calendar feed returned ${response.status}`);
+      const text = await response.text();
+      const parsedTasks = parseCalendarTasksFromIcs(text);
+      const syncedAt = new Date().toISOString();
+      setCalendarTasks(parsedTasks);
+      setCalendarLastSyncedAt(syncedAt);
+      void AsyncStorage.multiSet([
+        [calendarTasksStorageKey, JSON.stringify(parsedTasks)],
+        [calendarLastSyncStorageKey, syncedAt],
+      ]);
+    } catch {
+      setCalendarTasksError('Could not refresh this calendar feed. Check the link and try again.');
+    } finally {
+      setCalendarTasksLoading(false);
+    }
+  }, [calendarTasksStorageKey, calendarLastSyncStorageKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCalendarState() {
+      const [
+        storedProvider,
+        storedFeedUrl,
+        storedTasks,
+        storedCompleted,
+        storedLastSync,
+        legacyFeedUrl,
+        legacyTasks,
+        legacyCompleted,
+        legacyLastSync,
+      ] = await AsyncStorage.multiGet([
+        calendarProviderStorageKey,
+        calendarFeedStorageKey,
+        calendarTasksStorageKey,
+        calendarCompletedStorageKey,
+        calendarLastSyncStorageKey,
+        legacyCalendarFeedStorageKey,
+        legacyCalendarTasksStorageKey,
+        legacyCalendarCompletedStorageKey,
+        legacyCalendarLastSyncStorageKey,
+      ]).then((entries) => entries.map(([, value]) => value));
+
+      if (cancelled) return;
+      const resolvedProvider = getCalendarProviderOption(storedProvider).id;
+      const resolvedFeedUrl = storedFeedUrl ?? legacyFeedUrl;
+      const resolvedTasks = storedTasks ?? legacyTasks;
+      const resolvedCompleted = storedCompleted ?? legacyCompleted;
+      const resolvedLastSync = storedLastSync ?? legacyLastSync;
+      setCalendarProvider(resolvedProvider);
+      setCalendarFeedUrl(resolvedFeedUrl);
+      setCalendarFeedInput(resolvedFeedUrl ?? '');
+      setCalendarLastSyncedAt(resolvedLastSync);
+
+      if (resolvedTasks) {
+        try {
+          setCalendarTasks(JSON.parse(resolvedTasks) as CalendarTask[]);
+        } catch {}
+      } else {
+        setCalendarTasks([]);
+      }
+
+      if (resolvedCompleted) {
+        try {
+          setCompletedCalendarTasks(JSON.parse(resolvedCompleted) as Record<string, boolean>);
+        } catch {
+          setCompletedCalendarTasks({});
+        }
+      } else {
+        setCompletedCalendarTasks({});
+      }
+
+      if (!storedFeedUrl && legacyFeedUrl) {
+        void AsyncStorage.multiSet([
+          [calendarProviderStorageKey, DEFAULT_CALENDAR_PROVIDER_ID],
+          [calendarFeedStorageKey, legacyFeedUrl],
+          ...(legacyTasks ? [[calendarTasksStorageKey, legacyTasks] as [string, string]] : []),
+          ...(legacyCompleted ? [[calendarCompletedStorageKey, legacyCompleted] as [string, string]] : []),
+          ...(legacyLastSync ? [[calendarLastSyncStorageKey, legacyLastSync] as [string, string]] : []),
+        ]);
+      }
+
+      if (resolvedFeedUrl) void syncCalendarTasks(resolvedFeedUrl);
+    }
+
+    void loadCalendarState();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    calendarCompletedStorageKey,
+    calendarFeedStorageKey,
+    calendarLastSyncStorageKey,
+    calendarProviderStorageKey,
+    calendarTasksStorageKey,
+    legacyCalendarCompletedStorageKey,
+    legacyCalendarFeedStorageKey,
+    legacyCalendarLastSyncStorageKey,
+    legacyCalendarTasksStorageKey,
+    syncCalendarTasks,
+  ]);
+
+  async function saveCalendarFeed() {
+    const trimmedUrl = calendarFeedInput.trim();
+    if (!trimmedUrl) {
+      Alert.alert('Calendar link needed', `Paste your ${selectedCalendarProvider.label} calendar feed link first.`);
+      return;
+    }
+    if (!/^https?:\/\//i.test(trimmedUrl)) {
+      Alert.alert('Use a full link', 'Paste the full calendar feed URL that starts with https://.');
+      return;
+    }
+    setCalendarFeedUrl(trimmedUrl);
+    setShowCalendarSetup(false);
+    await AsyncStorage.multiSet([
+      [calendarProviderStorageKey, calendarProvider],
+      [calendarFeedStorageKey, trimmedUrl],
+    ]);
+    void syncCalendarTasks(trimmedUrl);
+  }
+
+  async function disconnectCalendarFeed() {
+    setCalendarFeedUrl(null);
+    setCalendarFeedInput('');
+    setCalendarTasks([]);
+    setCalendarTasksError(null);
+    setCalendarLastSyncedAt(null);
+    setCompletedCalendarTasks({});
+    await AsyncStorage.multiRemove([
+      calendarProviderStorageKey,
+      calendarFeedStorageKey,
+      calendarTasksStorageKey,
+      calendarCompletedStorageKey,
+      calendarLastSyncStorageKey,
+      legacyCalendarFeedStorageKey,
+      legacyCalendarTasksStorageKey,
+      legacyCalendarCompletedStorageKey,
+      legacyCalendarLastSyncStorageKey,
+    ]);
+    setShowCalendarSetup(false);
+  }
+
+  function toggleCalendarTask(assignment: CalendarTask) {
+    setCompletedCalendarTasks((current) => {
+      const isPast = isPastCalendarTask(assignment, now);
+      const currentlyCompleted = isCalendarTaskCompleted(assignment, current, now);
+      const next = { ...current };
+      if (currentlyCompleted) {
+        if (isPast) {
+          next[assignment.id] = false;
+        } else {
+          delete next[assignment.id];
+        }
+      } else {
+        next[assignment.id] = true;
+      }
+      void AsyncStorage.setItem(calendarCompletedStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  async function openCalendarTask(assignment: CalendarTask) {
+    if (!assignment.url) return;
+    try {
+      await Linking.openURL(assignment.url);
+    } catch {
+      Alert.alert('Could not open assignment', 'Try opening the assignment from your LMS directly.');
+    }
+  }
+
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -518,84 +865,6 @@ export default function HomeScreen({
       hideSub.remove();
     };
   }, [settleSportsEventComposer]);
-
-  useEffect(() => {
-    async function loadTempUnit() {
-      const stored = await AsyncStorage.getItem('temp_unit');
-      if (stored === 'F') {
-        setUseCelsius(false);
-        tempToggleAnim.setValue(1);
-      }
-      setTempUnitLoaded(true);
-    }
-    void loadTempUnit();
-  }, []);
-
-  useEffect(() => {
-    if (!tempUnitLoaded) return;
-    void AsyncStorage.setItem('temp_unit', useCelsius ? 'C' : 'F');
-  }, [useCelsius, tempUnitLoaded]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadWeather() {
-      const weatherConfig = getSchoolConfig(school);
-      const weatherCacheKey = `weather_cache_${weatherConfig.id}`;
-      const cached = await AsyncStorage.getItem(weatherCacheKey);
-      let shouldRefresh = true;
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (!cancelled) {
-            setTempC(parsed.tempC ?? null);
-            setWeatherCode(parsed.weatherCode ?? null);
-            setSunriseTime(parsed.sunriseTime ?? null);
-            setSunsetTime(parsed.sunsetTime ?? null);
-          }
-          shouldRefresh = Date.now() - Number(parsed.fetchedAt ?? 0) > WEATHER_CACHE_TTL_MS;
-        } catch {
-          shouldRefresh = true;
-        }
-      }
-
-      if (!shouldRefresh || cancelled) return;
-      try {
-        const params = new URLSearchParams({
-          latitude: String(weatherConfig.coordinates.latitude),
-          longitude: String(weatherConfig.coordinates.longitude),
-          current: 'temperature_2m,weathercode',
-          daily: 'sunrise,sunset',
-          timezone: weatherConfig.timeZone,
-          forecast_days: '1',
-          temperature_unit: 'celsius',
-        });
-        const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
-        const json = await response.json();
-        const nextTempC = json.current?.temperature_2m ?? null;
-        const nextWeatherCode = json.current?.weathercode ?? null;
-        const nextSunriseTime = json.daily?.sunrise?.[0] ?? null;
-        const nextSunsetTime = json.daily?.sunset?.[0] ?? null;
-        if (cancelled) return;
-        setTempC(nextTempC);
-        setWeatherCode(nextWeatherCode);
-        setSunriseTime(nextSunriseTime);
-        setSunsetTime(nextSunsetTime);
-        void AsyncStorage.setItem(weatherCacheKey, JSON.stringify({
-          tempC: nextTempC,
-          weatherCode: nextWeatherCode,
-          sunriseTime: nextSunriseTime,
-          sunsetTime: nextSunsetTime,
-          fetchedAt: Date.now(),
-        }));
-      } catch {}
-    }
-
-    void loadWeather();
-    return () => {
-      cancelled = true;
-    };
-  }, [school]);
 
   useEffect(() => {
     let cancelled = false;
@@ -834,6 +1103,19 @@ export default function HomeScreen({
     () => visibleCampusEvents.map((event) => event.id).join('|'),
     [visibleCampusEvents]
   );
+  const upcomingCalendarTasks = useMemo(() => (
+    calendarTasks
+      .filter((assignment) => !isCalendarTaskCompleted(assignment, completedCalendarTasks, now))
+      .sort((left, right) => new Date(left.dueAt).getTime() - new Date(right.dueAt).getTime())
+  ), [calendarTasks, completedCalendarTasks, now]);
+  const pastCalendarTasks = useMemo(() => (
+    calendarTasks
+      .filter((assignment) => isPastCalendarTask(assignment, now) && isCalendarTaskCompleted(assignment, completedCalendarTasks, now))
+      .sort((left, right) => new Date(right.dueAt).getTime() - new Date(left.dueAt).getTime())
+  ), [calendarTasks, completedCalendarTasks, now]);
+  const incompleteCalendarTaskCount = upcomingCalendarTasks.length;
+  const pastCalendarTaskCount = pastCalendarTasks.length;
+  const calendarLastSyncedLabel = calendarLastSyncedAt ? `${selectedCalendarProvider.label} synced ${timeAgo(calendarLastSyncedAt)}` : 'Assignment calendar';
 
   const raisedCardStyle = {
     borderRadius: 28,
@@ -847,8 +1129,6 @@ export default function HomeScreen({
   } as const;
 
   const twoColumnWidth = Math.max((windowWidth - 18 * 2 - 12) / 2, 0);
-  const weatherPageWidth = Math.max(twoColumnWidth - SUMMARY_CARD_PADDING * 2, 0);
-  const weatherPagerHeight = SUMMARY_CARD_HEIGHT - SUMMARY_CARD_PADDING * 2 - WEATHER_DOT_ROW_HEIGHT;
   const heroCardWidth = Math.max(windowWidth - 36, 0);
   const activeHeroItem = heroItems[activeHeroIndex] ?? null;
   const heroAccent = activeHeroItem?.type === 'course'
@@ -858,7 +1138,6 @@ export default function HomeScreen({
     : colors.brand;
   const selectedSportsVenue = selectedSportsEvent ? getSportsVenueForEvent(school, selectedSportsEvent) : null;
   const sportsGoingAccent = getSchoolConfig(school).accent;
-  const sportsGoingAccentBg = `${sportsGoingAccent}14`;
   const selectedSportsEventLocationLabel = selectedSportsEvent?.location === 'Venue TBA'
     ? 'Venue TBA'
     : selectedSportsEvent?.location === 'Away'
@@ -1025,6 +1304,7 @@ export default function HomeScreen({
   }
 
   function openSportsEvent(event: SportsEvent) {
+    setShowSportsEventsList(false);
     selectedSportsEventRef.current = event;
     setSelectedSportsEvent(event);
     setSportsEventCommentInput('');
@@ -1696,254 +1976,718 @@ export default function HomeScreen({
           </View>
         </View>
 
-        <View style={{
-          ...raisedCardStyle,
-          width: twoColumnWidth,
-          height: SUMMARY_CARD_HEIGHT,
-          backgroundColor: colors.card,
-          padding: SUMMARY_CARD_PADDING,
-        }}>
-          <ScrollView
-            ref={weatherPagerRef}
-            horizontal
-            pagingEnabled
-            bounces={false}
-            showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onMomentumScrollEnd={(event) => {
-              setActiveWeatherIndex(clamp(Math.round(event.nativeEvent.contentOffset.x / Math.max(weatherPageWidth, 1)), 0, 1));
-            }}
-            style={{ width: weatherPageWidth, height: weatherPagerHeight, flexGrow: 0 }}
-          >
-            <View style={{ width: weatherPageWidth }}>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
-                    Weather
-                  </Text>
-                  <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text, lineHeight: 32, marginTop: 8 }}>
-                    {displayTemperature(tempC, useCelsius)}
-                  </Text>
-                  <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
-                    {weatherCode === null ? 'Campus Weather' : (WMO_DESCRIPTIONS[weatherCode]?.label ?? 'Clear Sky')}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Ionicons
-                    name={weatherCode === null ? 'cloud-outline' : (WMO_DESCRIPTIONS[weatherCode]?.icon ?? 'sunny-outline')}
-                    size={24}
-                    color={colors.brand}
-                  />
-                  <TouchableOpacity
-                    onPress={() => {
-                      const next = !useCelsius;
-                      setUseCelsius(next);
-                      Animated.spring(tempToggleAnim, {
-                        toValue: next ? 0 : 1,
-                        tension: 220,
-                        friction: 18,
-                        useNativeDriver: true,
-                      }).start();
-                    }}
-                    style={{
-                      flexDirection: 'row',
-                      backgroundColor: colors.inputBg,
-                      borderRadius: 999,
-                      padding: 3,
-                      marginTop: 12,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <Animated.View
-                      style={{
-                        position: 'absolute',
-                        left: 3,
-                        top: 3,
-                        bottom: 3,
-                        width: tempPillWidth,
-                        borderRadius: 999,
-                        backgroundColor: colors.brand,
-                        transform: [{
-                          translateX: tempToggleAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, tempPillWidth],
-                          }),
-                        }],
-                      }}
-                    />
-                    {(['C', 'F'] as const).map((label, idx) => {
-                      const active = label === 'C' ? useCelsius : !useCelsius;
-                      return (
-                        <View
-                          key={label}
-                          onLayout={idx === 0 ? (e) => setTempPillWidth(e.nativeEvent.layout.width) : undefined}
-                          style={{ paddingHorizontal: 9, paddingVertical: 5 }}
-                        >
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#ffffff' : colors.textSecondary }}>
-                            {label}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <Text
-                numberOfLines={WEATHER_INSIGHT_LINES}
-                style={{
-                  fontSize: 12,
-                  lineHeight: WEATHER_INSIGHT_LINE_HEIGHT,
-                  color: colors.textTertiary,
-                  marginTop: 12,
-                  height: WEATHER_INSIGHT_LINE_HEIGHT * WEATHER_INSIGHT_LINES,
-                }}
-              >
-                {weatherInsightText(tempC, weatherCode, useCelsius)}
-              </Text>
-            </View>
-
-            <View style={{ width: weatherPageWidth }}>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
-                    Sunlight
-                  </Text>
-                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
-                    Today on campus
-                  </Text>
-                </View>
-                <Ionicons name="sunny-outline" size={24} color={colors.brand} />
-              </View>
-              <View style={{ marginTop: 14, gap: 9 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '700' }}>Sunrise</Text>
-                  <Text style={{ fontSize: 15, color: colors.text, fontWeight: '800' }}>{formatSunTime(sunriseTime)}</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: '700' }}>Sunset</Text>
-                  <Text style={{ fontSize: 15, color: colors.text, fontWeight: '800' }}>{formatSunTime(sunsetTime)}</Text>
-                </View>
-              </View>
-            </View>
-          </ScrollView>
-
-          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 6 }}>
-            {[0, 1].map((index) => (
-              <TouchableOpacity
-                key={index}
-                onPress={() => {
-                  setActiveWeatherIndex(index);
-                  weatherPagerRef.current?.scrollTo({ x: weatherPageWidth * index, animated: true });
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ width: 16, height: 14, alignItems: 'center', justifyContent: 'center' }}
-              >
-                <View
-                  style={{
-                    width: activeWeatherIndex === index ? 14 : 5,
-                    height: 5,
-                    borderRadius: 3,
-                    backgroundColor: activeWeatherIndex === index ? colors.brand : colors.bgTertiary,
-                  }}
-                />
-              </TouchableOpacity>
-            ))}
+        <TouchableOpacity
+          onPress={() => setShowSportsEventsList(true)}
+          activeOpacity={0.8}
+          style={{
+            ...raisedCardStyle,
+            width: twoColumnWidth,
+            height: SUMMARY_CARD_HEIGHT,
+            backgroundColor: colors.card,
+            padding: SUMMARY_CARD_PADDING,
+          }}
+        >
+          <View>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
+              Upcoming Sports Events
+            </Text>
           </View>
-        </View>
+          <View style={{ marginTop: 26 }}>
+            <Text style={{ fontSize: 34, lineHeight: 38, fontWeight: '800', color: colors.text }}>
+              {visibleCampusEvents.length}
+            </Text>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary, marginTop: 2 }}>
+              event{visibleCampusEvents.length === 1 ? '' : 's'} upcoming
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 12 }}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>
+                View list
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.brand} />
+            </View>
+          </View>
+        </TouchableOpacity>
       </View>
 
       <View>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 10 }}>
-          Sports Events
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <View>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
+              Assignments
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
+              {calendarFeedUrl ? calendarLastSyncedLabel : 'Assignment calendar'}
+            </Text>
+          </View>
+          {calendarFeedUrl ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {pastCalendarTaskCount > 0 ? (
+                <TouchableOpacity
+                  onPress={() => setShowPastAssignments(true)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{
+                    minHeight: 34,
+                    borderRadius: 17,
+                    backgroundColor: colors.card,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    paddingHorizontal: 11,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
+                    Past Assignments {pastCalendarTaskCount}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                onPress={() => void syncCalendarTasks(calendarFeedUrl)}
+                disabled={calendarTasksLoading}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: colors.card,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                {calendarTasksLoading ? (
+                  <ActivityIndicator size="small" color={colors.brand} />
+                ) : (
+                  <Ionicons name="refresh" size={16} color={colors.brand} />
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
         <View style={{
           ...raisedCardStyle,
           backgroundColor: colors.card,
           padding: 18,
         }}>
-          {visibleCampusEvents.length > 0 ? (
-            <View style={{ gap: 14 }}>
-              {visibleCampusEvents.map((event, index) => (
+          {calendarFeedUrl && upcomingCalendarTasks.length > 0 ? (
+            <View style={{ gap: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
+                  {incompleteCalendarTaskCount} open
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setShowCalendarSetup(true)}
+                  style={{
+                    paddingHorizontal: 11,
+                    paddingVertical: 7,
+                    borderRadius: 999,
+                    backgroundColor: colors.bgTertiary,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
+                    Manage
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {calendarTasksError ? (
+                <Text style={{ fontSize: 12, color: '#EF4444' }}>
+                  {calendarTasksError}
+                </Text>
+              ) : null}
+              {upcomingCalendarTasks.map((assignment, index) => (
                 (() => {
-                  const participationCount = sportsEventListParticipation[event.id] ?? 0;
+                  const completed = isCalendarTaskCompleted(assignment, completedCalendarTasks, now);
+                  const overdue = isCalendarTaskOverdue(assignment, completed, now);
                   return (
                     <TouchableOpacity
-                      key={`${event.id}-${event.location}-${index}`}
-                      onPress={() => openSportsEvent(event)}
-                      activeOpacity={0.78}
+                      key={assignment.id}
+                      onPress={() => {
+                        if (assignment.url) void openCalendarTask(assignment);
+                      }}
+                      activeOpacity={assignment.url ? 0.78 : 1}
                       style={{
                         flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 12,
-                        paddingTop: index === 0 ? 0 : 14,
+                        alignItems: 'flex-start',
+                        gap: 11,
+                        paddingTop: index === 0 ? 2 : 13,
                         borderTopWidth: index === 0 ? 0 : 1,
                         borderTopColor: colors.borderSubtle,
                       }}
                     >
-                      <View style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 21,
-                        backgroundColor: event.bg,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}>
-                        <Ionicons name={event.icon} size={20} color={event.color} />
-                      </View>
+                      <TouchableOpacity
+                        onPress={() => toggleCalendarTask(assignment)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 13,
+                          backgroundColor: completed ? colors.brand : colors.bgTertiary,
+                          borderWidth: 1,
+                          borderColor: completed ? colors.brand : colors.border,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginTop: 1,
+                        }}
+                      >
+                        {completed ? <Ionicons name="checkmark" size={16} color="white" /> : null}
+                      </TouchableOpacity>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
-                          {event.title}
+                        <Text
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                          style={{
+                            fontSize: 15,
+                            fontWeight: '800',
+                            color: overdue ? '#EF4444' : (completed ? colors.textTertiary : colors.text),
+                            textDecorationLine: completed ? 'line-through' : 'none',
+                          }}
+                        >
+                          {assignment.title}
                         </Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 5, flexWrap: 'wrap' }}>
                           <View
                             style={{
                               borderRadius: 999,
-                              backgroundColor: event.isHome ? colors.brandBg : colors.bgTertiary,
+                              backgroundColor: colors.brandBg,
                               borderWidth: 1,
-                              borderColor: event.isHome ? `${colors.brand}44` : colors.borderSubtle,
+                              borderColor: `${colors.brand}33`,
                               paddingHorizontal: 7,
                               paddingVertical: 3,
                             }}
                           >
-                            <Text style={{ fontSize: 10, fontWeight: '800', color: event.isHome ? colors.brand : colors.textSecondary }}>
-                              {sportsHomeAwayLabel(event)}
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: colors.brand }}>
+                              {assignment.courseCode}
                             </Text>
                           </View>
-                          <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                            {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
-                          </Text>
-                        </View>
-                        <View style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 4,
-                          alignSelf: 'flex-start',
-                          borderRadius: 999,
-                          backgroundColor: sportsGoingAccentBg,
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                          marginTop: 7,
-                        }}>
-                          <Ionicons name="people-outline" size={11} color={sportsGoingAccent} />
-                          <Text style={{ color: sportsGoingAccent, fontSize: 10, fontWeight: '800' }}>
-                            {participationCount > 99 ? '99+' : participationCount} going
+                          <Text style={{ fontSize: 13, color: overdue ? '#EF4444' : colors.textSecondary }}>
+                            {formatCalendarTaskDueLabel(assignment, now)}
                           </Text>
                         </View>
                       </View>
-                      <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                      {assignment.url ? <Ionicons name="open-outline" size={17} color={colors.textTertiary} /> : null}
                     </TouchableOpacity>
                   );
                 })()
               ))}
             </View>
+          ) : calendarFeedUrl ? (
+            <View style={{ alignItems: 'center', paddingVertical: 14 }}>
+              <View style={{
+                width: 48,
+                height: 48,
+                borderRadius: 24,
+                backgroundColor: colors.brandBg,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 12,
+              }}>
+                <Ionicons name="checkmark-done-outline" size={23} color={colors.brand} />
+              </View>
+              <Text style={{ fontSize: 20, lineHeight: 24, fontWeight: '800', color: colors.text, textAlign: 'center' }}>
+                No upcoming deadlines
+              </Text>
+              <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 7 }}>
+                Your calendar is connected. New assignments will show up here after the next refresh.
+              </Text>
+              {calendarTasksError ? (
+                <Text style={{ fontSize: 12, color: '#EF4444', textAlign: 'center', marginTop: 10 }}>
+                  {calendarTasksError}
+                </Text>
+              ) : null}
+              <TouchableOpacity
+                onPress={() => setShowCalendarSetup(true)}
+                style={{
+                  marginTop: 14,
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  borderRadius: 999,
+                  backgroundColor: colors.bgTertiary,
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>
+                  Manage Calendar
+                </Text>
+              </TouchableOpacity>
+              {pastCalendarTaskCount > 0 ? (
+                <TouchableOpacity
+                  onPress={() => setShowPastAssignments(true)}
+                  style={{
+                    marginTop: 10,
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 999,
+                    backgroundColor: colors.brandBg,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.brand }}>
+                    View Past Assignments ({pastCalendarTaskCount})
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           ) : (
-            <Text style={{ fontSize: 14, color: colors.textSecondary }}>
-              No upcoming sports events right now.
-            </Text>
+            <View style={{ alignItems: 'center', paddingVertical: 14 }}>
+              <View style={{
+                width: 50,
+                height: 50,
+                borderRadius: 25,
+                backgroundColor: colors.brandBg,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 12,
+              }}>
+                <Ionicons name="calendar-outline" size={24} color={colors.brand} />
+              </View>
+              <Text style={{ fontSize: 21, lineHeight: 25, fontWeight: '800', color: colors.text, textAlign: 'center' }}>
+                Connect Calendar
+              </Text>
+              <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 7 }}>
+                Choose your LMS, paste its calendar feed once, then ClassMate turns deadlines into a checklist.
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowCalendarSetup(true)}
+                style={{
+                  marginTop: 15,
+                  paddingHorizontal: 18,
+                  paddingVertical: 11,
+                  borderRadius: 999,
+                  backgroundColor: colors.brand,
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '800', color: 'white' }}>
+                  Add Calendar Feed
+                </Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       </View>
       </ScrollView>
+
+      <Modal
+        visible={showSportsEventsList}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSportsEventsList(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setShowSportsEventsList(false)}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          <View
+            style={{
+              maxHeight: '78%',
+              height: sportsListSheetHeight,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              backgroundColor: colors.bg,
+              paddingTop: 10,
+              paddingBottom: Math.max(bottomInset, 18) + 8,
+              overflow: 'hidden',
+            }}
+          >
+            <View style={{ alignItems: 'center', paddingBottom: 12 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, marginBottom: 12 }}>
+              <View>
+                <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
+                  Sports Events
+                </Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                  {visibleCampusEvents.length} upcoming
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowSportsEventsList(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: colors.bgTertiary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 10 }}
+            >
+              {visibleCampusEvents.length > 0 ? (
+                <View style={{ gap: 10 }}>
+                  {visibleCampusEvents.map((event, index) => (
+                    <TouchableOpacity
+                      key={`${event.id}-sheet-${index}`}
+                      onPress={() => openSportsEvent(event)}
+                      activeOpacity={0.78}
+                      style={{
+                        borderRadius: 18,
+                        backgroundColor: colors.card,
+                        borderWidth: 1,
+                        borderColor: colors.borderSubtle,
+                        padding: 14,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={2} style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
+                            {event.title}
+                          </Text>
+                          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
+                            {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
+                          </Text>
+                        </View>
+                        <View
+                          style={{
+                            borderRadius: 999,
+                            backgroundColor: event.isHome ? colors.brandBg : colors.bgTertiary,
+                            borderWidth: 1,
+                            borderColor: event.isHome ? `${colors.brand}44` : colors.borderSubtle,
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                          }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: event.isHome ? colors.brand : colors.textSecondary }}>
+                            {sportsHomeAwayLabel(event)}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 9 }}>
+                        <Ionicons name="people-outline" size={12} color={sportsGoingAccent} />
+                        <Text style={{ color: sportsGoingAccent, fontSize: 11, fontWeight: '800' }}>
+                          {(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, textAlign: 'center' }}>
+                    No upcoming sports events
+                  </Text>
+                  <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 7 }}>
+                    Events will appear here when the athletics calendar has something coming up.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showPastAssignments}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPastAssignments(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setShowPastAssignments(false)}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          <View
+            style={{
+              maxHeight: '80%',
+              height: pastAssignmentsSheetHeight,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              backgroundColor: colors.bg,
+              paddingTop: 10,
+              paddingBottom: Math.max(bottomInset, 18) + 8,
+              overflow: 'hidden',
+            }}
+          >
+            <View style={{ alignItems: 'center', paddingBottom: 12 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, marginBottom: 12 }}>
+              <View>
+                <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
+                  Past Assignments
+                </Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                  Hidden from Home after the deadline passes
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowPastAssignments(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: colors.bgTertiary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 10 }}
+            >
+              {pastCalendarTasks.length > 0 ? (
+                <View style={{ gap: 10 }}>
+                  {pastCalendarTasks.map((assignment) => {
+                    const completed = isCalendarTaskCompleted(assignment, completedCalendarTasks, now);
+                    return (
+                      <View
+                        key={`past-${assignment.id}`}
+                        style={{
+                          borderRadius: 18,
+                          backgroundColor: colors.card,
+                          borderWidth: 1,
+                          borderColor: colors.borderSubtle,
+                          padding: 14,
+                          flexDirection: 'row',
+                          gap: 11,
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        <TouchableOpacity
+                          onPress={() => toggleCalendarTask(assignment)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          style={{
+                            width: 26,
+                            height: 26,
+                            borderRadius: 13,
+                            backgroundColor: completed ? colors.brand : colors.bgTertiary,
+                            borderWidth: 1,
+                            borderColor: completed ? colors.brand : colors.border,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginTop: 1,
+                          }}
+                        >
+                          {completed ? <Ionicons name="checkmark" size={16} color="white" /> : null}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => {
+                            if (assignment.url) void openCalendarTask(assignment);
+                          }}
+                          activeOpacity={assignment.url ? 0.78 : 1}
+                          style={{ flex: 1 }}
+                        >
+                          <Text
+                            numberOfLines={2}
+                            style={{
+                              fontSize: 15,
+                              lineHeight: 19,
+                              fontWeight: '800',
+                              color: completed ? colors.textTertiary : colors.text,
+                              textDecorationLine: completed ? 'line-through' : 'none',
+                            }}
+                          >
+                            {assignment.title}
+                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6, flexWrap: 'wrap' }}>
+                            <View
+                              style={{
+                                borderRadius: 999,
+                                backgroundColor: colors.brandBg,
+                                borderWidth: 1,
+                                borderColor: `${colors.brand}33`,
+                                paddingHorizontal: 7,
+                                paddingVertical: 3,
+                              }}
+                            >
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: colors.brand }}>
+                                {assignment.courseCode}
+                              </Text>
+                            </View>
+                            <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+                              {formatCalendarTaskDueLabel(assignment, now)}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, textAlign: 'center' }}>
+                    No past assignments
+                  </Text>
+                  <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 7 }}>
+                    Deadlines move here after they pass.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showCalendarSetup}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCalendarSetup(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setShowCalendarSetup(false)}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          <View
+            style={{
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              backgroundColor: colors.bg,
+              paddingHorizontal: 18,
+              paddingTop: 10,
+              paddingBottom: Math.max(bottomInset, 18) + 12,
+            }}
+          >
+            <View style={{ alignItems: 'center', paddingBottom: 12 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
+                  Assignment Calendar
+                </Text>
+                <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
+                  Pick your LMS and paste its .ics or iCal feed link to keep deadlines synced on this device.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowCalendarSetup(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: colors.bgTertiary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginTop: 18 }}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary, marginBottom: 9 }}>
+                LMS source
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {CALENDAR_PROVIDER_OPTIONS.map((provider) => {
+                  const active = provider.id === calendarProvider;
+                  return (
+                    <TouchableOpacity
+                      key={provider.id}
+                      onPress={() => setCalendarProvider(provider.id)}
+                      activeOpacity={0.78}
+                      style={{
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: active ? colors.brand : colors.border,
+                        backgroundColor: active ? colors.brandBg : colors.card,
+                        paddingHorizontal: 11,
+                        paddingVertical: 8,
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: active ? colors.brand : colors.textSecondary }}>
+                        {provider.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={{ fontSize: 12, lineHeight: 17, color: colors.textSecondary, marginTop: 9 }}>
+                {selectedCalendarProvider.helper}
+              </Text>
+            </View>
+
+            <View style={{
+              marginTop: 18,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.inputBg,
+              paddingHorizontal: 14,
+              paddingVertical: 11,
+            }}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary, marginBottom: 8 }}>
+                {selectedCalendarProvider.label} feed link
+              </Text>
+              <TextInput
+                value={calendarFeedInput}
+                onChangeText={setCalendarFeedInput}
+                placeholder={selectedCalendarProvider.placeholder}
+                placeholderTextColor={colors.textTertiary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                style={{ minHeight: 44, fontSize: 14, color: colors.text }}
+              />
+            </View>
+
+            {calendarTasksError ? (
+              <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 10 }}>
+                {calendarTasksError}
+              </Text>
+            ) : null}
+
+            <TouchableOpacity
+              onPress={() => void saveCalendarFeed()}
+              disabled={calendarTasksLoading}
+              activeOpacity={0.8}
+              style={{
+                minHeight: 52,
+                borderRadius: 18,
+                backgroundColor: colors.brand,
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'row',
+                gap: 8,
+                marginTop: 16,
+              }}
+            >
+              {calendarTasksLoading ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="sync" size={18} color="white" />}
+              <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>
+                Save and Sync
+              </Text>
+            </TouchableOpacity>
+
+            {calendarFeedUrl ? (
+              <TouchableOpacity
+                onPress={() => void disconnectCalendarFeed()}
+                activeOpacity={0.8}
+                style={{
+                  minHeight: 48,
+                  borderRadius: 16,
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: 10,
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '800', color: '#EF4444' }}>
+                  Disconnect Calendar
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={!!selectedSportsEvent}

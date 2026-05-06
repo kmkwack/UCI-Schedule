@@ -17,6 +17,7 @@ type Props = {
   activeCourses: Course[];
   selectedQuarter: Quarter;
   onOpenSettings: () => void;
+  topInset?: number;
   userId: string;
   school: string;
   bottomInset?: number;
@@ -111,7 +112,7 @@ type HeroCardItem =
   | { type: 'course'; course: Course }
   | { type: 'sportsEvents' };
 
-const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const QUARTER_DATES: Record<string, { start: string; end: string }> = {
@@ -367,7 +368,7 @@ function getDateLabel(now: Date, selectedQuarter: Quarter, quarterStart: Date, q
   const month = MONTH_LABELS[now.getMonth()];
   const date = now.getDate();
   const week = getWeekNumber(now, quarterStart, quarterEnd);
-  return `${month} ${date} ${dayName} · ${termLabel(selectedQuarter, school, true)} · Week ${week}`;
+  return `${month} ${date} ${dayName} · ${termLabel(selectedQuarter, school)} · Week ${week}`;
 }
 
 function formatEventDayLabel(date: Date) {
@@ -694,6 +695,7 @@ export default function HomeScreen({
   onOpenSettings,
   userId,
   school,
+  topInset = 0,
   bottomInset = 0,
   scrollToTopTrigger = 0,
   onAssignmentCalendarChange,
@@ -1773,42 +1775,32 @@ export default function HomeScreen({
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1, backgroundColor: colors.bg }}
-        contentContainerStyle={{ paddingTop: 62, paddingHorizontal: 18, paddingBottom: bottomInset + 84 }}
+        contentContainerStyle={{ paddingTop: topInset + 9, paddingHorizontal: 18, paddingBottom: bottomInset + 84 }}
         showsVerticalScrollIndicator={false}
       >
-      <View style={{ marginBottom: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>Today</Text>
+      <View style={{ marginBottom: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <Text numberOfLines={1} style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>
+            {schoolCampusLabel(school)}
+          </Text>
           <TouchableOpacity
             onPress={onOpenSettings}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <View style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
               backgroundColor: colors.card,
               alignItems: 'center',
               justifyContent: 'center',
               borderWidth: 1,
               borderColor: colors.border,
-              shadowColor: '#0f172a',
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: isDark ? 0.2 : 0.08,
-              shadowRadius: 14,
-              elevation: 4,
-            }}>
-              <Ionicons name="person-outline" size={18} color={colors.brand} />
-            </View>
+            }}
+          >
+            <Ionicons name="person-outline" size={18} color={colors.brand} />
           </TouchableOpacity>
         </View>
-        <Text
-          numberOfLines={1}
-          style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary, marginTop: 2 }}
-        >
-          {schoolCampusLabel(school)}
-        </Text>
-        <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 4 }}>
+        <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
           {getDateLabel(now, selectedQuarter, quarterStart, quarterEnd, school)}
         </Text>
       </View>
@@ -1837,32 +1829,13 @@ export default function HomeScreen({
                         shadowRadius: 0,
                         elevation: 0,
                       }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 }}>
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary }}>
-                              Campus
-                            </Text>
-                            <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text, marginTop: 3 }}>
-                              Sports Events
-                            </Text>
-                            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
-                              {visibleCampusEvents.length} upcoming
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => setShowSportsEventsList(true)}
-                            activeOpacity={0.75}
-                            style={{
-                              width: 36,
-                              height: 36,
-                              borderRadius: 18,
-                              backgroundColor: colors.bgTertiary,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Ionicons name="chevron-forward" size={18} color={sportsGoingAccent} />
-                          </TouchableOpacity>
+                        <View>
+                          <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                            Sports Events
+                          </Text>
+                          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
+                            {visibleCampusEvents.length} upcoming
+                          </Text>
                         </View>
 
                         {homeSportsEvents.length > 0 ? (
@@ -1937,7 +1910,7 @@ export default function HomeScreen({
                             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
                           >
                             <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
-                              {`${remainingHomeSportsEventCount} more event${remainingHomeSportsEventCount === 1 ? '' : 's'}`}
+                              More
                             </Text>
                             <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
                           </TouchableOpacity>

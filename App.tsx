@@ -2416,6 +2416,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         selectedQuarter={homeQuarterKey === academicQuarterKey ? academicQuarter : selectedQuarter}
         onOpenSettings={openSettingsSheet}
         userId={USER_ID}
+        topInset={insets.top}
         bottomInset={insets.bottom}
         scrollToTopTrigger={homeTabTapCount}
         school={currentSchool}

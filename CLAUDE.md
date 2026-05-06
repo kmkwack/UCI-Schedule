@@ -272,6 +272,12 @@ const QUARTERS = [
 ### Session 76 (Friend timetable header — long name truncation + first/last only in all name displays)
 - `src/screens/FriendsScreen.tsx` — Left section of friend timetable header given `flex: 1` + `minWidth: 0` so it never crowds the quarter pill. Name and email texts get `numberOfLines={1} ellipsizeMode="tail"`. Avatar marked `flexShrink: 0` so it never collapses. Added `firstLastName()` helper; applied to every name display site: Add Friend search results, friends list rows, incoming request rows, sent request rows, and friend timetable header.
 
+### Session 80 (Classmates — simplify no-shared-classes state)
+- `src/screens/FriendsScreen.tsx` — Replaced the per-course "No overlap" row list (shown when the user has classes but no shared ones) with a single "No shared classes this term" text line.
+
+### Session 79 (Home screen — remove Today header, abbreviate days, drop Quarter label)
+- `src/screens/HomeScreen.tsx` — Removed "Today" `<Text>` from the top header row; changed header row to `justifyContent: 'flex-end'` so the avatar button stays right-aligned. Changed `DAY_LABELS` from full day names to 3-letter abbreviations (`['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']`). Removed `includeSystem=true` from `termLabel` call in `getDateLabel` so the date subtitle no longer appends "Quarter".
+
 ### Session 61 (RMP moved to ReviewsModal + Reviews button layout)
 - `src/components/ReviewsModal.tsx` — Added `sectionType: string` prop. Added RMP row in course info section (shows prof name as tappable link to RateMyProfessors). `fetchReviews` and `handleSubmit` filter/set `section_type`. Supabase `reviews` table requires `ALTER TABLE reviews ADD COLUMN section_type TEXT;`.
 - `src/screens/CoursePickerScreen.tsx` — Removed RMP button from section rows. Reviews button moved directly beneath Add button. Star rating ("★ X.X · N ratings") moved beneath Reviews button in right column. `fetchReviewSummary(courseCode, sectionType)` cache keyed as `"ECON 100A::Lec"`. Early-return guard: `if (cache[key]?.count)` (not truthy check). `handleExpandCourse` fetches summaries for all unique section types in the course.

@@ -1228,53 +1228,7 @@ export default function FriendsScreen({
                     ) : null}
                   </View>
                 ))
-              ) : userQuarterCourses.length > 0 ? (
-                userQuarterCourses.slice(0, 4).map((course, index) => (
-                  <View key={buildCourseMatchKey(course)}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, gap: 10 }}>
-                      <View style={{
-                        borderRadius: 8,
-                        backgroundColor: getBlockColors(course, 'minimal').bg,
-                        borderWidth: 1,
-                        borderColor: getBlockColors(course, 'minimal').border,
-                        paddingHorizontal: 8,
-                        paddingVertical: 5,
-                        minWidth: 96,
-                        alignItems: 'center',
-                      }}>
-                        <Text numberOfLines={1} adjustsFontSizeToFit style={{
-                          fontSize: 12,
-                          fontWeight: '800',
-                          color: getBlockColors(course, 'minimal').text,
-                        }}>
-                          {course.code}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-                        <View style={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: 13,
-                          backgroundColor: colors.bgTertiary,
-                          borderWidth: 2,
-                          borderColor: colors.card,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}>
-                          <Ionicons name="remove" size={13} color={colors.textTertiary} />
-                        </View>
-                        <Text numberOfLines={1} style={{ marginLeft: 8, fontSize: 12, color: colors.textTertiary, fontWeight: '600' }}>
-                          No overlap
-                        </Text>
-                      </View>
-                      <Text style={{ fontSize: 13, fontWeight: '800', color: colors.textTertiary }}>0</Text>
-                    </View>
-                    {index < Math.min(userQuarterCourses.length, 4) - 1 ? (
-                      <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 14 }} />
-                    ) : null}
-                  </View>
-                ))
-              ) : (
+              ) : userQuarterCourses.length > 0 ? <View style={{ height: 7 }} /> : (
                 <View style={{ paddingHorizontal: 14, paddingVertical: 14 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <View style={{

@@ -331,6 +331,12 @@ export function schoolCampusLabel(school: string) {
   return config.name;
 }
 
+export function schoolHomeLabel(school: string) {
+  const config = getSchoolConfig(school);
+  if (config.name.length <= 22) return config.name;
+  return config.logo.length <= 6 ? config.logo : config.shortName;
+}
+
 export function academicSystemNoun(school: string, capitalize = false) {
   const noun = getSchoolConfig(school).academicSystem === 'quarter' ? 'quarter' : 'term';
   return capitalize ? noun.charAt(0).toUpperCase() + noun.slice(1) : noun;

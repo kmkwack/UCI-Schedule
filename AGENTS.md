@@ -2456,3 +2456,7 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sam (Show all classes in Home hero timeline)
 - **`src/screens/HomeScreen.tsx`** — Reworked the primary Home hero page to show the total number of classes today instead of separate completed/current/upcoming pages. The `Today's timeline` section now lists every class for the day, with past classes dimmed and greyed out so they read as completed without becoming a separate hero state.
+
+### Session 64san (Abbreviate long school names on Home)
+- **`src/data/schools.ts`** — Added `schoolHomeLabel()` so the Home header can use compact school labels for long official names while preserving full names for maps and other lookup contexts.
+- **`src/screens/HomeScreen.tsx`** — Switched the Home header school title to `schoolHomeLabel()`, so schools with long names such as UIUC and UMD render as short acronyms instead of truncating.

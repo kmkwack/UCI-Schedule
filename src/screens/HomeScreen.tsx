@@ -7,7 +7,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, blockColorKey, pastelForCourse, quarterKey } from '../data/courses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
-import { academicSystemNoun, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, termLabel } from '../data/schools';
+import { academicSystemNoun, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -1781,7 +1781,7 @@ export default function HomeScreen({
       <View style={{ marginBottom: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <Text numberOfLines={1} style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>
-            {schoolCampusLabel(school)}
+            {schoolHomeLabel(school)}
           </Text>
           <TouchableOpacity
             onPress={onOpenSettings}

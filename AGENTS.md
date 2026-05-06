@@ -2371,3 +2371,15 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sl (Default past assignments to complete)
 - **`src/screens/HomeScreen.tsx`** — Changed assignment completion semantics so past-deadline tasks default to completed/struck-through in `Past Assignments`. Unchecking a past assignment now stores an explicit incomplete override, moves it back onto the Home checklist, and shows it with red `Past due` styling; checking it again moves it back into past assignments and updates the count.
+
+### Session 64sm (Move completed assignments into past sheet)
+- **`src/screens/HomeScreen.tsx`** — Updated `Past Assignments` to include any completed task, not only tasks whose deadline has passed, so checking an upcoming assignment now removes it from Home and increases the count in the past-assignment sheet. Removed the count from `Past Assignments` buttons and moved the count into the sheet subtitle.
+
+### Session 64sn (Scoreboard-style sports card)
+- **`src/screens/HomeScreen.tsx`** — Reworked the compact sports card into a mini scoreboard-style `Sports Events` card with `NEXT UP`, a small sport icon, HOME/AWAY badge, sport name, time, and `+N events` list affordance instead of the plain event-count card.
+
+### Session 64so (Simplify sports summary card)
+- **`src/screens/HomeScreen.tsx`** — Removed the `NEXT UP`, sport icon, and HOME/AWAY badge from the compact sports events card, leaving the sport name, time, and `+N events` affordance for a cleaner summary.
+
+### Session 64sp (Allow two-line sports titles)
+- **`src/screens/HomeScreen.tsx`** — Changed the compact sports event title from one line to two lines and tightened surrounding spacing so longer sport names do not truncate as aggressively.

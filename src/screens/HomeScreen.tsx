@@ -419,6 +419,41 @@ function sportsHomeAwayLabel(event: SportsEvent) {
   return event.isHome ? 'Home' : 'Away';
 }
 
+function startOfLocalDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function shortWeekdayLabel(date: Date) {
+  return date.toLocaleDateString('en-US', { weekday: 'short' });
+}
+
+function getSportsCardStatus(event: SportsEvent, now: Date) {
+  const eventTime = event.date.getTime();
+  const diffMs = eventTime - now.getTime();
+  const sameDay = startOfLocalDay(event.date).getTime() === startOfLocalDay(now).getTime();
+  if (diffMs >= 0 && diffMs <= 60 * 60 * 1000) return 'Starting Soon';
+  if (sameDay) return 'Game Day';
+  return 'Next Game';
+}
+
+function formatSportsCardTiming(event: SportsEvent, now: Date) {
+  const time = formatSportsEventTime(event.date, event.timeLabel);
+  const diffDays = Math.max(1, Math.ceil((startOfLocalDay(event.date).getTime() - startOfLocalDay(now).getTime()) / (24 * 60 * 60 * 1000)));
+  const sameDay = startOfLocalDay(event.date).getTime() === startOfLocalDay(now).getTime();
+  if (sameDay) return `${event.date.getHours() >= 17 ? 'Tonight' : 'Today'} · ${time}`;
+  if (diffDays === 1) return `Tomorrow · ${time}`;
+  return `in ${diffDays} days · ${shortWeekdayLabel(event.date)} · ${time}`;
+}
+
+function sportsCardActionLabel(event: SportsEvent, eventCount: number, now: Date) {
+  const status = getSportsCardStatus(event, now);
+  if (status === 'Starting Soon') return 'Directions';
+  if (status === 'Game Day') return 'View details';
+  return `View all ${eventCount}`;
+}
+
 async function openSportsVenueInMaps(venue: SportsVenue, school: string) {
   const query = encodeURIComponent(`${schoolCampusLabel(school)} ${venue.name}`);
   const appleMapsUrl = `https://maps.apple.com/?ll=${venue.latitude},${venue.longitude}&q=${query}`;
@@ -1099,6 +1134,9 @@ export default function HomeScreen({
     () => sportsEvents.slice(0, 12),
     [sportsEvents]
   );
+  const nextSportsEvent = visibleCampusEvents[0] ?? null;
+  const remainingSportsEventCount = Math.max(visibleCampusEvents.length - 1, 0);
+  const nextSportsStatus = nextSportsEvent ? getSportsCardStatus(nextSportsEvent, now) : null;
   const visibleSportsEventIds = useMemo(
     () => visibleCampusEvents.map((event) => event.id).join('|'),
     [visibleCampusEvents]
@@ -1110,7 +1148,7 @@ export default function HomeScreen({
   ), [calendarTasks, completedCalendarTasks, now]);
   const pastCalendarTasks = useMemo(() => (
     calendarTasks
-      .filter((assignment) => isPastCalendarTask(assignment, now) && isCalendarTaskCompleted(assignment, completedCalendarTasks, now))
+      .filter((assignment) => isCalendarTaskCompleted(assignment, completedCalendarTasks, now))
       .sort((left, right) => new Date(right.dueAt).getTime() - new Date(left.dueAt).getTime())
   ), [calendarTasks, completedCalendarTasks, now]);
   const incompleteCalendarTaskCount = upcomingCalendarTasks.length;
@@ -1989,23 +2027,37 @@ export default function HomeScreen({
         >
           <View>
             <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
-              Upcoming Sports Events
+              Sports Events
             </Text>
           </View>
-          <View style={{ marginTop: 26 }}>
-            <Text style={{ fontSize: 34, lineHeight: 38, fontWeight: '800', color: colors.text }}>
-              {visibleCampusEvents.length}
-            </Text>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary, marginTop: 2 }}>
-              event{visibleCampusEvents.length === 1 ? '' : 's'} upcoming
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 12 }}>
-              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>
-                View list
+          {nextSportsEvent ? (
+            <View style={{ marginTop: 18 }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: colors.textTertiary }}>
+                {nextSportsStatus}
               </Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.brand} />
+              <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 18, lineHeight: 22, fontWeight: '800', color: colors.text }}>
+                {nextSportsEvent.sport}
+              </Text>
+              <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                {formatSportsCardTiming(nextSportsEvent, now)}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12 }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary }}>
+                  {sportsCardActionLabel(nextSportsEvent, visibleCampusEvents.length, now)}
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+              </View>
             </View>
-          </View>
+          ) : (
+            <View style={{ marginTop: 34 }}>
+              <Text style={{ fontSize: 18, lineHeight: 22, fontWeight: '800', color: colors.text, marginTop: 18 }}>
+                No upcoming events
+              </Text>
+              <Text style={{ fontSize: 12, lineHeight: 16, color: colors.textSecondary, marginTop: 5 }}>
+                Check back later.
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -2037,7 +2089,7 @@ export default function HomeScreen({
                   }}
                 >
                   <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
-                    Past Assignments {pastCalendarTaskCount}
+                    Past Assignments
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -2221,7 +2273,7 @@ export default function HomeScreen({
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: '800', color: colors.brand }}>
-                    View Past Assignments ({pastCalendarTaskCount})
+                    View Past Assignments
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -2416,7 +2468,7 @@ export default function HomeScreen({
                   Past Assignments
                 </Text>
                 <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-                  Hidden from Home after the deadline passes
+                  {pastCalendarTaskCount} assignment{pastCalendarTaskCount === 1 ? '' : 's'} hidden from Home
                 </Text>
               </View>
               <TouchableOpacity

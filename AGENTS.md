@@ -2383,3 +2383,60 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sp (Allow two-line sports titles)
 - **`src/screens/HomeScreen.tsx`** — Changed the compact sports event title from one line to two lines and tightened surrounding spacing so longer sport names do not truncate as aggressively.
+
+### Session 64sq (Enlarge upcoming classes summary)
+- **`src/screens/HomeScreen.tsx`** — Increased the Home hero summary headline size for `Coming up` / class-count states so the upcoming classes count reads at the same visual priority as the current-class timer.
+
+### Session 64sr (Fill hero summary with class timeline)
+- **`src/screens/HomeScreen.tsx`** — Replaced the sparse summary-class list in the Home hero card with a denser today timeline that shows each upcoming/completed class start time, state label, course code, title, end time, and location. This fills the hero card with useful schedule context instead of leaving large empty areas under the headline.
+
+### Session 64ss (Surface sports going and home-away)
+- **`src/screens/HomeScreen.tsx`** — Restored the Home sports event row title to a larger event-list size, removed the small sport icon from the compact row, and surfaced HOME/AWAY plus going count directly on each visible sports event so users can distinguish event status without opening the list.
+
+### Session 64st (Compact hero timeline height)
+- **`src/screens/HomeScreen.tsx`** — Prevented AM/PM timeline times from wrapping by rendering the time and meridiem as separate inline pieces, limited hero summary timelines to three visible class rows with a `+N later today` overflow line, tightened row spacing, and removed the summary-card progress bar so the assignments section sits higher on Home.
+
+### Session 64su (Show all hero timeline rows with less detail)
+- **`src/screens/HomeScreen.tsx`** — Reopened the hero summary timeline so every class row shows again, removed the `Left today` / `Done today` header label, and dropped the right-side end-time/location detail because the start time already appears in the left column. This keeps the full class list visible while reducing row height and visual noise.
+
+### Session 64sv (Remove hardcoded sports placeholders)
+- **`src/screens/HomeScreen.tsx`** — Removed the hardcoded demo sports events and the separate next-two-days sports list state/modal. The Home sports card now uses only the real fetched `sportsEvents` data through `visibleCampusEvents`, showing the first two upcoming events plus a link into the existing full sports events list.
+
+### Session 64sw (Use course color bars in hero timeline)
+- **`src/screens/HomeScreen.tsx`** — Replaced the hero timeline's separate colored dot and gray vertical connector with a single colored vertical bar attached to each course row. This makes the color read as the course block marker instead of a disconnected timeline decoration.
+
+### Session 64sx (Add hero timeline divider)
+- **`src/screens/HomeScreen.tsx`** — Added an inset one-pixel divider between the hero summary headline/count area and the `Today's timeline` section so the card reads as cleaner grouped sections without the line touching the card edges.
+
+### Session 64sy (Center hero timeline times)
+- **`src/screens/HomeScreen.tsx`** — Removed the small `next`/`later`/`done` label beneath hero timeline times, vertically centered the time column against each course row, and slightly increased the timeline time typography so the rows feel cleaner and easier to scan.
+
+### Session 64sz (Tighten hero timeline time gap)
+- **`src/screens/HomeScreen.tsx`** — Reduced the hero timeline time column width and row gap so the start time sits closer to the colored course bar.
+
+### Session 64saa (Add hero timeline location pills)
+- **`src/screens/HomeScreen.tsx`** — Added a compact location/classroom pill next to each hero timeline course title, using a shortened campus label when the raw location is a city/state campus string. This uses the newly available row space without reintroducing end-time or professor clutter.
+
+### Session 64sab (Show faint assignment check icons)
+- **`src/screens/HomeScreen.tsx`** — Added a faint gray checkmark icon inside incomplete assignment checklist buttons on both the Home checklist and Past Assignments sheet so the circular control reads more clearly as a check action.
+
+### Session 64sac (Hide generic campus timeline locations)
+- **`src/screens/HomeScreen.tsx`** — Changed hero timeline location pills to hide generic campus/location values such as `Main Campus`, city/state campus strings, `Online`, `Remote`, and `Location TBA`, so only real classroom or building locations appear beside course titles.
+
+### Session 64sad (Stop Cornell campus fallback locations)
+- **`scripts/seed-cornell-sections.js`** — Changed Cornell section location seeding to store only meeting-level facility values (`facilityDescr` / `facilityDescrshort`) in `location`. Removed the fallback to `locationDescr` / `campusDescr` because those values represent broad campus labels like `Main Campus`, not classroom buildings.
+
+### Session 64sae (Hide city-state hero locations)
+- **`src/screens/HomeScreen.tsx`** — Broadened hero location filtering to hide city/state values such as `Ithaca, NY`, including current-class hero detail text, because those are regional/campus labels rather than classroom buildings.
+
+### Session 64saf (Unify sports more-events CTA)
+- **`src/screens/HomeScreen.tsx`** — Changed the Home sports card CTA to always use the `N more event(s)` format instead of switching to `View list` when there are no additional events, so schools like Cornell and UC Irvine use the same sports card language.
+
+### Session 64sag (Assignment due-date push reminders)
+- **`src/data/userPreferences.ts`** — Added assignment reminder notification preferences with default lead times of 2 days, 1 day, and 12 hours before each deadline.
+- **`src/screens/SettingsScreen.tsx`** — Added an `Assignment Reminders` toggle plus selectable deadline reminder timing chips in Settings > Notifications so users can configure assignment push timing.
+- **`App.tsx`** — Extended the reminder scheduler to read cached LMS assignment tasks/completion state from AsyncStorage and schedule local push notifications ahead of future due dates.
+- **`src/screens/HomeScreen.tsx`** — Added an assignment-calendar change callback so fetching, loading, disconnecting, or checking assignments triggers notification rescheduling.
+
+### Session 64sah (Canvas feed setup instructions)
+- **`src/screens/HomeScreen.tsx`** — Added a Canvas-only instruction card to the assignment calendar setup sheet explaining how to open Canvas, use the top-left menu, go to Settings, tap `Subscribe to Calendar Feed`, and paste the copied link. This helps users find the feed before syncing assignments.

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, Alert, Animated, Dimensions, Easing, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -84,6 +85,15 @@ type SocialNotificationSnapshot = {
   myCommentIds: Set<string>;
 };
 
+type AssignmentCalendarTask = {
+  id: string;
+  title: string;
+  courseCode?: string;
+  dueAt: string;
+  allDay?: boolean;
+  url?: string;
+};
+
 type ConversationParticipantUnreadRow = {
   conversation_id: string;
   last_read_at: string | null;
@@ -135,6 +145,8 @@ const MESSAGE_BADGE_REFRESH_INTERVAL_MS = 60000;
 const SOCIAL_NOTIFICATION_BOOTSTRAP_DELAY_MS = 8000;
 const SOCIAL_NOTIFICATION_REFRESH_INTERVAL_MS = 120000;
 const REMINDER_RESCHEDULE_DELAY_MS = 4000;
+const ASSIGNMENT_REMINDER_OFFSETS = [2880, 1440, 720];
+const ASSIGNMENT_REMINDER_MAX_DAYS_AHEAD = 60;
 const REVIEW_ACCOUNT_EMAILS = new Set(['review@classmate.app']);
 
 function isReviewAccountEmail(email: string | null | undefined) {
@@ -295,6 +307,84 @@ function buildDailyScheduleSummaryDates(courses: Course[], daysAhead = 14, summa
   }
 
   return dates;
+}
+
+function userScopedStorageKey(base: string, userId: string) {
+  return `${base}_${userId || 'guest'}`;
+}
+
+function parseStoredAssignmentTasks(value: string | null) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((task): task is AssignmentCalendarTask => (
+      typeof task?.id === 'string'
+      && typeof task?.title === 'string'
+      && typeof task?.dueAt === 'string'
+      && !Number.isNaN(new Date(task.dueAt).getTime())
+    ));
+  } catch {
+    return [];
+  }
+}
+
+function parseStoredCompletedAssignments(value: string | null) {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return parsed as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+function normalizeAssignmentReminderOffsets(offsets?: number[]) {
+  const allowed = new Set(ASSIGNMENT_REMINDER_OFFSETS);
+  const source = Array.isArray(offsets) ? offsets : ASSIGNMENT_REMINDER_OFFSETS;
+  const normalized = source
+    .filter((minutes) => allowed.has(minutes))
+    .filter((minutes, index, values) => values.indexOf(minutes) === index);
+  return normalized.length > 0 ? normalized : ASSIGNMENT_REMINDER_OFFSETS;
+}
+
+function formatAssignmentReminderOffset(minutes: number) {
+  if (minutes >= 1440 && minutes % 1440 === 0) {
+    const days = minutes / 1440;
+    return days === 1 ? '1 day' : `${days} days`;
+  }
+  if (minutes >= 60 && minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return hours === 1 ? '1 hour' : `${hours} hours`;
+  }
+  return minutes === 1 ? '1 minute' : `${minutes} minutes`;
+}
+
+function buildUpcomingAssignmentReminderDates(
+  assignments: AssignmentCalendarTask[],
+  completedAssignments: Record<string, boolean>,
+  reminderOffsets: number[],
+  daysAhead = ASSIGNMENT_REMINDER_MAX_DAYS_AHEAD
+) {
+  const now = new Date();
+  const end = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+  const offsets = normalizeAssignmentReminderOffsets(reminderOffsets);
+  const dates: Array<{ assignment: AssignmentCalendarTask; notifyAt: Date; offsetMinutes: number }> = [];
+
+  for (const assignment of assignments) {
+    if (completedAssignments[assignment.id] === true) continue;
+    const dueAt = new Date(assignment.dueAt);
+    if (dueAt <= now || dueAt > end) continue;
+
+    offsets.forEach((offsetMinutes) => {
+      const notifyAt = new Date(dueAt.getTime() - offsetMinutes * 60 * 1000);
+      if (notifyAt <= now || notifyAt >= dueAt) return;
+      dates.push({ assignment, notifyAt, offsetMinutes });
+    });
+  }
+
+  return dates.sort((left, right) => left.notifyAt.getTime() - right.notifyAt.getTime());
 }
 
 
@@ -524,6 +614,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [savingVisibility, setSavingVisibility] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [savingRegion, setSavingRegion] = useState(false);
+  const [assignmentCalendarRevision, setAssignmentCalendarRevision] = useState(0);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [authStack, setAuthStack] = useState<AuthScreen[]>(['welcome']);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
@@ -536,6 +627,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const popAuth = () => setAuthStack((prev) => prev.length > 1 ? prev.slice(0, -1) : prev);
   const replaceAuth = (s: AuthScreen) =>
     setAuthStack((prev) => prev.length === 0 ? [s] : [...prev.slice(0, -1), s]);
+  const handleAssignmentCalendarChange = useCallback(() => {
+    setAssignmentCalendarRevision((revision) => revision + 1);
+  }, []);
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
   const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'board' | 'friends'>('home');
   const [homeTabTapCount, setHomeTabTapCount] = useState(0);
@@ -1268,6 +1362,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   useEffect(() => {
     if (!userId) return;
 
+    const reminderUserId = userId;
     let cancelled = false;
     let rescheduleTimerId: ReturnType<typeof setTimeout> | null = null;
 
@@ -1325,6 +1420,50 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         }
       }
 
+      if (notifications.assignmentReminders) {
+        const assignmentTasksStorageKey = userScopedStorageKey('assignment_calendar_tasks_cache', reminderUserId);
+        const assignmentCompletedStorageKey = userScopedStorageKey('assignment_calendar_completed', reminderUserId);
+        const legacyAssignmentTasksStorageKey = userScopedStorageKey('canvas_assignments_cache', reminderUserId);
+        const legacyAssignmentCompletedStorageKey = userScopedStorageKey('canvas_assignments_completed', reminderUserId);
+        const [
+          storedAssignmentTasks,
+          storedCompletedAssignments,
+          legacyAssignmentTasks,
+          legacyCompletedAssignments,
+        ] = await AsyncStorage.multiGet([
+          assignmentTasksStorageKey,
+          assignmentCompletedStorageKey,
+          legacyAssignmentTasksStorageKey,
+          legacyAssignmentCompletedStorageKey,
+        ]).then((entries) => entries.map(([, value]) => value));
+
+        if (cancelled) return;
+        const assignmentTasks = parseStoredAssignmentTasks(storedAssignmentTasks ?? legacyAssignmentTasks);
+        const completedAssignments = parseStoredCompletedAssignments(storedCompletedAssignments ?? legacyCompletedAssignments);
+        const assignmentReminders = buildUpcomingAssignmentReminderDates(
+          assignmentTasks,
+          completedAssignments,
+          notifications.assignmentReminderOffsets
+        );
+
+        for (const reminder of assignmentReminders) {
+          if (cancelled) return;
+          const offsetLabel = formatAssignmentReminderOffset(reminder.offsetMinutes);
+          const courseLabel = reminder.assignment.courseCode ? `${reminder.assignment.courseCode}: ` : '';
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: `Assignment due in ${offsetLabel}`,
+              body: truncateNotificationText(`${courseLabel}${reminder.assignment.title}`, 178),
+              data: { type: 'assignment-reminder', assignmentId: reminder.assignment.id },
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: reminder.notifyAt,
+            },
+          });
+        }
+      }
+
       if (notifications.sportsGameReminders && schoolFeatureEnabled(currentSchool, 'sports')) {
         try {
           const events = await fetchSportsEventsForSchool(currentSchool, { maxDaysAhead: 14, includePastDays: 0 });
@@ -1360,7 +1499,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       cancelled = true;
       if (rescheduleTimerId) clearTimeout(rescheduleTimerId);
     };
-  }, [activeCourses, currentSchool, selectedQuarter.quarter, selectedQuarter.year, userId, userSettings]);
+  }, [activeCourses, assignmentCalendarRevision, currentSchool, selectedQuarter.quarter, selectedQuarter.year, userId, userSettings]);
 
   // Load all timetables from Supabase on mount (or when user logs in)
   useEffect(() => {
@@ -2280,6 +2419,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         bottomInset={insets.bottom}
         scrollToTopTrigger={homeTabTapCount}
         school={currentSchool}
+        onAssignmentCalendarChange={handleAssignmentCalendarChange}
       />
     );
   } else if (currentTab === 'timetable') {

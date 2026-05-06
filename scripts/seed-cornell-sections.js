@@ -173,8 +173,7 @@ function instructorNames(meeting, section) {
 }
 
 function locationFor(meeting, section) {
-  const facility = meeting?.facilityDescr || meeting?.facilityDescrshort;
-  return facility || section.locationDescr || section.campusDescr || null;
+  return meeting?.facilityDescr || meeting?.facilityDescrshort || null;
 }
 
 function buildRows(classes, subject, qKey) {

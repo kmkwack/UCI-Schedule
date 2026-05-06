@@ -55,6 +55,20 @@ function formatNotificationHour(hour: number) {
   return `${hour12}:00 ${suffix}`;
 }
 
+const ASSIGNMENT_REMINDER_OPTIONS = [
+  { minutes: 2880, label: '2 days before' },
+  { minutes: 1440, label: '1 day before' },
+  { minutes: 720, label: '12 hours before' },
+];
+
+function normalizeAssignmentReminderOffsets(offsets?: number[]) {
+  const allowed = new Set(ASSIGNMENT_REMINDER_OPTIONS.map((option) => option.minutes));
+  const selected = (Array.isArray(offsets) ? offsets : [])
+    .filter((minutes) => allowed.has(minutes))
+    .filter((minutes, index, values) => values.indexOf(minutes) === index);
+  return selected.length > 0 ? selected : ASSIGNMENT_REMINDER_OPTIONS.map((option) => option.minutes);
+}
+
 type ReportStatus = 'pending' | 'reviewing' | 'resolved' | 'dismissed';
 
 type ModerationReport = {
@@ -380,8 +394,8 @@ function NotificationsScreen({
   const [s, setS] = useState<NotificationPreferences>(initialSettings);
   const [permissionStatus, setPermissionStatus] = useState<PushPermissionStatus>(initialPermissionStatus);
   const toggleableKeys: Array<
-    'pushNotifications' | 'dailyScheduleSummary' | 'classReminders' | 'sportsGameReminders' | 'friendRequests' | 'comments' | 'likes'
-  > = ['pushNotifications', 'dailyScheduleSummary', 'classReminders', 'sportsGameReminders', 'friendRequests', 'comments', 'likes'];
+    'pushNotifications' | 'dailyScheduleSummary' | 'classReminders' | 'assignmentReminders' | 'sportsGameReminders' | 'friendRequests' | 'comments' | 'likes'
+  > = ['pushNotifications', 'dailyScheduleSummary', 'classReminders', 'assignmentReminders', 'sportsGameReminders', 'friendRequests', 'comments', 'likes'];
 
   useEffect(() => {
     setS(initialSettings);
@@ -402,6 +416,7 @@ function NotificationsScreen({
   const appNotificationStatus = s.pushNotifications ? 'On' : 'Off';
   const reminderMinuteOptions = [5, 10, 15, 30, 60];
   const dailySummaryHourOptions = [6, 7, 8, 9, 10, 11];
+  const selectedAssignmentReminderOffsets = normalizeAssignmentReminderOffsets(s.assignmentReminderOffsets);
   const row = (key: (typeof toggleableKeys)[number], label: string, subLabel?: string, last = false) => (
     <View key={key}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 }}>
@@ -486,6 +501,7 @@ function NotificationsScreen({
         {section('ACADEMIC', <>
           {row('dailyScheduleSummary', "Today's Classes", `Send a morning summary at ${formatNotificationHour(s.dailyScheduleSummaryHour)}`)}
           {row('classReminders', 'Class Reminders')}
+          {row('assignmentReminders', 'Assignment Reminders', 'Notify before LMS calendar deadlines')}
           {row('sportsGameReminders', 'Sports Game Reminders', undefined, true)}
         </>)}
         {section('TODAY SUMMARY TIME', <>
@@ -548,6 +564,47 @@ function NotificationsScreen({
             </View>
           </View>
           <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginLeft: 20, marginTop: 14 }} />
+          <View style={{ paddingHorizontal: 20, paddingVertical: 14, opacity: s.assignmentReminders ? 1 : 0.45 }}>
+            <Text style={{ fontSize: 15, color: colors.text, marginBottom: 4 }}>Assignment reminder timing</Text>
+            <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 10 }}>
+              Choose one or more alerts before each deadline.
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {ASSIGNMENT_REMINDER_OPTIONS.map((option) => {
+                const active = selectedAssignmentReminderOffsets.includes(option.minutes);
+                return (
+                  <TouchableOpacity
+                    key={`assignment-${option.minutes}`}
+                    disabled={!s.assignmentReminders}
+                    onPress={() => {
+                      setS((prev) => {
+                        const current = normalizeAssignmentReminderOffsets(prev.assignmentReminderOffsets);
+                        const nextOffsets = active && current.length > 1
+                          ? current.filter((minutes) => minutes !== option.minutes)
+                          : active
+                            ? current
+                            : [...current, option.minutes];
+                        return { ...prev, assignmentReminderOffsets: nextOffsets };
+                      });
+                    }}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 7,
+                      borderRadius: 18,
+                      borderWidth: 1,
+                      borderColor: active ? colors.brand : colors.border,
+                      backgroundColor: active ? colors.brandBg : colors.card,
+                    }}
+                  >
+                    <Text style={{ color: active ? colors.brand : colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+          <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginLeft: 20 }} />
           <View style={{ paddingHorizontal: 20, paddingVertical: 14 }}>
             <Text style={{ fontSize: 15, color: colors.text, marginBottom: 10 }}>Game reminder lead time</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -586,7 +643,10 @@ function NotificationsScreen({
           disabled={saving}
           onPress={async () => {
             let nextPermissionStatus = permissionStatus;
-            let nextNotifications = { ...s };
+            let nextNotifications = {
+              ...s,
+              assignmentReminderOffsets: normalizeAssignmentReminderOffsets(s.assignmentReminderOffsets),
+            };
 
             if (nextNotifications.pushNotifications) {
               nextPermissionStatus = await onRequestPushPermissions();

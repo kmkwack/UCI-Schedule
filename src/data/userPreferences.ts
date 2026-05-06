@@ -19,6 +19,8 @@ export type NotificationPreferences = {
   dailyScheduleSummaryHour: number;
   classReminders: boolean;
   classReminderMinutes: number;
+  assignmentReminders: boolean;
+  assignmentReminderOffsets: number[];
   sportsGameReminders: boolean;
   sportsGameReminderMinutes: number;
   friendRequests: boolean;
@@ -169,6 +171,8 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   dailyScheduleSummaryHour: 8,
   classReminders: true,
   classReminderMinutes: 60,
+  assignmentReminders: true,
+  assignmentReminderOffsets: [2880, 1440, 720],
   sportsGameReminders: true,
   sportsGameReminderMinutes: 60,
   friendRequests: true,

@@ -622,6 +622,74 @@ function ProgressRing({
   );
 }
 
+function DualProgressRing({
+  outerProgress, outerColor, outerTrackColor,
+  innerProgress, innerColor, innerTrackColor,
+  primaryLabel, secondaryLabel,
+  textColor, subTextColor,
+  size = 96,
+  outerStrokeWidth = 5,
+  innerStrokeWidth = 6,
+}: {
+  outerProgress: number;
+  outerColor: string;
+  outerTrackColor: string;
+  innerProgress: number;
+  innerColor: string;
+  innerTrackColor: string;
+  primaryLabel: string;
+  secondaryLabel?: string;
+  textColor: string;
+  subTextColor: string;
+  size?: number;
+  outerStrokeWidth?: number;
+  innerStrokeWidth?: number;
+}) {
+  const outerRadius = (size - outerStrokeWidth) / 2;
+  const innerRadius = outerRadius - outerStrokeWidth / 2 - 5 - innerStrokeWidth / 2;
+  const outerCircumference = 2 * Math.PI * outerRadius;
+  const innerCircumference = 2 * Math.PI * innerRadius;
+  const outerOffset = outerCircumference * (1 - clamp(outerProgress, 0, 1));
+  const innerOffset = innerCircumference * (1 - clamp(innerProgress, 0, 1));
+  const primaryFontSize = size >= 108 ? 22 : size >= 90 ? 18 : size >= 74 ? 15 : 13;
+  const secondaryFontSize = 10;
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size}>
+        <Circle cx={size / 2} cy={size / 2} r={outerRadius} stroke={outerTrackColor} strokeWidth={outerStrokeWidth} fill="none" />
+        <Circle
+          cx={size / 2} cy={size / 2} r={outerRadius}
+          stroke={outerColor} strokeWidth={outerStrokeWidth} fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${outerCircumference} ${outerCircumference}`}
+          strokeDashoffset={outerOffset}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+        <Circle cx={size / 2} cy={size / 2} r={innerRadius} stroke={innerTrackColor} strokeWidth={innerStrokeWidth} fill="none" />
+        <Circle
+          cx={size / 2} cy={size / 2} r={innerRadius}
+          stroke={innerColor} strokeWidth={innerStrokeWidth} fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${innerCircumference} ${innerCircumference}`}
+          strokeDashoffset={innerOffset}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+      <View style={{ position: 'absolute', alignItems: 'center', width: innerRadius * 2 - innerStrokeWidth }}>
+        <Text style={{ fontSize: primaryFontSize, fontWeight: '800', color: textColor }}>
+          {primaryLabel}
+        </Text>
+        {secondaryLabel ? (
+          <Text style={{ fontSize: secondaryFontSize, color: subTextColor, marginTop: 1, textAlign: 'center' }}>
+            {secondaryLabel}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 export default function HomeScreen({
   activeCourses,
   selectedQuarter,
@@ -652,6 +720,7 @@ export default function HomeScreen({
   const [now, setNow] = useState(() => new Date());
   const [selectedSportsEvent, setSelectedSportsEvent] = useState<SportsEvent | null>(null);
   const [showSportsEventsList, setShowSportsEventsList] = useState(false);
+  const [showSportsMoreList, setShowSportsMoreList] = useState(false);
   const selectedSportsEventRef = useRef<SportsEvent | null>(null);
   const [sportsEventRsvp, setSportsEventRsvp] = useState<SportsEventRsvpStatus | null>(null);
   const [sportsEventGoingCount, setSportsEventGoingCount] = useState(0);
@@ -1137,6 +1206,29 @@ export default function HomeScreen({
   const nextSportsEvent = visibleCampusEvents[0] ?? null;
   const remainingSportsEventCount = Math.max(visibleCampusEvents.length - 1, 0);
   const nextSportsStatus = nextSportsEvent ? getSportsCardStatus(nextSportsEvent, now) : null;
+  const todaySportsEvents = useMemo(() => {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const real = sportsEvents.filter((e) => {
+      const d = new Date(e.date.getFullYear(), e.date.getMonth(), e.date.getDate());
+      return d.getTime() === today.getTime();
+    });
+    // TODO: remove placeholder events once real data is available
+    const placeholders: typeof sportsEvents = real.length === 0 ? [
+      { id: '__demo_1', title: "Baseball vs Long Beach State", location: 'Anteater Ballpark', icon: 'baseball-outline', color: '#f97316', bg: '#fff7ed', date: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0), timeLabel: '6:00 PM', sport: 'Baseball', opponent: 'Long Beach State', isHome: true },
+      { id: '__demo_2', title: "Women's Tennis vs USC", location: 'ITS Tennis Center', icon: 'tennisball-outline', color: '#eab308', bg: '#fefce8', date: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 14, 0), timeLabel: '2:00 PM', sport: "Women's Tennis", opponent: 'USC', isHome: true },
+      { id: '__demo_3', title: "Men's Basketball at UCLA", location: 'Pauley Pavilion', icon: 'basketball-outline', color: '#3b82f6', bg: '#eff6ff', date: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 20, 0), timeLabel: '8:00 PM', sport: "Men's Basketball", opponent: 'UCLA', isHome: false },
+    ] : [];
+    return [...real, ...placeholders];
+  }, [sportsEvents, now]);
+  const moreSportsEvents = useMemo(() => {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const nextTwo = sportsEvents.filter((e) => {
+      const d = new Date(e.date.getFullYear(), e.date.getMonth(), e.date.getDate());
+      const offset = Math.round((d.getTime() - today.getTime()) / 86400000);
+      return offset >= 1 && offset <= 2;
+    });
+    return [...todaySportsEvents.slice(2), ...nextTwo];
+  }, [sportsEvents, todaySportsEvents, now]);
   const visibleSportsEventIds = useMemo(
     () => visibleCampusEvents.map((event) => event.id).join('|'),
     [visibleCampusEvents]
@@ -1821,76 +1913,117 @@ export default function HomeScreen({
                       shadowRadius: 0,
                       elevation: 0,
                     }}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                        <View style={{ flex: 1 }}>
-                          {item.type === 'course' ? (
+                      {item.type === 'course' ? (
+                        /* Current class: original side-by-side layout */
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                          <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: accent }} />
                               <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary }}>
                                 Current class
                               </Text>
                             </View>
-                          ) : null}
-                          <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
-                            {label}
-                          </Text>
-                          <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
-                            {value}
-                          </Text>
-                          {item.type === 'course' ? (
-                            <>
-                              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }}>
-                                {title}
+                            <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                              {label}
+                            </Text>
+                            <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                              {value}
+                            </Text>
+                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }}>
+                              {title}
+                            </Text>
+                            {courseClassmates.length > 0 ? (
+                              <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
+                                {courseClassmates.length === 1
+                                  ? '1 friend also has this class'
+                                  : `${courseClassmates.length} friends also have this class`}
                               </Text>
-                              {courseClassmates.length > 0 ? (
-                                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
-                                  {courseClassmates.length === 1
-                                    ? '1 friend also has this class'
-                                    : `${courseClassmates.length} friends also have this class`}
-                                </Text>
-                              ) : null}
-                              <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 6 }}>
-                                {detail}
+                            ) : null}
+                            <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 6 }}>
+                              {detail}
+                            </Text>
+                          </View>
+                          <View style={{ alignItems: 'center', alignSelf: 'flex-start' }}>
+                            <DualProgressRing
+                              outerProgress={quarterProgress}
+                              outerColor={colors.brand}
+                              outerTrackColor={colors.bgTertiary}
+                              innerProgress={heroProgress}
+                              innerColor={accent}
+                              innerTrackColor={colors.bgTertiary}
+                              primaryLabel={heroProgressLabel}
+                              secondaryLabel={heroProgressSubLabel}
+                              textColor={colors.text}
+                              subTextColor={colors.textTertiary}
+                              size={76}
+                            />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, marginTop: 5 }}>
+                              {termLabel(selectedQuarter, school)}
+                            </Text>
+                            <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 1 }}>
+                              {`${Math.round(quarterProgress * 100)}% · ${daysRemaining}d left`}
+                            </Text>
+                          </View>
+                        </View>
+                      ) : (
+                        /* Coming up: fixed header row + expanding course list below */
+                        <View>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
+                                {label}
                               </Text>
-                            </>
-                          ) : (
-                            <View style={{ marginTop: 12, gap: 8 }}>
-                              {summaryCourses.map((summaryCourse) => (
-                                <View
-                                  key={buildCourseMatchKey(summaryCourse)}
-                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}
-                                >
-                                  <View style={{
-                                    width: 7,
-                                    height: 7,
-                                    borderRadius: 3.5,
-                                    backgroundColor: accent,
-                                  }} />
-                                  <View style={{ flex: 1 }}>
-                                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
-                                      {summaryCourse.code}
-                                    </Text>
-                                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}>
-                                      {formatHeroTimeRange(summaryCourse.time)} · {summaryCourse.location ?? 'Location TBA'}
-                                    </Text>
-                                  </View>
-                                </View>
-                              ))}
+                              <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
+                                {value}
+                              </Text>
                             </View>
-                          )}
+                            <View style={{ alignItems: 'center', alignSelf: 'flex-start' }}>
+                              <DualProgressRing
+                                outerProgress={quarterProgress}
+                                outerColor={colors.brand}
+                                outerTrackColor={colors.bgTertiary}
+                                innerProgress={heroProgress}
+                                innerColor={accent}
+                                innerTrackColor={colors.bgTertiary}
+                                primaryLabel={heroProgressLabel}
+                                secondaryLabel={heroProgressSubLabel}
+                                textColor={colors.text}
+                                subTextColor={colors.textTertiary}
+                                size={76}
+                              />
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, marginTop: 5 }}>
+                                {termLabel(selectedQuarter, school)}
+                              </Text>
+                              <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 1 }}>
+                                {`${Math.round(quarterProgress * 100)}% · ${daysRemaining}d left`}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={{ marginTop: 14, gap: 10 }}>
+                            {summaryCourses.map((summaryCourse) => (
+                              <View
+                                key={buildCourseMatchKey(summaryCourse)}
+                                style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}
+                              >
+                                <View style={{
+                                  width: 7,
+                                  height: 7,
+                                  borderRadius: 3.5,
+                                  backgroundColor: accent,
+                                }} />
+                                <View style={{ flex: 1 }}>
+                                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
+                                    {summaryCourse.code}
+                                  </Text>
+                                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}>
+                                    {formatHeroTimeRange(summaryCourse.time)} · {summaryCourse.location ?? 'Location TBA'}
+                                  </Text>
+                                </View>
+                              </View>
+                            ))}
+                          </View>
                         </View>
-                        <View style={{ width: 74, alignItems: 'flex-end' }}>
-                          <ProgressRing
-                            progress={heroProgress}
-                            primaryLabel={heroProgressLabel}
-                            secondaryLabel={heroProgressSubLabel}
-                            color={accent}
-                            trackColor={colors.bgTertiary}
-                            textColor={colors.text}
-                            subTextColor={colors.textTertiary}
-                          />
-                        </View>
-                      </View>
+                      )}
 
                       <View style={{ marginTop: 20 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -1962,22 +2095,29 @@ export default function HomeScreen({
                   <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
                     {todayCourses.length > 0 ? 'You are clear for the rest of today' : 'No classes on your schedule today'}
                   </Text>
-                  <Text style={{ fontSize: 13, lineHeight: 18, color: colors.textSecondary, marginTop: 7 }}>
-                    Open your timetable to add a class or switch plans.
-                  </Text>
                 </View>
-                <View style={{ width: 56, alignItems: 'flex-end' }}>
-                  <ProgressRing
-                    progress={heroProgress}
+                <View style={{ alignItems: 'center', alignSelf: 'flex-start' }}>
+                  <DualProgressRing
+                    outerProgress={quarterProgress}
+                    outerColor={colors.brand}
+                    outerTrackColor={colors.bgTertiary}
+                    innerProgress={heroProgress}
+                    innerColor={colors.brand}
+                    innerTrackColor={colors.bgTertiary}
                     primaryLabel={heroProgressLabel}
                     secondaryLabel={heroProgressSubLabel}
-                    color={colors.brand}
-                    trackColor={colors.bgTertiary}
                     textColor={colors.text}
                     subTextColor={colors.textTertiary}
-                    size={56}
-                    strokeWidth={5}
+                    size={76}
+                    outerStrokeWidth={4}
+                    innerStrokeWidth={5}
                   />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, marginTop: 5 }}>
+                    {termLabel(selectedQuarter, school)}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 1 }}>
+                    {`${Math.round(quarterProgress * 100)}% · ${daysRemaining}d left`}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -1985,80 +2125,68 @@ export default function HomeScreen({
         )}
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
-        <View style={{
-          ...raisedCardStyle,
-          width: twoColumnWidth,
-          height: SUMMARY_CARD_HEIGHT,
-          backgroundColor: colors.card,
-          padding: SUMMARY_CARD_PADDING,
-        }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
-            {termLabel(selectedQuarter, school)}
-          </Text>
-          <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 3 }}>
-            {academicSystemNoun(school, true)} progress
-          </Text>
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 4 }}>
-            <ProgressRing
-              progress={quarterProgress}
-              primaryLabel={`${Math.round(quarterProgress * 100)}%`}
-              secondaryLabel={`${daysRemaining} days left`}
-              color={colors.brand}
-              trackColor={colors.bgTertiary}
-              textColor={colors.text}
-              subTextColor={colors.textTertiary}
-              size={92}
-              strokeWidth={6}
-            />
-          </View>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => setShowSportsEventsList(true)}
-          activeOpacity={0.8}
+      <View style={{ marginBottom: 14 }}>
+        <View
           style={{
             ...raisedCardStyle,
-            width: twoColumnWidth,
-            height: SUMMARY_CARD_HEIGHT,
             backgroundColor: colors.card,
             padding: SUMMARY_CARD_PADDING,
+            justifyContent: 'space-between',
           }}
         >
+          {/* Today's events */}
           <View>
             <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
-              Sports Events
+              Today:
             </Text>
-          </View>
-          {nextSportsEvent ? (
-            <View style={{ marginTop: 18 }}>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: colors.textTertiary }}>
-                {nextSportsStatus}
-              </Text>
-              <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 18, lineHeight: 22, fontWeight: '800', color: colors.text }}>
-                {nextSportsEvent.sport}
-              </Text>
-              <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-                {formatSportsCardTiming(nextSportsEvent, now)}
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12 }}>
-                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary }}>
-                  {sportsCardActionLabel(nextSportsEvent, visibleCampusEvents.length, now)}
-                </Text>
-                <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+            {todaySportsEvents.length > 0 ? (
+              <View style={{ gap: 8, marginTop: 10 }}>
+                {todaySportsEvents.slice(0, 2).map((event) => (
+                  <TouchableOpacity
+                    key={event.id}
+                    onPress={() => openSportsEvent(event)}
+                    activeOpacity={0.75}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}
+                  >
+                    <View style={{
+                      width: 30, height: 30, borderRadius: 15,
+                      backgroundColor: event.bg,
+                      alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      <Ionicons name={event.icon} size={15} color={event.color} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>
+                        {event.title}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 1 }}>
+                        {formatSportsEventTime(event.date, event.timeLabel)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
               </View>
-            </View>
-          ) : (
-            <View style={{ marginTop: 34 }}>
-              <Text style={{ fontSize: 18, lineHeight: 22, fontWeight: '800', color: colors.text, marginTop: 18 }}>
-                No upcoming events
+            ) : (
+              <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 10 }}>
+                No events today
               </Text>
-              <Text style={{ fontSize: 12, lineHeight: 16, color: colors.textSecondary, marginTop: 5 }}>
-                Check back later.
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
+            )}
+          </View>
+          {/* More button */}
+          <TouchableOpacity
+            onPress={() => setShowSportsMoreList(true)}
+            activeOpacity={0.7}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
+              {moreSportsEvents.length > 0
+                ? `${moreSportsEvents.length} more event${moreSportsEvents.length === 1 ? '' : 's'}`
+                : 'More'}
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View>
@@ -2427,6 +2555,118 @@ export default function HomeScreen({
                   </Text>
                   <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 7 }}>
                     Events will appear here when the athletics calendar has something coming up.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showSportsMoreList}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSportsMoreList(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setShowSportsMoreList(false)}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          <View
+            style={{
+              maxHeight: '78%',
+              height: sportsListSheetHeight,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              backgroundColor: colors.bg,
+              paddingTop: 10,
+              paddingBottom: Math.max(bottomInset, 18) + 8,
+              overflow: 'hidden',
+            }}
+          >
+            <View style={{ alignItems: 'center', paddingBottom: 12 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, marginBottom: 12 }}>
+              <View>
+                <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
+                  Next 2 Days
+                </Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                  {moreSportsEvents.length} upcoming
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowSportsMoreList(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: colors.bgTertiary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 10 }}
+            >
+              {moreSportsEvents.length > 0 ? (
+                <View style={{ gap: 10 }}>
+                  {moreSportsEvents.map((event, index) => (
+                    <TouchableOpacity
+                      key={`${event.id}-more-${index}`}
+                      onPress={() => { setShowSportsMoreList(false); openSportsEvent(event); }}
+                      activeOpacity={0.78}
+                      style={{
+                        borderRadius: 18,
+                        backgroundColor: colors.card,
+                        borderWidth: 1,
+                        borderColor: colors.borderSubtle,
+                        padding: 14,
+                      }}
+                    >
+                      <Text numberOfLines={2} style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
+                        {event.title}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 5 }}>
+                        {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 }}>
+                        <View style={{
+                          borderRadius: 999,
+                          backgroundColor: event.isHome ? colors.brandBg : colors.bgTertiary,
+                          borderWidth: 1,
+                          borderColor: event.isHome ? `${colors.brand}44` : colors.borderSubtle,
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                        }}>
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: event.isHome ? colors.brand : colors.textSecondary }}>
+                            {sportsHomeAwayLabel(event)}
+                          </Text>
+                        </View>
+                        <Ionicons name="people-outline" size={12} color={sportsGoingAccent} />
+                        <Text style={{ color: sportsGoingAccent, fontSize: 11, fontWeight: '800' }}>
+                          {(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, textAlign: 'center' }}>
+                    No events in the next 2 days
+                  </Text>
+                  <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 7 }}>
+                    Check back soon for upcoming sports events.
                   </Text>
                 </View>
               )}

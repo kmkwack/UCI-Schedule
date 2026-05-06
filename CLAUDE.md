@@ -263,6 +263,12 @@ const QUARTERS = [
 ### Session 75 (Persist C/F temperature preference)
 - `src/screens/HomeScreen.tsx` — Added `tempUnitLoaded` state + two effects: one loads `temp_unit` from AsyncStorage on mount and sets `useCelsius`; the other saves `'C'`/`'F'` to AsyncStorage whenever `useCelsius` changes (guarded by `tempUnitLoaded` to avoid overwriting stored value before load completes).
 
+### Session 78 (Quarter ring outside class ring + sports widget full-width)
+- `src/screens/HomeScreen.tsx` — Added `DualProgressRing` component: renders two concentric SVG rings in one view (outer = quarter progress in brand color, inner = class progress in accent). Replaced both `ProgressRing` usages in the hero card (active-class and no-class states) with `DualProgressRing`. Removed the standalone quarter progress card from the two-column summary row. Sports widget now fills the full row width (`minHeight: SUMMARY_CARD_HEIGHT`, no explicit width), icon size bumped to 42×42 and max visible icons to 8.
+
+### Session 77 (Sports widget redesign — Today icons + More sheet)
+- `src/screens/HomeScreen.tsx` — Sports widget redesigned: top half shows "Today:" label with tappable circular sport icons (one per today's event, up to 5 with overflow count), each icon opens the event detail sheet via `openSportsEvent`. Bottom shows a "More" button with a count of events in the next 2 days. Added `todaySportsEvents` and `moreSportsEvents` computed values. Added `showSportsMoreList` state + new bottom sheet modal ("Next 2 Days") that lists tomorrow and day-after events with their sport icons, home/away pill, and going count.
+
 ### Session 76 (Friend timetable header — long name truncation + first/last only in all name displays)
 - `src/screens/FriendsScreen.tsx` — Left section of friend timetable header given `flex: 1` + `minWidth: 0` so it never crowds the quarter pill. Name and email texts get `numberOfLines={1} ellipsizeMode="tail"`. Avatar marked `flexShrink: 0` so it never collapses. Added `firstLastName()` helper; applied to every name display site: Add Friend search results, friends list rows, incoming request rows, sent request rows, and friend timetable header.
 

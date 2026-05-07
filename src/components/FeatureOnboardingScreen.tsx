@@ -562,10 +562,10 @@ function TodayPreview() {
 
 function SchedulePreview() {
   const rows = [
-    ['9:30', 'ECON 100A · Microeconomics', 'SSL 100', '#3b82f6'],
-    ['11:00', 'ICS 33 · Programming Concepts', 'DBH 1100', '#a855f7'],
-    ['1:00', 'PHIL 5 · Critical Reasoning', 'HH 1010', '#22c55e'],
-    ['3:30', 'KOR 1B · Korean II', 'HIB 110', '#f97316'],
+    ['9:30 AM', 'ECON 100A · Microeconomics', 'SSL 100', '#3b82f6'],
+    ['11:00 AM', 'ICS 33 · Programming Concepts', 'DBH 1100', '#a855f7'],
+    ['1:00 PM', 'PHIL 5 · Critical Reasoning', 'HH 1010', '#22c55e'],
+    ['3:30 PM', 'KOR 1B · Korean II', 'HIB 110', '#f97316'],
   ];
 
   return (
@@ -575,7 +575,7 @@ function SchedulePreview() {
       </Text>
       {rows.map(([time, code, room, color]) => (
         <View key={code} style={{ flexDirection: 'row', alignItems: 'stretch', gap: 12 }}>
-          <Text style={{ width: 48, paddingTop: 8, textAlign: 'right', fontSize: 11, fontWeight: '800', color: PALETTE.inkMuted }}>{time}</Text>
+          <Text style={{ width: 62, paddingTop: 8, textAlign: 'right', fontSize: 10, fontWeight: '800', color: PALETTE.inkMuted }}>{time}</Text>
           <View style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: `${color}14`, borderLeftWidth: 3, borderLeftColor: color }}>
             <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '800', color: PALETTE.ink, marginBottom: 2 }}>{code}</Text>
             <Text style={{ fontSize: 11, color: PALETTE.inkMuted }}>{room}</Text>

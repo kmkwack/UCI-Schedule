@@ -22,7 +22,7 @@ import AppErrorBoundary from './src/components/AppErrorBoundary';
 import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
-import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey } from './src/data/courses';
+import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, quarterKey } from './src/data/courses';
 import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, resolveCurrentTerm, schoolFeatureEnabled, universityForName, type University } from './src/data/schools';
 import {
   buildDisplayName,
@@ -215,16 +215,7 @@ function courseStartMinutes(course: Course) {
 
 function formatNotificationStartTime(timeRange: string) {
   const rawStart = timeRange.split(' - ')[0]?.trim() ?? timeRange;
-  const match = rawStart.match(/^(\d{1,2}):(\d{2})/);
-  if (!match) return rawStart;
-
-  const hour24 = Number(match[1]);
-  const minute = match[2];
-  if (!Number.isFinite(hour24)) return rawStart;
-
-  const suffix = hour24 >= 12 ? 'PM' : 'AM';
-  const hour12 = hour24 % 12 || 12;
-  return `${hour12}:${minute} ${suffix}`;
+  return formatTimeOfDay12(rawStart);
 }
 
 function buildDailyScheduleNotificationBody(courses: Course[]) {

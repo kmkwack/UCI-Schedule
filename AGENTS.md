@@ -2539,3 +2539,28 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sbm (Fix Cornell transit link)
 - **`src/screens/HomeScreen.tsx`** — Replaced Cornell's App Store-only `Navi` transit link with the browser-friendly TCAT bus schedules page and renamed the card to `TCAT Bus` so the Campus Info shuttle link opens reliably in Safari.
+
+### Session 64sbn (Audit Campus Info links)
+- **`src/screens/HomeScreen.tsx`** — Replaced Cornell's TCAT direct schedules link after link-checking showed a 403 response. The Cornell transit card now opens Cornell Facilities and Campus Services' official Bus Services / OmniRide page, which returns 200 and is more reliable inside Safari.
+
+### Session 64sbo (Prepare Campus Info app fallbacks)
+- **`src/screens/HomeScreen.tsx`** — Added optional `appUrl` support to Campus Info resources and centralized link opening through `openCampusInfoLink()`. Campus links can now try a native app deep link first and fall back to the existing web URL when the app is unavailable or the deep link fails.
+
+### Session 64sbp (Add Handshake jobs links)
+- **`src/screens/HomeScreen.tsx`** — Added a `Jobs` Campus Info block for UCI, UMD, Cornell, Purdue, and UIUC. Each block links to that school's Handshake login plus the general Handshake app/web entry point, keeping career jobs access as a simple handoff instead of an API integration.
+
+### Session 64sbq (Add Student Deals hub)
+- **`src/screens/HomeScreen.tsx`** — Added a reusable `Student Deals` Campus Info block for supported and fallback schools. The block links to official student discount hubs and representative student plans such as UNiDAYS, Student Beans, ID.me Student, Apple Education, Amazon Prime Student, Spotify Student, and Adobe Student without maintaining coupon data in-app.
+
+### Session 64sbr (Add verified library links)
+- **`src/screens/HomeScreen.tsx`** — Added a school-specific `Library` Campus Info block for UCI, UMD, Cornell, Purdue, and UIUC only. Each verified block links to the school's official library homepage plus its study room / library space reservation page, while fallback schools intentionally do not show a library card unless a real service URL is configured.
+
+### Session 64sbs (Add registration links)
+- **`src/screens/HomeScreen.tsx`** — Added a reusable `Registration` Campus Info block and school-specific official registration/enrollment links for UCI WebReg, UMD Testudo, Cornell Student Center, Purdue Registrar registration info, and UIUC Self-Service. Placed it directly after dining so it appears in the home Campus Info preview, and kept registration out of fallback schools so the app only shows this card when a verified school service is configured.
+
+### Session 64sbt (Use US-style time display)
+- **`src/data/courses.ts`** — Added shared helpers to parse stored timetable times and render them as 12-hour AM/PM labels while keeping the internal 24-hour format for calculations.
+- **`App.tsx`**, **`src/screens/HomeScreen.tsx`**, **`src/screens/TimetableScreen.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, **`src/components/PreviewTimetable.tsx`**, **`src/components/FeatureOnboardingScreen.tsx`**, and **`src/data/messages.ts`** — Updated visible class times, grid hour labels, task/message times, custom course time entry, and onboarding mock schedules to use US-style AM/PM display so students no longer see 13:00/14:00-style timestamps. Custom course creation now accepts AM/PM inputs and stores them back as internal timetable times, including the midnight end-time case. The home timeline time column is right-aligned so AM/PM labels do not wrap while staying close to the colored class bar.
+
+### Session 64sbu (Show all Campus Info categories)
+- **`src/screens/HomeScreen.tsx`** — Changed Campus Info into a full category hub that always shows Dining, Registration, Jobs, Library, Sports, Transit, Clubs, Start Org, and Student Deals. Supported schools use their configured official links where available, fallback schools get school-specific search links instead of hiding cards, and each category can be collapsed or expanded from the sheet header.

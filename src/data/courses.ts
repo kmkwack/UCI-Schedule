@@ -50,6 +50,91 @@ export function quarterLabel(q: Quarter): string {
   return `${q.quarter} ${q.year}`;
 }
 
+export function parseTimeToMinutes(value: string | undefined, options: { allow24HourEnd?: boolean } = {}) {
+  const raw = (value ?? '').trim();
+  if (!raw || raw.toUpperCase() === 'TBA') return null;
+
+  const twelveHour = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*([AP])\.?M\.?$/i);
+  if (twelveHour) {
+    const hour = Number(twelveHour[1]);
+    const minute = Number(twelveHour[2] ?? '0');
+    if (hour < 1 || hour > 12 || minute < 0 || minute > 59) return null;
+    const period = twelveHour[3].toUpperCase();
+    const hour24 = period === 'AM' ? hour % 12 : (hour % 12) + 12;
+    return hour24 * 60 + minute;
+  }
+
+  const twentyFourHour = raw.match(/^(\d{1,2}):(\d{2})$/);
+  if (twentyFourHour) {
+    const hour = Number(twentyFourHour[1]);
+    const minute = Number(twentyFourHour[2]);
+    if (options.allow24HourEnd && hour === 24 && minute === 0) return 24 * 60;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return hour * 60 + minute;
+  }
+
+  return null;
+}
+
+export function formatMinutesAs24Hour(totalMinutes: number) {
+  const clamped = Math.max(0, Math.min(totalMinutes, 24 * 60));
+  const hour = Math.floor(clamped / 60);
+  const minute = clamped % 60;
+  return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+}
+
+export function formatMinutesAs12Hour(
+  totalMinutes: number,
+  options: { includePeriod?: boolean; omitMinutesIfZero?: boolean } = {},
+) {
+  const { includePeriod = true, omitMinutesIfZero = false } = options;
+  const normalized = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const hour24 = Math.floor(normalized / 60);
+  const minute = normalized % 60;
+  const hour12 = hour24 % 12 || 12;
+  const minuteText = omitMinutesIfZero && minute === 0
+    ? ''
+    : `:${minute.toString().padStart(2, '0')}`;
+  const period = hour24 >= 12 ? 'PM' : 'AM';
+  return includePeriod ? `${hour12}${minuteText} ${period}` : `${hour12}${minuteText}`;
+}
+
+export function formatTimeOfDay12(
+  value: string | undefined,
+  options: { omitMinutesIfZero?: boolean } = {},
+) {
+  const minutes = parseTimeToMinutes(value, { allow24HourEnd: true });
+  return minutes == null ? (value ?? '') : formatMinutesAs12Hour(minutes, options);
+}
+
+export function formatCourseTimeRange12(timeRange: string, options: { compact?: boolean } = {}) {
+  if (!timeRange || timeRange === 'TBA') return timeRange;
+  const [rawStart, rawEnd] = timeRange.split(' - ');
+  const start = parseTimeToMinutes(rawStart);
+  const end = parseTimeToMinutes(rawEnd, { allow24HourEnd: true });
+  if (start == null || end == null) return timeRange;
+
+  const startPeriod = Math.floor((((start % (24 * 60)) + (24 * 60)) % (24 * 60)) / 60) >= 12 ? 'PM' : 'AM';
+  const endPeriod = Math.floor((((end % (24 * 60)) + (24 * 60)) % (24 * 60)) / 60) >= 12 ? 'PM' : 'AM';
+
+  if (options.compact && startPeriod === endPeriod) {
+    return `${formatMinutesAs12Hour(start, { includePeriod: false })}-${formatMinutesAs12Hour(end)}`;
+  }
+  if (options.compact) {
+    return `${formatMinutesAs12Hour(start)}-${formatMinutesAs12Hour(end)}`;
+  }
+  return `${formatMinutesAs12Hour(start)} - ${formatMinutesAs12Hour(end)}`;
+}
+
+export function formatHourLabel12(hour: number) {
+  return formatMinutesAs12Hour(hour * 60, { omitMinutesIfZero: true });
+}
+
+export function normalizeTimeInputTo24Hour(value: string, options: { allow24HourEnd?: boolean } = {}) {
+  const minutes = parseTimeToMinutes(value, options);
+  return minutes == null ? null : formatMinutesAs24Hour(minutes);
+}
+
 export function getAcademicQuarterForDate(date: Date): Quarter {
   const month = date.getMonth();
   if (month <= 2) return { year: String(date.getFullYear()), quarter: 'Winter' };

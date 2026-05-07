@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Dimensions, Pressable } from 'react-native';
-import { Course, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, getBlockColors } from '../data/courses';
+import { Course, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatHourLabel12, getBlockColors } from '../data/courses';
 import { useTheme } from '../context/ThemeContext';
 
 type Props = {
@@ -70,7 +70,7 @@ function getDaysArray(daysString: string) {
 }
 
 function formatHourLabel(hour: number) {
-  return `${hour}:00`;
+  return formatHourLabel12(hour);
 }
 
 
@@ -341,7 +341,7 @@ export default function PreviewTimetable({
                         ) : null}
                         {showTime && (
                           <Text style={{ color: getBlockColors(course, theme).text, fontSize: 7, opacity: 0.6 }} numberOfLines={1}>
-                            {course.time}
+                            {formatCourseTimeRange12(course.time, { compact: true })}
                           </Text>
                         )}
                       </View>

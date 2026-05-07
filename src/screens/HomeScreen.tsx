@@ -4,7 +4,7 @@ import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Easing, Keyboard, L
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
-import { Course, Quarter, blockColorKey, pastelForCourse, quarterKey } from '../data/courses';
+import { Course, Quarter, blockColorKey, formatCourseTimeRange12, pastelForCourse, quarterKey } from '../data/courses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
 import { UCI_DINING_LOCATION_URL } from '../data/uciDining';
@@ -119,6 +119,7 @@ type CampusInfoResource = {
   title: string;
   subtitle: string;
   url?: string;
+  appUrl?: string;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   bg: string;
@@ -127,8 +128,11 @@ type CampusInfoResource = {
     title: string;
     subtitle: string;
     url: string;
+    appUrl?: string;
   }>;
 };
+
+type CampusInfoChild = NonNullable<CampusInfoResource['children']>[number];
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -150,6 +154,181 @@ const QUARTER_DATES: Record<string, { start: string; end: string }> = {
 
 const HOME_SPORTS_FETCH_DELAY_MS = 250;
 const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
+const HANDSHAKE_APP_URL = 'https://app.joinhandshake.com/login';
+
+const STUDENT_DEALS_RESOURCE: CampusInfoResource = {
+  id: 'student-deals',
+  title: 'Student Deals',
+  subtitle: 'Verified student discounts and student plans',
+  icon: 'pricetag-outline',
+  color: '#DB2777',
+  bg: '#fdf2f8',
+  children: [
+    { id: 'unidays', title: 'UNiDAYS', subtitle: 'Student discount hub', url: 'https://www.myunidays.com/US/en-US' },
+    { id: 'student-beans', title: 'Student Beans', subtitle: 'Verified student deals', url: 'https://www.studentbeans.com/us' },
+    { id: 'idme-student', title: 'ID.me', subtitle: 'Student verification offers', url: 'https://shop.id.me/student' },
+    { id: 'apple-education', title: 'Apple', subtitle: 'Education Store', url: 'https://www.apple.com/us-edu/store' },
+    { id: 'amazon-prime-student', title: 'Amazon', subtitle: 'Prime Student', url: 'https://www.amazon.com/amazonprime/student' },
+    { id: 'spotify-student', title: 'Spotify', subtitle: 'Student plan', url: 'https://www.spotify.com/us/student/' },
+    { id: 'adobe-student', title: 'Adobe', subtitle: 'Student pricing', url: 'https://www.adobe.com/creativecloud/buy/students.html' },
+  ],
+};
+
+function createLibraryResource(schoolLabel: string, libraryUrl: string, studyRoomsUrl: string): CampusInfoResource {
+  return {
+    id: 'library',
+    title: 'Library',
+    subtitle: 'Library services and study room reservations',
+    icon: 'book-outline',
+    color: '#0891B2',
+    bg: '#ecfeff',
+    children: [
+      { id: 'library-home', title: 'Library', subtitle: `${schoolLabel} library homepage`, url: libraryUrl },
+      { id: 'study-rooms', title: 'Study Rooms', subtitle: 'Reserve study spaces', url: studyRoomsUrl },
+    ],
+  };
+}
+
+function createRegistrationResource(
+  portalTitle: string,
+  portalSubtitle: string,
+  portalUrl: string,
+  guideUrl: string,
+): CampusInfoResource {
+  return {
+    id: 'registration',
+    title: 'Registration',
+    subtitle: 'Course registration portal and enrollment help',
+    icon: 'school-outline',
+    color: '#4F46E5',
+    bg: '#eef2ff',
+    children: [
+      { id: 'registration-portal', title: portalTitle, subtitle: portalSubtitle, url: portalUrl },
+      { id: 'registration-guide', title: 'Guide', subtitle: 'Registration dates, rules, and help', url: guideUrl },
+    ],
+  };
+}
+
+function campusInfoSearchUrl(school: string, topic: string) {
+  return `https://www.google.com/search?q=${encodeURIComponent(`${school} ${topic}`)}`;
+}
+
+function createLinkGroupResource(
+  id: string,
+  title: string,
+  subtitle: string,
+  icon: keyof typeof Ionicons.glyphMap,
+  color: string,
+  bg: string,
+  children: CampusInfoChild[],
+): CampusInfoResource {
+  return {
+    id,
+    title,
+    subtitle,
+    icon,
+    color,
+    bg,
+    children,
+  };
+}
+
+function createSportsResource(schoolLabel: string, athleticsUrl: string, scheduleUrl: string): CampusInfoResource {
+  return createLinkGroupResource(
+    'sports',
+    'Sports',
+    'Athletics schedules, teams, and campus games',
+    'trophy-outline',
+    '#EA580C',
+    '#fff7ed',
+    [
+      { id: 'sports-schedule', title: 'Schedule', subtitle: `${schoolLabel} games`, url: scheduleUrl },
+      { id: 'athletics-home', title: 'Athletics', subtitle: 'Official athletics site', url: athleticsUrl },
+    ],
+  );
+}
+
+function createSingleLinkResource(
+  id: string,
+  title: string,
+  subtitle: string,
+  icon: keyof typeof Ionicons.glyphMap,
+  color: string,
+  bg: string,
+  child: CampusInfoChild,
+): CampusInfoResource {
+  return createLinkGroupResource(id, title, subtitle, icon, color, bg, [child]);
+}
+
+function createFallbackCampusInfoResources(school: string): CampusInfoResource[] {
+  return [
+    createSingleLinkResource(
+      'dining',
+      'Dining',
+      'Campus dining menus, hours, and locations',
+      'restaurant-outline',
+      '#F97316',
+      '#fff7ed',
+      { id: 'dining-search', title: 'Dining', subtitle: 'Find menus and hours', url: campusInfoSearchUrl(school, 'dining menus hours') },
+    ),
+    createRegistrationResource(
+      'Registration',
+      'Course registration and registrar links',
+      campusInfoSearchUrl(school, 'course registration registrar'),
+      campusInfoSearchUrl(school, 'registrar registration dates'),
+    ),
+    createLinkGroupResource(
+      'jobs',
+      'Jobs',
+      'Jobs, internships, and career listings',
+      'briefcase-outline',
+      '#2563EB',
+      '#eff6ff',
+      [
+        { id: 'handshake-app', title: 'Handshake', subtitle: 'Open Handshake', url: HANDSHAKE_APP_URL },
+        { id: 'career-center', title: 'Career Center', subtitle: 'Find school career links', url: campusInfoSearchUrl(school, 'career center jobs internships') },
+      ],
+    ),
+    createLibraryResource(
+      school,
+      campusInfoSearchUrl(school, 'library'),
+      campusInfoSearchUrl(school, 'library study rooms reserve'),
+    ),
+    createSportsResource(
+      school,
+      campusInfoSearchUrl(school, 'athletics'),
+      campusInfoSearchUrl(school, 'athletics schedule'),
+    ),
+    createSingleLinkResource(
+      'transit',
+      'Transit',
+      'Campus shuttle, bus, and transportation links',
+      'bus-outline',
+      '#0EA5E9',
+      '#f0f9ff',
+      { id: 'transit-search', title: 'Transit', subtitle: 'Find shuttle and bus info', url: campusInfoSearchUrl(school, 'campus shuttle bus transit') },
+    ),
+    createSingleLinkResource(
+      'clubs',
+      'Clubs',
+      'Student organizations and campus groups',
+      'people-outline',
+      '#8B5CF6',
+      '#f5f3ff',
+      { id: 'clubs-search', title: 'Organizations', subtitle: 'Browse student groups', url: campusInfoSearchUrl(school, 'student organizations clubs') },
+    ),
+    createSingleLinkResource(
+      'start-org',
+      'Start Org',
+      'New student organization registration',
+      'create-outline',
+      '#10B981',
+      '#ecfdf5',
+      { id: 'start-org-search', title: 'Start Org', subtitle: 'Find registration steps', url: campusInfoSearchUrl(school, 'start student organization registration') },
+    ),
+    STUDENT_DEALS_RESOURCE,
+  ];
+}
 
 const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
   'UC Irvine': [
@@ -165,9 +344,54 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
         { id: 'brandywine', title: 'Brandywine', subtitle: 'Menu and hours', url: `${UCI_DINING_LOCATION_URL}/brandywine` },
       ],
     },
-    { id: 'transit', title: 'Anteater Express', subtitle: 'Live bus tracking and shuttle updates', url: 'https://shuttle.uci.edu/', icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
-    { id: 'clubs', title: 'Club Directory', subtitle: 'Browse active ZotSpot campus groups', url: 'https://zotspot.uci.edu/club_signup', icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
-    { id: 'start-org', title: 'Start a Club', subtitle: 'New organization registration steps', url: 'https://campusorgs.uci.edu/registration/new-organizations/', icon: 'create-outline', color: '#10B981', bg: '#ecfdf5' },
+    createRegistrationResource(
+      'WebReg',
+      'Add, drop, and enroll in classes',
+      'https://www.reg.uci.edu/registrar/soc/webreg.html',
+      'https://www.reg.uci.edu/enrollment/course_enrollment/login.html',
+    ),
+    {
+      id: 'jobs',
+      title: 'Jobs',
+      subtitle: 'Open Handshake jobs and career listings',
+      icon: 'briefcase-outline',
+      color: '#2563EB',
+      bg: '#eff6ff',
+      children: [
+        { id: 'handshake-web', title: 'Handshake', subtitle: 'UCI job portal', url: 'https://uci.joinhandshake.com/login' },
+        { id: 'handshake-app', title: 'App', subtitle: 'Open Handshake app or web login', url: HANDSHAKE_APP_URL },
+      ],
+    },
+    createLibraryResource('UCI', 'https://www.lib.uci.edu/', 'https://spaces.lib.uci.edu/'),
+    createSportsResource('UCI', 'https://ucirvinesports.com/', 'https://ucirvinesports.com/calendar'),
+    createSingleLinkResource(
+      'transit',
+      'Transit',
+      'Campus shuttle and transportation links',
+      'bus-outline',
+      '#0EA5E9',
+      '#f0f9ff',
+      { id: 'anteater-express', title: 'Anteater Express', subtitle: 'Live bus tracking', url: 'https://shuttle.uci.edu/' },
+    ),
+    createSingleLinkResource(
+      'clubs',
+      'Clubs',
+      'Student organizations and campus groups',
+      'people-outline',
+      '#8B5CF6',
+      '#f5f3ff',
+      { id: 'zotspot', title: 'ZotSpot', subtitle: 'Browse campus groups', url: 'https://zotspot.uci.edu/club_signup' },
+    ),
+    createSingleLinkResource(
+      'start-org',
+      'Start Org',
+      'New student organization registration',
+      'create-outline',
+      '#10B981',
+      '#ecfdf5',
+      { id: 'new-org', title: 'New Org', subtitle: 'Registration steps', url: 'https://campusorgs.uci.edu/registration/new-organizations/' },
+    ),
+    STUDENT_DEALS_RESOURCE,
   ],
   'University of Maryland, College Park': [
     {
@@ -183,9 +407,54 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
         { id: 'nutrition', title: 'Menus', subtitle: 'Menus and nutrition', url: 'https://nutrition.umd.edu/' },
       ],
     },
-    { id: 'transit', title: 'Shuttle-UM', subtitle: 'Transit app setup for Shuttle-UM routes', url: 'https://transportation.umd.edu/transit-official-app-shuttle-um', icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
-    { id: 'clubs', title: 'TerpLink', subtitle: 'Browse Maryland student organizations', url: 'https://terplink.umd.edu/organizations', icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
-    { id: 'start-org', title: 'Register an Org', subtitle: 'Student organization registration requirements', url: 'https://stamp.umd.edu/activities/student_org_resource_center_sorc/registration/registration_requirements', icon: 'create-outline', color: '#10B981', bg: '#ecfdf5' },
+    createRegistrationResource(
+      'Testudo',
+      'Registration and student services',
+      'https://testudo.umd.edu/',
+      'https://registrar.umd.edu/registration',
+    ),
+    {
+      id: 'jobs',
+      title: 'Jobs',
+      subtitle: 'Open Handshake jobs and career listings',
+      icon: 'briefcase-outline',
+      color: '#2563EB',
+      bg: '#eff6ff',
+      children: [
+        { id: 'handshake-web', title: 'Handshake', subtitle: 'UMD job portal', url: 'https://umd.joinhandshake.com/login' },
+        { id: 'handshake-app', title: 'App', subtitle: 'Open Handshake app or web login', url: HANDSHAKE_APP_URL },
+      ],
+    },
+    createLibraryResource('UMD', 'https://www.lib.umd.edu/', 'https://umd.libcal.com/'),
+    createSportsResource('UMD', 'https://umterps.com/', 'https://umterps.com/calendar'),
+    createSingleLinkResource(
+      'transit',
+      'Transit',
+      'Campus shuttle and transportation links',
+      'bus-outline',
+      '#0EA5E9',
+      '#f0f9ff',
+      { id: 'shuttle-um', title: 'Shuttle-UM', subtitle: 'Routes and app setup', url: 'https://transportation.umd.edu/transit-official-app-shuttle-um' },
+    ),
+    createSingleLinkResource(
+      'clubs',
+      'Clubs',
+      'Student organizations and campus groups',
+      'people-outline',
+      '#8B5CF6',
+      '#f5f3ff',
+      { id: 'terplink', title: 'TerpLink', subtitle: 'Browse organizations', url: 'https://terplink.umd.edu/organizations' },
+    ),
+    createSingleLinkResource(
+      'start-org',
+      'Start Org',
+      'New student organization registration',
+      'create-outline',
+      '#10B981',
+      '#ecfdf5',
+      { id: 'register-org', title: 'Register Org', subtitle: 'Registration requirements', url: 'https://stamp.umd.edu/activities/student_org_resource_center_sorc/registration/registration_requirements' },
+    ),
+    STUDENT_DEALS_RESOURCE,
   ],
   'Cornell University': [
     {
@@ -201,9 +470,54 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
         { id: 'order-ahead', title: 'Order Ahead', subtitle: 'GET Order details', url: 'https://scl.cornell.edu/residential-life/dining/eateries-menus/order-ahead' },
       ],
     },
-    { id: 'transit', title: 'TCAT Bus', subtitle: 'Cornell and Ithaca bus schedules', url: 'https://tcatbus.com/bus-schedules/', icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
-    { id: 'clubs', title: 'Club Directory', subtitle: 'Browse Cornell CampusGroups organizations', url: 'https://cornell.campusgroups.com/club_signup', icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
-    { id: 'start-org', title: 'Register an Org', subtitle: 'New and annual RSO registration guide', url: 'https://scl.cornell.edu/sub/RSORegistration', icon: 'create-outline', color: '#10B981', bg: '#ecfdf5' },
+    createRegistrationResource(
+      'Student Center',
+      'Enroll in classes and manage records',
+      'https://studentcenter.cornell.edu/',
+      'https://registrar.cornell.edu/current-students/enrollment',
+    ),
+    {
+      id: 'jobs',
+      title: 'Jobs',
+      subtitle: 'Open Handshake jobs and career listings',
+      icon: 'briefcase-outline',
+      color: '#2563EB',
+      bg: '#eff6ff',
+      children: [
+        { id: 'handshake-web', title: 'Handshake', subtitle: 'Cornell job portal', url: 'https://cornell.joinhandshake.com/login' },
+        { id: 'handshake-app', title: 'App', subtitle: 'Open Handshake app or web login', url: HANDSHAKE_APP_URL },
+      ],
+    },
+    createLibraryResource('Cornell', 'https://www.library.cornell.edu/', 'https://spaces.library.cornell.edu/'),
+    createSportsResource('Cornell', 'https://cornellbigred.com/', 'https://cornellbigred.com/calendar'),
+    createSingleLinkResource(
+      'transit',
+      'Transit',
+      'Campus bus and transportation links',
+      'bus-outline',
+      '#0EA5E9',
+      '#f0f9ff',
+      { id: 'bus-services', title: 'Bus Services', subtitle: 'TCAT and OmniRide', url: 'https://fcs.cornell.edu/departments/transportation-delivery-services/alternative-transportation-options/bus-services-privileges-omniride-passes' },
+    ),
+    createSingleLinkResource(
+      'clubs',
+      'Clubs',
+      'Student organizations and campus groups',
+      'people-outline',
+      '#8B5CF6',
+      '#f5f3ff',
+      { id: 'campusgroups', title: 'CampusGroups', subtitle: 'Browse organizations', url: 'https://cornell.campusgroups.com/club_signup' },
+    ),
+    createSingleLinkResource(
+      'start-org',
+      'Start Org',
+      'New student organization registration',
+      'create-outline',
+      '#10B981',
+      '#ecfdf5',
+      { id: 'rso-registration', title: 'RSO Guide', subtitle: 'Registration steps', url: 'https://scl.cornell.edu/sub/RSORegistration' },
+    ),
+    STUDENT_DEALS_RESOURCE,
   ],
   'Purdue University': [
     {
@@ -219,9 +533,54 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
         { id: 'on-the-go', title: 'On-the-GO', subtitle: 'Carry-out dining', url: 'https://www.dining.purdue.edu/residentialdining/on-the-go/locations.html' },
       ],
     },
-    { id: 'transit', title: 'Campus Transit', subtitle: 'Routes, on-demand rides, and app info', url: 'https://www.purdue.edu/parking/green_benefits/campus-transit.html', icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
-    { id: 'clubs', title: 'BoilerLink', subtitle: 'Browse Purdue student organizations', url: 'https://boilerlink.purdue.edu/organizations', icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
-    { id: 'start-org', title: 'Start an Org', subtitle: 'New student organization process', url: 'https://www.purdue.edu/sao/resources/start.php', icon: 'create-outline', color: '#10B981', bg: '#ecfdf5' },
+    createRegistrationResource(
+      'Registration Info',
+      'myPurdue registration dates and help',
+      'https://www.purdue.edu/registrar/currentStudents/registrationFaq.html',
+      'https://www.purdue.edu/registrar/currentStudents/pre-registration.html',
+    ),
+    {
+      id: 'jobs',
+      title: 'Jobs',
+      subtitle: 'Open Handshake jobs and career listings',
+      icon: 'briefcase-outline',
+      color: '#2563EB',
+      bg: '#eff6ff',
+      children: [
+        { id: 'handshake-web', title: 'Handshake', subtitle: 'Purdue job portal', url: 'https://purdue.joinhandshake.com/login' },
+        { id: 'handshake-app', title: 'App', subtitle: 'Open Handshake app or web login', url: HANDSHAKE_APP_URL },
+      ],
+    },
+    createLibraryResource('Purdue', 'https://www.lib.purdue.edu/', 'https://calendar.lib.purdue.edu/reserve'),
+    createSportsResource('Purdue', 'https://purduesports.com/', campusInfoSearchUrl('Purdue University', 'athletics schedule')),
+    createSingleLinkResource(
+      'transit',
+      'Transit',
+      'Campus shuttle and transportation links',
+      'bus-outline',
+      '#0EA5E9',
+      '#f0f9ff',
+      { id: 'campus-transit', title: 'Campus Transit', subtitle: 'Routes and ride options', url: 'https://www.purdue.edu/parking/green_benefits/campus-transit.html' },
+    ),
+    createSingleLinkResource(
+      'clubs',
+      'Clubs',
+      'Student organizations and campus groups',
+      'people-outline',
+      '#8B5CF6',
+      '#f5f3ff',
+      { id: 'boilerlink', title: 'BoilerLink', subtitle: 'Browse organizations', url: 'https://boilerlink.purdue.edu/organizations' },
+    ),
+    createSingleLinkResource(
+      'start-org',
+      'Start Org',
+      'New student organization registration',
+      'create-outline',
+      '#10B981',
+      '#ecfdf5',
+      { id: 'start-org-process', title: 'Start Org', subtitle: 'New org process', url: 'https://www.purdue.edu/sao/resources/start.php' },
+    ),
+    STUDENT_DEALS_RESOURCE,
   ],
   'University of Illinois Urbana-Champaign': [
     {
@@ -237,18 +596,75 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
         { id: 'nutrition', title: 'Nutrition', subtitle: 'Dietary resources', url: 'https://www.housing.illinois.edu/dine/nutrition/dietary-considerations' },
       ],
     },
-    { id: 'transit', title: 'MTD Apps', subtitle: 'Campus bus apps and real-time transit options', url: 'https://mtd.org/maps-and-schedules/apps/', icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
-    { id: 'clubs', title: 'OneIllinois Groups', subtitle: 'Browse Illinois student organizations', url: 'https://one.illinois.edu/club_signup', icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
-    { id: 'start-org', title: 'Register an Org', subtitle: 'Student organization registration steps', url: 'https://studentengagement.illinois.edu/soda/studentorgs/registration', icon: 'create-outline', color: '#10B981', bg: '#ecfdf5' },
+    createRegistrationResource(
+      'Self-Service',
+      'Register and manage student records',
+      'https://apps.uillinois.edu/selfservice',
+      'https://registrar.illinois.edu/registration/',
+    ),
+    {
+      id: 'jobs',
+      title: 'Jobs',
+      subtitle: 'Open Handshake jobs and career listings',
+      icon: 'briefcase-outline',
+      color: '#2563EB',
+      bg: '#eff6ff',
+      children: [
+        { id: 'handshake-web', title: 'Handshake', subtitle: 'Illinois job portal', url: 'https://illinois.joinhandshake.com/login' },
+        { id: 'handshake-app', title: 'App', subtitle: 'Open Handshake app or web login', url: HANDSHAKE_APP_URL },
+      ],
+    },
+    createLibraryResource('Illinois', 'https://www.library.illinois.edu/', 'https://libcal.library.illinois.edu/allspaces'),
+    createSportsResource('Illinois', 'https://fightingillini.com/', 'https://fightingillini.com/calendar'),
+    createSingleLinkResource(
+      'transit',
+      'Transit',
+      'Campus bus and transportation links',
+      'bus-outline',
+      '#0EA5E9',
+      '#f0f9ff',
+      { id: 'mtd-apps', title: 'MTD Apps', subtitle: 'Real-time transit apps', url: 'https://mtd.org/maps-and-schedules/apps/' },
+    ),
+    createSingleLinkResource(
+      'clubs',
+      'Clubs',
+      'Student organizations and campus groups',
+      'people-outline',
+      '#8B5CF6',
+      '#f5f3ff',
+      { id: 'oneillinois', title: 'OneIllinois', subtitle: 'Browse organizations', url: 'https://one.illinois.edu/club_signup' },
+    ),
+    createSingleLinkResource(
+      'start-org',
+      'Start Org',
+      'New student organization registration',
+      'create-outline',
+      '#10B981',
+      '#ecfdf5',
+      { id: 'register-org', title: 'Register Org', subtitle: 'Registration steps', url: 'https://studentengagement.illinois.edu/soda/studentorgs/registration' },
+    ),
+    STUDENT_DEALS_RESOURCE,
   ],
 };
 
 function getCampusInfoResources(school: string): CampusInfoResource[] {
-  return CAMPUS_INFO_RESOURCES[school] ?? [
-    { id: 'dining', title: 'Dining', subtitle: 'Campus dining information', url: `https://www.google.com/search?q=${encodeURIComponent(`${school} dining menus`)}`, icon: 'restaurant-outline', color: '#F97316', bg: '#fff7ed' },
-    { id: 'transit', title: 'Transit', subtitle: 'Campus shuttle and bus information', url: `https://www.google.com/search?q=${encodeURIComponent(`${school} campus shuttle`)}`, icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
-    { id: 'clubs', title: 'Student Organizations', subtitle: 'Clubs and campus involvement', url: `https://www.google.com/search?q=${encodeURIComponent(`${school} student organizations`)}`, icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
-  ];
+  return CAMPUS_INFO_RESOURCES[school] ?? createFallbackCampusInfoResources(school);
+}
+
+type CampusInfoLinkTarget = {
+  url?: string;
+  appUrl?: string;
+};
+
+async function openCampusInfoLink(target: CampusInfoLinkTarget) {
+  const candidates = [target.appUrl, target.url].filter((value): value is string => Boolean(value));
+  for (const url of candidates) {
+    try {
+      await Linking.openURL(url);
+      return;
+    } catch {}
+  }
+  Alert.alert('Could not open link', target.url ?? target.appUrl ?? 'Try again later.');
 }
 
 const DEFAULT_CALENDAR_PROVIDER_ID: CalendarProviderId = 'canvas';
@@ -431,7 +847,7 @@ function formatCalendarTaskDueLabel(assignment: CalendarTask, now: Date) {
   const dayLabel = formatRelativeEventDayLabel(due, now);
   const prefix = due.getTime() < now.getTime() ? 'Past due' : 'Due';
   if (assignment.allDay) return `${prefix} ${dayLabel}`;
-  return `${prefix} ${dayLabel} · ${due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  return `${prefix} ${dayLabel} · ${due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
 }
 
 function isCalendarTaskOverdue(assignment: CalendarTask, completed: boolean, now: Date) {
@@ -606,7 +1022,7 @@ function dateFromHour(baseDate: Date, hourValue: number) {
 }
 
 function formatClock(date: Date) {
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
 function formatTimelineClockParts(date: Date) {
@@ -627,23 +1043,7 @@ function formatDuration(totalMinutes: number) {
 }
 
 function formatHeroTimeRange(timeRange: string) {
-  const [start, end] = timeRange.split(' - ');
-  const [startHour, startMinute] = start.split(':').map(Number);
-  const [endHour, endMinute] = end.split(':').map(Number);
-
-  const formatPart = (hour: number, minute: number) => {
-    const normalizedHour = hour % 12 === 0 ? 12 : hour % 12;
-    return `${normalizedHour}:${minute.toString().padStart(2, '0')}`;
-  };
-
-  const startPeriod = startHour >= 12 ? 'PM' : 'AM';
-  const endPeriod = endHour >= 12 ? 'PM' : 'AM';
-
-  if (startPeriod === endPeriod) {
-    return `${formatPart(startHour, startMinute)}-${formatPart(endHour, endMinute)} ${endPeriod}`;
-  }
-
-  return `${formatPart(startHour, startMinute)} ${startPeriod}-${formatPart(endHour, endMinute)} ${endPeriod}`;
+  return formatCourseTimeRange12(timeRange, { compact: true });
 }
 
 function formatHeroTimelineLocation(location?: string) {
@@ -864,6 +1264,7 @@ export default function HomeScreen({
   const [calendarSetupKeyboardVisible, setCalendarSetupKeyboardVisible] = useState(false);
   const [calendarSetupKeyboardHeight, setCalendarSetupKeyboardHeight] = useState(0);
   const [showCampusInfo, setShowCampusInfo] = useState(false);
+  const [expandedCampusInfoCards, setExpandedCampusInfoCards] = useState<Record<string, boolean>>({});
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const calendarProviderStorageKey = userScopedStorageKey('assignment_calendar_provider', userId);
@@ -1364,6 +1765,12 @@ export default function HomeScreen({
   const pastCalendarTaskCount = pastCalendarTasks.length;
   const calendarLastSyncedLabel = calendarLastSyncedAt ? `${selectedCalendarProvider.label} synced ${timeAgo(calendarLastSyncedAt)}` : 'Assignment calendar';
   const campusInfoResources = useMemo(() => getCampusInfoResources(school), [school]);
+  const toggleCampusInfoCard = useCallback((resourceId: string) => {
+    setExpandedCampusInfoCards((prev) => ({
+      ...prev,
+      [resourceId]: !(prev[resourceId] ?? true),
+    }));
+  }, []);
 
   const raisedCardStyle = {
     borderRadius: 28,
@@ -2212,7 +2619,7 @@ export default function HomeScreen({
                                     {resource.children.map((child) => (
                                       <TouchableOpacity
                                         key={`hero-campus-info-${resource.id}-${child.id}`}
-                                        onPress={() => void Linking.openURL(child.url)}
+                                        onPress={() => void openCampusInfoLink(child)}
                                         activeOpacity={0.76}
                                         style={{
                                           flexGrow: 1,
@@ -2238,7 +2645,7 @@ export default function HomeScreen({
                             return (
                               <TouchableOpacity
                                 key={`hero-campus-info-${resource.id}`}
-                                onPress={() => resource.url && void Linking.openURL(resource.url)}
+                                onPress={() => void openCampusInfoLink(resource)}
                                 activeOpacity={0.76}
                                 style={{
                                   minHeight: 56,
@@ -2519,8 +2926,8 @@ export default function HomeScreen({
                                     opacity: rowIsPast ? 0.46 : 1,
                                   }}
                                 >
-                                  <View style={{ width: 57 }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
+                                  <View style={{ width: 64 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'flex-end', gap: 2 }}>
                                       <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: rowPrimaryColor }}>
                                         {rowStartClock.time}
                                       </Text>
@@ -2988,7 +3395,7 @@ export default function HomeScreen({
                   Campus Info
                 </Text>
                 <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
-                  Official links for {schoolCampusLabel(school)}.
+                  Campus links for {schoolCampusLabel(school)}.
                 </Text>
               </View>
               <TouchableOpacity
@@ -3012,6 +3419,7 @@ export default function HomeScreen({
             >
               {campusInfoResources.map((resource) => {
                 if (resource.children?.length) {
+                  const isExpanded = expandedCampusInfoCards[resource.id] ?? true;
                   return (
                     <View
                       key={resource.id}
@@ -3023,7 +3431,11 @@ export default function HomeScreen({
                         padding: 14,
                       }}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <TouchableOpacity
+                        onPress={() => toggleCampusInfoCard(resource.id)}
+                        activeOpacity={0.78}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                      >
                         <View
                           style={{
                             width: 42,
@@ -3044,38 +3456,39 @@ export default function HomeScreen({
                             {resource.subtitle}
                           </Text>
                         </View>
-                      </View>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 12 }}>
-                        {resource.children.map((child) => (
-                          <TouchableOpacity
-                            key={`${resource.id}-${child.id}`}
-                            onPress={() => {
-                              setShowCampusInfo(false);
-                              void Linking.openURL(child.url).catch(() => {
-                                Alert.alert('Could not open link', child.url);
-                              });
-                            }}
-                            activeOpacity={0.78}
-                            style={{
-                              flexGrow: 1,
-                              flexBasis: '47%',
-                              minHeight: 46,
-                              borderRadius: 15,
-                              backgroundColor: resource.bg,
-                              paddingHorizontal: 10,
-                              paddingVertical: 8,
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Text numberOfLines={1} style={{ fontSize: 13, lineHeight: 17, fontWeight: '800', color: resource.color }}>
-                              {child.title}
-                            </Text>
-                            <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 15, color: colors.textSecondary, marginTop: 2 }}>
-                              {child.subtitle}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
+                        <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                      {isExpanded ? (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 12 }}>
+                          {resource.children.map((child) => (
+                            <TouchableOpacity
+                              key={`${resource.id}-${child.id}`}
+                              onPress={() => {
+                                setShowCampusInfo(false);
+                                void openCampusInfoLink(child);
+                              }}
+                              activeOpacity={0.78}
+                              style={{
+                                flexGrow: 1,
+                                flexBasis: '47%',
+                                minHeight: 46,
+                                borderRadius: 15,
+                                backgroundColor: resource.bg,
+                                paddingHorizontal: 10,
+                                paddingVertical: 8,
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Text numberOfLines={1} style={{ fontSize: 13, lineHeight: 17, fontWeight: '800', color: resource.color }}>
+                                {child.title}
+                              </Text>
+                              <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 15, color: colors.textSecondary, marginTop: 2 }}>
+                                {child.subtitle}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
                     </View>
                   );
                 }
@@ -3084,11 +3497,8 @@ export default function HomeScreen({
                   <TouchableOpacity
                     key={resource.id}
                     onPress={() => {
-                      if (!resource.url) return;
                       setShowCampusInfo(false);
-                      void Linking.openURL(resource.url).catch(() => {
-                        Alert.alert('Could not open link', resource.url);
-                      });
+                      void openCampusInfoLink(resource);
                     }}
                     activeOpacity={0.78}
                     style={{

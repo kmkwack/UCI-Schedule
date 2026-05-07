@@ -24,6 +24,8 @@ import {
   Course,
   Quarter,
   DEFAULT_TIMETABLE_SETTINGS,
+  formatCourseTimeRange12,
+  formatHourLabel12,
   getBlockColors,
   quarterKey,
 } from '../data/courses';
@@ -116,7 +118,7 @@ function isValidTime(t: string) {
 }
 
 function fmtHour(h: number) {
-  return `${h.toString().padStart(2, '0')}:00`;
+  return formatHourLabel12(h);
 }
 
 function parseDays(s: string) {
@@ -1670,7 +1672,7 @@ export default function FriendsScreen({
                                   <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.75, marginTop: 2 }} numberOfLines={1}>{course.location}</Text>
                                 ) : null}
                                 <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.7, marginTop: 1 }} numberOfLines={1}>{getProfLastName(course.professor)}</Text>
-                                <Text style={{ color: text, fontSize: compactGrid ? 7 : 8, opacity: 0.6, marginTop: 1 }} numberOfLines={1}>{course.time}</Text>
+                                <Text style={{ color: text, fontSize: compactGrid ? 7 : 8, opacity: 0.6, marginTop: 1 }} numberOfLines={1}>{formatCourseTimeRange12(course.time, { compact: true })}</Text>
                               </View>
                             );
                           });

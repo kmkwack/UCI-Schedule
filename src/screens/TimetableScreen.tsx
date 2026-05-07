@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, getBlockColors, normalizeTimetableTheme } from '../data/courses';
+import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme } from '../data/courses';
 import { buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
 import { getCampusMapLocation, type CampusMapLocation } from '../data/campusLocations';
 import { useTheme } from '../context/ThemeContext';
@@ -215,7 +215,7 @@ function getDaysArray(daysString: string) {
 }
 
 function formatHourLabel(hour: number) {
-  return `${hour}:00`;
+  return formatHourLabel12(hour);
 }
 
 function getProfLastName(professor: string) {
@@ -1626,7 +1626,7 @@ export default function TimetableScreen({
                   ) : null}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <Ionicons name="time-outline" size={16} color={colors.textTertiary} />
-                    <Text style={{ fontSize: 14, color: colors.textSecondary }}>{selectedCourse.days} · {selectedCourse.time}</Text>
+                    <Text style={{ fontSize: 14, color: colors.textSecondary }}>{selectedCourse.days} · {formatCourseTimeRange12(selectedCourse.time)}</Text>
                   </View>
                   {selectedCourse.location ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -2210,7 +2210,7 @@ export default function TimetableScreen({
                                   style={{ color: text, fontSize: timeFontSize, opacity: 0.6, marginTop: 1 }}
                                   numberOfLines={1}
                                 >
-                                  {course.time}
+                                  {formatCourseTimeRange12(course.time, { compact: true })}
                                 </Text>
                               )}
                             </TouchableOpacity>
@@ -2528,7 +2528,7 @@ export default function TimetableScreen({
                                 style={{ color: text, fontSize: exportTimeFontSize, opacity: 0.68, marginTop: 1 }}
                                 numberOfLines={1}
                               >
-                                {course.time}
+                                {formatCourseTimeRange12(course.time, { compact: true })}
                               </Text>
                             )}
                           </View>

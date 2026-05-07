@@ -21,7 +21,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, quarterKey } from '../data/courses';
+import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatMinutesAs24Hour, formatTimeOfDay12, parseTimeToMinutes, quarterKey } from '../data/courses';
 import { getSchoolConfig, termLabel } from '../data/schools';
 import { departmentsForSchoolId } from '../data/schoolDepartments';
 import PreviewTimetable from '../components/PreviewTimetable';
@@ -166,16 +166,17 @@ function getCourseStartHour(t: string) { return parseHour(t.split(' - ')[0]); }
 function getCourseEndHour(t: string) { return parseHour(t.split(' - ')[1]); }
 
 function normalizeCustomTimeInput(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  return value.replace(/\s+/g, ' ').toUpperCase().slice(0, 8);
 }
 
 function isValidTimeInput(value: string, allow24Hour = false) {
-  if (!/^\d{2}:\d{2}$/.test(value)) return false;
-  const [hours, minutes] = value.split(':').map(Number);
-  if (allow24Hour && hours === 24 && minutes === 0) return true;
-  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
+  return parseTimeToMinutes(value, { allow24HourEnd: allow24Hour }) != null;
+}
+
+function parseCustomEndMinutes(endValue: string, startMinutes: number | null) {
+  const endMinutes = parseTimeToMinutes(endValue, { allow24HourEnd: true });
+  if (endMinutes === 0 && startMinutes != null && startMinutes > 0) return 24 * 60;
+  return endMinutes;
 }
 
 function buildCustomCourse(draft: CustomCourseDraft): Course {
@@ -184,7 +185,11 @@ function buildCustomCourse(draft: CustomCourseDraft): Course {
   const trimmedProfessor = draft.professor.trim();
   const trimmedLocation = draft.location.trim();
   const trimmedUnits = draft.units.trim();
-  const time = `${draft.startTime} - ${draft.endTime}`;
+  const startMinutes = parseTimeToMinutes(draft.startTime);
+  const endMinutes = parseCustomEndMinutes(draft.endTime, startMinutes);
+  const startTime = startMinutes == null ? draft.startTime : formatMinutesAs24Hour(startMinutes);
+  const endTime = endMinutes == null ? draft.endTime : formatMinutesAs24Hour(endMinutes);
+  const time = `${startTime} - ${endTime}`;
   const days = draft.selectedDays.join('');
   const shortCode = (trimmedShortLabel || trimmedName).toUpperCase();
 
@@ -213,8 +218,8 @@ function courseToCustomDraft(course: Course): CustomCourseDraft {
     location: course.location ?? '',
     customColor: course.customColor ?? CUSTOM_COLOR_OPTIONS[0],
     units: course.units != null ? String(course.units) : '',
-    startTime,
-    endTime,
+    startTime: formatTimeOfDay12(startTime),
+    endTime: formatTimeOfDay12(endTime),
     selectedDays: getDaysArray(course.days),
   };
 }
@@ -943,10 +948,12 @@ export default function CoursePickerScreen({
       return;
     }
     if (!isValidTimeInput(customCourseDraft.startTime) || !isValidTimeInput(customCourseDraft.endTime, true)) {
-      Alert.alert('Invalid time', 'Use 24-hour time in HH:MM format. End time can be 24:00.');
+      Alert.alert('Invalid time', 'Use a time like 1:00 PM or 9:30 AM.');
       return;
     }
-    if (parseHour(customCourseDraft.endTime) <= parseHour(customCourseDraft.startTime)) {
+    const customStartMinutes = parseTimeToMinutes(customCourseDraft.startTime);
+    const customEndMinutes = parseCustomEndMinutes(customCourseDraft.endTime, customStartMinutes);
+    if (customStartMinutes == null || customEndMinutes == null || customEndMinutes <= customStartMinutes) {
       Alert.alert('Invalid range', 'End time needs to be later than the start time.');
       return;
     }
@@ -1552,7 +1559,7 @@ export default function CoursePickerScreen({
                                     {course.professor}
                                   </Text>
                                   <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 1 }}>
-                                    {[course.days, course.time, course.location].filter(Boolean).join(' · ')}
+                                    {[course.days, formatCourseTimeRange12(course.time), course.location].filter(Boolean).join(' · ')}
                                   </Text>
                                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 }}>
                                     {enrollmentLabel ? (
@@ -1824,10 +1831,10 @@ export default function CoursePickerScreen({
                       onChangeText={(value) =>
                         setCustomCourseDraft((prev) => ({ ...prev, startTime: normalizeCustomTimeInput(value) }))
                       }
-                      placeholder="13:00"
+                      placeholder="1:00 PM"
                       placeholderTextColor="#9ca3af"
-                      keyboardType="number-pad"
-                      maxLength={5}
+                      autoCapitalize="characters"
+                      maxLength={8}
                       style={customInputStyle}
                     />
                   </View>
@@ -1838,10 +1845,10 @@ export default function CoursePickerScreen({
                       onChangeText={(value) =>
                         setCustomCourseDraft((prev) => ({ ...prev, endTime: normalizeCustomTimeInput(value) }))
                       }
-                      placeholder="14:20"
+                      placeholder="2:20 PM"
                       placeholderTextColor="#9ca3af"
-                      keyboardType="number-pad"
-                      maxLength={5}
+                      autoCapitalize="characters"
+                      maxLength={8}
                       style={customInputStyle}
                     />
                   </View>

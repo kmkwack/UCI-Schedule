@@ -41,7 +41,7 @@ export function formatMessageTime(isoString: string) {
   const sameDay = date.toDateString() === now.toDateString();
 
   if (sameDay) {
-    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   }
 
   const diff = now.getTime() - date.getTime();

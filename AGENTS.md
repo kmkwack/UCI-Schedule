@@ -2502,3 +2502,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sbb (Restore original intro flow)
 - **`src/components/ClassMateIntroScreen.tsx`** — Removed the experimental C/check drawing animation and restored the original intro behavior: the approved ClassMate logo scales/fades in, followed by the wordmark and the staggered floating chips. This returns the entrance screen to the cleaner pop-up effect the app had before.
+
+### Session 64sbc (Add Career Board)
+- **`src/screens/BoardScreen.tsx`** — Added `Career Board` as a default campus board with a briefcase icon for career, internship, recruiting, major-to-job, and future-planning discussions. Board loading now merges missing default boards into cached or Supabase-provided board catalogs so the Career board appears even if a school's remote board list has not been updated yet.

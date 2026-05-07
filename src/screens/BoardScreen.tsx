@@ -112,6 +112,7 @@ const FALLBACK_BOARDS: Board[] = [
   { id: 'general', name: 'General Board', category: 'General', icon: 'chatbubbles-outline', color: '#4169E1', iconBg: '#eef1fb' },
   { id: 'sports', name: 'Sports Board', category: 'Sports', icon: 'barbell-outline', color: '#10B981', iconBg: '#ecfdf5' },
   { id: 'study', name: 'Study Groups Board', category: 'Study Groups', icon: 'book-outline', color: '#F59E0B', iconBg: '#fef9ec' },
+  { id: 'career', name: 'Career Board', category: 'Career', icon: 'briefcase-outline', color: '#0EA5E9', iconBg: '#f0f9ff' },
   { id: 'market', name: 'Marketplace Board', category: 'Marketplace', icon: 'bag-outline', color: '#8B5CF6', iconBg: '#f5f3ff' },
   { id: 'clubs', name: 'Club Promotions Board', category: 'Club Promotions', icon: 'megaphone-outline', color: '#EC4899', iconBg: '#fdf2f8' },
 ];
@@ -155,6 +156,12 @@ function boardContextLabel(category: string) {
 
 function boardCategory(board: Board) {
   return board.category ?? 'General';
+}
+
+function withDefaultBoards(remoteBoards: Board[]) {
+  const seenCategories = new Set(remoteBoards.map((board) => boardCategory(board).toLowerCase()));
+  const missingDefaults = FALLBACK_BOARDS.filter((board) => !seenCategories.has(boardCategory(board).toLowerCase()));
+  return [...remoteBoards, ...missingDefaults];
 }
 
 function isHotBoard(board: Board | null) {
@@ -1120,7 +1127,7 @@ export default function BoardScreen({
       if (cached) {
         const cachedBoards = JSON.parse(cached) as Board[];
         if (Array.isArray(cachedBoards) && cachedBoards.length > 0) {
-          setBoards(cachedBoards);
+          setBoards(withDefaultBoards(cachedBoards));
         }
       }
     } catch (error) {
@@ -1156,8 +1163,9 @@ export default function BoardScreen({
           color: row.color,
           iconBg: row.icon_bg,
         }));
-        setBoards(freshBoards);
-        await AsyncStorage.setItem(boardsCacheKey, JSON.stringify(freshBoards));
+        const mergedBoards = withDefaultBoards(freshBoards);
+        setBoards(mergedBoards);
+        await AsyncStorage.setItem(boardsCacheKey, JSON.stringify(mergedBoards));
       }
     } catch (error) {
       if (!isNetworkRequestError(error)) console.warn('Failed to refresh boards:', error);

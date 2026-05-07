@@ -2508,3 +2508,34 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sbd (Add new activity badges)
 - **`App.tsx`** — Added bottom-tab badges for new social activity: the Board tab now shows a `NEW` badge when posts have appeared since the user's last board visit, and the ClassMates tab shows the unread message count. The app stores a per-user/per-school board last-seen timestamp in AsyncStorage and refreshes both badges through polling plus Supabase realtime hooks.
+
+### Session 64sbe (Stabilize keyboard sheets)
+- **`src/screens/HomeScreen.tsx`** — Constrained the Import Assignments sheet height when the keyboard is visible, added keyboard-aware bottom padding, and scrolls the LMS feed input into view on focus so the sync button and input no longer get pushed behind the keyboard.
+- **`src/screens/BoardScreen.tsx`** — Constrained the Request New Board bottom sheet to a keyboard-aware height and added extra scroll padding while typing so the sheet does not leave awkward empty space below or get pushed into the keyboard.
+
+### Session 64sbf (Tune keyboard sheets and home swipe)
+- **`src/screens/HomeScreen.tsx`** — Anchored the Import Assignments sheet above the keyboard without relying on KeyboardAvoidingView padding and lowered the hero-card pan thresholds so the class/sports carousel swipes with a lighter drag.
+- **`src/screens/BoardScreen.tsx`** — Anchored the Request New Board sheet above the keyboard with explicit keyboard spacing so typing does not push the whole modal into an awkward blank area.
+
+### Session 64sbg (Constrain keyboard sheet scroll areas)
+- **`src/screens/HomeScreen.tsx`** — Made the Import Assignments sheet ScrollView fill the fixed keyboard-aware sheet height so the bottom action stays reachable through scrolling.
+- **`src/screens/BoardScreen.tsx`** — Made the Request New Board sheet body fill the remaining fixed sheet height so its fields and buttons scroll cleanly above the keyboard.
+
+### Session 64sbh (Add Campus Info hub)
+- **`src/screens/HomeScreen.tsx`** — Added a compact `Campus Info` home button that opens a bottom sheet of school-specific official links for dining, transit/shuttle, club directories, and organization registration so secondary campus resources stay out of the main home feed.
+
+### Session 64sbi (Add live UCI dining links)
+- **`src/data/uciDining.ts`** — Added a UCI MyDiningHub GraphQL client and hours parser for The Anteatery and Brandywine so the app can show live dining status from the official dining data source instead of static links.
+- **`src/screens/HomeScreen.tsx`** — Added a UCI-only `Dining today` home card with separate The Anteatery and Brandywine rows, each opening its own official menu/hours page. Split the UCI Campus Info dining entry into separate Anteatery and Brandywine menu links so tapping dining does not land on a generic page.
+
+### Session 64sbj (Move Campus Info into hero carousel)
+- **`src/screens/HomeScreen.tsx`** — Removed the separate home-feed Dining and Campus Info cards. Added `Campus Info` as the hero carousel page after Sports Events, with the first rows linking directly to school resources such as The Anteatery and Brandywine for UCI and a `View all` action opening the full Campus Info sheet.
+
+### Session 64sbk (Group dining hall links)
+- **`src/screens/HomeScreen.tsx`** — Changed UCI dining from two separate top-level Campus Info rows into one `Dining Menus` parent block with two nested sub-block links for The Anteatery and Brandywine. Updated both the hero Campus Info card and the full Campus Info sheet so dining reads as one category with two choices.
+
+### Session 64sbl (Add nested dining links for supported schools)
+- **`src/screens/HomeScreen.tsx`** — Expanded the Campus Info dining parent block pattern to UMD, Cornell, Purdue, and UIUC using official menu, hours, location, app, and nutrition links where available. Updated nested child buttons to wrap cleanly when a school has three dining sub-links, and kept UCI Brandywine/The Anteatery pointed at the direct MyDiningHub location pages.
+
+### Session 64sbm (Fix Cornell transit link)
+- **`src/screens/HomeScreen.tsx`** — Replaced Cornell's App Store-only `Navi` transit link with the browser-friendly TCAT bus schedules page and renamed the card to `TCAT Bus` so the Campus Info shuttle link opens reliably in Safari.

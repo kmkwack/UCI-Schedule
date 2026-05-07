@@ -3376,9 +3376,16 @@ function RequestBoardModal({
   submitting: boolean;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
+  const { height: windowHeight } = Dimensions.get('window');
   const scrollRef = useRef<ScrollView>(null);
   const sheetAnim = useRef(new Animated.Value(600)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const sheetHeight = Math.min(
+    Math.round(windowHeight * 0.72),
+    Math.max(320, windowHeight - (keyboardVisible ? keyboardHeight + 18 : 96))
+  );
   const closeRef = useRef<(() => void) | null>(null);
   const dragPan = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -3419,35 +3426,44 @@ function RequestBoardModal({
       requestAnimationFrame(() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120));
     };
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const sub = Keyboard.addListener(showEvent, scrollToBottom);
-    return () => sub.remove();
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardVisible(true);
+      setKeyboardHeight(Math.max(event.endCoordinates?.height ?? 0, 0));
+      scrollToBottom();
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
   }, [visible]);
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={closeSheet}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
-      >
+      <View style={{ flex: 1 }}>
         <Animated.View
           style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }) }}
         >
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeSheet} />
-          <Animated.View style={{ transform: [{ translateY: sheetAnim }] }}>
+          <Animated.View style={{ height: sheetHeight, marginBottom: keyboardVisible ? keyboardHeight : 0, transform: [{ translateY: sheetAnim }] }}>
             {/* Drag handle */}
             <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, alignItems: 'center', paddingTop: 12, paddingBottom: 4 }} {...dragPan.panHandlers}>
               <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
             </View>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()} style={{ flex: 1 }}>
             <ScrollView
               ref={scrollRef}
+              style={{ flex: 1 }}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{
                 backgroundColor: colors.card,
                 paddingHorizontal: 20,
                 paddingTop: 8,
-                paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+                paddingBottom: (Platform.OS === 'ios' ? 34 : 20) + (keyboardVisible ? 96 : 0),
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -3540,7 +3556,7 @@ function RequestBoardModal({
           </TouchableOpacity>
           </Animated.View>
         </Animated.View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

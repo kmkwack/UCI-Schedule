@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Easing, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, blockColorKey, pastelForCourse, quarterKey } from '../data/courses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
+import { UCI_DINING_LOCATION_URL } from '../data/uciDining';
 import { academicSystemNoun, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
@@ -110,7 +111,24 @@ type HeroCardItem =
   | { type: 'completedSummary'; courses: Course[] }
   | { type: 'upcomingSummary'; courses: Course[] }
   | { type: 'course'; course: Course }
-  | { type: 'sportsEvents' };
+  | { type: 'sportsEvents' }
+  | { type: 'campusInfo' };
+
+type CampusInfoResource = {
+  id: string;
+  title: string;
+  subtitle: string;
+  url?: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  bg: string;
+  children?: Array<{
+    id: string;
+    title: string;
+    subtitle: string;
+    url: string;
+  }>;
+};
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -132,6 +150,106 @@ const QUARTER_DATES: Record<string, { start: string; end: string }> = {
 
 const HOME_SPORTS_FETCH_DELAY_MS = 250;
 const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
+
+const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
+  'UC Irvine': [
+    {
+      id: 'dining',
+      title: 'Dining Menus',
+      subtitle: 'Choose a dining hall menu and hours',
+      icon: 'restaurant-outline',
+      color: '#F97316',
+      bg: '#fff7ed',
+      children: [
+        { id: 'the-anteatery', title: 'The Anteatery', subtitle: 'Menu and hours', url: `${UCI_DINING_LOCATION_URL}/the-anteatery` },
+        { id: 'brandywine', title: 'Brandywine', subtitle: 'Menu and hours', url: `${UCI_DINING_LOCATION_URL}/brandywine` },
+      ],
+    },
+    { id: 'transit', title: 'Anteater Express', subtitle: 'Live bus tracking and shuttle updates', url: 'https://shuttle.uci.edu/', icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
+    { id: 'clubs', title: 'Club Directory', subtitle: 'Browse active ZotSpot campus groups', url: 'https://zotspot.uci.edu/club_signup', icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
+    { id: 'start-org', title: 'Start a Club', subtitle: 'New organization registration steps', url: 'https://campusorgs.uci.edu/registration/new-organizations/', icon: 'create-outline', color: '#10B981', bg: '#ecfdf5' },
+  ],
+  'University of Maryland, College Park': [
+    {
+      id: 'dining',
+      title: 'Dining',
+      subtitle: 'Menus, hours, locations, and dining halls',
+      icon: 'restaurant-outline',
+      color: '#F97316',
+      bg: '#fff7ed',
+      children: [
+        { id: 'hours-locations', title: 'Hours', subtitle: 'Open now and future schedules', url: 'https://dining.umd.edu/hours-locations' },
+        { id: 'dining-halls', title: 'Dining Halls', subtitle: 'Residential dining hall info', url: 'https://dining.umd.edu/hours-locations/dining-halls' },
+        { id: 'nutrition', title: 'Menus', subtitle: 'Menus and nutrition', url: 'https://nutrition.umd.edu/' },
+      ],
+    },
+    { id: 'transit', title: 'Shuttle-UM', subtitle: 'Transit app setup for Shuttle-UM routes', url: 'https://transportation.umd.edu/transit-official-app-shuttle-um', icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
+    { id: 'clubs', title: 'TerpLink', subtitle: 'Browse Maryland student organizations', url: 'https://terplink.umd.edu/organizations', icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
+    { id: 'start-org', title: 'Register an Org', subtitle: 'Student organization registration requirements', url: 'https://stamp.umd.edu/activities/student_org_resource_center_sorc/registration/registration_requirements', icon: 'create-outline', color: '#10B981', bg: '#ecfdf5' },
+  ],
+  'Cornell University': [
+    {
+      id: 'dining',
+      title: 'Dining',
+      subtitle: 'Open eateries, menus, and ordering',
+      icon: 'restaurant-outline',
+      color: '#F97316',
+      bg: '#fff7ed',
+      children: [
+        { id: 'dining-now', title: 'Dining Now', subtitle: 'Open now and menus', url: 'https://now.dining.cornell.edu/' },
+        { id: 'eateries', title: 'Eateries', subtitle: 'Locations and menus', url: 'https://scl.cornell.edu/residential-life/dining/eateries-menus' },
+        { id: 'order-ahead', title: 'Order Ahead', subtitle: 'GET Order details', url: 'https://scl.cornell.edu/residential-life/dining/eateries-menus/order-ahead' },
+      ],
+    },
+    { id: 'transit', title: 'TCAT Bus', subtitle: 'Cornell and Ithaca bus schedules', url: 'https://tcatbus.com/bus-schedules/', icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
+    { id: 'clubs', title: 'Club Directory', subtitle: 'Browse Cornell CampusGroups organizations', url: 'https://cornell.campusgroups.com/club_signup', icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
+    { id: 'start-org', title: 'Register an Org', subtitle: 'New and annual RSO registration guide', url: 'https://scl.cornell.edu/sub/RSORegistration', icon: 'create-outline', color: '#10B981', bg: '#ecfdf5' },
+  ],
+  'Purdue University': [
+    {
+      id: 'dining',
+      title: 'Dining',
+      subtitle: 'Menus, locations, app, and carry-out',
+      icon: 'restaurant-outline',
+      color: '#F97316',
+      bg: '#fff7ed',
+      children: [
+        { id: 'locations-menus', title: 'Menus', subtitle: 'Locations and menus', url: 'https://purdue.campusdish.com/en/locationsandmenus/' },
+        { id: 'mobile-menus', title: 'App', subtitle: 'Mobile menus app', url: 'https://www.dining.purdue.edu/residentialdining/mobile-menus-app/index.html' },
+        { id: 'on-the-go', title: 'On-the-GO', subtitle: 'Carry-out dining', url: 'https://www.dining.purdue.edu/residentialdining/on-the-go/locations.html' },
+      ],
+    },
+    { id: 'transit', title: 'Campus Transit', subtitle: 'Routes, on-demand rides, and app info', url: 'https://www.purdue.edu/parking/green_benefits/campus-transit.html', icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
+    { id: 'clubs', title: 'BoilerLink', subtitle: 'Browse Purdue student organizations', url: 'https://boilerlink.purdue.edu/organizations', icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
+    { id: 'start-org', title: 'Start an Org', subtitle: 'New student organization process', url: 'https://www.purdue.edu/sao/resources/start.php', icon: 'create-outline', color: '#10B981', bg: '#ecfdf5' },
+  ],
+  'University of Illinois Urbana-Champaign': [
+    {
+      id: 'dining',
+      title: 'Dining',
+      subtitle: 'Menus, dining locations, and nutrition',
+      icon: 'restaurant-outline',
+      color: '#F97316',
+      bg: '#fff7ed',
+      children: [
+        { id: 'menus', title: 'Menus', subtitle: 'Menus and hours', url: 'https://web.housing.illinois.edu/diningmenus' },
+        { id: 'locations', title: 'Locations', subtitle: 'Dining halls and retail', url: 'https://housing.illinois.edu/dine/locations' },
+        { id: 'nutrition', title: 'Nutrition', subtitle: 'Dietary resources', url: 'https://www.housing.illinois.edu/dine/nutrition/dietary-considerations' },
+      ],
+    },
+    { id: 'transit', title: 'MTD Apps', subtitle: 'Campus bus apps and real-time transit options', url: 'https://mtd.org/maps-and-schedules/apps/', icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
+    { id: 'clubs', title: 'OneIllinois Groups', subtitle: 'Browse Illinois student organizations', url: 'https://one.illinois.edu/club_signup', icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
+    { id: 'start-org', title: 'Register an Org', subtitle: 'Student organization registration steps', url: 'https://studentengagement.illinois.edu/soda/studentorgs/registration', icon: 'create-outline', color: '#10B981', bg: '#ecfdf5' },
+  ],
+};
+
+function getCampusInfoResources(school: string): CampusInfoResource[] {
+  return CAMPUS_INFO_RESOURCES[school] ?? [
+    { id: 'dining', title: 'Dining', subtitle: 'Campus dining information', url: `https://www.google.com/search?q=${encodeURIComponent(`${school} dining menus`)}`, icon: 'restaurant-outline', color: '#F97316', bg: '#fff7ed' },
+    { id: 'transit', title: 'Transit', subtitle: 'Campus shuttle and bus information', url: `https://www.google.com/search?q=${encodeURIComponent(`${school} campus shuttle`)}`, icon: 'bus-outline', color: '#0EA5E9', bg: '#f0f9ff' },
+    { id: 'clubs', title: 'Student Organizations', subtitle: 'Clubs and campus involvement', url: `https://www.google.com/search?q=${encodeURIComponent(`${school} student organizations`)}`, icon: 'people-outline', color: '#8B5CF6', bg: '#f5f3ff' },
+  ];
+}
 
 const DEFAULT_CALENDAR_PROVIDER_ID: CalendarProviderId = 'canvas';
 const CALENDAR_PROVIDER_OPTIONS: CalendarProviderOption[] = [
@@ -705,6 +823,7 @@ export default function HomeScreen({
   const scrollRef = useRef<ScrollView>(null);
   const sportsEventScrollRef = useRef<ScrollView>(null);
   const sportsEventCommentInputRef = useRef<TextInput>(null);
+  const calendarSetupScrollRef = useRef<ScrollView>(null);
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
   const [sportsLoading, setSportsLoading] = useState(false);
   const [calendarProvider, setCalendarProvider] = useState<CalendarProviderId>(DEFAULT_CALENDAR_PROVIDER_ID);
@@ -742,6 +861,9 @@ export default function HomeScreen({
   const [deletingSportsEventCommentId, setDeletingSportsEventCommentId] = useState<string | null>(null);
   const [sportsEventKeyboardVisible, setSportsEventKeyboardVisible] = useState(false);
   const [sportsEventKeyboardHeight, setSportsEventKeyboardHeight] = useState(0);
+  const [calendarSetupKeyboardVisible, setCalendarSetupKeyboardVisible] = useState(false);
+  const [calendarSetupKeyboardHeight, setCalendarSetupKeyboardHeight] = useState(0);
+  const [showCampusInfo, setShowCampusInfo] = useState(false);
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const calendarProviderStorageKey = userScopedStorageKey('assignment_calendar_provider', userId);
@@ -757,6 +879,10 @@ export default function HomeScreen({
   const sportsEventSheetHeight = Math.round(windowHeight * 0.88);
   const sportsListSheetHeight = Math.round(windowHeight * 0.72);
   const pastAssignmentsSheetHeight = Math.round(windowHeight * 0.74);
+  const calendarSetupSheetHeight = Math.min(
+    Math.round(windowHeight * 0.84),
+    Math.max(360, windowHeight - (calendarSetupKeyboardVisible ? calendarSetupKeyboardHeight + 18 : 88))
+  );
   const sportsEventCommentFooterPadding = sportsEventKeyboardVisible ? 8 : Math.max(bottomInset, 12) + 10;
   const sportsEventScrollBottomPadding = sportsEventKeyboardVisible ? 92 : 18;
   const resetSportsEventDetailScroll = useCallback(() => {
@@ -970,11 +1096,15 @@ export default function HomeScreen({
     const showSub = Keyboard.addListener(showEvent, (event) => {
       setSportsEventKeyboardVisible(true);
       setSportsEventKeyboardHeight(Math.max(event.endCoordinates?.height ?? 0, 0));
+      setCalendarSetupKeyboardVisible(true);
+      setCalendarSetupKeyboardHeight(Math.max(event.endCoordinates?.height ?? 0, 0));
       if (selectedSportsEventRef.current) settleSportsEventComposer(true);
     });
     const hideSub = Keyboard.addListener(hideEvent, () => {
       setSportsEventKeyboardVisible(false);
       setSportsEventKeyboardHeight(0);
+      setCalendarSetupKeyboardVisible(false);
+      setCalendarSetupKeyboardHeight(0);
     });
 
     return () => {
@@ -1193,6 +1323,7 @@ export default function HomeScreen({
       ? { type: 'upcomingSummary' as const, courses: todayCourses }
       : { type: 'idleSummary' as const },
     ...(shouldShowSportsHeroPage ? [{ type: 'sportsEvents' as const }] : []),
+    { type: 'campusInfo' as const },
   ];
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
   const activeHeroIndexRef = useRef(0);
@@ -1232,6 +1363,7 @@ export default function HomeScreen({
   const incompleteCalendarTaskCount = upcomingCalendarTasks.length;
   const pastCalendarTaskCount = pastCalendarTasks.length;
   const calendarLastSyncedLabel = calendarLastSyncedAt ? `${selectedCalendarProvider.label} synced ${timeAgo(calendarLastSyncedAt)}` : 'Assignment calendar';
+  const campusInfoResources = useMemo(() => getCampusInfoResources(school), [school]);
 
   const raisedCardStyle = {
     borderRadius: 28,
@@ -1831,9 +1963,10 @@ export default function HomeScreen({
 
   const heroPanResponder = useMemo(
     () => PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 7 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.12,
+      onMoveShouldSetPanResponderCapture: (_, gesture) => Math.abs(gesture.dx) > 9 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
       onPanResponderRelease: (_, gesture) => {
-        if (Math.abs(gesture.dx) < 45 && Math.abs(gesture.vx) < 0.35) return;
+        if (Math.abs(gesture.dx) < 26 && Math.abs(gesture.vx) < 0.18) return;
         moveHeroTo(activeHeroIndexRef.current + (gesture.dx < 0 ? 1 : -1));
       },
     }),
@@ -1988,6 +2121,164 @@ export default function HomeScreen({
                             <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
                           </TouchableOpacity>
                         ) : null}
+                      </View>
+                    </Animated.View>
+                  );
+                }
+
+                if (item.type === 'campusInfo') {
+                  return (
+                    <Animated.View
+                      key={`campus-info-${school}`}
+                      style={{
+                        width: heroCardWidth,
+                        opacity: heroOpacityAnim,
+                        transform: [{ translateX: heroSlideAnim }],
+                      }}
+                      {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
+                    >
+                      <View style={{
+                        ...raisedCardStyle,
+                        backgroundColor: colors.card,
+                        padding: 22,
+                        shadowOpacity: 0,
+                        shadowRadius: 0,
+                        elevation: 0,
+                      }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                              Campus Info
+                            </Text>
+                            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
+                              Dining, transit, clubs, and official links
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => setShowCampusInfo(true)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={{
+                              borderRadius: 999,
+                              backgroundColor: colors.brandBg,
+                              paddingHorizontal: 10,
+                              paddingVertical: 7,
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.brand }}>
+                              View all
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        <View style={{ marginTop: 16, gap: 8 }}>
+                          {campusInfoResources.slice(0, 3).map((resource) => {
+                            if (resource.children?.length) {
+                              return (
+                                <View
+                                  key={`hero-campus-info-${resource.id}`}
+                                  style={{
+                                    borderRadius: 18,
+                                    borderWidth: 1,
+                                    borderColor: colors.borderSubtle,
+                                    backgroundColor: colors.bg,
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 10,
+                                  }}
+                                >
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                    <View
+                                      style={{
+                                        width: 36,
+                                        height: 36,
+                                        borderRadius: 14,
+                                        backgroundColor: resource.bg,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        flexShrink: 0,
+                                      }}
+                                    >
+                                      <Ionicons name={resource.icon} size={18} color={resource.color} />
+                                    </View>
+                                    <View style={{ flex: 1, minWidth: 0 }}>
+                                      <Text numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '800', color: colors.text }}>
+                                        {resource.title}
+                                      </Text>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, lineHeight: 16, color: colors.textSecondary, marginTop: 3 }}>
+                                        {resource.subtitle}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                                    {resource.children.map((child) => (
+                                      <TouchableOpacity
+                                        key={`hero-campus-info-${resource.id}-${child.id}`}
+                                        onPress={() => void Linking.openURL(child.url)}
+                                        activeOpacity={0.76}
+                                        style={{
+                                          flexGrow: 1,
+                                          flexBasis: '47%',
+                                          minHeight: 34,
+                                          borderRadius: 13,
+                                          backgroundColor: resource.bg,
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          paddingHorizontal: 8,
+                                        }}
+                                      >
+                                        <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 14, fontWeight: '800', color: resource.color }}>
+                                          {child.title}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    ))}
+                                  </View>
+                                </View>
+                              );
+                            }
+
+                            return (
+                              <TouchableOpacity
+                                key={`hero-campus-info-${resource.id}`}
+                                onPress={() => resource.url && void Linking.openURL(resource.url)}
+                                activeOpacity={0.76}
+                                style={{
+                                  minHeight: 56,
+                                  borderRadius: 18,
+                                  borderWidth: 1,
+                                  borderColor: colors.borderSubtle,
+                                  backgroundColor: colors.bg,
+                                  paddingHorizontal: 12,
+                                  paddingVertical: 10,
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 10,
+                                }}
+                              >
+                                <View
+                                  style={{
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: 14,
+                                    backgroundColor: resource.bg,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <Ionicons name={resource.icon} size={18} color={resource.color} />
+                                </View>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <Text numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '800', color: colors.text }}>
+                                    {resource.title}
+                                  </Text>
+                                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, lineHeight: 16, color: colors.textSecondary, marginTop: 3 }}>
+                                    {resource.subtitle}
+                                  </Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={17} color={colors.textTertiary} />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
                       </View>
                     </Animated.View>
                   );
@@ -2328,24 +2619,28 @@ export default function HomeScreen({
                       style={{
                         alignItems: 'center',
                         justifyContent: 'center',
-                        minWidth: item.type === 'sportsEvents' ? 24 : 18,
+                        minWidth: item.type === 'sportsEvents' || item.type === 'campusInfo' ? 24 : 18,
                         height: 18,
                       }}
                     >
-                      {item.type === 'sportsEvents' ? (
+                      {item.type === 'sportsEvents' || item.type === 'campusInfo' ? (
                         <View
                           style={{
                             width: isActive ? 24 : 18,
                             height: 18,
                             borderRadius: 9,
-                            backgroundColor: isActive ? `${sportsGoingAccent}1F` : 'transparent',
+                            backgroundColor: isActive ? `${item.type === 'sportsEvents' ? sportsGoingAccent : colors.brand}1F` : 'transparent',
                             borderWidth: isActive ? 1 : 0,
-                            borderColor: `${sportsGoingAccent}55`,
+                            borderColor: `${item.type === 'sportsEvents' ? sportsGoingAccent : colors.brand}55`,
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
                         >
-                          <Ionicons name="trophy-outline" size={12} color={isActive ? sportsGoingAccent : colors.textTertiary} />
+                          <Ionicons
+                            name={item.type === 'sportsEvents' ? 'trophy-outline' : 'grid-outline'}
+                            size={12}
+                            color={isActive ? item.type === 'sportsEvents' ? sportsGoingAccent : colors.brand : colors.textTertiary}
+                          />
                         </View>
                       ) : (
                         <View
@@ -2663,6 +2958,180 @@ export default function HomeScreen({
       </ScrollView>
 
       <Modal
+        visible={showCampusInfo}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCampusInfo(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setShowCampusInfo(false)}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          <View
+            style={{
+              maxHeight: Math.round(windowHeight * 0.72),
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              backgroundColor: colors.bg,
+              paddingTop: 10,
+              overflow: 'hidden',
+            }}
+          >
+            <View style={{ alignItems: 'center', paddingBottom: 12 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
+            <View style={{ paddingHorizontal: 18, paddingBottom: 12, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
+                  Campus Info
+                </Text>
+                <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
+                  Official links for {schoolCampusLabel(school)}.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowCampusInfo(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: colors.bgTertiary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: Math.max(bottomInset, 18) + 18, gap: 10 }}
+            >
+              {campusInfoResources.map((resource) => {
+                if (resource.children?.length) {
+                  return (
+                    <View
+                      key={resource.id}
+                      style={{
+                        borderRadius: 18,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.card,
+                        padding: 14,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View
+                          style={{
+                            width: 42,
+                            height: 42,
+                            borderRadius: 15,
+                            backgroundColor: resource.bg,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Ionicons name={resource.icon} size={21} color={resource.color} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
+                            {resource.title}
+                          </Text>
+                          <Text numberOfLines={2} style={{ fontSize: 12, lineHeight: 17, color: colors.textSecondary, marginTop: 3 }}>
+                            {resource.subtitle}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 12 }}>
+                        {resource.children.map((child) => (
+                          <TouchableOpacity
+                            key={`${resource.id}-${child.id}`}
+                            onPress={() => {
+                              setShowCampusInfo(false);
+                              void Linking.openURL(child.url).catch(() => {
+                                Alert.alert('Could not open link', child.url);
+                              });
+                            }}
+                            activeOpacity={0.78}
+                            style={{
+                              flexGrow: 1,
+                              flexBasis: '47%',
+                              minHeight: 46,
+                              borderRadius: 15,
+                              backgroundColor: resource.bg,
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text numberOfLines={1} style={{ fontSize: 13, lineHeight: 17, fontWeight: '800', color: resource.color }}>
+                              {child.title}
+                            </Text>
+                            <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 15, color: colors.textSecondary, marginTop: 2 }}>
+                              {child.subtitle}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                }
+
+                return (
+                  <TouchableOpacity
+                    key={resource.id}
+                    onPress={() => {
+                      if (!resource.url) return;
+                      setShowCampusInfo(false);
+                      void Linking.openURL(resource.url).catch(() => {
+                        Alert.alert('Could not open link', resource.url);
+                      });
+                    }}
+                    activeOpacity={0.78}
+                    style={{
+                      borderRadius: 18,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.card,
+                      padding: 14,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 15,
+                        backgroundColor: resource.bg,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name={resource.icon} size={21} color={resource.color} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
+                        {resource.title}
+                      </Text>
+                      <Text numberOfLines={2} style={{ fontSize: 12, lineHeight: 17, color: colors.textSecondary, marginTop: 3 }}>
+                        {resource.subtitle}
+                      </Text>
+                    </View>
+                    <Ionicons name="open-outline" size={18} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={showSportsEventsList}
         transparent
         animationType="none"
@@ -2945,14 +3414,11 @@ export default function HomeScreen({
             onPress={closeCalendarSetup}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={0}
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-          >
+          <View style={{ flex: 1, justifyContent: 'flex-end' }}>
             <Animated.View
               style={{
-                maxHeight: '88%',
+                height: calendarSetupSheetHeight,
+                marginBottom: calendarSetupKeyboardVisible ? calendarSetupKeyboardHeight : 0,
                 borderTopLeftRadius: 28,
                 borderTopRightRadius: 28,
                 backgroundColor: colors.bg,
@@ -2961,12 +3427,14 @@ export default function HomeScreen({
               }}
             >
               <ScrollView
+                ref={calendarSetupScrollRef}
+                style={{ flex: 1 }}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{
                   paddingHorizontal: 18,
                   paddingTop: 10,
-                  paddingBottom: Math.max(bottomInset, 18) + 12,
+                  paddingBottom: Math.max(bottomInset, 18) + (calendarSetupKeyboardVisible ? 104 : 12),
                 }}
               >
                 <View style={{ alignItems: 'center', paddingBottom: 12 }}>
@@ -3085,6 +3553,9 @@ export default function HomeScreen({
               <TextInput
                 value={calendarFeedInput}
                 onChangeText={setCalendarFeedInput}
+                onFocus={() => {
+                  setTimeout(() => calendarSetupScrollRef.current?.scrollToEnd({ animated: true }), 120);
+                }}
                 placeholder={selectedCalendarProvider.placeholder}
                 placeholderTextColor={colors.textTertiary}
                 autoCapitalize="none"
@@ -3143,7 +3614,7 @@ export default function HomeScreen({
             ) : null}
               </ScrollView>
             </Animated.View>
-          </KeyboardAvoidingView>
+          </View>
         </Animated.View>
       </Modal>
 

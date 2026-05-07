@@ -923,6 +923,15 @@ export default function CoursePickerScreen({
     return selectedDayFilters.some((day) => courseDays.includes(day));
   };
 
+  const isPrimaryClassSection = (course: Course) => {
+    const sectionType = course.sectionLabel?.split(' ')[0]?.toLowerCase() ?? '';
+    return !['dis', 'discussion', 'disc', 'lab', 'laboratory', 'rec', 'recitation', 'qiz', 'quiz', 'tut', 'tutorial', 'act', 'activity'].includes(sectionType);
+  };
+
+  const sectionMatchesPrimaryClassDayFilter = (course: Course) => (
+    isPrimaryClassSection(course) && sectionMatchesDayFilter(course)
+  );
+
   const handleCreateCustomCourse = () => {
     const trimmedName = customCourseDraft.name.trim();
     if (!trimmedName) {
@@ -979,7 +988,7 @@ export default function CoursePickerScreen({
     const activeSectionsMap = isGlobalSearch ? globalSectionsMap : sectionsMap;
     const applyDayFilter = (list: CatalogCourse[]) => {
       if (selectedDayFilters.length === 0) return list;
-      return list.filter((course) => (activeSectionsMap[course.id] ?? []).some(sectionMatchesDayFilter));
+      return list.filter((course) => (activeSectionsMap[course.id] ?? []).some(sectionMatchesPrimaryClassDayFilter));
     };
 
     if (isGlobalSearch) return sortCatalog(applyDayFilter(globalCatalog));
@@ -1450,7 +1459,9 @@ export default function CoursePickerScreen({
             renderItem={({ item }) => {
               const isExpanded = !!expandedCourseIds[item.id];
               const activeSectionsMap = isGlobalSearch ? globalSectionsMap : sectionsMap;
-              const sections = (activeSectionsMap[item.id] ?? []).filter(sectionMatchesDayFilter);
+              const sections = selectedDayFilters.length > 0
+                ? (activeSectionsMap[item.id] ?? []).filter(sectionMatchesPrimaryClassDayFilter)
+                : (activeSectionsMap[item.id] ?? []);
 
               return (
                 <TouchableOpacity
@@ -1483,7 +1494,7 @@ export default function CoursePickerScreen({
                       {sections.length === 0 ? (
                         <Text style={{ color: '#9ca3af', fontSize: 13, paddingVertical: 8 }}>
                           {selectedDayFilters.length > 0
-                            ? 'No sections match selected days'
+                            ? 'No class meetings match selected days'
                             : `No sections found for ${termLabel(selectedQuarter, school)}`}
                         </Text>
                       ) : (

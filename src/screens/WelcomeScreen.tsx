@@ -11,24 +11,6 @@ type Props = {
   onGetStarted: () => void;
 };
 
-const FEATURE_ROWS = [
-  {
-    icon: 'calendar-clear-outline' as const,
-    title: 'Build better weeks',
-    copy: 'Plan classes and custom blocks without the clutter.',
-  },
-  {
-    icon: 'people-outline' as const,
-    title: 'Stay synced with friends',
-    copy: 'Compare timetables and keep campus plans easier to coordinate.',
-  },
-  {
-    icon: 'chatbubbles-outline' as const,
-    title: 'One place for campus life',
-    copy: 'Track updates, conversations, and community activity together.',
-  },
-];
-
 export default function WelcomeScreen({ onGetStarted }: Props) {
   const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
   const { colors, isDark } = useTheme();
@@ -53,16 +35,16 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
           <View style={{ alignItems: 'center', marginBottom: 24 }}>
             <View
               style={{
-                paddingHorizontal: 15,
-                paddingVertical: 8,
+                paddingHorizontal: 14,
+                paddingVertical: 7,
                 borderRadius: 999,
-                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.82)',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(65,105,225,0.08)',
                 borderWidth: 1,
-                borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(188,199,221,0.34)',
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(65,105,225,0.16)',
               }}
             >
-              <Text style={{ color: colors.brand, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>
-                ORGANIZE CAMPUS LIFE
+              <Text style={{ color: colors.brand, fontSize: 11, fontWeight: '800', letterSpacing: 0.8 }}>
+                CLASSMATE
               </Text>
             </View>
           </View>
@@ -73,30 +55,17 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
               paddingHorizontal: 6,
             }}
           >
-            <View style={{ alignItems: 'center', marginBottom: 22 }}>
+            <View style={{ alignItems: 'center', marginBottom: 20 }}>
               <ClassMateMonogram size={132} isDark={isDark} />
 
               <Text
                 style={{
-                  fontSize: 16,
-                  fontWeight: '700',
-                  color: colors.textTertiary,
+                  fontSize: 46,
+                  lineHeight: 50,
+                  fontWeight: '800',
+                  letterSpacing: 0,
                   textAlign: 'center',
                   marginTop: 18,
-                  marginBottom: 6,
-                  letterSpacing: 0.3,
-                }}
-              >
-                Welcome to
-              </Text>
-              <Text
-                style={{
-                  fontSize: 48,
-                  lineHeight: 52,
-                  fontWeight: '800',
-                  letterSpacing: -2.2,
-                  textAlign: 'center',
-                  marginBottom: 12,
                 }}
               >
                 <Text style={{ color: isDark ? '#edf2ff' : '#16285b' }}>Class</Text>
@@ -108,55 +77,14 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
                   lineHeight: 24,
                   color: colors.textSecondary,
                   textAlign: 'center',
-                  maxWidth: 318,
+                  maxWidth: 306,
+                  marginTop: 10,
                 }}
               >
-                Keep your schedule, classmates, and campus conversations together in one calm place.
+                Make your campus life easier.
               </Text>
             </View>
 
-            <View
-              style={{
-                width: '100%',
-                gap: 12,
-              }}
-            >
-              {FEATURE_ROWS.map((feature) => (
-                <View
-                  key={feature.title}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingHorizontal: 6,
-                    paddingVertical: 4,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 46,
-                      height: 46,
-                      borderRadius: 15,
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)',
-                      borderWidth: 1,
-                      borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(188,199,221,0.28)',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 14,
-                    }}
-                  >
-                    <Ionicons name={feature.icon} size={20} color={colors.brand} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 }}>
-                      {feature.title}
-                    </Text>
-                    <Text style={{ fontSize: 13, lineHeight: 18, color: colors.textTertiary }}>
-                      {feature.copy}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
           </View>
         </View>
 

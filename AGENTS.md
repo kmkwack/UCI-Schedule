@@ -2460,3 +2460,45 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64san (Abbreviate long school names on Home)
 - **`src/data/schools.ts`** — Added `schoolHomeLabel()` so the Home header can use compact school labels for long official names while preserving full names for maps and other lookup contexts.
 - **`src/screens/HomeScreen.tsx`** — Switched the Home header school title to `schoolHomeLabel()`, so schools with long names such as UIUC and UMD render as short acronyms instead of truncating.
+
+### Session 64sao (Limit day filters to primary class meetings)
+- **`src/screens/CoursePickerScreen.tsx`** — Changed the day filter to match only primary class sections instead of supplemental discussions, labs, recitations, quizzes, tutorials, or activities. When day filters are active, expanded course rows now show only matching primary class meetings so a course no longer appears just because a standalone discussion meets on that day.
+
+### Session 64sap (Sharpen Welcome first impression)
+- **`src/screens/WelcomeScreen.tsx`** — Reworked the opening screen from a feature-list onboarding page into a tighter first-impression hero: compact ClassMate badge, logo, `Your campus OS` headline, short emotional value prop, and three small status cards for classes, tasks, and classmates. This reduces copy density and gives the first screen a clearer visual focal point.
+
+### Session 64saq (Update onboarding Today copy)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Updated the app tour's Today slide copy and preview card to match the current Home behavior: a full-day class timeline with completed rows dimmed and assignments prioritized below, instead of the old live/current/completed/upcoming class-card carousel wording.
+
+### Session 64sar (Make notification skip accessible)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Rebalanced the notification permission step so `Not now` is a full secondary button directly under `Enable Notifications`, with `Back` moved to a smaller text action below. This makes declining notifications feel like a real, reachable choice instead of a hidden tap target.
+
+### Session 64sas (Animate intro logo drawing)
+- **`src/components/ClassMateIntroScreen.tsx`** — Replaced the static PNG mark on the short brand intro screen with an animated SVG version: the blue app icon pops in, the white `C` draws itself, the checkmark draws after it, and small colorful bubbles bounce around the mark. This makes the quick transition screen feel more playful and tied to the ClassMate logo.
+
+### Session 64sat (Reframe Welcome around student layer)
+- **`src/screens/WelcomeScreen.tsx`** — Rewrote the first-screen headline, subtitle, badge, and three signal cards around the YC positioning: ClassMate starts with real course sections, helps students find classmates through shared classes, and grows into a student-only campus conversation layer. This makes the opening value prop feel less generic and more tied to the product's core insight.
+
+### Session 64sau (Prevent notification buttons from covering content)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Removed the oversized notification icon from the notification-permission onboarding step and tightened the benefit cards. This keeps all notification explanation content visible above the large `Enable Notifications` / `Not now` actions on shorter phone screens.
+
+### Session 64sav (Restore approved logo in intro animation)
+- **`src/components/ClassMateIntroScreen.tsx`** — Removed the hand-drawn SVG recreation of the ClassMate mark and restored the approved `ClassMateMonogram` PNG as the only logo rendered in the intro animation. The intro now animates the original logo with scale/opacity and surrounding motion effects without altering the logo artwork itself.
+
+### Session 64saw (Simplify Welcome to brand promise)
+- **`src/screens/WelcomeScreen.tsx`** — Simplified the first screen to the approved brand-forward message: `ClassMate` with `Make your campus life easier.` Removed the three explanatory signal cards so the opening screen feels cleaner and less like a feature checklist.
+
+### Session 64sax (Fill notification onboarding preview space)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Added a compact ClassMate notification preview card beneath the notification benefits and restored safe bottom padding for the notification step. This fills the large empty mid-screen gap without letting the action buttons cover content.
+
+### Session 64say (Reveal approved logo through C/check masks)
+- **`src/components/ClassMateIntroScreen.tsx`** — Reworked the intro logo animation so it still uses the approved `classmate-logo-approved.png` asset, but reveals that original image through animated SVG masks: the `C` region appears first, the checkmark appears second, and the full original logo fades in at the end. This gives the requested drawn-C/check effect without recreating or altering the logo artwork.
+
+### Session 64saz (Draw C/check on blue intro icon)
+- **`src/components/ClassMateIntroScreen.tsx`** — Replaced the failed image-mask reveal with a direct SVG logo build for the intro animation: the blue rounded app-icon background stays visible, then the white `C` stroke draws in, followed by the blue checkmark stroke. The approved PNG still fades in at the end so the final resting logo matches the actual brand asset.
+
+### Session 64sba (Shrink notification actions)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Reduced the notification step action buttons from the default tall onboarding buttons to compact 48px actions, tightened the footer spacing, and changed the notification preview into a single-line sample. This keeps the preview content visible instead of being crowded by oversized bottom controls.
+
+### Session 64sbb (Restore original intro flow)
+- **`src/components/ClassMateIntroScreen.tsx`** — Removed the experimental C/check drawing animation and restored the original intro behavior: the approved ClassMate logo scales/fades in, followed by the wordmark and the staggered floating chips. This returns the entrance screen to the cleaner pop-up effect the app had before.

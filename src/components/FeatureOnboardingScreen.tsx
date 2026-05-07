@@ -237,12 +237,14 @@ function PrimaryButton({
   accent,
   disabled,
   loading,
+  compact,
 }: {
   children: string;
   onPress: () => void;
   accent: string;
   disabled?: boolean;
   loading?: boolean;
+  compact?: boolean;
 }) {
   return (
     <TouchableOpacity
@@ -250,7 +252,7 @@ function PrimaryButton({
       onPress={onPress}
       activeOpacity={0.9}
       style={{
-        minHeight: 56,
+        minHeight: compact ? 48 : 56,
         borderRadius: 16,
         backgroundColor: disabled ? '#d9dee8' : accent,
         alignItems: 'center',
@@ -258,18 +260,18 @@ function PrimaryButton({
         flexDirection: 'row',
         gap: 8,
         shadowColor: accent,
-        shadowOffset: { width: 0, height: 14 },
-        shadowOpacity: disabled ? 0 : 0.26,
-        shadowRadius: 24,
-        elevation: disabled ? 0 : 8,
+        shadowOffset: { width: 0, height: compact ? 8 : 14 },
+        shadowOpacity: disabled ? 0 : compact ? 0.18 : 0.26,
+        shadowRadius: compact ? 16 : 24,
+        elevation: disabled ? 0 : compact ? 5 : 8,
         opacity: loading ? 0.75 : 1,
       }}
     >
       {loading ? <ActivityIndicator size="small" color="white" /> : null}
-      <Text style={{ color: 'white', fontSize: 16, fontWeight: '800', letterSpacing: -0.2 }}>
+      <Text style={{ color: 'white', fontSize: compact ? 15 : 16, fontWeight: '800', letterSpacing: -0.2 }}>
         {children}
       </Text>
-      {!loading ? <Ionicons name="arrow-forward" size={17} color="white" /> : null}
+      {!loading ? <Ionicons name="arrow-forward" size={compact ? 16 : 17} color="white" /> : null}
     </TouchableOpacity>
   );
 }
@@ -518,33 +520,40 @@ function PersonalDetailsForm({
 }
 
 function TodayPreview() {
+  const rows = [
+    { time: '9:05 AM', code: 'ECON 1110', title: 'Intro Microeconomics', color: '#7dd3fc', dimmed: true },
+    { time: '10:10 AM', code: 'ECON 4560', title: 'Development Economics', color: '#a78bfa', dimmed: false },
+    { time: '1:25 PM', code: 'ECON 3465', title: 'Labor Market Research', color: '#cbd5e1', dimmed: false },
+    { time: '7:30 PM', code: 'ECON 6100', title: 'Microeconomic Theory II', color: '#9bd96f', dimmed: false },
+  ];
+
   return (
     <View style={{ gap: 12, marginTop: 24 }}>
       <View style={{ backgroundColor: '#ffffff', borderRadius: 24, padding: 17, borderWidth: 1, borderColor: '#e7ecfb' }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#5eead4' }} />
-              <Text style={{ fontSize: 12, fontWeight: '900', color: '#7a859c' }}>Current class</Text>
-            </View>
-            <Text style={{ fontSize: 27, lineHeight: 31, fontWeight: '900', color: '#16203a' }}>Ends in</Text>
-            <Text style={{ fontSize: 27, lineHeight: 31, fontWeight: '900', color: '#16203a' }}>22 min</Text>
-            <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: '900', color: '#16203a', marginTop: 13 }}>ECON 129</Text>
-            <Text style={{ fontSize: 13, color: '#7a859c', marginTop: 5 }}>1:00-1:50 PM · SSTR 103</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <View>
+            <Text style={{ fontSize: 29, lineHeight: 33, fontWeight: '900', color: '#16203a' }}>Today</Text>
+            <Text style={{ fontSize: 29, lineHeight: 33, fontWeight: '900', color: '#16203a' }}>4 classes</Text>
+            <Text style={{ fontSize: 13, color: '#7a859c', marginTop: 7 }}>9:05 AM to 8:45 PM</Text>
           </View>
           <View style={{ width: 64, height: 64, borderRadius: 32, borderWidth: 7, borderColor: '#e7ecfb', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 16, fontWeight: '900', color: '#16203a' }}>1/3</Text>
+            <Text style={{ fontSize: 16, fontWeight: '900', color: '#16203a' }}>1/4</Text>
             <Text style={{ fontSize: 11, color: '#7a859c' }}>done</Text>
           </View>
         </View>
-        <View style={{ marginTop: 18 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 }}>
-            <Text style={{ fontSize: 11, color: '#7a859c' }}>1:00 PM</Text>
-            <Text style={{ fontSize: 11, color: '#7a859c' }}>1:50 PM</Text>
-          </View>
-          <View style={{ height: 7, borderRadius: 999, backgroundColor: '#e7ecfb', overflow: 'hidden' }}>
-            <View style={{ width: '58%', height: 7, borderRadius: 999, backgroundColor: '#5eead4' }} />
-          </View>
+        <View style={{ height: 1, backgroundColor: '#edf1ff', marginTop: 15, marginBottom: 12 }} />
+        <Text style={{ fontSize: 11, fontWeight: '900', color: '#9aa5bd', marginBottom: 10 }}>Today's timeline</Text>
+        <View style={{ gap: 11 }}>
+          {rows.map((row) => (
+            <View key={row.code} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, opacity: row.dimmed ? 0.42 : 1 }}>
+              <Text style={{ width: 58, fontSize: 12, fontWeight: '900', color: row.dimmed ? '#aeb7ca' : '#16203a' }}>{row.time}</Text>
+              <View style={{ width: 4, alignSelf: 'stretch', minHeight: 34, borderRadius: 999, backgroundColor: row.dimmed ? '#d8deea' : row.color }} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '900', color: row.dimmed ? '#aeb7ca' : '#16203a' }}>{row.code}</Text>
+                <Text numberOfLines={1} style={{ fontSize: 12, color: '#7a859c', marginTop: 1 }}>{row.title}</Text>
+              </View>
+            </View>
+          ))}
         </View>
       </View>
     </View>
@@ -642,7 +651,7 @@ const TOUR_ITEMS: { key: TourKey; label: string; title: string; body: string; ac
     key: 'today',
     label: '01 · Today',
     title: 'Your day, in order.',
-    body: 'Open to a live class card, then swipe through completed and upcoming classes without digging through your schedule.',
+    body: 'See every class on today’s timeline, with finished classes dimmed and assignments waiting right below.',
     accent: '#4169E1',
   },
   {
@@ -732,28 +741,8 @@ function AppTourSequence({ scrollY }: { scrollY: Animated.Value }) {
 
 function NotificationsStepContent({ isDark }: { isDark: boolean }) {
   return (
-    <View style={{ marginTop: 24 }}>
-      <View
-        style={{
-          alignSelf: 'center',
-          width: 82,
-          height: 82,
-          borderRadius: 27,
-          backgroundColor: PALETTE.brand,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: 24,
-          shadowColor: PALETTE.brand,
-          shadowOffset: { width: 0, height: 14 },
-          shadowOpacity: 0.26,
-          shadowRadius: 18,
-          elevation: 9,
-        }}
-      >
-        <Ionicons name="notifications" size={32} color="white" />
-      </View>
-
-      <View style={{ gap: 14 }}>
+    <View style={{ marginTop: 18 }}>
+      <View style={{ gap: 10 }}>
         {NOTIFICATION_BENEFITS.map((benefit) => (
           <View
             key={benefit.title}
@@ -761,36 +750,75 @@ function NotificationsStepContent({ isDark }: { isDark: boolean }) {
               flexDirection: 'row',
               alignItems: 'center',
               backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.72)',
-              borderRadius: 20,
-              paddingHorizontal: 16,
-              paddingVertical: 16,
+              borderRadius: 18,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
               borderWidth: 1,
               borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(65,105,225,0.08)',
             }}
           >
             <View
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: 14,
+                width: 40,
+                height: 40,
+                borderRadius: 13,
                 backgroundColor: isDark ? 'rgba(65,105,225,0.18)' : '#eef3ff',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 14,
+                marginRight: 12,
               }}
             >
-              <Ionicons name={benefit.icon} size={20} color={PALETTE.brand} />
+              <Ionicons name={benefit.icon} size={19} color={PALETTE.brand} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15, fontWeight: '800', color: isDark ? '#f6f8ff' : PALETTE.ink, marginBottom: 3 }}>
+              <Text style={{ fontSize: 14, fontWeight: '800', color: isDark ? '#f6f8ff' : PALETTE.ink, marginBottom: 2 }}>
                 {benefit.title}
               </Text>
-              <Text style={{ fontSize: 13, lineHeight: 18, color: isDark ? 'rgba(255,255,255,0.52)' : PALETTE.inkMuted }}>
+              <Text style={{ fontSize: 12, lineHeight: 17, color: isDark ? 'rgba(255,255,255,0.52)' : PALETTE.inkMuted }}>
                 {benefit.copy}
               </Text>
             </View>
           </View>
         ))}
+      </View>
+
+      <View
+        style={{
+          marginTop: 10,
+          borderRadius: 18,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          backgroundColor: isDark ? 'rgba(65,105,225,0.14)' : 'rgba(65,105,225,0.08)',
+          borderWidth: 1,
+          borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(65,105,225,0.12)',
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 11,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : '#ffffff',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: 10,
+            }}
+          >
+            <Ionicons name="checkmark-circle" size={20} color={PALETTE.brand} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: '900', color: isDark ? '#f6f8ff' : PALETTE.ink }}>
+              ClassMate
+            </Text>
+            <Text numberOfLines={1} style={{ fontSize: 12, lineHeight: 17, color: isDark ? 'rgba(255,255,255,0.58)' : PALETTE.inkMuted }}>
+              4 classes today · 2 tasks this week
+            </Text>
+          </View>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: isDark ? 'rgba(255,255,255,0.42)' : '#9aa6bf' }}>
+            8:00 AM
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -994,7 +1022,7 @@ export default function FeatureOnboardingScreen({
             justifyContent: isPhotoSlide ? 'center' : undefined,
             paddingHorizontal: 24,
             paddingTop: isPhotoSlide ? 0 : 18,
-            paddingBottom: isPhotoSlide ? 0 : slide.kind === 'tour' ? 96 : 24,
+            paddingBottom: isPhotoSlide ? 0 : slide.kind === 'tour' ? 96 : slide.kind === 'notifications' ? 18 : 24,
           }}
         >
           <Animated.View style={animatedStyle}>
@@ -1033,11 +1061,11 @@ export default function FeatureOnboardingScreen({
         <View
           style={{
             paddingHorizontal: 24,
-            paddingTop: slide.kind === 'notifications' ? 8 : 12,
-            paddingBottom: slide.kind === 'notifications' ? 4 : Math.max(insets.bottom, 16),
+            paddingTop: slide.kind === 'notifications' ? 6 : 12,
+            paddingBottom: slide.kind === 'notifications' ? Math.max(insets.bottom, 10) : Math.max(insets.bottom, 16),
           }}
         >
-          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 7, marginBottom: slide.kind === 'notifications' ? 10 : 18 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 7, marginBottom: slide.kind === 'notifications' ? 8 : 18 }}>
             {SLIDES.map((item, dotIndex) => {
               const active = dotIndex === index;
               const disabled = dotIndex > index && (
@@ -1064,13 +1092,21 @@ export default function FeatureOnboardingScreen({
 
           {slide.kind === 'notifications' ? (
             <>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ gap: 10 }}>
+                <PrimaryButton
+                  onPress={() => { void goNext(); }}
+                  accent={slideAccent}
+                  loading={finishing || savingProfile}
+                  disabled={isBlocked}
+                  compact
+                >
+                  Enable Notifications
+                </PrimaryButton>
                 <TouchableOpacity
                   disabled={finishing || savingProfile}
-                  onPress={() => setIndex((current) => Math.max(0, current - 1))}
+                  onPress={() => { void completeNotifications(false); }}
                   style={{
-                    flex: 0.38,
-                    minHeight: 56,
+                    minHeight: 48,
                     borderRadius: 16,
                     borderWidth: 1,
                     borderColor: isDark ? PALETTE.borderDark : PALETTE.border,
@@ -1080,25 +1116,15 @@ export default function FeatureOnboardingScreen({
                     opacity: finishing || savingProfile ? 0.5 : 1,
                   }}
                 >
-                  <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Back</Text>
+                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: '800' }}>Not now</Text>
                 </TouchableOpacity>
-                <View style={{ flex: 0.62 }}>
-                  <PrimaryButton
-                    onPress={() => { void goNext(); }}
-                    accent={slideAccent}
-                    loading={finishing || savingProfile}
-                    disabled={isBlocked}
-                  >
-                    Enable Notifications
-                  </PrimaryButton>
-                </View>
               </View>
               <TouchableOpacity
                 disabled={finishing || savingProfile}
-                onPress={() => { void completeNotifications(false); }}
-                style={{ alignItems: 'center', paddingTop: 9, opacity: finishing || savingProfile ? 0.5 : 1 }}
+                onPress={() => setIndex((current) => Math.max(0, current - 1))}
+                style={{ alignItems: 'center', paddingTop: 6, paddingBottom: 2, opacity: finishing || savingProfile ? 0.5 : 1 }}
               >
-                <Text style={{ color: colors.textTertiary, fontSize: 13, fontWeight: '700' }}>Not now</Text>
+                <Text style={{ color: colors.textTertiary, fontSize: 13, fontWeight: '700' }}>Back</Text>
               </TouchableOpacity>
             </>
           ) : (

@@ -7,7 +7,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, blockColorKey, formatCourseTimeRange12, pastelForCourse, quarterKey } from '../data/courses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
-import { UCI_DINING_LOCATION_URL } from '../data/uciDining';
+import { fetchDiningMenusForSchool, schoolDiningMenusSupported, type DiningLocationMenu, type DiningMenuMeal } from '../data/diningMenus';
 import { academicSystemNoun, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
@@ -111,6 +111,7 @@ type HeroCardItem =
   | { type: 'completedSummary'; courses: Course[] }
   | { type: 'upcomingSummary'; courses: Course[] }
   | { type: 'course'; course: Course }
+  | { type: 'diningMenu' }
   | { type: 'sportsEvents' }
   | { type: 'campusInfo' };
 
@@ -193,18 +194,16 @@ function createRegistrationResource(
   portalTitle: string,
   portalSubtitle: string,
   portalUrl: string,
-  guideUrl: string,
 ): CampusInfoResource {
   return {
     id: 'registration',
     title: 'Registration',
-    subtitle: 'Course registration portal and enrollment help',
+    subtitle: 'Course registration site',
     icon: 'school-outline',
     color: '#4F46E5',
     bg: '#eef2ff',
     children: [
       { id: 'registration-portal', title: portalTitle, subtitle: portalSubtitle, url: portalUrl },
-      { id: 'registration-guide', title: 'Guide', subtitle: 'Registration dates, rules, and help', url: guideUrl },
     ],
   };
 }
@@ -233,21 +232,6 @@ function createLinkGroupResource(
   };
 }
 
-function createSportsResource(schoolLabel: string, athleticsUrl: string, scheduleUrl: string): CampusInfoResource {
-  return createLinkGroupResource(
-    'sports',
-    'Sports',
-    'Athletics schedules, teams, and campus games',
-    'trophy-outline',
-    '#EA580C',
-    '#fff7ed',
-    [
-      { id: 'sports-schedule', title: 'Schedule', subtitle: `${schoolLabel} games`, url: scheduleUrl },
-      { id: 'athletics-home', title: 'Athletics', subtitle: 'Official athletics site', url: athleticsUrl },
-    ],
-  );
-}
-
 function createSingleLinkResource(
   id: string,
   title: string,
@@ -262,20 +246,10 @@ function createSingleLinkResource(
 
 function createFallbackCampusInfoResources(school: string): CampusInfoResource[] {
   return [
-    createSingleLinkResource(
-      'dining',
-      'Dining',
-      'Campus dining menus, hours, and locations',
-      'restaurant-outline',
-      '#F97316',
-      '#fff7ed',
-      { id: 'dining-search', title: 'Dining', subtitle: 'Find menus and hours', url: campusInfoSearchUrl(school, 'dining menus hours') },
-    ),
     createRegistrationResource(
       'Registration',
-      'Course registration and registrar links',
+      'Find the course registration site',
       campusInfoSearchUrl(school, 'course registration registrar'),
-      campusInfoSearchUrl(school, 'registrar registration dates'),
     ),
     createLinkGroupResource(
       'jobs',
@@ -293,11 +267,6 @@ function createFallbackCampusInfoResources(school: string): CampusInfoResource[]
       school,
       campusInfoSearchUrl(school, 'library'),
       campusInfoSearchUrl(school, 'library study rooms reserve'),
-    ),
-    createSportsResource(
-      school,
-      campusInfoSearchUrl(school, 'athletics'),
-      campusInfoSearchUrl(school, 'athletics schedule'),
     ),
     createSingleLinkResource(
       'transit',
@@ -317,38 +286,16 @@ function createFallbackCampusInfoResources(school: string): CampusInfoResource[]
       '#f5f3ff',
       { id: 'clubs-search', title: 'Organizations', subtitle: 'Browse student groups', url: campusInfoSearchUrl(school, 'student organizations clubs') },
     ),
-    createSingleLinkResource(
-      'start-org',
-      'Start Org',
-      'New student organization registration',
-      'create-outline',
-      '#10B981',
-      '#ecfdf5',
-      { id: 'start-org-search', title: 'Start Org', subtitle: 'Find registration steps', url: campusInfoSearchUrl(school, 'start student organization registration') },
-    ),
     STUDENT_DEALS_RESOURCE,
   ];
 }
 
 const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
   'UC Irvine': [
-    {
-      id: 'dining',
-      title: 'Dining Menus',
-      subtitle: 'Choose a dining hall menu and hours',
-      icon: 'restaurant-outline',
-      color: '#F97316',
-      bg: '#fff7ed',
-      children: [
-        { id: 'the-anteatery', title: 'The Anteatery', subtitle: 'Menu and hours', url: `${UCI_DINING_LOCATION_URL}/the-anteatery` },
-        { id: 'brandywine', title: 'Brandywine', subtitle: 'Menu and hours', url: `${UCI_DINING_LOCATION_URL}/brandywine` },
-      ],
-    },
     createRegistrationResource(
       'WebReg',
       'Add, drop, and enroll in classes',
       'https://www.reg.uci.edu/registrar/soc/webreg.html',
-      'https://www.reg.uci.edu/enrollment/course_enrollment/login.html',
     ),
     {
       id: 'jobs',
@@ -363,7 +310,6 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       ],
     },
     createLibraryResource('UCI', 'https://www.lib.uci.edu/', 'https://spaces.lib.uci.edu/'),
-    createSportsResource('UCI', 'https://ucirvinesports.com/', 'https://ucirvinesports.com/calendar'),
     createSingleLinkResource(
       'transit',
       'Transit',
@@ -382,36 +328,13 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       '#f5f3ff',
       { id: 'zotspot', title: 'ZotSpot', subtitle: 'Browse campus groups', url: 'https://zotspot.uci.edu/club_signup' },
     ),
-    createSingleLinkResource(
-      'start-org',
-      'Start Org',
-      'New student organization registration',
-      'create-outline',
-      '#10B981',
-      '#ecfdf5',
-      { id: 'new-org', title: 'New Org', subtitle: 'Registration steps', url: 'https://campusorgs.uci.edu/registration/new-organizations/' },
-    ),
     STUDENT_DEALS_RESOURCE,
   ],
   'University of Maryland, College Park': [
-    {
-      id: 'dining',
-      title: 'Dining',
-      subtitle: 'Menus, hours, locations, and dining halls',
-      icon: 'restaurant-outline',
-      color: '#F97316',
-      bg: '#fff7ed',
-      children: [
-        { id: 'hours-locations', title: 'Hours', subtitle: 'Open now and future schedules', url: 'https://dining.umd.edu/hours-locations' },
-        { id: 'dining-halls', title: 'Dining Halls', subtitle: 'Residential dining hall info', url: 'https://dining.umd.edu/hours-locations/dining-halls' },
-        { id: 'nutrition', title: 'Menus', subtitle: 'Menus and nutrition', url: 'https://nutrition.umd.edu/' },
-      ],
-    },
     createRegistrationResource(
       'Testudo',
       'Registration and student services',
       'https://testudo.umd.edu/',
-      'https://registrar.umd.edu/registration',
     ),
     {
       id: 'jobs',
@@ -426,7 +349,6 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       ],
     },
     createLibraryResource('UMD', 'https://www.lib.umd.edu/', 'https://umd.libcal.com/'),
-    createSportsResource('UMD', 'https://umterps.com/', 'https://umterps.com/calendar'),
     createSingleLinkResource(
       'transit',
       'Transit',
@@ -445,36 +367,13 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       '#f5f3ff',
       { id: 'terplink', title: 'TerpLink', subtitle: 'Browse organizations', url: 'https://terplink.umd.edu/organizations' },
     ),
-    createSingleLinkResource(
-      'start-org',
-      'Start Org',
-      'New student organization registration',
-      'create-outline',
-      '#10B981',
-      '#ecfdf5',
-      { id: 'register-org', title: 'Register Org', subtitle: 'Registration requirements', url: 'https://stamp.umd.edu/activities/student_org_resource_center_sorc/registration/registration_requirements' },
-    ),
     STUDENT_DEALS_RESOURCE,
   ],
   'Cornell University': [
-    {
-      id: 'dining',
-      title: 'Dining',
-      subtitle: 'Open eateries, menus, and ordering',
-      icon: 'restaurant-outline',
-      color: '#F97316',
-      bg: '#fff7ed',
-      children: [
-        { id: 'dining-now', title: 'Dining Now', subtitle: 'Open now and menus', url: 'https://now.dining.cornell.edu/' },
-        { id: 'eateries', title: 'Eateries', subtitle: 'Locations and menus', url: 'https://scl.cornell.edu/residential-life/dining/eateries-menus' },
-        { id: 'order-ahead', title: 'Order Ahead', subtitle: 'GET Order details', url: 'https://scl.cornell.edu/residential-life/dining/eateries-menus/order-ahead' },
-      ],
-    },
     createRegistrationResource(
       'Student Center',
       'Enroll in classes and manage records',
       'https://studentcenter.cornell.edu/',
-      'https://registrar.cornell.edu/current-students/enrollment',
     ),
     {
       id: 'jobs',
@@ -489,7 +388,6 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       ],
     },
     createLibraryResource('Cornell', 'https://www.library.cornell.edu/', 'https://spaces.library.cornell.edu/'),
-    createSportsResource('Cornell', 'https://cornellbigred.com/', 'https://cornellbigred.com/calendar'),
     createSingleLinkResource(
       'transit',
       'Transit',
@@ -508,36 +406,13 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       '#f5f3ff',
       { id: 'campusgroups', title: 'CampusGroups', subtitle: 'Browse organizations', url: 'https://cornell.campusgroups.com/club_signup' },
     ),
-    createSingleLinkResource(
-      'start-org',
-      'Start Org',
-      'New student organization registration',
-      'create-outline',
-      '#10B981',
-      '#ecfdf5',
-      { id: 'rso-registration', title: 'RSO Guide', subtitle: 'Registration steps', url: 'https://scl.cornell.edu/sub/RSORegistration' },
-    ),
     STUDENT_DEALS_RESOURCE,
   ],
   'Purdue University': [
-    {
-      id: 'dining',
-      title: 'Dining',
-      subtitle: 'Menus, locations, app, and carry-out',
-      icon: 'restaurant-outline',
-      color: '#F97316',
-      bg: '#fff7ed',
-      children: [
-        { id: 'locations-menus', title: 'Menus', subtitle: 'Locations and menus', url: 'https://purdue.campusdish.com/en/locationsandmenus/' },
-        { id: 'mobile-menus', title: 'App', subtitle: 'Mobile menus app', url: 'https://www.dining.purdue.edu/residentialdining/mobile-menus-app/index.html' },
-        { id: 'on-the-go', title: 'On-the-GO', subtitle: 'Carry-out dining', url: 'https://www.dining.purdue.edu/residentialdining/on-the-go/locations.html' },
-      ],
-    },
     createRegistrationResource(
-      'Registration Info',
-      'myPurdue registration dates and help',
-      'https://www.purdue.edu/registrar/currentStudents/registrationFaq.html',
-      'https://www.purdue.edu/registrar/currentStudents/pre-registration.html',
+      'myPurdue',
+      'Register and manage classes',
+      'https://mypurdue.purdue.edu/',
     ),
     {
       id: 'jobs',
@@ -552,7 +427,6 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       ],
     },
     createLibraryResource('Purdue', 'https://www.lib.purdue.edu/', 'https://calendar.lib.purdue.edu/reserve'),
-    createSportsResource('Purdue', 'https://purduesports.com/', campusInfoSearchUrl('Purdue University', 'athletics schedule')),
     createSingleLinkResource(
       'transit',
       'Transit',
@@ -571,36 +445,13 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       '#f5f3ff',
       { id: 'boilerlink', title: 'BoilerLink', subtitle: 'Browse organizations', url: 'https://boilerlink.purdue.edu/organizations' },
     ),
-    createSingleLinkResource(
-      'start-org',
-      'Start Org',
-      'New student organization registration',
-      'create-outline',
-      '#10B981',
-      '#ecfdf5',
-      { id: 'start-org-process', title: 'Start Org', subtitle: 'New org process', url: 'https://www.purdue.edu/sao/resources/start.php' },
-    ),
     STUDENT_DEALS_RESOURCE,
   ],
   'University of Illinois Urbana-Champaign': [
-    {
-      id: 'dining',
-      title: 'Dining',
-      subtitle: 'Menus, dining locations, and nutrition',
-      icon: 'restaurant-outline',
-      color: '#F97316',
-      bg: '#fff7ed',
-      children: [
-        { id: 'menus', title: 'Menus', subtitle: 'Menus and hours', url: 'https://web.housing.illinois.edu/diningmenus' },
-        { id: 'locations', title: 'Locations', subtitle: 'Dining halls and retail', url: 'https://housing.illinois.edu/dine/locations' },
-        { id: 'nutrition', title: 'Nutrition', subtitle: 'Dietary resources', url: 'https://www.housing.illinois.edu/dine/nutrition/dietary-considerations' },
-      ],
-    },
     createRegistrationResource(
       'Self-Service',
       'Register and manage student records',
       'https://apps.uillinois.edu/selfservice',
-      'https://registrar.illinois.edu/registration/',
     ),
     {
       id: 'jobs',
@@ -615,7 +466,6 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       ],
     },
     createLibraryResource('Illinois', 'https://www.library.illinois.edu/', 'https://libcal.library.illinois.edu/allspaces'),
-    createSportsResource('Illinois', 'https://fightingillini.com/', 'https://fightingillini.com/calendar'),
     createSingleLinkResource(
       'transit',
       'Transit',
@@ -633,15 +483,6 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       '#8B5CF6',
       '#f5f3ff',
       { id: 'oneillinois', title: 'OneIllinois', subtitle: 'Browse organizations', url: 'https://one.illinois.edu/club_signup' },
-    ),
-    createSingleLinkResource(
-      'start-org',
-      'Start Org',
-      'New student organization registration',
-      'create-outline',
-      '#10B981',
-      '#ecfdf5',
-      { id: 'register-org', title: 'Register Org', subtitle: 'Registration steps', url: 'https://studentengagement.illinois.edu/soda/studentorgs/registration' },
     ),
     STUDENT_DEALS_RESOURCE,
   ],
@@ -962,6 +803,18 @@ function sportsHomeAwayLabel(event: SportsEvent) {
   return event.isHome ? 'Home' : 'Away';
 }
 
+function flattenDiningItems(menu: DiningLocationMenu) {
+  return menu.meals.flatMap((meal) => meal.stations.flatMap((station) => station.items));
+}
+
+function previewDiningItems(menu: DiningLocationMenu, limit = 3) {
+  return flattenDiningItems(menu).slice(0, limit).map((item) => item.name);
+}
+
+function mealItemCount(meal: DiningMenuMeal) {
+  return meal.stations.reduce((total, station) => total + station.items.length, 0);
+}
+
 async function openSportsVenueInMaps(venue: SportsVenue, school: string) {
   const query = encodeURIComponent(`${schoolCampusLabel(school)} ${venue.name}`);
   const appleMapsUrl = `https://maps.apple.com/?ll=${venue.latitude},${venue.longitude}&q=${query}`;
@@ -1226,6 +1079,9 @@ export default function HomeScreen({
   const calendarSetupScrollRef = useRef<ScrollView>(null);
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
   const [sportsLoading, setSportsLoading] = useState(false);
+  const [diningMenus, setDiningMenus] = useState<DiningLocationMenu[]>([]);
+  const [diningLoading, setDiningLoading] = useState(false);
+  const [diningError, setDiningError] = useState<string | null>(null);
   const [calendarProvider, setCalendarProvider] = useState<CalendarProviderId>(DEFAULT_CALENDAR_PROVIDER_ID);
   const [calendarFeedUrl, setCalendarFeedUrl] = useState<string | null>(null);
   const [calendarFeedInput, setCalendarFeedInput] = useState('');
@@ -1240,8 +1096,11 @@ export default function HomeScreen({
   const [now, setNow] = useState(() => new Date());
   const [selectedSportsEvent, setSelectedSportsEvent] = useState<SportsEvent | null>(null);
   const [showSportsEventsList, setShowSportsEventsList] = useState(false);
+  const [showDiningMenuList, setShowDiningMenuList] = useState(false);
   const sportsListBackdropAnim = useRef(new Animated.Value(0)).current;
   const sportsListSheetAnim = useRef(new Animated.Value(600)).current;
+  const diningListBackdropAnim = useRef(new Animated.Value(0)).current;
+  const diningListSheetAnim = useRef(new Animated.Value(600)).current;
   const sportsEventBackdropAnim = useRef(new Animated.Value(0)).current;
   const sportsEventSheetAnim = useRef(new Animated.Value(600)).current;
   const pastAssignmentsBackdropAnim = useRef(new Animated.Value(0)).current;
@@ -1279,6 +1138,7 @@ export default function HomeScreen({
   const { start: quarterStart, end: quarterEnd } = getQuarterBounds(selectedQuarter);
   const sportsEventSheetHeight = Math.round(windowHeight * 0.88);
   const sportsListSheetHeight = Math.round(windowHeight * 0.72);
+  const diningListSheetHeight = Math.round(windowHeight * 0.76);
   const pastAssignmentsSheetHeight = Math.round(windowHeight * 0.74);
   const calendarSetupSheetHeight = Math.min(
     Math.round(windowHeight * 0.84),
@@ -1566,6 +1426,58 @@ export default function HomeScreen({
   }, [school]);
 
   useEffect(() => {
+    let cancelled = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+    async function loadDiningMenus() {
+      const diningCacheKey = `dining_menus_cache_${school}`;
+      setDiningMenus([]);
+      setDiningError(null);
+      setDiningLoading(false);
+
+      if (!schoolDiningMenusSupported(school)) return;
+
+      setDiningLoading(true);
+      const cached = await AsyncStorage.getItem(diningCacheKey);
+      if (cached && !cancelled) {
+        try {
+          const parsed = JSON.parse(cached) as { date: string; menus: DiningLocationMenu[] };
+          const today = new Date().toISOString().slice(0, 10);
+          if (parsed.date === today) {
+            setDiningMenus(parsed.menus);
+            setDiningLoading(false);
+          }
+        } catch {}
+      }
+
+      refreshTimer = setTimeout(() => {
+        void (async () => {
+          try {
+            const menus = await fetchDiningMenusForSchool(school, new Date());
+            if (cancelled) return;
+            setDiningMenus(menus);
+            setDiningError(null);
+            void AsyncStorage.setItem(diningCacheKey, JSON.stringify({
+              date: new Date().toISOString().slice(0, 10),
+              menus,
+            }));
+          } catch {
+            if (!cancelled) setDiningError('Dining menus are unavailable right now.');
+          } finally {
+            if (!cancelled) setDiningLoading(false);
+          }
+        })();
+      }, 450);
+    }
+
+    void loadDiningMenus();
+    return () => {
+      cancelled = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
+    };
+  }, [school]);
+
+  useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(interval);
   }, []);
@@ -1718,11 +1630,13 @@ export default function HomeScreen({
 
   const nowHour = now.getHours() + now.getMinutes() / 60;
   const completedClasses = todayCourses.filter((course) => extractEndHour(course.time) <= nowHour).length;
+  const shouldShowDiningHeroPage = schoolDiningMenusSupported(school);
   const shouldShowSportsHeroPage = schoolFeatureEnabled(school, 'sports');
   const heroItems: HeroCardItem[] = [
     todayCourses.length > 0
       ? { type: 'upcomingSummary' as const, courses: todayCourses }
       : { type: 'idleSummary' as const },
+    ...(shouldShowDiningHeroPage ? [{ type: 'diningMenu' as const }] : []),
     ...(shouldShowSportsHeroPage ? [{ type: 'sportsEvents' as const }] : []),
     { type: 'campusInfo' as const },
   ];
@@ -1745,6 +1659,8 @@ export default function HomeScreen({
     () => sportsEvents.slice(0, 12),
     [sportsEvents]
   );
+  const homeDiningMenus = diningMenus.slice(0, 2);
+  const diningMenuItemCount = diningMenus.reduce((total, menu) => total + menu.itemCount, 0);
   const homeSportsEvents = visibleCampusEvents.slice(0, 2);
   const remainingHomeSportsEventCount = Math.max(visibleCampusEvents.length - homeSportsEvents.length, 0);
   const visibleSportsEventIds = useMemo(
@@ -1786,10 +1702,13 @@ export default function HomeScreen({
   const heroCardWidth = Math.max(windowWidth - 36, 0);
   const activeHeroItem = heroItems[activeHeroIndex] ?? null;
   const sportsGoingAccent = getSchoolConfig(school).accent;
+  const diningAccent = '#F97316';
   const heroAccent = activeHeroItem?.type === 'course'
     ? pastelForCourse(blockColorKey(activeHeroItem.course)).border
     : activeHeroItem?.type === 'sportsEvents'
       ? sportsGoingAccent
+    : activeHeroItem?.type === 'diningMenu'
+      ? diningAccent
     : activeHeroItem?.type === 'upcomingSummary'
       ? colors.brand
     : colors.brand;
@@ -1991,6 +1910,23 @@ export default function HomeScreen({
       Animated.timing(pastAssignmentsBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
       Animated.timing(pastAssignmentsSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
     ]).start(() => setShowPastAssignments(false));
+  }
+
+  function openDiningMenuList() {
+    diningListBackdropAnim.setValue(0);
+    diningListSheetAnim.setValue(600);
+    setShowDiningMenuList(true);
+    Animated.parallel([
+      Animated.spring(diningListSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.timing(diningListBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }
+
+  function closeDiningMenuList() {
+    Animated.parallel([
+      Animated.timing(diningListBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(diningListSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+    ]).start(() => setShowDiningMenuList(false));
   }
 
   function openSportsMoreList() {
@@ -2420,6 +2356,126 @@ export default function HomeScreen({
           <>
             {(() => {
                 const item = activeHeroItem;
+                if (item.type === 'diningMenu') {
+                  return (
+                    <Animated.View
+                      key={`dining-menu-${school}-${diningMenus.map((menu) => menu.id).join('|')}`}
+                      style={{
+                        width: heroCardWidth,
+                        opacity: heroOpacityAnim,
+                        transform: [{ translateX: heroSlideAnim }],
+                      }}
+                      {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
+                    >
+                      <View style={{
+                        ...raisedCardStyle,
+                        backgroundColor: colors.card,
+                        padding: 22,
+                        shadowOpacity: 0,
+                        shadowRadius: 0,
+                        elevation: 0,
+                      }}>
+                        <View>
+                          <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                            Today's Dining
+                          </Text>
+                          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
+                            {diningMenus.length > 0
+                              ? `${diningMenus.length} location${diningMenus.length === 1 ? '' : 's'} · ${diningMenuItemCount} items`
+                              : diningLoading
+                                ? 'Loading campus dining menus'
+                                : 'No menu data yet'}
+                          </Text>
+                        </View>
+
+                        {homeDiningMenus.length > 0 ? (
+                          <View style={{ marginTop: 16 }}>
+                            {homeDiningMenus.map((menu, index, shownMenus) => {
+                              const previewItems = previewDiningItems(menu, 3);
+                              const mealNames = menu.meals.slice(0, 3).map((meal) => meal.name).join(', ');
+                              return (
+                                <TouchableOpacity
+                                  key={`hero-dining-${menu.id}`}
+                                  onPress={openDiningMenuList}
+                                  activeOpacity={0.76}
+                                  style={{
+                                    paddingTop: index === 0 ? 0 : 11,
+                                    paddingBottom: index === shownMenus.length - 1 ? 0 : 11,
+                                    borderTopWidth: index === 0 ? 0 : 1,
+                                    borderTopColor: colors.borderSubtle,
+                                  }}
+                                >
+                                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                                    <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#fff7ed', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                      <Ionicons name="restaurant-outline" size={20} color={diningAccent} />
+                                    </View>
+                                    <View style={{ flex: 1, minWidth: 0 }}>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
+                                        {menu.name}
+                                      </Text>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                                        {mealNames || `${menu.itemCount} items today`}
+                                      </Text>
+                                      {previewItems.length > 0 ? (
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }}>
+                                          {previewItems.join(' · ')}
+                                        </Text>
+                                      ) : null}
+                                    </View>
+                                    <View
+                                      style={{
+                                        borderRadius: 999,
+                                        backgroundColor: '#fff7ed',
+                                        borderWidth: 1,
+                                        borderColor: '#fed7aa',
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 4,
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 10, fontWeight: '800', color: diningAccent }}>
+                                        {menu.itemCount}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        ) : diningLoading ? (
+                          <View style={{ alignItems: 'center', marginTop: 18, paddingVertical: 16 }}>
+                            <ActivityIndicator size="small" color={diningAccent} />
+                            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 9 }}>
+                              Loading dining menus
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={{ marginTop: 16, paddingVertical: 8 }}>
+                            <Text style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
+                              Dining menus unavailable
+                            </Text>
+                            <Text style={{ fontSize: 13, lineHeight: 19, color: diningError ? '#EF4444' : colors.textSecondary, marginTop: 6 }}>
+                              {diningError ?? 'Menus will appear here when the dining feed has food data for today.'}
+                            </Text>
+                          </View>
+                        )}
+
+                        {diningMenus.length > 0 ? (
+                          <TouchableOpacity
+                            onPress={openDiningMenuList}
+                            activeOpacity={0.72}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
+                              View full menu
+                            </Text>
+                            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    </Animated.View>
+                  );
+                }
+
                 if (item.type === 'sportsEvents') {
                   return (
                     <Animated.View
@@ -2558,7 +2614,7 @@ export default function HomeScreen({
                               Campus Info
                             </Text>
                             <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
-                              Dining, transit, clubs, and official links
+                              Registration, jobs, transit, clubs, and official links
                             </Text>
                           </View>
                           <TouchableOpacity
@@ -3026,27 +3082,27 @@ export default function HomeScreen({
                       style={{
                         alignItems: 'center',
                         justifyContent: 'center',
-                        minWidth: item.type === 'sportsEvents' || item.type === 'campusInfo' ? 24 : 18,
+                        minWidth: item.type === 'diningMenu' || item.type === 'sportsEvents' || item.type === 'campusInfo' ? 24 : 18,
                         height: 18,
                       }}
                     >
-                      {item.type === 'sportsEvents' || item.type === 'campusInfo' ? (
+                      {item.type === 'diningMenu' || item.type === 'sportsEvents' || item.type === 'campusInfo' ? (
                         <View
                           style={{
                             width: isActive ? 24 : 18,
                             height: 18,
                             borderRadius: 9,
-                            backgroundColor: isActive ? `${item.type === 'sportsEvents' ? sportsGoingAccent : colors.brand}1F` : 'transparent',
+                            backgroundColor: isActive ? `${item.type === 'sportsEvents' ? sportsGoingAccent : item.type === 'diningMenu' ? diningAccent : colors.brand}1F` : 'transparent',
                             borderWidth: isActive ? 1 : 0,
-                            borderColor: `${item.type === 'sportsEvents' ? sportsGoingAccent : colors.brand}55`,
+                            borderColor: `${item.type === 'sportsEvents' ? sportsGoingAccent : item.type === 'diningMenu' ? diningAccent : colors.brand}55`,
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
                         >
                           <Ionicons
-                            name={item.type === 'sportsEvents' ? 'trophy-outline' : 'grid-outline'}
+                            name={item.type === 'sportsEvents' ? 'trophy-outline' : item.type === 'diningMenu' ? 'restaurant-outline' : 'grid-outline'}
                             size={12}
-                            color={isActive ? item.type === 'sportsEvents' ? sportsGoingAccent : colors.brand : colors.textTertiary}
+                            color={isActive ? item.type === 'sportsEvents' ? sportsGoingAccent : item.type === 'diningMenu' ? diningAccent : colors.brand : colors.textTertiary}
                           />
                         </View>
                       ) : (
@@ -3539,6 +3595,156 @@ export default function HomeScreen({
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={showDiningMenuList}
+        transparent
+        animationType="none"
+        onRequestClose={() => closeDiningMenuList()}
+      >
+        <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: diningListBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(15,23,42,0.34)'] }) }}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => closeDiningMenuList()}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          <Animated.View
+            style={{
+              maxHeight: '82%',
+              height: diningListSheetHeight,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              backgroundColor: colors.bg,
+              paddingTop: 10,
+              paddingBottom: Math.max(bottomInset, 18) + 8,
+              overflow: 'hidden',
+              transform: [{ translateY: diningListSheetAnim }],
+            }}
+          >
+            <View style={{ alignItems: 'center', paddingBottom: 12 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, marginBottom: 12 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
+                  Today's Dining
+                </Text>
+                <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                  {diningMenus.length > 0
+                    ? `${diningMenus.length} location${diningMenus.length === 1 ? '' : 's'} · ${diningMenuItemCount} items`
+                    : schoolCampusLabel(school)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => closeDiningMenuList()}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: colors.bgTertiary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 10 }}
+            >
+              {diningMenus.length > 0 ? (
+                <View style={{ gap: 12 }}>
+                  {diningMenus.map((menu) => (
+                    <View
+                      key={`dining-sheet-${menu.id}`}
+                      style={{
+                        borderRadius: 18,
+                        backgroundColor: colors.card,
+                        borderWidth: 1,
+                        borderColor: colors.borderSubtle,
+                        padding: 14,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 11 }}>
+                        <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#fff7ed', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Ionicons name="restaurant-outline" size={20} color={diningAccent} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
+                            {menu.name}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 3 }}>
+                            {menu.itemCount} items today
+                          </Text>
+                        </View>
+                      </View>
+
+                      {menu.meals.slice(0, 4).map((meal, mealIndex) => {
+                        const shownStations = meal.stations.slice(0, 3);
+                        const hiddenStationCount = Math.max(meal.stations.length - shownStations.length, 0);
+                        return (
+                          <View
+                            key={`${menu.id}-${meal.id}-${mealIndex}`}
+                            style={{
+                              paddingTop: mealIndex === 0 ? 0 : 12,
+                              marginTop: mealIndex === 0 ? 0 : 12,
+                              borderTopWidth: mealIndex === 0 ? 0 : 1,
+                              borderTopColor: colors.borderSubtle,
+                            }}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+                              <Text style={{ fontSize: 14, lineHeight: 18, fontWeight: '800', color: colors.text }}>
+                                {meal.name}
+                              </Text>
+                              <Text style={{ fontSize: 11, lineHeight: 15, fontWeight: '700', color: colors.textTertiary }}>
+                                {meal.timeLabel ?? `${mealItemCount(meal)} items`}
+                              </Text>
+                            </View>
+                            <View style={{ marginTop: 8, gap: 7 }}>
+                              {shownStations.map((station) => {
+                                const shownItems = station.items.slice(0, 5);
+                                const hiddenItemCount = Math.max(station.items.length - shownItems.length, 0);
+                                return (
+                                  <View key={`${menu.id}-${meal.id}-${station.id}`}>
+                                    <Text numberOfLines={1} style={{ fontSize: 12, lineHeight: 16, fontWeight: '800', color: colors.textSecondary }}>
+                                      {station.name}
+                                    </Text>
+                                    <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 13, lineHeight: 18, color: colors.text, marginTop: 2 }}>
+                                      {shownItems.map((item) => item.name).join(' · ')}
+                                      {hiddenItemCount > 0 ? ` · +${hiddenItemCount} more` : ''}
+                                    </Text>
+                                  </View>
+                                );
+                              })}
+                              {hiddenStationCount > 0 ? (
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: diningAccent }}>
+                                  +{hiddenStationCount} more station{hiddenStationCount === 1 ? '' : 's'}
+                                </Text>
+                              ) : null}
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  {diningLoading ? <ActivityIndicator size="small" color={diningAccent} /> : null}
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, textAlign: 'center', marginTop: diningLoading ? 12 : 0 }}>
+                    {diningLoading ? 'Loading dining menus' : 'Dining menus unavailable'}
+                  </Text>
+                  <Text style={{ fontSize: 13, lineHeight: 19, color: diningError ? '#EF4444' : colors.textSecondary, textAlign: 'center', marginTop: 7 }}>
+                    {diningError ?? 'Menus will appear here when the dining feed has food data for today.'}
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </Animated.View>
+        </Animated.View>
       </Modal>
 
       <Modal

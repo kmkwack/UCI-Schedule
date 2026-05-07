@@ -2563,4 +2563,17 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`App.tsx`**, **`src/screens/HomeScreen.tsx`**, **`src/screens/TimetableScreen.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, **`src/components/PreviewTimetable.tsx`**, **`src/components/FeatureOnboardingScreen.tsx`**, and **`src/data/messages.ts`** — Updated visible class times, grid hour labels, task/message times, custom course time entry, and onboarding mock schedules to use US-style AM/PM display so students no longer see 13:00/14:00-style timestamps. Custom course creation now accepts AM/PM inputs and stores them back as internal timetable times, including the midnight end-time case. The home timeline time column is right-aligned so AM/PM labels do not wrap while staying close to the colored class bar.
 
 ### Session 64sbu (Show all Campus Info categories)
-- **`src/screens/HomeScreen.tsx`** — Changed Campus Info into a full category hub that always shows Dining, Registration, Jobs, Library, Sports, Transit, Clubs, Start Org, and Student Deals. Supported schools use their configured official links where available, fallback schools get school-specific search links instead of hiding cards, and each category can be collapsed or expanded from the sheet header.
+- **`src/screens/HomeScreen.tsx`** — Changed Campus Info into a full category hub that always shows Dining, Registration, Jobs, Library, Transit, Clubs, and Student Deals. Supported schools use their configured official links where available, fallback schools get school-specific search links instead of hiding cards, and each category can be collapsed or expanded from the sheet header.
+
+### Session 64sbv (Simplify registration links)
+- **`src/screens/HomeScreen.tsx`** — Removed the extra registration helper/guide child button from the Campus Info Registration card so it only links to the school's registration site. Updated the generic fallback and Purdue label to behave like direct site handoffs instead of explanatory registration help.
+
+### Session 64sbw (Remove Start Org card)
+- **`src/screens/HomeScreen.tsx`** — Removed the `Start Org` category from Campus Info for supported and fallback schools so the hub focuses on links students are more likely to use regularly.
+
+### Session 64sbx (Trim Campus Info dining and sports)
+- **`src/screens/HomeScreen.tsx`** — Removed the Sports category from Campus Info because sports already has its own home carousel/list surface. Restored useful dining splits where they matter, such as UCI's The Anteatery and Brandywine menu buttons, while removing extra dining links like nutrition/app/order-ahead/carry-out so Dining stays focused on menus.
+
+### Session 64sby (Promote dining menus to home)
+- **`src/data/diningMenus.ts`** — Added a school-aware dining menu data layer that fetches today's actual dining items from official UCI, Cornell, Purdue, UIUC, and UMD dining sources instead of treating dining as a generic link handoff.
+- **`src/screens/HomeScreen.tsx`** — Removed Dining from Campus Info and added a standalone `Today's Dining` hero carousel page plus full-menu bottom sheet, matching the Sports Events pattern while prioritizing real menu data and dining hall names.

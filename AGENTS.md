@@ -2505,3 +2505,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sbc (Add Career Board)
 - **`src/screens/BoardScreen.tsx`** — Added `Career Board` as a default campus board with a briefcase icon for career, internship, recruiting, major-to-job, and future-planning discussions. Board loading now merges missing default boards into cached or Supabase-provided board catalogs so the Career board appears even if a school's remote board list has not been updated yet.
+
+### Session 64sbd (Add new activity badges)
+- **`App.tsx`** — Added bottom-tab badges for new social activity: the Board tab now shows a `NEW` badge when posts have appeared since the user's last board visit, and the ClassMates tab shows the unread message count. The app stores a per-user/per-school board last-seen timestamp in AsyncStorage and refreshes both badges through polling plus Supabase realtime hooks.

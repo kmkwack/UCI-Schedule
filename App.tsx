@@ -107,6 +107,11 @@ type ConversationUnreadMessageRow = {
   deleted_at: string | null;
 };
 
+type BoardPostTimestampRow = {
+  id: string;
+  created_at: string;
+};
+
 type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
 
 function parseQuarterKeyValue(key: string): Quarter | null {
@@ -142,6 +147,8 @@ const AUTH_VALIDATION_TIMEOUT_MS = 8000;
 const USER_BOOTSTRAP_TIMEOUT_MS = 7000;
 const MESSAGE_BADGE_INITIAL_DELAY_MS = 1000;
 const MESSAGE_BADGE_REFRESH_INTERVAL_MS = 60000;
+const BOARD_BADGE_INITIAL_DELAY_MS = 1400;
+const BOARD_BADGE_REFRESH_INTERVAL_MS = 60000;
 const SOCIAL_NOTIFICATION_BOOTSTRAP_DELAY_MS = 8000;
 const SOCIAL_NOTIFICATION_REFRESH_INTERVAL_MS = 120000;
 const REMINDER_RESCHEDULE_DELAY_MS = 4000;
@@ -640,6 +647,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [showMessages, setShowMessages] = useState(false);
   const [messageTarget, setMessageTarget] = useState<ChatTarget | null>(null);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [newBoardPostCount, setNewBoardPostCount] = useState(0);
+  const [latestBoardPostCreatedAt, setLatestBoardPostCreatedAt] = useState<string | null>(null);
 
   const TABS = ['home', 'timetable', 'grades', 'board', 'friends'] as const;
   const tabBarWidthRef = useRef(0);
@@ -853,6 +862,117 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       void supabase.removeChannel(channel);
     };
   }, [USER_ID, loadUnreadMessageCount]);
+
+  const boardLastSeenKey = useCallback(() => {
+    if (!USER_ID) return null;
+    return `board_last_seen_${currentSchool}_${USER_ID}`;
+  }, [USER_ID, currentSchool]);
+
+  const loadNewBoardPostSnapshot = useCallback(async () => {
+    if (!USER_ID) return { count: 0, latestCreatedAt: null as string | null };
+
+    const { data, error } = await supabase
+      .from('posts')
+      .select('id, created_at')
+      .eq('school', currentSchool)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error) {
+      if (error.code !== 'PGRST205') {
+        console.warn('Failed to load new board post badge:', error);
+      }
+      return { count: 0, latestCreatedAt: null as string | null };
+    }
+
+    const rows = (data ?? []) as BoardPostTimestampRow[];
+    const latestCreatedAt = rows[0]?.created_at ?? null;
+    if (!latestCreatedAt) return { count: 0, latestCreatedAt: null as string | null };
+
+    const storageKey = boardLastSeenKey();
+    if (!storageKey) return { count: 0, latestCreatedAt };
+
+    let lastSeenAt: string | null = null;
+    try {
+      lastSeenAt = await AsyncStorage.getItem(storageKey);
+    } catch (storageError) {
+      console.warn('Failed to read board last-seen marker:', storageError);
+    }
+
+    if (!lastSeenAt) {
+      try {
+        await AsyncStorage.setItem(storageKey, latestCreatedAt);
+      } catch (storageError) {
+        console.warn('Failed to seed board last-seen marker:', storageError);
+      }
+      return { count: 0, latestCreatedAt };
+    }
+
+    const lastSeenTime = new Date(lastSeenAt).getTime();
+    const count = rows.filter((post) => new Date(post.created_at).getTime() > lastSeenTime).length;
+    return { count, latestCreatedAt };
+  }, [USER_ID, boardLastSeenKey, currentSchool]);
+
+  const markBoardPostsSeen = useCallback(async () => {
+    const storageKey = boardLastSeenKey();
+    if (!storageKey || !latestBoardPostCreatedAt) return;
+    try {
+      await AsyncStorage.setItem(storageKey, latestBoardPostCreatedAt);
+      setNewBoardPostCount(0);
+    } catch (storageError) {
+      console.warn('Failed to update board last-seen marker:', storageError);
+    }
+  }, [boardLastSeenKey, latestBoardPostCreatedAt]);
+
+  useEffect(() => {
+    if (!USER_ID) {
+      setNewBoardPostCount(0);
+      setLatestBoardPostCreatedAt(null);
+      return;
+    }
+
+    let cancelled = false;
+    let startupTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const refreshNewBoardPosts = async () => {
+      const snapshot = await loadNewBoardPostSnapshot();
+      if (!cancelled) {
+        setNewBoardPostCount(snapshot.count);
+        setLatestBoardPostCreatedAt(snapshot.latestCreatedAt);
+      }
+    };
+
+    startupTimer = setTimeout(() => {
+      void refreshNewBoardPosts();
+    }, BOARD_BADGE_INITIAL_DELAY_MS);
+    const interval = setInterval(() => {
+      void refreshNewBoardPosts();
+    }, BOARD_BADGE_REFRESH_INTERVAL_MS);
+
+    const channel = supabase
+      .channel(`board-badge:${USER_ID}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'posts' },
+        () => {
+          void refreshNewBoardPosts();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      if (startupTimer) clearTimeout(startupTimer);
+      clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [USER_ID, loadNewBoardPostSnapshot]);
+
+  useEffect(() => {
+    if (currentTab === 'board' && newBoardPostCount > 0) {
+      void markBoardPostsSeen();
+    }
+  }, [currentTab, markBoardPostsSeen, newBoardPostCount]);
 
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -2500,11 +2620,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     icon,
     active,
     onPress,
+    badgeCount,
+    badgeLabel,
   }: {
     label: string;
     icon: keyof typeof Ionicons.glyphMap;
     active: boolean;
     onPress: () => void;
+    badgeCount?: number;
+    badgeLabel?: string;
   }) => (
     <TouchableOpacity
       style={{
@@ -2516,7 +2640,31 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       }}
       onPress={onPress}
     >
-      <Ionicons name={icon} size={20} color={active ? colors.brand : colors.text} />
+      <View style={{ position: 'relative' }}>
+        <Ionicons name={icon} size={20} color={active ? colors.brand : colors.text} />
+        {(badgeCount ?? 0) > 0 ? (
+          <View
+            style={{
+              position: 'absolute',
+              top: -7,
+              right: -15,
+              minWidth: badgeLabel ? 28 : 17,
+              height: 17,
+              borderRadius: 9,
+              paddingHorizontal: badgeLabel ? 5 : 0,
+              backgroundColor: badgeLabel ? colors.brand : colors.destructive,
+              borderWidth: 1.5,
+              borderColor: isDark ? 'rgba(30,30,34,0.95)' : 'rgba(255,255,255,0.96)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ color: 'white', fontSize: badgeLabel ? 8 : 9, fontWeight: '900' }}>
+              {badgeLabel ?? (badgeCount && badgeCount > 99 ? '99+' : badgeCount)}
+            </Text>
+          </View>
+        ) : null}
+      </View>
       <Text
         style={{
           marginTop: 2,
@@ -2591,8 +2739,21 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             <TabItem label="Today" icon="home-outline" active={currentTab === 'home'} onPress={() => { if (currentTab === 'home') setHomeTabTapCount(c => c + 1); else setCurrentTab('home'); }} />
             <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => { if (currentTab === 'timetable') setTimetableTabTapCount(c => c + 1); else setCurrentTab('timetable'); }} />
             <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => { if (currentTab === 'grades') setGradesTabTapCount(c => c + 1); else setCurrentTab('grades'); }} />
-            <TabItem label="Board" icon="clipboard-outline" active={currentTab === 'board'} onPress={() => { if (currentTab === 'board') setBoardTabTapCount(c => c + 1); else setCurrentTab('board'); }} />
-            <TabItem label="ClassMates" icon="person-add-outline" active={currentTab === 'friends'} onPress={() => { if (currentTab === 'friends') setFriendsTabTapCount(c => c + 1); else handleOpenFriendsTab(); }} />
+            <TabItem
+              label="Board"
+              icon="clipboard-outline"
+              active={currentTab === 'board'}
+              badgeCount={currentTab === 'board' ? 0 : newBoardPostCount}
+              badgeLabel="NEW"
+              onPress={() => { if (currentTab === 'board') setBoardTabTapCount(c => c + 1); else setCurrentTab('board'); }}
+            />
+            <TabItem
+              label="ClassMates"
+              icon="person-add-outline"
+              active={currentTab === 'friends'}
+              badgeCount={unreadMessageCount}
+              onPress={() => { if (currentTab === 'friends') setFriendsTabTapCount(c => c + 1); else handleOpenFriendsTab(); }}
+            />
             {/* Transparent drag-capture layer — on top so PanResponder receives touches */}
             {tabBarReady && (
               <Animated.View

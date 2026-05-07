@@ -41,6 +41,30 @@ const SCHOOL_SEEDERS = {
     script: 'seed-uiuc-sections.js',
     terms: ['Spring', 'Summer', 'Fall'],
   },
+  ucr: {
+    label: 'UC Riverside',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['ucr'],
+    terms: ['Winter', 'Spring', 'Summer', 'Fall'],
+  },
+  northeastern: {
+    label: 'Northeastern University',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['northeastern'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  temple: {
+    label: 'Temple University',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['temple'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  gsu: {
+    label: 'Georgia State University',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['gsu'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
 };
 
 function parseArgs(argv) {
@@ -165,7 +189,8 @@ function printHelp() {
   node scripts/backfill-school-sections.js [options]
 
 Options:
-  --schools umd,cornell,purdue,uiuc   Schools to seed. Defaults to all.
+  --schools umd,cornell,purdue,uiuc,ucr,northeastern,temple,gsu
+                                  Schools to seed. Defaults to all.
   --terms Spring,Summer,Fall     Terms to seed. Defaults to each school's standard terms.
   --from-year 2019               First catalog year. Defaults to 2019.
   --to-year 2026                 Last catalog year. Defaults to current year.
@@ -178,9 +203,9 @@ Options:
 `);
 }
 
-function runSeeder(scriptName, term, year, subjects) {
-  const scriptPath = path.join(__dirname, scriptName);
-  const args = [scriptPath, term, String(year)];
+function runSeeder(school, term, year, subjects) {
+  const scriptPath = path.join(__dirname, school.script);
+  const args = [scriptPath, ...(school.argsPrefix ?? []), term, String(year)];
   if (subjects?.length) args.push(subjects.join(','));
 
   const result = spawnSync(process.execPath, args, {
@@ -194,8 +219,9 @@ function runSeeder(scriptName, term, year, subjects) {
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
-  if (process.env.DRY_RUN !== '1' && (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY)) {
-    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY. Put both before the backfill command in the same terminal command.');
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (process.env.DRY_RUN !== '1' && (!process.env.SUPABASE_URL || !serviceKey)) {
+    throw new Error('Missing SUPABASE_URL and SUPABASE_SERVICE_KEY or SUPABASE_SERVICE_ROLE_KEY. Put them before the backfill command in the same terminal command.');
   }
 
   const years = [];
@@ -226,7 +252,7 @@ function main() {
         console.log(`${school.label}: ${term} ${year}${subjects ? ` (${subjects.join(',')})` : ''}`);
         console.log(`────────────────────────────────────────`);
 
-        const status = runSeeder(school.script, term, year, subjects);
+        const status = runSeeder(school, term, year, subjects);
         if (status !== 0) {
           const label = `${schoolKey} ${term} ${year}${subjects ? ` ${subjects.join(',')}` : ''}`;
           failures.push(label);

@@ -203,12 +203,12 @@ async function fetchUciLocationMenu(location: { id: string; name: string }, date
   const stations = stationSkuMap.length > 0
     ? stationSkuMap.map((station, index) => ({
         id: station.id ?? `station-${index}`,
-        name: index === 0 ? 'Menu' : `Station ${index + 1}`,
+        name: `Station ${index + 1}`,
         items: (station.skus ?? []).map((sku) => visibleBySku.get(sku)).filter((item): item is DiningMenuItem => Boolean(item)),
       }))
     : [{
         id: 'menu',
-        name: 'Menu',
+        name: 'Station 1',
         items: orderedSkus.map((sku) => visibleBySku.get(sku)).filter((item): item is DiningMenuItem => Boolean(item)),
       }];
 
@@ -229,7 +229,7 @@ function cornellMealFromEvent(event: any): DiningMenuMeal | null {
   const menuGroups = (event?.menu ?? []) as Array<{ category?: string; items?: Array<{ item?: string; healthy?: boolean }> }>;
   const stations = menuGroups.map((group, index) => ({
     id: compactText(group.category) || `station-${index}`,
-    name: compactText(group.category) || 'Menu',
+    name: compactText(group.category) || `Station ${index + 1}`,
     items: (group.items ?? []).map((item, itemIndex) => ({
       id: `${index}-${itemIndex}-${compactText(item.item)}`,
       name: compactText(item.item),
@@ -260,7 +260,7 @@ async function fetchCornellDiningMenus(date: Date) {
     );
     return menu ? [menu] : [];
   });
-  return menus.slice(0, 8);
+  return menus;
 }
 
 const PURDUE_LOCATION_MENU_QUERY = `
@@ -327,7 +327,7 @@ async function fetchPurdueLocationMenu(name: string, dateIso: string) {
     timeLabel: formatPurdueMealTime(meal.startTime, meal.endTime),
     stations: ((meal.stations ?? []) as any[]).map((station, stationIndex) => ({
       id: compactText(station.id) || `station-${stationIndex}`,
-      name: compactText(station.name) || 'Menu',
+      name: compactText(station.name) || `Station ${stationIndex + 1}`,
       items: ((station.items ?? []) as any[]).flatMap((entry, itemIndex) => {
         const item = entry.item;
         if (!item) return [];
@@ -366,7 +366,7 @@ function groupUiucRowsIntoMeals(rows: any[]): DiningMenuMeal[] {
   const meals = new Map<string, Map<string, DiningMenuStation>>();
   rows.forEach((row) => {
     const mealName = compactText(row.Meal) || 'Meal';
-    const stationName = compactText(row.ServingUnit || row.Category) || 'Menu';
+    const stationName = compactText(row.ServingUnit || row.Category) || 'Station 1';
     if (!meals.has(mealName)) meals.set(mealName, new Map());
     const stationMap = meals.get(mealName)!;
     if (!stationMap.has(stationName)) {
@@ -437,7 +437,7 @@ async function fetchUmdLocationMenu(option: { id: number; name: string }, dateSl
     return {
       id: mealName,
       name: mealName,
-      stations: [{ id: 'menu', name: 'Menu', items }],
+      stations: [{ id: 'menu', name: 'Station 1', items }],
     } as DiningMenuMeal;
   }));
 

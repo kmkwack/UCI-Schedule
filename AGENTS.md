@@ -2577,3 +2577,37 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64sby (Promote dining menus to home)
 - **`src/data/diningMenus.ts`** — Added a school-aware dining menu data layer that fetches today's actual dining items from official UCI, Cornell, Purdue, UIUC, and UMD dining sources instead of treating dining as a generic link handoff.
 - **`src/screens/HomeScreen.tsx`** — Removed Dining from Campus Info and added a standalone `Today's Dining` hero carousel page plus full-menu bottom sheet, matching the Sports Events pattern while prioritizing real menu data and dining hall names.
+
+### Session 64sbz (Show full dining menu bullets)
+- **`src/screens/HomeScreen.tsx`** — Reworked the `Today's Dining` full-menu sheet so meals and stations render as organized sections with every menu item shown as a bullet point. Removed the item/station slicing and `+N more` summaries so students can scroll through the complete dining menu.
+- **`src/data/diningMenus.ts`** — Removed the Cornell dining location cap so the dining feed returns every eatery with menu data instead of summarizing the school to the first eight locations.
+
+### Session 64sca (Add Banner school seeder)
+- **`scripts/seed-banner-sections.js`** — Added a reusable Banner / Ellucian StudentRegistrationSsb section seeder for UC Riverside, Northeastern University, Temple University, and Georgia State University so new API-backed schools can be added without scraping HTML.
+- **`src/data/schools.ts`** — Registered UC Riverside, Northeastern University, Temple University, and Georgia State University in the university picker with term systems, branding, campus metadata, and default school features.
+- **`scripts/backfill-school-sections.js`** — Added the four Banner-backed schools to the multi-school backfill runner and taught the runner to pass seeder-specific argument prefixes.
+
+### Session 64scb (Validate Banner seeder output)
+- **`scripts/seed-banner-sections.js`** — Fixed the department-name fallback expression, excluded Northeastern CPS Quarter terms from the Northeastern semester seeding path, and normalized verbose Banner section labels like `Base Lecture` / `Lecture and Lab` into compact ClassMate labels.
+
+### Session 64scc (Simplify dining hero rows)
+- **`src/screens/HomeScreen.tsx`** — Removed the small meal/today subtitle and right-side item-count badge from the `Today's Dining` hero rows so dining hall names like The Anteatery read cleaner on the home carousel.
+
+### Session 64scd (Clarify dining station labels)
+- **`src/screens/HomeScreen.tsx`** — Added a dining station display fallback so cached or source-provided generic `Menu` labels render as `Station 1`, `Station 2`, etc. in the full dining menu sheet.
+- **`src/data/diningMenus.ts`** — Replaced generic dining station fallback names from `Menu` to numbered station labels across UCI, Cornell, Purdue, UIUC, and UMD menu normalization.
+
+### Session 64sce (Simplify jobs links)
+- **`src/screens/HomeScreen.tsx`** — Replaced the separate `App` button in Campus Info Jobs with a single `Handshake` link that uses Handshake job-search universal links, so installed users can open the app while others fall back to web. Added a `LinkedIn` jobs link beside Handshake for supported and fallback schools.
+
+### Session 64scf (Add push announcement script)
+- **`scripts/send-push-announcement.js`** — Added a dry-run-by-default Expo push broadcast helper that targets users with stored Expo tokens and enabled push notifications. The script requires `--send` before delivering a one-off announcement and clears invalid Expo tokens reported by Expo.
+
+### Session 64scg (Add class hero icon)
+- **`src/screens/HomeScreen.tsx`** — Added a compact calendar/check icon badge to the home class summary hero cards so the today's-classes card visually matches the sports, dining, and campus info carousel cards.
+
+### Session 64sch (Full parity for Banner schools)
+- **`scripts/seed-banner-sections.js`** — Made Banner seeding sequential by default, filtered search results by the requested subject code, and excluded Northeastern CPS/Law terms so long historical backfills cannot accidentally save cached or non-main-campus results.
+- **`scripts/backfill-school-sections.js`** — Accepted either `SUPABASE_SERVICE_KEY` or `SUPABASE_SERVICE_ROLE_KEY` for backfills so the same command works with common Supabase secret naming.
+- **`src/data/schools.ts`** — Enabled sports feeds for UC Riverside, Northeastern University, Temple University, and Georgia State University using their athletics calendar pages so the home sports carousel works like the existing schools.
+- **`src/screens/HomeScreen.tsx`** — Added official Campus Info resources for UC Riverside, Northeastern, Temple, and Georgia State, including registration, jobs, library, transit, clubs, and student deals so the new schools match the existing Campus Info feature set.

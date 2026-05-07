@@ -155,7 +155,7 @@ const QUARTER_DATES: Record<string, { start: string; end: string }> = {
 
 const HOME_SPORTS_FETCH_DELAY_MS = 250;
 const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
-const HANDSHAKE_APP_URL = 'https://app.joinhandshake.com/login';
+const LINKEDIN_JOBS_URL = 'https://www.linkedin.com/jobs/';
 
 const STUDENT_DEALS_RESOURCE: CampusInfoResource = {
   id: 'student-deals',
@@ -244,6 +244,25 @@ function createSingleLinkResource(
   return createLinkGroupResource(id, title, subtitle, icon, color, bg, [child]);
 }
 
+function handshakeJobSearchUrl(schoolSlug?: string) {
+  return schoolSlug ? `https://${schoolSlug}.joinhandshake.com/job-search` : 'https://app.joinhandshake.com/job-search';
+}
+
+function createJobsResource(handshakeUrl: string, handshakeSubtitle: string): CampusInfoResource {
+  return createLinkGroupResource(
+    'jobs',
+    'Jobs',
+    'Jobs, internships, and career listings',
+    'briefcase-outline',
+    '#2563EB',
+    '#eff6ff',
+    [
+      { id: 'handshake', title: 'Handshake', subtitle: handshakeSubtitle, url: handshakeUrl },
+      { id: 'linkedin', title: 'LinkedIn', subtitle: 'Jobs and professional networking', url: LINKEDIN_JOBS_URL },
+    ],
+  );
+}
+
 function createFallbackCampusInfoResources(school: string): CampusInfoResource[] {
   return [
     createRegistrationResource(
@@ -251,18 +270,7 @@ function createFallbackCampusInfoResources(school: string): CampusInfoResource[]
       'Find the course registration site',
       campusInfoSearchUrl(school, 'course registration registrar'),
     ),
-    createLinkGroupResource(
-      'jobs',
-      'Jobs',
-      'Jobs, internships, and career listings',
-      'briefcase-outline',
-      '#2563EB',
-      '#eff6ff',
-      [
-        { id: 'handshake-app', title: 'Handshake', subtitle: 'Open Handshake', url: HANDSHAKE_APP_URL },
-        { id: 'career-center', title: 'Career Center', subtitle: 'Find school career links', url: campusInfoSearchUrl(school, 'career center jobs internships') },
-      ],
-    ),
+    createJobsResource(handshakeJobSearchUrl(), 'Handshake jobs and internships'),
     createLibraryResource(
       school,
       campusInfoSearchUrl(school, 'library'),
@@ -297,18 +305,7 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       'Add, drop, and enroll in classes',
       'https://www.reg.uci.edu/registrar/soc/webreg.html',
     ),
-    {
-      id: 'jobs',
-      title: 'Jobs',
-      subtitle: 'Open Handshake jobs and career listings',
-      icon: 'briefcase-outline',
-      color: '#2563EB',
-      bg: '#eff6ff',
-      children: [
-        { id: 'handshake-web', title: 'Handshake', subtitle: 'UCI job portal', url: 'https://uci.joinhandshake.com/login' },
-        { id: 'handshake-app', title: 'App', subtitle: 'Open Handshake app or web login', url: HANDSHAKE_APP_URL },
-      ],
-    },
+    createJobsResource(handshakeJobSearchUrl('uci'), 'UCI jobs and internships'),
     createLibraryResource('UCI', 'https://www.lib.uci.edu/', 'https://spaces.lib.uci.edu/'),
     createSingleLinkResource(
       'transit',
@@ -336,18 +333,7 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       'Registration and student services',
       'https://testudo.umd.edu/',
     ),
-    {
-      id: 'jobs',
-      title: 'Jobs',
-      subtitle: 'Open Handshake jobs and career listings',
-      icon: 'briefcase-outline',
-      color: '#2563EB',
-      bg: '#eff6ff',
-      children: [
-        { id: 'handshake-web', title: 'Handshake', subtitle: 'UMD job portal', url: 'https://umd.joinhandshake.com/login' },
-        { id: 'handshake-app', title: 'App', subtitle: 'Open Handshake app or web login', url: HANDSHAKE_APP_URL },
-      ],
-    },
+    createJobsResource(handshakeJobSearchUrl('umd'), 'UMD jobs and internships'),
     createLibraryResource('UMD', 'https://www.lib.umd.edu/', 'https://umd.libcal.com/'),
     createSingleLinkResource(
       'transit',
@@ -375,18 +361,7 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       'Enroll in classes and manage records',
       'https://studentcenter.cornell.edu/',
     ),
-    {
-      id: 'jobs',
-      title: 'Jobs',
-      subtitle: 'Open Handshake jobs and career listings',
-      icon: 'briefcase-outline',
-      color: '#2563EB',
-      bg: '#eff6ff',
-      children: [
-        { id: 'handshake-web', title: 'Handshake', subtitle: 'Cornell job portal', url: 'https://cornell.joinhandshake.com/login' },
-        { id: 'handshake-app', title: 'App', subtitle: 'Open Handshake app or web login', url: HANDSHAKE_APP_URL },
-      ],
-    },
+    createJobsResource(handshakeJobSearchUrl('cornell'), 'Cornell jobs and internships'),
     createLibraryResource('Cornell', 'https://www.library.cornell.edu/', 'https://spaces.library.cornell.edu/'),
     createSingleLinkResource(
       'transit',
@@ -414,18 +389,7 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       'Register and manage classes',
       'https://mypurdue.purdue.edu/',
     ),
-    {
-      id: 'jobs',
-      title: 'Jobs',
-      subtitle: 'Open Handshake jobs and career listings',
-      icon: 'briefcase-outline',
-      color: '#2563EB',
-      bg: '#eff6ff',
-      children: [
-        { id: 'handshake-web', title: 'Handshake', subtitle: 'Purdue job portal', url: 'https://purdue.joinhandshake.com/login' },
-        { id: 'handshake-app', title: 'App', subtitle: 'Open Handshake app or web login', url: HANDSHAKE_APP_URL },
-      ],
-    },
+    createJobsResource(handshakeJobSearchUrl('purdue'), 'Purdue jobs and internships'),
     createLibraryResource('Purdue', 'https://www.lib.purdue.edu/', 'https://calendar.lib.purdue.edu/reserve'),
     createSingleLinkResource(
       'transit',
@@ -453,18 +417,7 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       'Register and manage student records',
       'https://apps.uillinois.edu/selfservice',
     ),
-    {
-      id: 'jobs',
-      title: 'Jobs',
-      subtitle: 'Open Handshake jobs and career listings',
-      icon: 'briefcase-outline',
-      color: '#2563EB',
-      bg: '#eff6ff',
-      children: [
-        { id: 'handshake-web', title: 'Handshake', subtitle: 'Illinois job portal', url: 'https://illinois.joinhandshake.com/login' },
-        { id: 'handshake-app', title: 'App', subtitle: 'Open Handshake app or web login', url: HANDSHAKE_APP_URL },
-      ],
-    },
+    createJobsResource(handshakeJobSearchUrl('illinois'), 'Illinois jobs and internships'),
     createLibraryResource('Illinois', 'https://www.library.illinois.edu/', 'https://libcal.library.illinois.edu/allspaces'),
     createSingleLinkResource(
       'transit',
@@ -483,6 +436,118 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       '#8B5CF6',
       '#f5f3ff',
       { id: 'oneillinois', title: 'OneIllinois', subtitle: 'Browse organizations', url: 'https://one.illinois.edu/club_signup' },
+    ),
+    STUDENT_DEALS_RESOURCE,
+  ],
+  'UC Riverside': [
+    createRegistrationResource(
+      'Class Search',
+      'Register and manage classes',
+      'https://registrationssb.ucr.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    ),
+    createJobsResource(handshakeJobSearchUrl('ucr'), 'UCR jobs and internships'),
+    createLibraryResource('UCR', 'https://library.ucr.edu/', 'https://ucr.libcal.com/'),
+    createSingleLinkResource(
+      'transit',
+      'Transit',
+      'Campus shuttle and transportation links',
+      'bus-outline',
+      '#0EA5E9',
+      '#f0f9ff',
+      { id: 'ucr-transportation', title: 'Transportation', subtitle: 'Bus, shuttle, and transit options', url: 'https://transportation.ucr.edu/transportation-options/bus' },
+    ),
+    createSingleLinkResource(
+      'clubs',
+      'Clubs',
+      'Student organizations and campus groups',
+      'people-outline',
+      '#8B5CF6',
+      '#f5f3ff',
+      { id: 'highlanderlink', title: 'HighlanderLink', subtitle: 'Browse organizations', url: 'https://highlanderlink.ucr.edu/organizations' },
+    ),
+    STUDENT_DEALS_RESOURCE,
+  ],
+  'Northeastern University': [
+    createRegistrationResource(
+      'Class Search',
+      'Register and manage classes',
+      'https://nubanner.neu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    ),
+    createJobsResource(handshakeJobSearchUrl('northeastern'), 'Northeastern jobs and internships'),
+    createLibraryResource('Northeastern', 'https://library.northeastern.edu/', 'https://northeastern.libcal.com/'),
+    createSingleLinkResource(
+      'transit',
+      'Transit',
+      'Campus shuttle and transportation links',
+      'bus-outline',
+      '#0EA5E9',
+      '#f0f9ff',
+      { id: 'neu-transportation', title: 'Transportation', subtitle: 'Campus transportation options', url: 'https://www.northeastern.edu/commutingservices/' },
+    ),
+    createSingleLinkResource(
+      'clubs',
+      'Clubs',
+      'Student organizations and campus groups',
+      'people-outline',
+      '#8B5CF6',
+      '#f5f3ff',
+      { id: 'neu-engage', title: 'Engage', subtitle: 'Browse organizations', url: 'https://neu.campuslabs.com/engage/organizations' },
+    ),
+    STUDENT_DEALS_RESOURCE,
+  ],
+  'Temple University': [
+    createRegistrationResource(
+      'Class Search',
+      'Register and manage classes',
+      'https://prd-xereg.temple.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    ),
+    createJobsResource(handshakeJobSearchUrl('temple'), 'Temple jobs and internships'),
+    createLibraryResource('Temple', 'https://library.temple.edu/', 'https://temple.libcal.com/'),
+    createSingleLinkResource(
+      'transit',
+      'Transit',
+      'Campus shuttle and transportation links',
+      'bus-outline',
+      '#0EA5E9',
+      '#f0f9ff',
+      { id: 'temple-transportation', title: 'Transportation', subtitle: 'Parking and transportation', url: 'https://campusoperations.temple.edu/parking-transportation' },
+    ),
+    createSingleLinkResource(
+      'clubs',
+      'Clubs',
+      'Student organizations and campus groups',
+      'people-outline',
+      '#8B5CF6',
+      '#f5f3ff',
+      { id: 'temple-engage', title: 'OwlConnect', subtitle: 'Browse organizations', url: 'https://temple.campuslabs.com/engage/organizations' },
+    ),
+    STUDENT_DEALS_RESOURCE,
+  ],
+  'Georgia State University': [
+    createRegistrationResource(
+      'Class Search',
+      'Register and manage classes',
+      'https://registration.gosolar.gsu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    ),
+    createJobsResource(handshakeJobSearchUrl('gsu'), 'Georgia State jobs and internships'),
+    createLibraryResource('Georgia State', 'https://library.gsu.edu/', 'https://rooms.library.gsu.edu/'),
+    createSingleLinkResource(
+      'transit',
+      'Transit',
+      'Campus shuttle and transportation links',
+      'bus-outline',
+      '#0EA5E9',
+      '#f0f9ff',
+      { id: 'gsu-transportation', title: 'Transportation', subtitle: 'Parking and transportation', url: 'https://parking.gsu.edu/transportation/' },
+    ),
+    createSingleLinkResource(
+      'clubs',
+      'Clubs',
+      'Student organizations and campus groups',
+      'people-outline',
+      '#8B5CF6',
+      '#f5f3ff',
+      { id: 'pin', title: 'PIN', subtitle: 'Browse organizations', url: 'https://pin.gsu.edu/organizations' },
     ),
     STUDENT_DEALS_RESOURCE,
   ],
@@ -815,6 +880,11 @@ function mealItemCount(meal: DiningMenuMeal) {
   return meal.stations.reduce((total, station) => total + station.items.length, 0);
 }
 
+function diningStationLabel(name: string, index: number) {
+  const label = String(name ?? '').trim();
+  return !label || label.toLowerCase() === 'menu' ? `Station ${index + 1}` : label;
+}
+
 async function openSportsVenueInMaps(venue: SportsVenue, school: string) {
   const query = encodeURIComponent(`${schoolCampusLabel(school)} ${venue.name}`);
   const appleMapsUrl = `https://maps.apple.com/?ll=${venue.latitude},${venue.longitude}&q=${query}`;
@@ -1138,7 +1208,7 @@ export default function HomeScreen({
   const { start: quarterStart, end: quarterEnd } = getQuarterBounds(selectedQuarter);
   const sportsEventSheetHeight = Math.round(windowHeight * 0.88);
   const sportsListSheetHeight = Math.round(windowHeight * 0.72);
-  const diningListSheetHeight = Math.round(windowHeight * 0.76);
+  const diningListSheetHeight = Math.round(windowHeight * 0.84);
   const pastAssignmentsSheetHeight = Math.round(windowHeight * 0.74);
   const calendarSetupSheetHeight = Math.min(
     Math.round(windowHeight * 0.84),
@@ -2392,7 +2462,6 @@ export default function HomeScreen({
                           <View style={{ marginTop: 16 }}>
                             {homeDiningMenus.map((menu, index, shownMenus) => {
                               const previewItems = previewDiningItems(menu, 3);
-                              const mealNames = menu.meals.slice(0, 3).map((meal) => meal.name).join(', ');
                               return (
                                 <TouchableOpacity
                                   key={`hero-dining-${menu.id}`}
@@ -2413,28 +2482,11 @@ export default function HomeScreen({
                                       <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
                                         {menu.name}
                                       </Text>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-                                        {mealNames || `${menu.itemCount} items today`}
-                                      </Text>
                                       {previewItems.length > 0 ? (
                                         <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }}>
                                           {previewItems.join(' · ')}
                                         </Text>
                                       ) : null}
-                                    </View>
-                                    <View
-                                      style={{
-                                        borderRadius: 999,
-                                        backgroundColor: '#fff7ed',
-                                        borderWidth: 1,
-                                        borderColor: '#fed7aa',
-                                        paddingHorizontal: 8,
-                                        paddingVertical: 4,
-                                      }}
-                                    >
-                                      <Text style={{ fontSize: 10, fontWeight: '800', color: diningAccent }}>
-                                        {menu.itemCount}
-                                      </Text>
                                     </View>
                                   </View>
                                 </TouchableOpacity>
@@ -2766,6 +2818,9 @@ export default function HomeScreen({
                       }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
                           <View style={{ flex: 1 }}>
+                            <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: `${colors.brand}14`, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                              <Ionicons name="calendar-outline" size={22} color={colors.brand} />
+                            </View>
                             <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
                               {todayCourses.length > 0 ? 'You are clear for the rest of today' : 'No classes on your schedule today'}
                             </Text>
@@ -2919,6 +2974,9 @@ export default function HomeScreen({
                         <View>
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                             <View style={{ flex: 1 }}>
+                              <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: `${accent}14`, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                                <Ionicons name={item.type === 'completedSummary' ? 'checkmark-done-outline' : 'calendar-outline'} size={22} color={accent} />
+                              </View>
                               <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
                                 {label}
                               </Text>
@@ -3611,7 +3669,7 @@ export default function HomeScreen({
           />
           <Animated.View
             style={{
-              maxHeight: '82%',
+              maxHeight: '90%',
               height: diningListSheetHeight,
               borderTopLeftRadius: 28,
               borderTopRightRadius: 28,
@@ -3653,7 +3711,7 @@ export default function HomeScreen({
             </View>
             <ScrollView
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 10 }}
+              contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 22 }}
             >
               {diningMenus.length > 0 ? (
                 <View style={{ gap: 12 }}>
@@ -3682,15 +3740,13 @@ export default function HomeScreen({
                         </View>
                       </View>
 
-                      {menu.meals.slice(0, 4).map((meal, mealIndex) => {
-                        const shownStations = meal.stations.slice(0, 3);
-                        const hiddenStationCount = Math.max(meal.stations.length - shownStations.length, 0);
+                      {menu.meals.map((meal, mealIndex) => {
                         return (
                           <View
                             key={`${menu.id}-${meal.id}-${mealIndex}`}
                             style={{
-                              paddingTop: mealIndex === 0 ? 0 : 12,
-                              marginTop: mealIndex === 0 ? 0 : 12,
+                              paddingTop: mealIndex === 0 ? 0 : 14,
+                              marginTop: mealIndex === 0 ? 0 : 14,
                               borderTopWidth: mealIndex === 0 ? 0 : 1,
                               borderTopColor: colors.borderSubtle,
                             }}
@@ -3703,27 +3759,39 @@ export default function HomeScreen({
                                 {meal.timeLabel ?? `${mealItemCount(meal)} items`}
                               </Text>
                             </View>
-                            <View style={{ marginTop: 8, gap: 7 }}>
-                              {shownStations.map((station) => {
-                                const shownItems = station.items.slice(0, 5);
-                                const hiddenItemCount = Math.max(station.items.length - shownItems.length, 0);
-                                return (
-                                  <View key={`${menu.id}-${meal.id}-${station.id}`}>
-                                    <Text numberOfLines={1} style={{ fontSize: 12, lineHeight: 16, fontWeight: '800', color: colors.textSecondary }}>
-                                      {station.name}
-                                    </Text>
-                                    <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 13, lineHeight: 18, color: colors.text, marginTop: 2 }}>
-                                      {shownItems.map((item) => item.name).join(' · ')}
-                                      {hiddenItemCount > 0 ? ` · +${hiddenItemCount} more` : ''}
-                                    </Text>
+                            <View style={{ marginTop: 10, gap: 10 }}>
+                              {meal.stations.map((station, stationIndex) => (
+                                <View
+                                  key={`${menu.id}-${meal.id}-${station.id}-${stationIndex}`}
+                                  style={{
+                                    borderRadius: 14,
+                                    backgroundColor: colors.bgSecondary,
+                                    borderWidth: 1,
+                                    borderColor: colors.borderSubtle,
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 10,
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 12, lineHeight: 16, fontWeight: '800', color: colors.textSecondary, marginBottom: 7 }}>
+                                    {diningStationLabel(station.name, stationIndex)}
+                                  </Text>
+                                  <View style={{ gap: 7 }}>
+                                    {station.items.map((food, foodIndex) => (
+                                      <View
+                                        key={`${menu.id}-${meal.id}-${station.id}-${food.id}-${foodIndex}`}
+                                        style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}
+                                      >
+                                        <Text style={{ fontSize: 15, lineHeight: 20, color: diningAccent, marginTop: -1 }}>
+                                          •
+                                        </Text>
+                                        <Text style={{ flex: 1, fontSize: 14, lineHeight: 20, color: colors.text }}>
+                                          {food.name}
+                                        </Text>
+                                      </View>
+                                    ))}
                                   </View>
-                                );
-                              })}
-                              {hiddenStationCount > 0 ? (
-                                <Text style={{ fontSize: 12, fontWeight: '800', color: diningAccent }}>
-                                  +{hiddenStationCount} more station{hiddenStationCount === 1 ? '' : 's'}
-                                </Text>
-                              ) : null}
+                                </View>
+                              ))}
                             </View>
                           </View>
                         );

@@ -100,8 +100,19 @@ function isUnmappableLocation(rawLocation) {
     normalized === 'tba' ||
     normalized === 'tba tba' ||
     normalized === 'away' ||
+    normalized === 'arr' ||
+    normalized === 'n/a' ||
+    normalized === 'no' ||
+    normalized === 'none' ||
+    normalized === 'null' ||
     normalized === 'online' ||
     normalized === 'on line' ||
+    normalized === 'bos' ||
+    normalized === 'boston' ||
+    normalized === 'riverside' ||
+    normalized.startsWith('bos ') ||
+    normalized.startsWith('boston ') ||
+    normalized.startsWith('no ') ||
     normalized.includes('online') ||
     normalized.includes('remote') ||
     normalized.includes('to be assigned') ||

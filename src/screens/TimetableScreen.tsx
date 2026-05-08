@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingV
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme } from '../data/courses';
 import { buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
-import { getCampusMapLocation, type CampusMapLocation } from '../data/campusLocations';
+import { getCampusMapLocation, isUnmappableLocation, type CampusMapLocation } from '../data/campusLocations';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import ReviewsModal from '../components/ReviewsModal';
@@ -1581,10 +1581,7 @@ export default function TimetableScreen({
             const hasRmp = !!professor && professor !== 'STAFF' && professor.trim() !== '';
             const profRmpUrl = hasRmp ? rmpUrl(professor, school) : null;
             const rawLocation = selectedCourse.location?.trim() ?? '';
-            const hasMapLocation = !!rawLocation
-              && rawLocation.toLowerCase() !== 'tba'
-              && !rawLocation.toLowerCase().includes('online')
-              && !rawLocation.toLowerCase().includes('remote');
+            const hasMapLocation = !isUnmappableLocation(rawLocation);
             const mappedLocation = getCampusMapLocation(school, rawLocation);
             const mapQuery = mappedLocation?.name ?? rawLocation;
             const courseMapUrl = hasMapLocation ? appleMapsUrl(mapQuery, school) : null;

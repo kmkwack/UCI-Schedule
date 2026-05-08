@@ -1,0 +1,143 @@
+name: Seed course sections
+
+on:
+  schedule:
+    # Twice daily so newly published SOC data lands in Supabase quickly.
+    - cron: "0 */12 * * *"
+  workflow_dispatch:
+    inputs:
+      schools:
+        description: "Comma-separated school keys, or all"
+        required: false
+        default: "all"
+      from_year:
+        description: "First catalog year"
+        required: false
+        default: ""
+      to_year:
+        description: "Last catalog year"
+        required: false
+        default: ""
+      terms:
+        description: "Optional comma-separated terms, like Spring,Fall"
+        required: false
+        default: ""
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ANTEATER_API_KEY: ${{ secrets.ANTEATER_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check Supabase secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${SUPABASE_URL:-}" ]]; then
+            echo "Missing SUPABASE_URL secret."
+            exit 1
+          fi
+
+          if [[ -z "${SUPABASE_SERVICE_KEY:-}" && -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+            echo "Missing SUPABASE_SERVICE_KEY or SUPABASE_SERVICE_ROLE_KEY secret."
+            exit 1
+          fi
+
+      - name: Seed requested sections
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CURRENT_YEAR="$(date +%Y)"
+          NEXT_YEAR="$((CURRENT_YEAR + 1))"
+          FROM_YEAR="${{ github.event.inputs.from_year }}"
+          TO_YEAR="${{ github.event.inputs.to_year }}"
+          SCHOOLS="${{ github.event.inputs.schools }}"
+          TERMS="${{ github.event.inputs.terms }}"
+
+          FROM_YEAR="${FROM_YEAR:-$CURRENT_YEAR}"
+          TO_YEAR="${TO_YEAR:-$NEXT_YEAR}"
+          SCHOOLS="${SCHOOLS:-all}"
+
+          ARGS=(--from-year "$FROM_YEAR" --to-year "$TO_YEAR")
+
+          if [[ "$SCHOOLS" != "all" ]]; then
+            ARGS+=(--schools "$SCHOOLS")
+          fi
+
+          if [[ -n "$TERMS" ]]; then
+            ARGS+=(--terms "$TERMS")
+          fi
+
+          node scripts/backfill-school-sections.js "${ARGS[@]}"
+
+      - name: Seed current-year sections
+        if: github.event_name == 'schedule'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT_YEAR="$(date +%Y)"
+          node scripts/backfill-school-sections.js --from-year "$CURRENT_YEAR" --to-year "$CURRENT_YEAR"
+
+      - name: Seed UCI current-year sections
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${ANTEATER_API_KEY:-}" ]]; then
+            echo "Skipping UCI seeding because ANTEATER_API_KEY is not configured."
+            exit 0
+          fi
+
+          CURRENT_YEAR="$(date +%Y)"
+          for TERM in Winter Spring Fall; do
+            node scripts/seed-sections.js "$TERM" "$CURRENT_YEAR"
+          done
+
+      - name: Seed next-year sections when available
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          NEXT_YEAR="$(( $(date +%Y) + 1 ))"
+          node scripts/backfill-school-sections.js --from-year "$NEXT_YEAR" --to-year "$NEXT_YEAR"
+
+      - name: Seed UCI next-year sections when available
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${ANTEATER_API_KEY:-}" ]]; then
+            echo "Skipping UCI seeding because ANTEATER_API_KEY is not configured."
+            exit 0
+          fi
+
+          NEXT_YEAR="$(( $(date +%Y) + 1 ))"
+          for TERM in Winter Spring Fall; do
+            node scripts/seed-sections.js "$TERM" "$NEXT_YEAR"
+          done

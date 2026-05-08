@@ -882,7 +882,7 @@ function mealItemCount(meal: DiningMenuMeal) {
 
 function diningStationLabel(name: string, index: number) {
   const label = String(name ?? '').trim();
-  return !label || label.toLowerCase() === 'menu' ? `Station ${index + 1}` : label;
+  return !label || label.toLowerCase() === 'menu' ? 'Items' : label;
 }
 
 async function openSportsVenueInMaps(venue: SportsVenue, school: string) {

@@ -30,12 +30,25 @@ type DateParts = {
   slash: string;
 };
 
+type MyDiningHubConfig = {
+  graphQlUrl: string;
+  locationUrl: string;
+  headers: Record<string, string>;
+  campusUrlKey?: string;
+};
+
 const UCI_DINING_GRAPHQL_URL = 'https://api.elevate-dxp.com/api/mesh/c087f756-cc72-4649-a36f-3a41b700c519/graphql';
 const UCI_DINING_LOCATION_URL = 'https://uci.mydininghub.com/en/location';
 const CORNELL_DINING_API_URL = 'https://admin-now.dining.cornell.edu/api/1.0/dining/eateries.json';
 const PURDUE_DINING_GRAPHQL_URL = 'https://api.hfs.purdue.edu/menus/v3/GraphQL';
 const UIUC_DINING_MENU_API_URL = 'https://web.housing.illinois.edu/DiningMenus/api/DiningMenu/GetOption/';
 const UMD_NUTRITION_URL = 'https://nutrition.umd.edu';
+const UCR_FOODPRO_URL = 'https://foodpro.ucr.edu/foodpro/shortmenu.aspx';
+const UCR_DINING_SERVICE_NAME = 'University of California, Riverside Dining Services';
+const TEMPLE_DINING_GRAPHQL_URL = 'https://api.elevate-dxp.com/api/mesh/c087f756-cc72-4649-a36f-3a41b700c519/graphql';
+const TEMPLE_DINING_LOCATION_URL = 'https://temple.mydininghub.com/en/location';
+const GSU_NUTRISLICE_API_URL = 'https://gsu.api.nutrislice.com/menu/api/weeks';
+const GSU_NUTRISLICE_MENU_URL = 'https://gsu.nutrislice.com/menu';
 
 const UCI_DINING_HEADERS = {
   'content-type': 'application/json',
@@ -48,9 +61,31 @@ const UCI_DINING_HEADERS = {
   'AEM-Elevate-ClientPath': 'ch/uci/en',
 };
 
+const TEMPLE_DINING_HEADERS = {
+  'content-type': 'application/json',
+  'X-Api-Key': 'ElevateAPIProd',
+  'magento-store-code': 'ch_temple',
+  'magento-website-code': 'ch_temple',
+  'magento-store-view-code': 'ch_temple_en',
+  Store: 'ch_temple_en',
+  'magento-customer-group': 'b6589fc6ab0dc82cf12099d1c2d40ab994e8410c',
+  'AEM-Elevate-ClientPath': 'ch/temple/en',
+};
+
 const UCI_DINING_LOCATIONS = [
   { id: 'the-anteatery', name: 'The Anteatery' },
   { id: 'brandywine', name: 'Brandywine' },
+];
+
+const UCR_DINING_OPTIONS = [
+  { id: 'glasgow', name: 'Glasgow', locationNum: '03' },
+  { id: 'lothian', name: 'Lothian', locationNum: '02' },
+];
+
+const TEMPLE_DINING_LOCATIONS = [
+  { id: 'esposito-dining-center', name: 'Esposito Dining Center' },
+  { id: 'valaida-s-walker-fo-od-court', name: 'Howard Gittis Student Center Food Court' },
+  { id: 'morgan-hall-food-court', name: 'Morgan Hall Food Court' },
 ];
 
 const PURDUE_DINING_COURTS = ['Earhart', 'Ford', 'Hillenbrand', 'Wiley', 'Windsor'];
@@ -66,6 +101,30 @@ const UMD_DINING_OPTIONS = [
   { id: 16, name: 'South Campus Dining Hall' },
 ];
 
+const GSU_DINING_LOCATIONS = [
+  {
+    id: 46511,
+    name: 'Piedmont Central',
+    slug: 'piedmont-central',
+    menuTypes: [
+      { id: 15755, name: 'Breakfast', slug: 'breakfast' },
+      { id: 15756, name: 'Lunch', slug: 'lunch' },
+      { id: 15757, name: 'Dinner', slug: 'dinner' },
+      { id: 15758, name: 'Overnight', slug: 'over-night' },
+    ],
+  },
+  {
+    id: 46513,
+    name: 'Piedmont North',
+    slug: 'piedmont-north',
+    menuTypes: [
+      { id: 15755, name: 'Breakfast', slug: 'breakfast' },
+      { id: 15756, name: 'Lunch', slug: 'lunch' },
+      { id: 15757, name: 'Dinner', slug: 'dinner' },
+    ],
+  },
+];
+
 export function schoolDiningMenusSupported(school: string) {
   return [
     'UC Irvine',
@@ -73,6 +132,9 @@ export function schoolDiningMenusSupported(school: string) {
     'Cornell University',
     'Purdue University',
     'University of Illinois Urbana-Champaign',
+    'UC Riverside',
+    'Temple University',
+    'Georgia State University',
   ].includes(school);
 }
 
@@ -109,6 +171,10 @@ function decodeHtml(value: string) {
     .replace(/&nbsp;/g, ' ')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>');
+}
+
+function stripHtml(value: string) {
+  return compactText(decodeHtml(value.replace(/<[^>]+>/g, ' ')));
 }
 
 function dedupeItems(items: DiningMenuItem[]) {
@@ -149,10 +215,10 @@ async function fetchJson(url: string, init?: RequestInit) {
   return response.json();
 }
 
-async function fetchUciLocationMenu(location: { id: string; name: string }, dateIso: string) {
+async function fetchMyDiningHubLocationMenu(location: { id: string; name: string }, dateIso: string, config: MyDiningHubConfig) {
   const query = `
-    query getLocationRecipes($locationUrlKey: String!, $date: String!) {
-      getLocationRecipes(campusUrlKey: "campus", locationUrlKey: $locationUrlKey, date: $date) {
+    query getLocationRecipes($campusUrlKey: String!, $locationUrlKey: String!, $date: String!) {
+      getLocationRecipes(campusUrlKey: $campusUrlKey, locationUrlKey: $locationUrlKey, date: $date) {
         locationRecipesMap {
           skus
           stationSkuMap {
@@ -175,11 +241,11 @@ async function fetchUciLocationMenu(location: { id: string; name: string }, date
   `;
   const params = new URLSearchParams({
     query,
-    variables: JSON.stringify({ locationUrlKey: location.id, date: dateIso }),
+    variables: JSON.stringify({ campusUrlKey: config.campusUrlKey ?? 'campus', locationUrlKey: location.id, date: dateIso }),
   });
-  const json = await fetchJson(`${UCI_DINING_GRAPHQL_URL}?${params.toString()}`, {
+  const json = await fetchJson(`${config.graphQlUrl}?${params.toString()}`, {
     method: 'GET',
-    headers: UCI_DINING_HEADERS,
+    headers: config.headers,
   });
   const data = json?.data?.getLocationRecipes;
   const products = (data?.products?.items ?? []) as Array<{ sku?: string; name?: string; attributes?: Array<{ name?: string; value?: unknown }> }>;
@@ -208,11 +274,11 @@ async function fetchUciLocationMenu(location: { id: string; name: string }, date
       }))
     : [{
         id: 'menu',
-        name: 'Station 1',
+        name: 'Items',
         items: orderedSkus.map((sku) => visibleBySku.get(sku)).filter((item): item is DiningMenuItem => Boolean(item)),
       }];
 
-  return buildLocationMenu(location.id, location.name, `${UCI_DINING_LOCATION_URL}/${location.id}`, [{
+  return buildLocationMenu(location.id, location.name, `${config.locationUrl}/${location.id}`, [{
     id: 'today',
     name: 'Today',
     stations,
@@ -221,7 +287,107 @@ async function fetchUciLocationMenu(location: { id: string; name: string }, date
 
 async function fetchUciDiningMenus(date: Date) {
   const { iso } = getDateParts(date, 'America/Los_Angeles');
-  const menus = await Promise.all(UCI_DINING_LOCATIONS.map((location) => fetchUciLocationMenu(location, iso).catch(() => null)));
+  const menus = await Promise.all(UCI_DINING_LOCATIONS.map((location) => fetchMyDiningHubLocationMenu(location, iso, {
+    graphQlUrl: UCI_DINING_GRAPHQL_URL,
+    locationUrl: UCI_DINING_LOCATION_URL,
+    headers: UCI_DINING_HEADERS,
+  }).catch(() => null)));
+  return menus.filter((menu): menu is DiningLocationMenu => Boolean(menu));
+}
+
+async function fetchTempleDiningMenus(date: Date) {
+  const { iso } = getDateParts(date, 'America/New_York');
+  const menus = await Promise.all(TEMPLE_DINING_LOCATIONS.map((location) => fetchMyDiningHubLocationMenu(location, iso, {
+    graphQlUrl: TEMPLE_DINING_GRAPHQL_URL,
+    locationUrl: TEMPLE_DINING_LOCATION_URL,
+    headers: TEMPLE_DINING_HEADERS,
+  }).catch(() => null)));
+  return menus.filter((menu): menu is DiningLocationMenu => Boolean(menu));
+}
+
+function normalizeFoodProStationName(value: string) {
+  return stripHtml(value).replace(/^[-\s]+|[-\s]+$/g, '').trim() || 'Items';
+}
+
+function parseFoodProMenuItems(mealHtml: string): DiningMenuStation[] {
+  const stations: DiningMenuStation[] = [];
+  let currentStation: DiningMenuStation | null = null;
+  const tokenPattern = /<div[^>]*class=["'][^"']*(shortmenucats|shortmenurecipes)[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenPattern.exec(mealHtml))) {
+    const kind = match[1];
+    const content = match[2] ?? '';
+
+    if (kind === 'shortmenucats') {
+      const name = normalizeFoodProStationName(content);
+      currentStation = { id: `${stations.length}-${name}`, name, items: [] };
+      stations.push(currentStation);
+      continue;
+    }
+
+    const itemName = stripHtml(content);
+    if (!itemName) continue;
+    if (!currentStation) {
+      currentStation = { id: 'items', name: 'Items', items: [] };
+      stations.push(currentStation);
+    }
+    currentStation.items.push({
+      id: `${currentStation.items.length}-${itemName}`,
+      name: itemName,
+    });
+  }
+
+  return stations;
+}
+
+function parseUcrFoodProMeals(html: string): DiningMenuMeal[] {
+  const headings: Array<{ name: string; index: number; end: number }> = [];
+  const headingPattern = /<h3[^>]*class=["'][^"']*shortmenumeals[^"']*["'][^>]*>([\s\S]*?)<\/h3>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = headingPattern.exec(html))) {
+    headings.push({
+      name: stripHtml(match[1] ?? '') || `Meal ${headings.length + 1}`,
+      index: match.index,
+      end: headingPattern.lastIndex,
+    });
+  }
+
+  return headings.map((heading, index) => {
+    const nextHeading = headings[index + 1];
+    const mealHtml = html.slice(heading.end, nextHeading?.index ?? html.length);
+    return {
+      id: heading.name,
+      name: heading.name,
+      stations: parseFoodProMenuItems(mealHtml),
+    };
+  });
+}
+
+async function fetchUcrLocationMenu(option: { id: string; name: string; locationNum: string }, dateSlash: string) {
+  const params = new URLSearchParams({
+    sName: UCR_DINING_SERVICE_NAME,
+    locationName: option.name,
+    locationNum: option.locationNum,
+    naFlag: '1',
+    dtdate: dateSlash,
+  });
+  const response = await fetch(`${UCR_FOODPRO_URL}?${params.toString()}`);
+  if (!response.ok) throw new Error(`UCR dining request returned ${response.status}`);
+  const html = await response.text();
+
+  return buildLocationMenu(
+    option.id,
+    option.name,
+    `https://dining.ucr.edu/menus`,
+    parseUcrFoodProMeals(html)
+  );
+}
+
+async function fetchUcrDiningMenus(date: Date) {
+  const { slash } = getDateParts(date, 'America/Los_Angeles');
+  const menus = await Promise.all(UCR_DINING_OPTIONS.map((option) => fetchUcrLocationMenu(option, slash).catch(() => null)));
   return menus.filter((menu): menu is DiningLocationMenu => Boolean(menu));
 }
 
@@ -437,7 +603,7 @@ async function fetchUmdLocationMenu(option: { id: number; name: string }, dateSl
     return {
       id: mealName,
       name: mealName,
-      stations: [{ id: 'menu', name: 'Station 1', items }],
+      stations: [{ id: 'menu', name: 'Items', items }],
     } as DiningMenuMeal;
   }));
 
@@ -455,11 +621,77 @@ async function fetchUmdDiningMenus(date: Date) {
   return menus.filter((menu): menu is DiningLocationMenu => Boolean(menu));
 }
 
+function traitsFromNutrisliceFood(food: any) {
+  return ((food?.icons?.food_icons ?? []) as any[])
+    .map((icon) => compactText(icon?.name || icon?.slug || icon?.id))
+    .filter(Boolean);
+}
+
+function parseNutrisliceMealItems(rows: any[]): DiningMenuStation[] {
+  const stations: DiningMenuStation[] = [];
+  let currentStation: DiningMenuStation = { id: 'items', name: 'Items', items: [] };
+  stations.push(currentStation);
+
+  rows.forEach((row, rowIndex) => {
+    const rowText = compactText(row?.text);
+    const foodName = compactText(row?.food?.name);
+    if (row?.is_section_title) {
+      const name = rowText || foodName || `Station ${stations.length + 1}`;
+      currentStation = { id: `${stations.length}-${name}`, name, items: [] };
+      stations.push(currentStation);
+      return;
+    }
+
+    const name = foodName || rowText;
+    if (!name) return;
+    currentStation.items.push({
+      id: String(row?.id ?? row?.food?.id ?? `${rowIndex}-${name}`),
+      name,
+      traits: traitsFromNutrisliceFood(row?.food),
+    });
+  });
+
+  return stations;
+}
+
+async function fetchGsuMealMenu(location: typeof GSU_DINING_LOCATIONS[number], menuType: typeof GSU_DINING_LOCATIONS[number]['menuTypes'][number], dateIso: string) {
+  const [year, month, day] = dateIso.split('-');
+  const json = await fetchJson(`${GSU_NUTRISLICE_API_URL}/school/${location.id}/menu-type/${menuType.id}/${year}/${month}/${day}/`);
+  const menuDay = ((json?.days ?? []) as any[]).find((entry) => entry?.date === dateIso);
+  const stations = parseNutrisliceMealItems((menuDay?.menu_items ?? []) as any[]);
+  if (stations.every((station) => station.items.length === 0)) return null;
+
+  return {
+    id: menuType.slug,
+    name: menuType.name,
+    stations,
+  } as DiningMenuMeal;
+}
+
+async function fetchGsuLocationMenu(location: typeof GSU_DINING_LOCATIONS[number], dateIso: string) {
+  const meals = await Promise.all(location.menuTypes.map((menuType) => fetchGsuMealMenu(location, menuType, dateIso).catch(() => null)));
+  return buildLocationMenu(
+    String(location.id),
+    location.name,
+    `${GSU_NUTRISLICE_MENU_URL}/${location.slug}`,
+    meals.filter((meal): meal is DiningMenuMeal => Boolean(meal))
+  );
+}
+
+async function fetchGsuDiningMenus(date: Date) {
+  const { iso } = getDateParts(date, 'America/New_York');
+  const menus = await Promise.all(GSU_DINING_LOCATIONS.map((location) => fetchGsuLocationMenu(location, iso).catch(() => null)));
+  return menus.filter((menu): menu is DiningLocationMenu => Boolean(menu));
+}
+
 export async function fetchDiningMenusForSchool(school: string, date = new Date()): Promise<DiningLocationMenu[]> {
   if (school === 'UC Irvine') return fetchUciDiningMenus(date);
   if (school === 'University of Maryland, College Park') return fetchUmdDiningMenus(date);
   if (school === 'Cornell University') return fetchCornellDiningMenus(date);
   if (school === 'Purdue University') return fetchPurdueDiningMenus(date);
   if (school === 'University of Illinois Urbana-Champaign') return fetchUiucDiningMenus(date);
+  if (school === 'UC Riverside') return fetchUcrDiningMenus(date);
+  if (school === 'Temple University') return fetchTempleDiningMenus(date);
+  if (school === 'Georgia State University') return fetchGsuDiningMenus(date);
   return [];
 }

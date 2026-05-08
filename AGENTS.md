@@ -2611,3 +2611,64 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`scripts/backfill-school-sections.js`** — Accepted either `SUPABASE_SERVICE_KEY` or `SUPABASE_SERVICE_ROLE_KEY` for backfills so the same command works with common Supabase secret naming.
 - **`src/data/schools.ts`** — Enabled sports feeds for UC Riverside, Northeastern University, Temple University, and Georgia State University using their athletics calendar pages so the home sports carousel works like the existing schools.
 - **`src/screens/HomeScreen.tsx`** — Added official Campus Info resources for UC Riverside, Northeastern, Temple, and Georgia State, including registration, jobs, library, transit, clubs, and student deals so the new schools match the existing Campus Info feature set.
+
+### Session 64sci (Audit UCI classroom map aliases)
+- **`src/data/campusLocations.ts`** — Corrected the Social Science Lab / Social Science Lecture Hall split, added missing `SSH` and `SS1`/`SS2` classroom aliases, and kept room-code matching aligned with UCI Classroom Technologies building names so course detail map previews point to the right campus buildings.
+
+### Session 64scj (Automate course section seeding)
+- **`.github/workflows/seed-course-sections.yml`** — Added a scheduled/manual GitHub Actions workflow that installs dependencies and runs `scripts/backfill-school-sections.js` against the current catalog year by default using Supabase secrets, with manual inputs for school/year/term backfills. This lets backend course data refresh automatically instead of requiring a local terminal command with service keys.
+
+### Session 64sck (Seed next-year sections early)
+- **`.github/workflows/seed-course-sections.yml`** — Split the seeding workflow into mandatory current-year scheduled seeding plus best-effort next-year scheduled seeding. Manual runs now default to current year through next year, so newly published future-term SOC data can be pulled into Supabase as soon as school APIs expose it.
+
+### Session 64scl (Include UCI in scheduled seeding)
+- **`.github/workflows/seed-course-sections.yml`** — Added optional scheduled UCI seeding for Winter, Spring, and Fall of the current and next year when `ANTEATER_API_KEY` is configured. The workflow now runs twice daily so newly published SOC data lands in Supabase quickly while safely skipping UCI when the Anteater API secret is absent.
+
+### Session 64scm (Extend dining and grade parity)
+- **`src/data/diningMenus.ts`** — Added official menu feed support for UC Riverside via FoodPro, Temple via MyDiningHub, and Georgia State via Nutrislice so new Banner-backed schools can show the same standalone `Today's Dining` home surface when real dining data exists. Generalized the MyDiningHub fetcher shared by UCI and Temple and changed generic single-station fallbacks to `Items` for clearer menu labels.
+- **`src/screens/HomeScreen.tsx`** — Changed generic dining station display text from numbered station placeholders to `Items` so dining sheets do not imply a real station name when the source feed only exposes a flat menu.
+- **`src/components/ReviewsModal.tsx`** — Clarified grade distribution availability by hiding professor filters for schools without an official grade-distribution feed and explaining that personal Grades/GPA tracking still works even when official distribution charts are not connected.
+
+### Session 64scn (Add UCR university logo)
+- **`assets/ucr-logo-white-bg.png`** and **`assets/ucr-logo-white-bg.svg`** — Added a white-background UC Riverside logo asset matching the university picker treatment used by the other schools.
+- **`src/components/UniversityLogo.tsx`** — Mapped the `ucr` school id to the new UCR logo asset so UC Riverside no longer falls back to the text badge in the school selection screen.
+
+### Session 64sco (Add Northeastern university logo)
+- **`assets/northeastern-logo-white-bg.png`** and **`assets/northeastern-logo-white-bg.svg`** — Added a white-background Northeastern University logo asset so the school picker can show the real mark instead of initials.
+- **`src/components/UniversityLogo.tsx`** — Mapped the `northeastern` school id to the new logo asset, matching the existing logo rendering path for other supported schools.
+
+### Session 64scp (Add Temple university logo)
+- **`assets/temple-logo-white-bg.png`** and **`assets/temple-logo-white-bg.svg`** — Added a white-background Temple University logo asset so the school picker uses the real Temple mark.
+- **`src/components/UniversityLogo.tsx`** — Mapped the `temple` school id to the new logo asset, replacing the initials fallback in university selection.
+
+### Session 64scq (Add Georgia State university logo)
+- **`assets/gsu-logo-white-bg.png`** and **`assets/gsu-logo-white-bg.svg`** — Added a white-background Georgia State University logo asset so the school picker shows the real GSU mark.
+- **`src/components/UniversityLogo.tsx`** — Mapped the `gsu` school id to the new logo asset, replacing the initials fallback in university selection.
+
+### Session 64scs (Replace recreated school logos with source assets)
+- **`assets/ucr-logo-white-bg.png`**, **`assets/ucr-logo-white-bg.svg`**, **`assets/northeastern-logo-white-bg.png`**, **`assets/northeastern-logo-white-bg.svg`**, **`assets/temple-logo-white-bg.png`**, **`assets/temple-logo-white-bg.svg`**, **`assets/gsu-logo-white-bg.png`**, and **`assets/gsu-logo-white-bg.svg`** — Replaced the hand-recreated logo artwork with source logo assets so the school picker displays the real marks without distorted or clipped custom redraws.
+
+### Session 64scr (Expand multi-school classroom maps)
+- **`src/data/campusLocations.ts`** — Added high-volume classroom building mappings for Cornell, University of Maryland, UIUC, and Northeastern from seeded section unmapped reports, and corrected UCI social-science/student-services aliases. This expands in-app course map previews beyond UCI while keeping ambiguous locations on external Maps fallback.
+
+### Session 64scx (Fill UCR/Purdue classroom map gaps)
+- **`src/data/campusLocations.ts`** — Added high-volume UC Riverside and Purdue classroom building mappings after the audit showed UCR had seeded sections but no in-app classroom map coverage. Exported `isUnmappableLocation()` and broadened generic-location handling for values like `NO`, `Boston`, and `Riverside`.
+- **`src/screens/TimetableScreen.tsx`** — Reused `isUnmappableLocation()` before showing map actions so generic placeholders no longer open weak campus/city map searches.
+- **`scripts/report-unmapped-classrooms.js`** — Mirrored the generic-location skip list so mapping reports focus on real building candidates instead of placeholders.
+
+### Session 64scy (Second-pass classroom map audit)
+- **`src/data/campusLocations.ts`** — Added second-pass high-volume building aliases for Purdue, UC Riverside, and Northeastern, including Purdue REC/DUDL/POTR/RHPH, UCR ARTS/SPTH/INTN/LFSC/SCLAB, and Northeastern EXP/ISEC/EV/INV. Expanded generic placeholder detection for `NO ...` and `BOS ...` prefixes.
+- **`scripts/report-unmapped-classrooms.js`** — Kept the audit script's placeholder filtering in sync with app-side mapping logic so validation numbers do not count non-building prefixes as missed classroom mappings.
+
+### Session 64sct (Fit Temple logo in school picker)
+- **`src/components/UniversityLogo.tsx`** — Kept the source Temple logo asset unchanged and adjusted only the rendered image box for square school logos so the Temple mark appears larger in the university selection row without clipping or redrawing the logo.
+
+### Session 64scu (Center Georgia State logo)
+- **`src/components/UniversityLogo.tsx`** — Added a small render-only horizontal offset for the `gsu` logo so the source Georgia State mark sits more centered in the university selection logo slot without modifying the logo asset.
+
+### Session 64scv (Enlarge Georgia State logo)
+- **`src/components/UniversityLogo.tsx`** — Replaced the GSU horizontal offset with a larger render-only image box so the source Georgia State logo appears centered and legible in the university selection row without changing the logo asset.
+
+### Session 64scw (Use Temple wordmark logo)
+- **`assets/temple-logo-white-bg.png`** and **`assets/temple-logo-white-bg.svg`** — Replaced the Temple T-only mark with the source Temple University wordmark so the school picker logo includes readable Temple text.
+- **`src/components/UniversityLogo.tsx`** — Removed the Temple square-logo render override so the full wordmark can use the existing logo slot instead of being squeezed into an icon box.

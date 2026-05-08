@@ -134,6 +134,8 @@ export default function ReviewsModal({
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
   const writeReviewScrollRef = useRef<ScrollView>(null);
   const reviewInputRef = useRef<TextInput>(null);
+  const schoolConfig = getSchoolConfig(school);
+  const supportsOfficialGradeDistribution = schoolConfig.gradeDistributionSource === 'anteaterapi';
 
   function scrollToReviewComposer(animated = true) {
     requestAnimationFrame(() => {
@@ -180,7 +182,7 @@ export default function ReviewsModal({
     if (!visible) return;
     const cacheKey = `${department}${courseNumber}${instructor}`;
     if (cacheKey in gradesCache) return;
-    if (getSchoolConfig(school).gradeDistributionSource !== 'anteaterapi') {
+    if (!supportsOfficialGradeDistribution) {
       setGradesCache((prev) => ({ ...prev, [cacheKey]: null }));
       return;
     }
@@ -194,7 +196,7 @@ export default function ReviewsModal({
       })
       .catch(() => setGradesCache((prev) => ({ ...prev, [cacheKey]: null })))
       .finally(() => setGradeLoading(false));
-  }, [visible, instructor, school, department, courseNumber]);
+  }, [visible, instructor, school, department, courseNumber, supportsOfficialGradeDistribution]);
 
   async function fetchCourseInfo() {
     const rowId = sectionId ? `${sectionId}::${quarterKey}` : null;
@@ -436,7 +438,7 @@ export default function ReviewsModal({
                   {/* Grade Distribution */}
                   <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Grade Distribution</Text>
-                    {professors.length > 0 && (
+                    {supportsOfficialGradeDistribution && professors.length > 0 && (
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                           {['', ...professors].map((p) => {
@@ -461,7 +463,11 @@ export default function ReviewsModal({
                         <ActivityIndicator size="small" color={colors.brand} />
                       </View>
                     ) : !grades || visibleEntries.length === 0 ? (
-                      <Text style={{ fontSize: 13, color: colors.textTertiary, textAlign: 'center', paddingVertical: 12 }}>No grade data available</Text>
+                      <Text style={{ fontSize: 13, color: colors.textTertiary, textAlign: 'center', paddingVertical: 12 }}>
+                        {supportsOfficialGradeDistribution
+                          ? 'No official grade distribution data available for this course yet.'
+                          : `Official grade distributions are not connected for ${schoolConfig.shortName} yet. Your own grades and GPA still work in Grades.`}
+                      </Text>
                     ) : (
                       <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
                         <View style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandBg, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, minWidth: 72 }}>

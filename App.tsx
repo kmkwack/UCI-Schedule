@@ -37,6 +37,7 @@ import {
   profileDetailsFromProfile,
   profileFromSources,
 } from './src/data/userPreferences';
+import { CURRENT_LEGAL_ACKNOWLEDGMENT, hasAcceptedCurrentLegalDocuments } from './src/data/legal';
 import { fetchSportsEventsForSchool } from './src/data/sportsEvents';
 import { supabase } from './src/lib/supabase';
 import { isMissingSchoolColumnError } from './src/lib/supabaseErrors';
@@ -612,6 +613,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [savingVisibility, setSavingVisibility] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [savingRegion, setSavingRegion] = useState(false);
+  const [savingLegalAcknowledgment, setSavingLegalAcknowledgment] = useState(false);
   const [assignmentCalendarRevision, setAssignmentCalendarRevision] = useState(0);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [authStack, setAuthStack] = useState<AuthScreen[]>(['welcome']);
@@ -1051,6 +1053,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         setUserSettings({
           timetableVisibility: ((settingsRow as Record<string, any> | null | undefined)?.timetable_visibility as TimetableVisibility | undefined) ?? DEFAULT_USER_SETTINGS.timetableVisibility,
           boardProfileVisible: settingsDetails?.boardProfileVisible === true,
+          legalAcknowledgment: settingsDetails?.legalAcknowledgment &&
+            typeof settingsDetails.legalAcknowledgment === 'object'
+            ? {
+                termsVersion: String(settingsDetails.legalAcknowledgment.termsVersion ?? ''),
+                privacyVersion: String(settingsDetails.legalAcknowledgment.privacyVersion ?? ''),
+                acceptedAt: String(settingsDetails.legalAcknowledgment.acceptedAt ?? ''),
+              }
+            : null,
           notifications: {
             ...DEFAULT_NOTIFICATION_PREFERENCES,
             ...(((settingsRow as Record<string, any> | null | undefined)?.notification_settings as NotificationPreferences | undefined) ?? {}),
@@ -2071,7 +2081,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           nextProfile,
           nextSettings.boardProfileVisible,
           profileSetupComplete,
-          onboardingComplete
+          onboardingComplete,
+          nextSettings.legalAcknowledgment
         ),
         language: nextSettings.language,
         timeZone: nextSettings.timeZone,
@@ -2295,6 +2306,28 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       return false;
     } finally {
       setSavingRegion(false);
+    }
+  };
+
+  const handleAcceptLegalUpdate = async (): Promise<boolean> => {
+    setSavingLegalAcknowledgment(true);
+    const nextSettings: UserSettingsState = {
+      ...userSettings,
+      legalAcknowledgment: {
+        termsVersion: CURRENT_LEGAL_ACKNOWLEDGMENT.termsVersion,
+        privacyVersion: CURRENT_LEGAL_ACKNOWLEDGMENT.privacyVersion,
+        acceptedAt: new Date().toISOString(),
+      },
+    };
+
+    try {
+      await saveUserSettingsRow(nextSettings);
+      setUserSettings(nextSettings);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setSavingLegalAcknowledgment(false);
     }
   };
 
@@ -2532,6 +2565,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         scrollToTopTrigger={homeTabTapCount}
         school={currentSchool}
         onAssignmentCalendarChange={handleAssignmentCalendarChange}
+        legalUpdateAcknowledgment={{
+          required: !!userId && !hasAcceptedCurrentLegalDocuments(userSettings.legalAcknowledgment),
+          effectiveLabel: CURRENT_LEGAL_ACKNOWLEDGMENT.effectiveLabel,
+          saving: savingLegalAcknowledgment,
+          onAccept: handleAcceptLegalUpdate,
+        }}
       />
     );
   } else if (currentTab === 'timetable') {

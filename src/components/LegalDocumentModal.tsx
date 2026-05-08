@@ -1,5 +1,6 @@
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { CURRENT_LEGAL_ACKNOWLEDGMENT } from '../data/legal';
 
 export type LegalDocumentType = 'terms' | 'privacy' | 'licenses';
 
@@ -17,7 +18,7 @@ type LegalDocument = {
 const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
   terms: {
     title: 'Terms of Service',
-    updatedLabel: 'Last updated May 6, 2026',
+    updatedLabel: `Last updated ${CURRENT_LEGAL_ACKNOWLEDGMENT.effectiveLabel}`,
     sections: [
       {
         heading: 'Eligibility and Acceptance',
@@ -103,7 +104,7 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
   },
   privacy: {
     title: 'Privacy Policy',
-    updatedLabel: 'Last updated May 6, 2026',
+    updatedLabel: `Last updated ${CURRENT_LEGAL_ACKNOWLEDGMENT.effectiveLabel}`,
     sections: [
       {
         heading: 'Overview',
@@ -118,7 +119,7 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
       {
         heading: 'Information We Do Not Pull From Schools or LMSs',
         body:
-          'ClassMate does not pull Canvas rosters, LMS participant lists, official enrollment records, student IDs, transcripts, official grades, Canvas submissions, or registrar records. Shared-class indicators are not based on official school rosters. Course browsing may use public or aggregate course/section data, such as section status or enrollment counts, but those counts do not identify individual students.',
+          'ClassMate does not pull Canvas rosters, LMS participant lists, official enrollment records, student IDs, transcripts, official grades, Canvas submissions, private course files, or registrar records. Shared-class indicators are not based on official school rosters. Course browsing may use public or aggregate course/section data, such as section status or enrollment counts, but those counts do not identify individual students.',
       },
       {
         heading: 'Timetables, ClassMates, and Shared Classes',
@@ -173,7 +174,7 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
       {
         heading: 'Security',
         body:
-          'We use reasonable administrative, technical, and organizational measures designed to protect information, but no system is completely secure. You are also responsible for protecting access to your device and your university account credentials.',
+          'We use reasonable administrative, technical, and organizational measures designed to protect information, including privacy-by-default sharing settings where practical and limiting LMS calendar use to user-provided deadline feeds. No system is completely secure. You are also responsible for protecting access to your device and your university account credentials.',
       },
       {
         heading: 'Children',

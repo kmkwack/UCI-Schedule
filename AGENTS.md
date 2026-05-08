@@ -2672,3 +2672,53 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64scw (Use Temple wordmark logo)
 - **`assets/temple-logo-white-bg.png`** and **`assets/temple-logo-white-bg.svg`** — Replaced the Temple T-only mark with the source Temple University wordmark so the school picker logo includes readable Temple text.
 - **`src/components/UniversityLogo.tsx`** — Removed the Temple square-logo render override so the full wordmark can use the existing logo slot instead of being squeezed into an icon box.
+
+### Session 64scx (Keep full GSU department list)
+- **`src/screens/CoursePickerScreen.tsx`** — Fixed department loading so an authoritative `school_departments` list is not overwritten by the selected term's partial section departments. This restores the full Georgia State department list when a currently selected term only has a small subset of seeded sections.
+
+### Session 64scz (Normalize multi-school course display)
+- **`src/screens/CoursePickerScreen.tsx`** — Added display normalization for Supabase-backed course rows so all-caps catalog titles render in title case, `None`/blank/arranged meeting days show as `TBA`, course numbers are parsed more safely from multi-school codes, and section rows show a readable CRN/section id instead of internal source-prefixed IDs. This keeps newly seeded schools from looking oddly formatted in the course picker.
+
+### Session 64sdb (Hide empty departments for selected term)
+- **`src/screens/CoursePickerScreen.tsx`** — Changed department loading to scan the selected term's actual `sections` rows before trusting `school_departments`, then show only departments with real sections for that term when any exist. This prevents Temple and other newly seeded schools from showing departments whose metadata exists but whose section rows are missing for the selected term.
+
+### Session 64sda (Fix Temple sports and dining feeds)
+- **`src/data/schools.ts`** — Switched Temple Athletics from the old Sidearm page-component parser to the official `responsive-calendar.ashx` JSON feed so home sports events load from the current Owls calendar.
+- **`src/data/diningMenus.ts`** — Added Temple MyDiningHub meal-period GraphQL variables (`mealPeriod` + `DAILY` view) and fetches Breakfast/Lunch/Brunch/Dinner separately, because Temple's current menu API returns `null` without those parameters even on days with published menus.
+
+### Session 64sdc (Audit new-school sports dining and links)
+- **`src/data/schools.ts`** — Switched UC Riverside, Northeastern, and Georgia State Athletics to the same Sidearm `responsive-calendar.ashx` JSON feed path used by Temple so the home sports carousel does not depend on brittle calendar-page scraping.
+- **`src/data/diningMenus.ts`** — Added Northeastern University to supported dining schools with an official NU Dining menu fallback link, because the Dine On Campus API is Cloudflare-protected outside the browser but the official menu page is reachable.
+- **`src/screens/HomeScreen.tsx`** — Replaced broken new-school Campus Info links for UCR transit, Northeastern clubs, Temple study rooms, Temple transportation, and Temple clubs with verified live official URLs; added an official menu button to dining detail cards so fallback/external dining sources can still be opened directly.
+
+### Session 64sdd (Audit multi-school section coverage)
+- **`scripts/reconcile-school-terms.js`** — Added UC Riverside, Northeastern, Temple, and Georgia State to the school-term reconciliation script and changed reconciliation to count distinct departments from actual `sections` rows. This lets post-backfill metadata reflect real section coverage for the newly added Banner schools instead of stale department metadata.
+
+### Session 64sde (GSU live course fallback)
+- **`src/screens/CoursePickerScreen.tsx`** — Added a Georgia State Banner fallback for selected departments, including term-code resolution, Banner session setup, paginated section fetching, and normalization into the existing catalog row shape. When Supabase is missing a selected GSU department's current sections, the course picker now merges live GSU Banner rows so departments like ACCT/CSC can still show courses.
+
+### Session 64sdf (Speed up GSU course loading)
+- **`src/screens/CoursePickerScreen.tsx`** — Optimized the Georgia State Banner fallback so live Banner fetches run only for selected departments missing from Supabase, rather than every selected department. Added an in-memory Banner row cache keyed by school/term/department so repeated GSU department selections load immediately after the first fetch.
+
+### Session 64sdg (Unify new-school course loading)
+- **`src/data/schoolDepartments.ts`** — Added local department fallback lists for UC Riverside, Northeastern, Temple, and Georgia State so newly added schools show departments immediately like UCI, UMD, Cornell, Purdue, and UIUC instead of waiting on the first Supabase round trip.
+- **`src/screens/CoursePickerScreen.tsx`** — Generalized the live missing-section fallback from Georgia State only to all Banner-backed schools (`ucr`, `northeastern`, `temple`, `gsu`) with shared term lookup, session setup, pagination, row normalization, and caching. Banner fallback now runs only for selected departments missing from Supabase, keeping normal Supabase-backed course loading fast and consistent across schools.
+
+### Session 64sdh (Hard-audit school parity)
+- **`src/data/schools.ts`** — Fixed quarter-school current-term resolution so schools with a plain `Summer` term, such as UC Riverside, no longer default to UCI's `Summer10wk` term during summer months.
+- **`src/data/campusLocations.ts`** and **`scripts/report-unmapped-classrooms.js`** — Expanded generic/unmappable location filtering for Temple and Georgia State placeholders like `Main`, `Health Sciences`, `NAPPL`, `Atlanta`, `ARRNGD`, Japan/Rome abroad-campus labels, and hyphenated off-campus labels so map actions do not launch weak campus-wide searches.
+- **`scripts/audit-school-parity.js`** — Added a static parity audit that checks every supported school for department fallbacks, logo assets, dining branches, campus-info resources, sports feeds, Banner fallback/seeder sync, backfill registration, and term reconciliation coverage.
+- **`package.json`** — Added `npm run audit:schools` so the multi-school parity check can be rerun before/after adding another university.
+
+### Session 64sdi (Clarify course loading state)
+- **`src/screens/CoursePickerScreen.tsx`** — Replaced the ambiguous `Courses will appear here` empty text with an explicit loading card, spinner, and term/category-aware message while selected departments or global search results are being fetched. This makes slower newly added schools show visible progress instead of looking empty.
+
+### Session 64sdj (Privacy update acknowledgment)
+- **`src/data/legal.ts`** — Added current terms/privacy version constants plus a helper for checking whether the signed-in user has accepted the latest legal documents.
+- **`src/components/LegalDocumentModal.tsx`** — Updated the legal document effective date and tightened privacy/security wording around LMS data, private course files, and privacy-by-default sharing.
+- **`src/data/userPreferences.ts`** — Added `legalAcknowledgment` to persisted settings and changed the default timetable visibility to `private` so new users share less by default.
+- **`App.tsx`** — Loaded/saved legal acknowledgment data inside `user_settings.profile_details` and passed a home-screen acknowledgment callback for updated terms/privacy versions.
+- **`src/screens/HomeScreen.tsx`** — Added a compact home-screen privacy update card with Terms/Privacy links and one-tap checked acceptance so users can acknowledge future legal updates without leaving Home.
+
+### Session 64sdk (Keep GSU dining visible)
+- **`src/data/diningMenus.ts`** — Added a reusable official-menu fallback and returns a Georgia State Dining link when Nutrislice is reachable but today's GSU meal feeds contain no menu items. This keeps the Home dining card visible instead of disappearing on empty-menu days.

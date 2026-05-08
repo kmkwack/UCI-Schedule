@@ -10,6 +10,7 @@ import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } f
 import { fetchDiningMenusForSchool, schoolDiningMenusSupported, type DiningLocationMenu, type DiningMenuMeal } from '../data/diningMenus';
 import { academicSystemNoun, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
+import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
@@ -24,6 +25,12 @@ type Props = {
   bottomInset?: number;
   scrollToTopTrigger?: number;
   onAssignmentCalendarChange?: () => void;
+  legalUpdateAcknowledgment?: {
+    required: boolean;
+    effectiveLabel: string;
+    saving: boolean;
+    onAccept: () => Promise<boolean>;
+  };
 };
 
 type FriendRequestRow = {
@@ -1140,6 +1147,7 @@ export default function HomeScreen({
   bottomInset = 0,
   scrollToTopTrigger = 0,
   onAssignmentCalendarChange,
+  legalUpdateAcknowledgment,
 }: Props) {
   const { colors, isDark } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -1193,6 +1201,7 @@ export default function HomeScreen({
   const [calendarSetupKeyboardVisible, setCalendarSetupKeyboardVisible] = useState(false);
   const [calendarSetupKeyboardHeight, setCalendarSetupKeyboardHeight] = useState(0);
   const [showCampusInfo, setShowCampusInfo] = useState(false);
+  const [activeLegalDocument, setActiveLegalDocument] = useState<LegalDocumentType | null>(null);
   const [expandedCampusInfoCards, setExpandedCampusInfoCards] = useState<Record<string, boolean>>({});
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
@@ -2421,6 +2430,83 @@ export default function HomeScreen({
         </Text>
       </View>
 
+      {legalUpdateAcknowledgment?.required ? (
+        <View
+          style={{
+            marginBottom: 14,
+            borderRadius: 18,
+            padding: 16,
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.brand,
+            shadowColor: '#0f172a',
+            shadowOpacity: isDark ? 0 : 0.08,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 2,
+          }}
+        >
+          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                backgroundColor: colors.brandBg,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="shield-checkmark-outline" size={18} color={colors.brand} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
+                Privacy update
+              </Text>
+              <Text style={{ fontSize: 12, lineHeight: 18, color: colors.textSecondary, marginTop: 4 }}>
+                We tightened ClassMate's privacy language and defaults. Please review the {legalUpdateAcknowledgment.effectiveLabel} update.
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                <TouchableOpacity onPress={() => setActiveLegalDocument('terms')}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Terms</Text>
+                </TouchableOpacity>
+                <Text style={{ fontSize: 12, color: colors.textTertiary }}>•</Text>
+                <TouchableOpacity onPress={() => setActiveLegalDocument('privacy')}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Privacy Policy</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+          <TouchableOpacity
+            disabled={legalUpdateAcknowledgment.saving}
+            onPress={() => {
+              void legalUpdateAcknowledgment.onAccept();
+            }}
+            style={{
+              marginTop: 14,
+              borderRadius: 14,
+              paddingVertical: 12,
+              paddingHorizontal: 14,
+              backgroundColor: colors.brand,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              opacity: legalUpdateAcknowledgment.saving ? 0.7 : 1,
+            }}
+          >
+            {legalUpdateAcknowledgment.saving ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Ionicons name="checkbox-outline" size={18} color="white" />
+            )}
+            <Text style={{ fontSize: 13, fontWeight: '800', color: 'white' }}>
+              {legalUpdateAcknowledgment.saving ? 'Saving...' : 'I agree to the updated terms'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       <View style={{ marginBottom: 14, width: heroCardWidth }}>
         {activeHeroItem ? (
           <>
@@ -3477,6 +3563,13 @@ export default function HomeScreen({
         </View>
       </View>
       </ScrollView>
+
+      <LegalDocumentModal
+        visible={activeLegalDocument !== null}
+        document={activeLegalDocument ?? 'terms'}
+        onClose={() => setActiveLegalDocument(null)}
+        accentColor={colors.brand}
+      />
 
       <Modal
         visible={showCampusInfo}

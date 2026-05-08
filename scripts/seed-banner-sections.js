@@ -47,6 +47,91 @@ const BANNER_SCHOOLS = {
     baseUrl: 'https://registration.gosolar.gsu.edu',
     campus: 'Atlanta campus',
   },
+  gatech: {
+    school: 'Georgia Institute of Technology',
+    source: 'gatech-banner',
+    baseUrl: 'https://registration.banner.gatech.edu',
+    campus: 'Atlanta campus',
+  },
+  wvu: {
+    school: 'West Virginia University',
+    source: 'wvu-banner',
+    baseUrl: 'https://starss.wvu.edu',
+    campus: 'Morgantown campus',
+  },
+  shsu: {
+    school: 'Sam Houston State University',
+    source: 'shsu-banner',
+    baseUrl: 'https://banxeappx.shsu.edu',
+    campus: 'Huntsville campus',
+  },
+  denison: {
+    school: 'Denison University',
+    source: 'denison-banner',
+    baseUrl: 'https://banner.denison.edu',
+    campus: 'Granville campus',
+  },
+  uncg: {
+    school: 'University of North Carolina Greensboro',
+    source: 'uncg-banner',
+    baseUrl: 'https://erp-registration.uncg.edu',
+    campus: 'Greensboro campus',
+  },
+  eiu: {
+    school: 'Eastern Illinois University',
+    source: 'eiu-banner',
+    baseUrl: 'https://banner.eiu.edu',
+    campus: 'Charleston campus',
+  },
+  ung: {
+    school: 'University of North Georgia',
+    source: 'ung-banner',
+    baseUrl: 'https://ssb.ungprod.ung.edu',
+    campus: 'Dahlonega campus',
+  },
+  alfredstate: {
+    school: 'Alfred State College',
+    source: 'alfredstate-banner',
+    baseUrl: 'https://banner.alfredstate.edu',
+    campus: 'Alfred campus',
+  },
+  canisius: {
+    school: 'Canisius University',
+    source: 'canisius-banner',
+    baseUrl: 'https://banner.canisius.edu',
+    campus: 'Buffalo campus',
+  },
+  genesee: {
+    school: 'Genesee Community College',
+    source: 'genesee-banner',
+    baseUrl: 'https://bannerprod.genesee.edu',
+    campus: 'Batavia campus',
+  },
+  uvu: {
+    school: 'Utah Valley University',
+    source: 'uvu-banner',
+    baseUrl: 'https://userve.uvu.edu',
+    campus: 'Orem campus',
+    excludeTermDescriptions: ['non-credit'],
+  },
+  lehigh: {
+    school: 'Lehigh University',
+    source: 'lehigh-banner',
+    baseUrl: 'https://reg-prod.ec.lehigh.edu',
+    campus: 'Bethlehem campus',
+  },
+  rider: {
+    school: 'Rider University',
+    source: 'rider-banner',
+    baseUrl: 'https://reg-prod.ec.rider.edu',
+    campus: 'Lawrenceville campus',
+  },
+  wheatonma: {
+    school: 'Wheaton College (Massachusetts)',
+    source: 'wheatonma-banner',
+    baseUrl: 'https://banprodselfservice.wheatonma.edu:7341',
+    campus: 'Norton campus',
+  },
 };
 
 const SCHOOL_KEY = String(process.argv[2] ?? '').toLowerCase();
@@ -179,7 +264,9 @@ function termMatches(description, term, year) {
   const text = String(description ?? '').toLowerCase();
   if (!text.includes(String(year))) return false;
   if ((config.excludeTermDescriptions ?? []).some((blocked) => text.includes(blocked))) return false;
-  if (term === 'Summer1' || term === 'Summer2' || term === 'Summer10wk') return text.includes('summer');
+  if (term === 'Summer1') return /summer\s*(1|i)\b/.test(text) || text.includes('summer one') || text.includes('first summer');
+  if (term === 'Summer2') return /summer\s*(2|ii)\b/.test(text) || text.includes('summer two') || text.includes('second summer');
+  if (term === 'Summer10wk') return text.includes('summer') && (text.includes('10') || text.includes('ten') || text.includes('full'));
   return text.includes(String(term).toLowerCase());
 }
 

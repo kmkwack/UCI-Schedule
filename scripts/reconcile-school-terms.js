@@ -54,6 +54,132 @@ const SCHOOL_CONFIGS = [
     terms: ['Spring', 'Summer', 'Fall'],
     sourceTermCode: (year, term) => `${year}-${term.toLowerCase()}`,
   },
+  {
+    alias: 'ucr',
+    school: 'UC Riverside',
+    source: 'ucr-banner',
+    terms: ['Winter', 'Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'northeastern',
+    school: 'Northeastern University',
+    source: 'neu-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'temple',
+    school: 'Temple University',
+    source: 'temple-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'gsu',
+    school: 'Georgia State University',
+    source: 'gsu-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'gatech',
+    school: 'Georgia Institute of Technology',
+    source: 'gatech-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'wvu',
+    school: 'West Virginia University',
+    source: 'wvu-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'shsu',
+    school: 'Sam Houston State University',
+    source: 'shsu-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'denison',
+    school: 'Denison University',
+    source: 'denison-banner',
+    terms: ['Spring', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'uncg',
+    school: 'University of North Carolina Greensboro',
+    source: 'uncg-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'eiu',
+    school: 'Eastern Illinois University',
+    source: 'eiu-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'ung',
+    school: 'University of North Georgia',
+    source: 'ung-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'alfredstate',
+    school: 'Alfred State College',
+    source: 'alfredstate-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'canisius',
+    school: 'Canisius University',
+    source: 'canisius-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'genesee',
+    school: 'Genesee Community College',
+    source: 'genesee-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'uvu',
+    school: 'Utah Valley University',
+    source: 'uvu-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'lehigh',
+    school: 'Lehigh University',
+    source: 'lehigh-banner',
+    terms: ['Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'rider',
+    school: 'Rider University',
+    source: 'rider-banner',
+    terms: ['Spring', 'Summer1', 'Summer2', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
+  {
+    alias: 'wheatonma',
+    school: 'Wheaton College (Massachusetts)',
+    source: 'wheatonma-banner',
+    terms: ['Winter', 'Spring', 'Summer', 'Fall'],
+    sourceTermCode: (year, term) => `${year}-${term}`,
+  },
 ];
 
 function argValue(name, fallback = null) {
@@ -76,15 +202,31 @@ function quarterKey(year, term) {
   return `${year}-${term}`;
 }
 
-async function countSections(supabase, school, qKey) {
-  const { count, error } = await supabase
-    .from('sections')
-    .select('id', { count: 'exact', head: true })
-    .eq('school', school)
-    .eq('quarter_key', qKey);
+async function countSectionsAndDepartments(supabase, school, qKey) {
+  const departments = new Set();
+  let sectionCount = 0;
+  let from = 0;
+  const pageSize = 1000;
 
-  if (error) throw new Error(error.message);
-  return count ?? 0;
+  while (true) {
+    const { data, error, count } = await supabase
+      .from('sections')
+      .select('department', { count: from === 0 ? 'exact' : undefined })
+      .eq('school', school)
+      .eq('quarter_key', qKey)
+      .range(from, from + pageSize - 1);
+
+    if (error) throw new Error(error.message);
+    if (from === 0) sectionCount = count ?? 0;
+    (data ?? []).forEach((row) => {
+      if (row.department) departments.add(row.department);
+    });
+
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return { sectionCount, departmentCount: departments.size };
 }
 
 async function upsertTerms(supabase, rows) {
@@ -115,7 +257,7 @@ async function main() {
     for (let year = fromYear; year <= toYear; year += 1) {
       for (const term of config.terms) {
         const qKey = quarterKey(year, term);
-        const sectionCount = await countSections(supabase, config.school, qKey);
+        const { sectionCount, departmentCount } = await countSectionsAndDepartments(supabase, config.school, qKey);
         if (sectionCount === 0) continue;
 
         rows.push({
@@ -125,12 +267,12 @@ async function main() {
           source_term_code: config.sourceTermCode(year, term),
           status: 'seeded',
           section_count: sectionCount,
-          department_count: 0,
+          department_count: departmentCount,
           error_count: 0,
           last_seeded_at: now,
           notes: 'Reconciled from sections table',
         });
-        console.log(`  ✓ ${qKey.padEnd(16)} ${sectionCount.toLocaleString()} sections`);
+        console.log(`  ✓ ${qKey.padEnd(16)} ${sectionCount.toLocaleString()} sections, ${departmentCount.toLocaleString()} departments`);
       }
     }
 

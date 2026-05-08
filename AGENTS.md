@@ -2722,3 +2722,25 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sdk (Keep GSU dining visible)
 - **`src/data/diningMenus.ts`** — Added a reusable official-menu fallback and returns a Georgia State Dining link when Nutrislice is reachable but today's GSU meal feeds contain no menu items. This keeps the Home dining card visible instead of disappearing on empty-menu days.
+
+### Session 64sdl (Add public Banner-backed schools)
+- **`src/data/schools.ts`** — Added Georgia Tech, West Virginia, Sam Houston State, Denison, UNC Greensboro, Eastern Illinois, North Georgia, Alfred State, Canisius, Genesee, Utah Valley, Lehigh, Rider, and Wheaton College (Massachusetts) as supported universities using public class-search data. Also made semester current-term selection avoid unsupported summer terms for schools that only expose Spring/Fall.
+- **`src/data/schoolDepartments.ts`** — Added empty fallback entries for the new schools so the parity audit recognizes them while Course Picker can load their public Banner subjects live.
+- **`src/screens/CoursePickerScreen.tsx`** — Added public Banner fallback configs for the new schools, live subject-list loading from public `get_subject`, and stricter Summer1/Summer2 term matching so unseeded schools can still show department/course data from their public Banner search.
+- **`scripts/seed-banner-sections.js`** — Added public Banner seeder configs for the new schools, including Utah Valley non-credit term filtering and Summer1/Summer2 matching for Rider-style split summer terms.
+- **`scripts/backfill-school-sections.js`** — Registered the new Banner-backed schools in the multi-school backfill runner so seeded section data can be populated with the existing workflow.
+- **`scripts/reconcile-school-terms.js`** — Added the new schools to term reconciliation so `school_terms` can be rebuilt from seeded sections.
+- **`scripts/audit-school-parity.js`** — Relaxed logo, dining, and campus-info checks to allow explicit app fallbacks for newly supported public-catalog schools without blocking the school parity audit.
+
+### Session 64sdm (Connect new-school home links)
+- **`src/data/diningMenus.ts`** — Added official dining-menu fallback configs for the 14 newly supported public Banner schools so their Home dining card opens a real public dining page even when no structured menu API is available.
+- **`src/data/schools.ts`** — Added athletics feeds for the new schools where a public Sidearm JSON feed is available, and added Georgia Tech schedule-page sports coverage using the public RamblinWreck schedule pages.
+- **`src/data/sportsEvents.ts`** — Added a `wmt-table` schedule parser for Georgia Tech-style WMT schedule pages so sports cards can parse the actual rendered schedule table instead of returning empty results.
+- **`src/screens/HomeScreen.tsx`** — Added standardized Campus Info resources for every newly added school, including class search, jobs, library/study rooms, transportation, clubs, athletics, and student deals links.
+- **`scripts/audit-school-parity.js`** — Updated the parity audit to recognize centralized external dining fallbacks and standardized campus-info resources so future audits catch real omissions without flagging intentional link-backed support.
+
+### Session 64sdn (Audit multi-school feature parity)
+- **`src/screens/SettingsScreen.tsx`** — Replaced stale hardcoded supported-school help copy with a dynamic `SUPPORTED_UNIVERSITIES.length` count so the Help Center reflects the current school list.
+- **`src/data/diningMenus.ts`** — Replaced broken new-school dining fallback URLs for Georgia Tech, Denison, North Georgia, Alfred State, Canisius, Genesee, and Lehigh with verified public official dining pages.
+- **`src/screens/HomeScreen.tsx`** — Replaced broken Campus Info links for Georgia Tech, Sam Houston, Denison, UNCG, EIU, Alfred State, Canisius, Genesee, UVU, Lehigh, Rider, and Wheaton with verified public official pages; also fixed Georgia Tech athletics so it no longer redirects to the sports-medicine page.
+- **`scripts/audit-school-parity.js`** — Added stronger school parity checks for email domains, term lists, grade scales, dynamic Settings copy, and known-bad dining/Campus Info URLs so regressions are caught by `npm run audit:schools`.

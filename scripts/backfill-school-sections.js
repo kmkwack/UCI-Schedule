@@ -65,6 +65,90 @@ const SCHOOL_SEEDERS = {
     argsPrefix: ['gsu'],
     terms: ['Spring', 'Summer', 'Fall'],
   },
+  gatech: {
+    label: 'Georgia Institute of Technology',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['gatech'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  wvu: {
+    label: 'West Virginia University',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['wvu'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  shsu: {
+    label: 'Sam Houston State University',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['shsu'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  denison: {
+    label: 'Denison University',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['denison'],
+    terms: ['Spring', 'Fall'],
+  },
+  uncg: {
+    label: 'University of North Carolina Greensboro',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['uncg'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  eiu: {
+    label: 'Eastern Illinois University',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['eiu'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  ung: {
+    label: 'University of North Georgia',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['ung'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  alfredstate: {
+    label: 'Alfred State College',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['alfredstate'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  canisius: {
+    label: 'Canisius University',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['canisius'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  genesee: {
+    label: 'Genesee Community College',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['genesee'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  uvu: {
+    label: 'Utah Valley University',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['uvu'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  lehigh: {
+    label: 'Lehigh University',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['lehigh'],
+    terms: ['Spring', 'Summer', 'Fall'],
+  },
+  rider: {
+    label: 'Rider University',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['rider'],
+    terms: ['Spring', 'Summer1', 'Summer2', 'Fall'],
+  },
+  wheatonma: {
+    label: 'Wheaton College (Massachusetts)',
+    script: 'seed-banner-sections.js',
+    argsPrefix: ['wheatonma'],
+    terms: ['Winter', 'Spring', 'Summer', 'Fall'],
+  },
 };
 
 function parseArgs(argv) {
@@ -189,7 +273,7 @@ function printHelp() {
   node scripts/backfill-school-sections.js [options]
 
 Options:
-  --schools umd,cornell,purdue,uiuc,ucr,northeastern,temple,gsu
+  --schools umd,cornell,purdue,uiuc,ucr,northeastern,temple,gsu,gatech,wvu,shsu,denison,uncg,eiu,ung,alfredstate,canisius,genesee,uvu,lehigh,rider,wheatonma
                                   Schools to seed. Defaults to all.
   --terms Spring,Summer,Fall     Terms to seed. Defaults to each school's standard terms.
   --from-year 2019               First catalog year. Defaults to 2019.

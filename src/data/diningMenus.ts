@@ -23,6 +23,7 @@ export type DiningLocationMenu = {
   officialUrl: string;
   meals: DiningMenuMeal[];
   itemCount: number;
+  isExternalLinkOnly?: boolean;
 };
 
 type DateParts = {
@@ -35,6 +36,12 @@ type MyDiningHubConfig = {
   locationUrl: string;
   headers: Record<string, string>;
   campusUrlKey?: string;
+  mealPeriods?: MyDiningHubMealPeriod[];
+};
+
+type MyDiningHubMealPeriod = {
+  id: number;
+  name: string;
 };
 
 const UCI_DINING_GRAPHQL_URL = 'https://api.elevate-dxp.com/api/mesh/c087f756-cc72-4649-a36f-3a41b700c519/graphql';
@@ -47,6 +54,7 @@ const UCR_FOODPRO_URL = 'https://foodpro.ucr.edu/foodpro/shortmenu.aspx';
 const UCR_DINING_SERVICE_NAME = 'University of California, Riverside Dining Services';
 const TEMPLE_DINING_GRAPHQL_URL = 'https://api.elevate-dxp.com/api/mesh/c087f756-cc72-4649-a36f-3a41b700c519/graphql';
 const TEMPLE_DINING_LOCATION_URL = 'https://temple.mydininghub.com/en/location';
+const NEU_DINING_MENU_URL = 'https://nudining.com/public/menus';
 const GSU_NUTRISLICE_API_URL = 'https://gsu.api.nutrislice.com/menu/api/weeks';
 const GSU_NUTRISLICE_MENU_URL = 'https://gsu.nutrislice.com/menu';
 
@@ -88,6 +96,13 @@ const TEMPLE_DINING_LOCATIONS = [
   { id: 'morgan-hall-food-court', name: 'Morgan Hall Food Court' },
 ];
 
+const TEMPLE_DINING_MEAL_PERIODS: MyDiningHubMealPeriod[] = [
+  { id: 10, name: 'Breakfast' },
+  { id: 25, name: 'Lunch' },
+  { id: 13, name: 'Brunch' },
+  { id: 16, name: 'Dinner' },
+];
+
 const PURDUE_DINING_COURTS = ['Earhart', 'Ford', 'Hillenbrand', 'Wiley', 'Windsor'];
 
 const UIUC_DINING_OPTIONS = [
@@ -125,14 +140,88 @@ const GSU_DINING_LOCATIONS = [
   },
 ];
 
+const EXTERNAL_DINING_MENU_CONFIGS: Record<string, { id: string; name: string; url: string; itemName?: string }> = {
+  'Georgia Institute of Technology': {
+    id: 'gatech-official-menus',
+    name: 'Georgia Tech Dining',
+    url: 'https://dining.gatech.edu/dining-locations/hours-operation',
+  },
+  'West Virginia University': {
+    id: 'wvu-official-menus',
+    name: 'WVU Dining',
+    url: 'https://diningservices.wvu.edu/locations',
+  },
+  'Sam Houston State University': {
+    id: 'shsu-official-menus',
+    name: 'Sam Houston Dining',
+    url: 'https://dineoncampus.com/shsu',
+  },
+  'Denison University': {
+    id: 'denison-official-menus',
+    name: 'Denison Dining',
+    url: 'https://denison.nmcfood.com/menu-hours/',
+  },
+  'University of North Carolina Greensboro': {
+    id: 'uncg-official-menus',
+    name: 'UNCG Dining',
+    url: 'https://dineoncampus.com/uncg',
+  },
+  'Eastern Illinois University': {
+    id: 'eiu-official-menus',
+    name: 'EIU Dining',
+    url: 'https://www.eiu.edu/dining/',
+  },
+  'University of North Georgia': {
+    id: 'ung-official-menus',
+    name: 'UNG Dining',
+    url: 'https://ung.mydininghub.com/en',
+  },
+  'Alfred State College': {
+    id: 'alfredstate-official-menus',
+    name: 'Alfred State Dining',
+    url: 'https://www.acesalfred.com/campus-dining',
+  },
+  'Canisius University': {
+    id: 'canisius-official-menus',
+    name: 'Canisius Dining',
+    url: 'https://www.canisius.edu/student-experience/student-life-housing/campus-dining',
+  },
+  'Genesee Community College': {
+    id: 'genesee-official-menus',
+    name: 'Genesee Dining',
+    url: 'https://www.genesee.edu/dining/',
+  },
+  'Utah Valley University': {
+    id: 'uvu-official-menus',
+    name: 'UVU Dining',
+    url: 'https://www.uvu.edu/dining/',
+  },
+  'Lehigh University': {
+    id: 'lehigh-official-menus',
+    name: 'Lehigh Dining',
+    url: 'https://lehigh.sodexomyway.com/',
+  },
+  'Rider University': {
+    id: 'rider-official-menus',
+    name: 'Rider Dining',
+    url: 'https://www.rider.edu/student-life/housing-dining/dining',
+  },
+  'Wheaton College (Massachusetts)': {
+    id: 'wheatonma-official-menus',
+    name: 'Wheaton Dining',
+    url: 'https://wheatoncollege.cafebonappetit.com/',
+  },
+};
+
 export function schoolDiningMenusSupported(school: string) {
-  return [
+  return school in EXTERNAL_DINING_MENU_CONFIGS || [
     'UC Irvine',
     'University of Maryland, College Park',
     'Cornell University',
     'Purdue University',
     'University of Illinois Urbana-Champaign',
     'UC Riverside',
+    'Northeastern University',
     'Temple University',
     'Georgia State University',
   ].includes(school);
@@ -209,14 +298,61 @@ function buildLocationMenu(id: string, name: string, officialUrl: string, meals:
   return { id, name, officialUrl, meals: cleanedMeals, itemCount };
 }
 
+function buildExternalDiningMenu(id: string, name: string, officialUrl: string, itemName = 'Open official dining menus and hours'): DiningLocationMenu {
+  return {
+    id,
+    name,
+    officialUrl,
+    isExternalLinkOnly: true,
+    meals: [{
+      id: 'official',
+      name: 'Official menus',
+      stations: [{
+        id: 'links',
+        name: 'Official menu',
+        items: [{ id: 'official-menu', name: itemName }],
+      }],
+    }],
+    itemCount: 1,
+  };
+}
+
 async function fetchJson(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
   if (!response.ok) throw new Error(`Dining request returned ${response.status}`);
   return response.json();
 }
 
-async function fetchMyDiningHubLocationMenu(location: { id: string; name: string }, dateIso: string, config: MyDiningHubConfig) {
-  const query = `
+async function fetchMyDiningHubRecipeData(location: { id: string; name: string }, dateIso: string, config: MyDiningHubConfig, mealPeriod?: MyDiningHubMealPeriod) {
+  const query = mealPeriod ? `
+    query getLocationRecipes($campusUrlKey: String!, $locationUrlKey: String!, $date: String!, $mealPeriod: Int, $viewType: Commerce_MenuViewType!) {
+      getLocationRecipes(
+        campusUrlKey: $campusUrlKey
+        locationUrlKey: $locationUrlKey
+        date: $date
+        mealPeriod: $mealPeriod
+        viewType: $viewType
+      ) {
+        locationRecipesMap {
+          skus
+          stationSkuMap {
+            id
+            skus
+          }
+        }
+        products {
+          items {
+            name
+            sku
+            attributes {
+              name
+              value
+            }
+          }
+        }
+      }
+    }
+  ` : `
     query getLocationRecipes($campusUrlKey: String!, $locationUrlKey: String!, $date: String!) {
       getLocationRecipes(campusUrlKey: $campusUrlKey, locationUrlKey: $locationUrlKey, date: $date) {
         locationRecipesMap {
@@ -240,14 +376,23 @@ async function fetchMyDiningHubLocationMenu(location: { id: string; name: string
     }
   `;
   const params = new URLSearchParams({
+    operationName: 'getLocationRecipes',
     query,
-    variables: JSON.stringify({ campusUrlKey: config.campusUrlKey ?? 'campus', locationUrlKey: location.id, date: dateIso }),
+    variables: JSON.stringify({
+      campusUrlKey: config.campusUrlKey ?? 'campus',
+      locationUrlKey: location.id,
+      date: dateIso,
+      ...(mealPeriod ? { mealPeriod: mealPeriod.id, viewType: 'DAILY' } : {}),
+    }),
   });
   const json = await fetchJson(`${config.graphQlUrl}?${params.toString()}`, {
     method: 'GET',
     headers: config.headers,
   });
-  const data = json?.data?.getLocationRecipes;
+  return json?.data?.getLocationRecipes;
+}
+
+function buildMyDiningHubStations(data: any): DiningMenuStation[] {
   const products = (data?.products?.items ?? []) as Array<{ sku?: string; name?: string; attributes?: Array<{ name?: string; value?: unknown }> }>;
   const visibleBySku = new Map<string, DiningMenuItem>();
 
@@ -278,6 +423,26 @@ async function fetchMyDiningHubLocationMenu(location: { id: string; name: string
         items: orderedSkus.map((sku) => visibleBySku.get(sku)).filter((item): item is DiningMenuItem => Boolean(item)),
       }];
 
+  return stations;
+}
+
+async function fetchMyDiningHubLocationMenu(location: { id: string; name: string }, dateIso: string, config: MyDiningHubConfig) {
+  if (config.mealPeriods?.length) {
+    const meals = await Promise.all(config.mealPeriods.map(async (mealPeriod) => {
+      const data = await fetchMyDiningHubRecipeData(location, dateIso, config, mealPeriod);
+      const stations = buildMyDiningHubStations(data);
+      return {
+        id: String(mealPeriod.id),
+        name: mealPeriod.name,
+        stations,
+      } as DiningMenuMeal;
+    }));
+
+    return buildLocationMenu(location.id, location.name, `${config.locationUrl}/${location.id}`, meals);
+  }
+
+  const data = await fetchMyDiningHubRecipeData(location, dateIso, config);
+  const stations = buildMyDiningHubStations(data);
   return buildLocationMenu(location.id, location.name, `${config.locationUrl}/${location.id}`, [{
     id: 'today',
     name: 'Today',
@@ -301,8 +466,13 @@ async function fetchTempleDiningMenus(date: Date) {
     graphQlUrl: TEMPLE_DINING_GRAPHQL_URL,
     locationUrl: TEMPLE_DINING_LOCATION_URL,
     headers: TEMPLE_DINING_HEADERS,
+    mealPeriods: TEMPLE_DINING_MEAL_PERIODS,
   }).catch(() => null)));
   return menus.filter((menu): menu is DiningLocationMenu => Boolean(menu));
+}
+
+async function fetchNortheasternDiningMenus() {
+  return [buildExternalDiningMenu('northeastern-official-menus', 'Northeastern Dining', NEU_DINING_MENU_URL)];
 }
 
 function normalizeFoodProStationName(value: string) {
@@ -681,7 +851,10 @@ async function fetchGsuLocationMenu(location: typeof GSU_DINING_LOCATIONS[number
 async function fetchGsuDiningMenus(date: Date) {
   const { iso } = getDateParts(date, 'America/New_York');
   const menus = await Promise.all(GSU_DINING_LOCATIONS.map((location) => fetchGsuLocationMenu(location, iso).catch(() => null)));
-  return menus.filter((menu): menu is DiningLocationMenu => Boolean(menu));
+  const liveMenus = menus.filter((menu): menu is DiningLocationMenu => Boolean(menu));
+  return liveMenus.length > 0
+    ? liveMenus
+    : [buildExternalDiningMenu('gsu-official-menus', 'Georgia State Dining', GSU_NUTRISLICE_MENU_URL)];
 }
 
 export async function fetchDiningMenusForSchool(school: string, date = new Date()): Promise<DiningLocationMenu[]> {
@@ -691,7 +864,12 @@ export async function fetchDiningMenusForSchool(school: string, date = new Date(
   if (school === 'Purdue University') return fetchPurdueDiningMenus(date);
   if (school === 'University of Illinois Urbana-Champaign') return fetchUiucDiningMenus(date);
   if (school === 'UC Riverside') return fetchUcrDiningMenus(date);
+  if (school === 'Northeastern University') return fetchNortheasternDiningMenus();
   if (school === 'Temple University') return fetchTempleDiningMenus(date);
   if (school === 'Georgia State University') return fetchGsuDiningMenus(date);
+  const external = EXTERNAL_DINING_MENU_CONFIGS[school];
+  if (external) {
+    return [buildExternalDiningMenu(external.id, external.name, external.url, external.itemName)];
+  }
   return [];
 }

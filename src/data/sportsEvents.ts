@@ -475,6 +475,21 @@ function scheduleYearFromLines(lines: string[], month?: string) {
   return match ? parseInt(match[1], 10) : new Date().getFullYear();
 }
 
+function scheduleYearFromSeason(season: string | undefined, month: string) {
+  if (!season) return new Date().getFullYear();
+  const seasonMatch = season.match(/^(\d{4})\s*[-–]\s*(\d{2}|\d{4})$/);
+  if (seasonMatch) {
+    const startYear = parseInt(seasonMatch[1], 10);
+    const endYear = seasonMatch[2].length === 2
+      ? parseInt(`${String(startYear).slice(0, 2)}${seasonMatch[2]}`, 10)
+      : parseInt(seasonMatch[2], 10);
+    const monthIdx = MONTH_ABBR[month.slice(0, 3)];
+    if (monthIdx !== undefined) return monthIdx <= 7 ? endYear : startYear;
+  }
+  const yearMatch = season.match(/\b(\d{4})\b/);
+  return yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();
+}
+
 function scheduleDateFromLines(lines: string[], month: string, day: string, timeLabel: string): Date | null {
   return scheduleDateFromParts(scheduleYearFromLines(lines, month), month, day, timeLabel);
 }
@@ -637,6 +652,41 @@ function parseWmtScheduleEvents(text: string, page: SchedulePageConfig, options?
   return dedupeSportsEvents(filterSportsEventsByWindow(events, options).sort((a, b) => a.date.getTime() - b.date.getTime()));
 }
 
+function parseWmtTableScheduleEvents(text: string, page: SchedulePageConfig, options?: SportsFetchOptions) {
+  const selectedSeason = text.match(/<option value="([^"]+)"\s+selected>/i)?.[1];
+  const chunks = text.split(/<div class="schedule__table_item schedule__table_item--inner\s+/).slice(1);
+  const events: SportsEvent[] = [];
+
+  chunks.forEach((chunk) => {
+    const itemType = chunk.match(/^([a-z-]+)/i)?.[1]?.toLowerCase() ?? '';
+    const dateLabel = stripHtml(chunk.match(/<div class="title">\s*<time>([\s\S]*?)<\/time>/i)?.[1] ?? '');
+    const dateMatch = dateLabel.match(/(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)?\.?\s*([A-Za-z]{3,})\.?\s+(\d{1,2})/i);
+    if (!dateMatch) return;
+
+    const opponent = stripHtml(chunk.match(/<div class="name">\s*<span>([\s\S]*?)<\/span>/i)?.[1] ?? '');
+    if (!opponent) return;
+
+    const location = stripHtml(
+      chunk.match(/<div class="location">[\s\S]*?<div class="name">\s*<span>([\s\S]*?)<\/span>/i)?.[1] ?? ''
+    );
+    const locationIndex = chunk.indexOf('<div class="location">');
+    const afterLocation = locationIndex >= 0 ? chunk.slice(locationIndex) : chunk;
+    const afterLocationBlock = afterLocation.replace(/^[\s\S]*?<\/div>\s*<\/div>\s*/, '');
+    const timeLabel = stripHtml(afterLocationBlock.match(/^<span>([\s\S]*?)<\/span>/i)?.[1] ?? 'TBA');
+    if (/^(Canceled|Cancelled|Postponed)$/i.test(timeLabel)) return;
+
+    const [, month, day] = dateMatch;
+    const date = scheduleDateFromParts(scheduleYearFromSeason(selectedSeason, month), month, day, timeLabel);
+    if (!date) return;
+
+    const isHome = itemType !== 'away';
+    const event = makeSchedulePageEvent(page.sport, date, timeLabel, opponent, location || (isHome ? 'Venue TBA' : 'Away'), isHome);
+    if (event) events.push(event);
+  });
+
+  return dedupeSportsEvents(filterSportsEventsByWindow(events, options).sort((a, b) => a.date.getTime() - b.date.getTime()));
+}
+
 async function fetchSchedulePageEvents(feed: Extract<SportsFeedConfig, { kind: 'schedule-pages' }>, options?: SportsFetchOptions) {
   const fetchPage = async (page: SchedulePageConfig) => {
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -649,9 +699,9 @@ async function fetchSchedulePageEvents(feed: Extract<SportsFeedConfig, { kind: '
       });
       if (!response.ok) return [];
       const text = await response.text();
-      return page.parser === 'umd-text'
-        ? parseUmdTextScheduleEvents(text, page, options)
-        : parseWmtScheduleEvents(text, page, options);
+      if (page.parser === 'umd-text') return parseUmdTextScheduleEvents(text, page, options);
+      if (page.parser === 'wmt-table') return parseWmtTableScheduleEvents(text, page, options);
+      return parseWmtScheduleEvents(text, page, options);
     } catch {
       return [];
     } finally {

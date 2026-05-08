@@ -133,11 +133,390 @@ type ReviewSummary = {
   count: number;
 };
 
+type BannerFallbackConfig = {
+  baseUrl: string;
+  source: string;
+  excludeTermDescriptions?: string[];
+};
+
 const SECTION_SELECT_COLUMNS = 'id,code,title,department,professor,days,time,location,units,section_label';
 const COURSE_PICKER_ACCENT = '#4169E1';
 const COURSE_PICKER_ACCENT_SOFT = '#EEF3FF';
 const COURSE_PICKER_ACCENT_BORDER = '#C7D4FF';
 const departmentMemoryCache = new Map<string, string[]>();
+const bannerFallbackRowsCache = new Map<string, any[]>();
+const bannerTermCodeCache = new Map<string, string | null>();
+const bannerDepartmentsCache = new Map<string, string[]>();
+
+const BANNER_FALLBACKS: Record<string, BannerFallbackConfig> = {
+  ucr: {
+    baseUrl: 'https://registrationssb.ucr.edu',
+    source: 'ucr-banner',
+  },
+  northeastern: {
+    baseUrl: 'https://nubanner.neu.edu',
+    source: 'neu-banner',
+    excludeTermDescriptions: ['cps quarter', 'cps semester', 'law quarter', 'law semester'],
+  },
+  temple: {
+    baseUrl: 'https://prd-xereg.temple.edu',
+    source: 'temple-banner',
+  },
+  gsu: {
+    baseUrl: 'https://registration.gosolar.gsu.edu',
+    source: 'gsu-banner',
+  },
+  gatech: {
+    baseUrl: 'https://registration.banner.gatech.edu',
+    source: 'gatech-banner',
+  },
+  wvu: {
+    baseUrl: 'https://starss.wvu.edu',
+    source: 'wvu-banner',
+  },
+  shsu: {
+    baseUrl: 'https://banxeappx.shsu.edu',
+    source: 'shsu-banner',
+  },
+  denison: {
+    baseUrl: 'https://banner.denison.edu',
+    source: 'denison-banner',
+  },
+  uncg: {
+    baseUrl: 'https://erp-registration.uncg.edu',
+    source: 'uncg-banner',
+  },
+  eiu: {
+    baseUrl: 'https://banner.eiu.edu',
+    source: 'eiu-banner',
+  },
+  ung: {
+    baseUrl: 'https://ssb.ungprod.ung.edu',
+    source: 'ung-banner',
+  },
+  alfredstate: {
+    baseUrl: 'https://banner.alfredstate.edu',
+    source: 'alfredstate-banner',
+  },
+  canisius: {
+    baseUrl: 'https://banner.canisius.edu',
+    source: 'canisius-banner',
+  },
+  genesee: {
+    baseUrl: 'https://bannerprod.genesee.edu',
+    source: 'genesee-banner',
+  },
+  uvu: {
+    baseUrl: 'https://userve.uvu.edu',
+    source: 'uvu-banner',
+    excludeTermDescriptions: ['non-credit'],
+  },
+  lehigh: {
+    baseUrl: 'https://reg-prod.ec.lehigh.edu',
+    source: 'lehigh-banner',
+  },
+  rider: {
+    baseUrl: 'https://reg-prod.ec.rider.edu',
+    source: 'rider-banner',
+  },
+  wheatonma: {
+    baseUrl: 'https://banprodselfservice.wheatonma.edu:7341',
+    source: 'wheatonma-banner',
+  },
+};
+
+const TITLE_SMALL_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'into', 'nor', 'of', 'on', 'or', 'the', 'to', 'with']);
+
+function titleCaseWord(word: string, index: number) {
+  if (!word) return word;
+  if (/^[IVXLCDM]+$/i.test(word)) return word.toUpperCase();
+  const lower = word.toLowerCase();
+  if (index > 0 && TITLE_SMALL_WORDS.has(lower)) return lower;
+  return lower.replace(/[a-z]/, (letter) => letter.toUpperCase());
+}
+
+function formatCatalogTitle(value: string | null | undefined) {
+  const trimmed = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!trimmed) return '';
+  const letters = trimmed.replace(/[^A-Za-z]/g, '');
+  if (!letters || letters !== letters.toUpperCase()) return trimmed;
+  return trimmed.split(' ').map(titleCaseWord).join(' ');
+}
+
+function normalizeCourseDays(value: string | null | undefined) {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed || /^none$/i.test(trimmed) || /^arranged$/i.test(trimmed)) return 'TBA';
+  return trimmed;
+}
+
+function courseNumberFromRow(row: any) {
+  const code = String(row.code ?? '').trim();
+  const department = String(row.department ?? '').trim();
+  if (!department) return code;
+  if (code.toUpperCase().startsWith(`${department.toUpperCase()} `)) {
+    return code.slice(department.length).trim();
+  }
+  if (code.toUpperCase().startsWith(department.toUpperCase())) {
+    return code.slice(department.length).trim();
+  }
+  return code;
+}
+
+function displaySectionId(sectionId: string) {
+  return sectionId.split(':').pop() ?? sectionId;
+}
+
+function htmlDecode(value: string | null | undefined) {
+  return String(value ?? '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function bannerPath(config: BannerFallbackConfig, path: string) {
+  return `${config.baseUrl}/StudentRegistrationSsb/ssb${path}`;
+}
+
+function bannerTermMatches(description: string, term: Quarter, config: BannerFallbackConfig) {
+  const text = description.toLowerCase();
+  if (!text.includes(String(term.year))) return false;
+  if ((config.excludeTermDescriptions ?? []).some((blocked) => text.includes(blocked))) return false;
+  if (term.quarter === 'Summer1') return /summer\s*(1|i)\b/.test(text) || text.includes('summer one') || text.includes('first summer');
+  if (term.quarter === 'Summer2') return /summer\s*(2|ii)\b/.test(text) || text.includes('summer two') || text.includes('second summer');
+  if (term.quarter === 'Summer10wk') return text.includes('summer') && (text.includes('10') || text.includes('ten') || text.includes('full'));
+  return text.includes(term.quarter.toLowerCase());
+}
+
+async function resolveBannerTermCode(schoolId: string, config: BannerFallbackConfig, term: Quarter, credentials: RequestCredentials) {
+  const cacheKey = `${schoolId}:${quarterKey(term)}`;
+  if (bannerTermCodeCache.has(cacheKey)) return bannerTermCodeCache.get(cacheKey) ?? null;
+
+  const url = new URL(bannerPath(config, '/classSearch/getTerms'));
+  url.searchParams.set('offset', '1');
+  url.searchParams.set('max', '200');
+  url.searchParams.set('searchTerm', String(term.year));
+
+  try {
+    const response = await fetch(url.toString(), { credentials, headers: { Accept: 'application/json, text/plain, */*' } });
+    const terms = await response.json();
+    const match = Array.isArray(terms)
+      ? terms.find((row: any) => bannerTermMatches(htmlDecode(row.description ?? ''), term, config))
+      : null;
+    const code = match?.code ? String(match.code) : null;
+    bannerTermCodeCache.set(cacheKey, code);
+    return code;
+  } catch (_) {
+    bannerTermCodeCache.set(cacheKey, null);
+    return null;
+  }
+}
+
+function bannerDayLetters(meetingTime: any) {
+  if (!meetingTime) return 'TBA';
+  const days = [
+    ['monday', 'M'],
+    ['tuesday', 'T'],
+    ['wednesday', 'W'],
+    ['thursday', 'Th'],
+    ['friday', 'F'],
+    ['saturday', 'Sa'],
+    ['sunday', 'Su'],
+  ].filter(([key]) => meetingTime[key] === true).map(([, label]) => label);
+  return days.join('') || 'TBA';
+}
+
+function normalizeBannerTime(value: string | number | null | undefined) {
+  const raw = String(value ?? '').replace(/\D/g, '');
+  if (raw.length < 3) return null;
+  const padded = raw.padStart(4, '0');
+  return `${padded.slice(0, 2)}:${padded.slice(2, 4)}`;
+}
+
+function bannerTimeLabel(meetingTime: any) {
+  const start = normalizeBannerTime(meetingTime?.beginTime);
+  const end = normalizeBannerTime(meetingTime?.endTime);
+  return start && end ? `${start} - ${end}` : 'TBA';
+}
+
+function bannerLocation(meetingTime: any, row: any) {
+  const building = htmlDecode(meetingTime?.building ?? meetingTime?.buildingDescription ?? '').trim();
+  const room = String(meetingTime?.room ?? '').trim();
+  return [building, room].filter(Boolean).join(' ') || htmlDecode(row.campusDescription ?? '').trim() || null;
+}
+
+function bannerInstructors(row: any, meeting: any) {
+  const people = [
+    ...(Array.isArray(row.faculty) ? row.faculty : []),
+    ...(Array.isArray(meeting?.faculty) ? meeting.faculty : []),
+  ];
+  return [...new Set(people.map((person: any) => htmlDecode(person.displayName ?? '').trim()).filter(Boolean))];
+}
+
+function bannerSectionLabel(type: string | null | undefined, sectionNumber: string | number | null | undefined) {
+  const label = htmlDecode(type || 'Section');
+  const lower = label.toLowerCase();
+  const shortType = lower.includes('lecture') && lower.includes('lab')
+    ? 'Lec/Lab'
+    : lower.includes('lecture')
+      ? 'Lec'
+      : lower.includes('laboratory') || lower.includes(' lab')
+        ? 'Lab'
+        : lower.includes('discussion')
+          ? 'Dis'
+          : lower.includes('seminar')
+            ? 'Sem'
+            : label;
+  return [shortType, sectionNumber].filter(Boolean).join(' ');
+}
+
+function bannerRowToSectionRow(row: any, config: BannerFallbackConfig, schoolName: string, termCode: string, qKey: string) {
+  const meetings = Array.isArray(row.meetingsFaculty) ? row.meetingsFaculty : [];
+  const primaryMeeting = meetings.find((item: any) => item?.meetingTime?.beginTime && item?.meetingTime?.endTime)
+    ?? meetings[0]
+    ?? null;
+  const meetingTime = primaryMeeting?.meetingTime ?? null;
+  const department = String(row.subject ?? '').trim();
+  const courseNumber = String(row.courseNumber ?? '').trim();
+  const instructors = bannerInstructors(row, primaryMeeting);
+  const credits = Number(row.creditHourLow ?? row.creditHours ?? row.creditHourHigh);
+
+  return {
+    id: `${config.source}:${termCode}:${row.courseReferenceNumber}`,
+    school: schoolName,
+    quarter_key: qKey,
+    department,
+    code: `${department} ${courseNumber}`.trim(),
+    title: htmlDecode(row.courseTitle ?? ''),
+    professor: instructors[0] ?? '',
+    days: bannerDayLetters(meetingTime),
+    time: bannerTimeLabel(meetingTime),
+    location: bannerLocation(meetingTime, row),
+    units: Number.isFinite(credits) ? credits : null,
+    section_label: bannerSectionLabel(row.scheduleTypeDescription, row.sequenceNumber),
+  };
+}
+
+async function fetchBannerFallbackRows(
+  schoolId: string,
+  schoolName: string,
+  selectedQuarter: Quarter,
+  departments: string[],
+) {
+  const config = BANNER_FALLBACKS[schoolId];
+  if (!config || departments.length === 0) return [];
+
+  const credentials: RequestCredentials = 'include';
+  await fetch(bannerPath(config, '/classSearch/classSearch'), {
+    credentials,
+    headers: { Accept: 'text/html,application/xhtml+xml' },
+  }).catch(() => null);
+
+  const termCode = await resolveBannerTermCode(schoolId, config, selectedQuarter, credentials);
+  if (!termCode) return [];
+
+  const termBody = new URLSearchParams({
+    term: termCode,
+    studyPath: '',
+    studyPathText: '',
+    startDatepicker: '',
+    endDatepicker: '',
+  });
+  await fetch(bannerPath(config, '/term/search'), {
+    method: 'POST',
+    credentials,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: termBody.toString(),
+  }).catch(() => null);
+
+  const qKey = quarterKey(selectedQuarter);
+  const pageSize = 500;
+  const allRows: any[] = [];
+  for (const department of departments) {
+    const requestedDepartment = department.trim().toUpperCase();
+    const cacheKey = `${schoolId}:${qKey}:${requestedDepartment}`;
+    const cachedRows = bannerFallbackRowsCache.get(cacheKey);
+    if (cachedRows) {
+      allRows.push(...cachedRows);
+      continue;
+    }
+
+    const departmentRows: any[] = [];
+    let pageOffset = 0;
+    let fetchedCount = 0;
+    while (true) {
+      const url = new URL(bannerPath(config, '/searchResults/searchResults'));
+      url.searchParams.set('txt_subject', requestedDepartment);
+      url.searchParams.set('txt_courseNumber', '');
+      url.searchParams.set('txt_term', termCode);
+      url.searchParams.set('startDatepicker', '');
+      url.searchParams.set('endDatepicker', '');
+      url.searchParams.set('pageOffset', String(pageOffset));
+      url.searchParams.set('pageMaxSize', String(pageSize));
+      url.searchParams.set('sortColumn', 'subjectDescription');
+      url.searchParams.set('sortDirection', 'asc');
+
+      const response = await fetch(url.toString(), { credentials, headers: { Accept: 'application/json, text/plain, */*' } });
+      const json = await response.json();
+      if (json?.success !== true) break;
+      const rows = Array.isArray(json.data) ? json.data : [];
+      fetchedCount += rows.length;
+      departmentRows.push(
+        ...rows
+          .filter((row: any) => String(row.subject ?? '').trim().toUpperCase() === requestedDepartment)
+          .map((row: any) => bannerRowToSectionRow(row, config, schoolName, termCode, qKey))
+      );
+
+      const total = Number(json.totalCount ?? fetchedCount);
+      if (rows.length === 0 || fetchedCount >= total) break;
+      pageOffset += pageSize;
+    }
+    bannerFallbackRowsCache.set(cacheKey, departmentRows);
+    allRows.push(...departmentRows);
+  }
+  return allRows;
+}
+
+async function fetchBannerDepartmentsForTerm(schoolId: string, selectedQuarter: Quarter) {
+  const config = BANNER_FALLBACKS[schoolId];
+  if (!config) return [];
+
+  const cacheKey = `${schoolId}:${quarterKey(selectedQuarter)}:departments`;
+  const cached = bannerDepartmentsCache.get(cacheKey);
+  if (cached) return cached;
+
+  const credentials: RequestCredentials = 'include';
+  await fetch(bannerPath(config, '/classSearch/classSearch'), {
+    credentials,
+    headers: { Accept: 'text/html,application/xhtml+xml' },
+  }).catch(() => null);
+
+  const termCode = await resolveBannerTermCode(schoolId, config, selectedQuarter, credentials);
+  if (!termCode) {
+    bannerDepartmentsCache.set(cacheKey, []);
+    return [];
+  }
+
+  try {
+    const url = new URL(bannerPath(config, '/classSearch/get_subject'));
+    url.searchParams.set('searchTerm', '');
+    url.searchParams.set('term', termCode);
+    url.searchParams.set('offset', '1');
+    url.searchParams.set('max', '500');
+    const response = await fetch(url.toString(), { credentials, headers: { Accept: 'application/json, text/plain, */*' } });
+    const json = await response.json();
+    const departments = Array.isArray(json)
+      ? [...new Set(json.map((row: any) => String(row.code ?? '').trim()).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b))
+      : [];
+    bannerDepartmentsCache.set(cacheKey, departments);
+    return departments;
+  } catch (_) {
+    bannerDepartmentsCache.set(cacheKey, []);
+    return [];
+  }
+}
 
 function getDaysArray(daysString: string) {
   const result: string[] = [];
@@ -337,10 +716,12 @@ export default function CoursePickerScreen({
     const rawSections: Record<string, any[]> = {};
 
     rows.forEach((row: any) => {
-      const courseNumber = row.code.slice(row.department.length).trim();
-      const courseId = `${row.department}${courseNumber}`;
+      const department = String(row.department ?? '').trim();
+      const courseNumber = courseNumberFromRow(row);
+      const courseId = `${department}::${courseNumber}`;
+      const title = formatCatalogTitle(row.title);
       if (!catalogMap[courseId]) {
-        catalogMap[courseId] = { id: courseId, department: row.department, courseNumber, title: row.title, units: row.units?.toString() };
+        catalogMap[courseId] = { id: courseId, department, courseNumber, title, units: row.units?.toString() };
         rawSections[courseId] = [];
       } else {
         const existing = parseInt(catalogMap[courseId].units ?? '0') || 0;
@@ -362,14 +743,14 @@ export default function CoursePickerScreen({
       sections[courseId] = sorted.map((row: any): Course => ({
         id: row.id.split('::')[0],
         code: row.code,
-        title: row.title,
-        professor: row.professor ?? '',
-        days: row.days ?? 'TBA',
+        title: formatCatalogTitle(row.title),
+        professor: String(row.professor ?? '').trim(),
+        days: normalizeCourseDays(row.days),
         time: row.time ?? 'TBA',
-        department: row.department,
-        location: row.location ?? undefined,
+        department: String(row.department ?? '').trim(),
+        location: String(row.location ?? '').trim() || undefined,
         units: row.units ?? undefined,
-        sectionLabel: row.section_label ?? undefined,
+        sectionLabel: String(row.section_label ?? '').replace(/\s+/g, ' ').trim() || undefined,
       }));
     });
 
@@ -441,6 +822,7 @@ export default function CoursePickerScreen({
       const PAGE_SIZE = 1000;
       let sectionError: any = null;
       let selectedTermDepartmentCount = 0;
+      const selectedTermDepartmentsSet = new Set<string>();
 
       async function scanSectionDepartments(queryQuarterKey?: string) {
         let from = 0;
@@ -463,7 +845,10 @@ export default function CoursePickerScreen({
           (data ?? []).forEach((row: any) => {
             if (row.department) {
               departmentsSet.add(row.department);
-              if (queryQuarterKey) selectedTermDepartmentCount += 1;
+              if (queryQuarterKey) {
+                selectedTermDepartmentCount += 1;
+                selectedTermDepartmentsSet.add(row.department);
+              }
             }
           });
 
@@ -472,8 +857,33 @@ export default function CoursePickerScreen({
         }
       }
 
+      await scanSectionDepartments(qk);
+      if (cancelled) return;
+
+      if (selectedTermDepartmentsSet.size > 0) {
+        const sourceDepartments = hasAuthoritativeDepartments || localDepartmentOptions.length > 0
+          ? departmentsSet
+          : selectedTermDepartmentsSet;
+        const departments = [...sourceDepartments].sort((a, b) => a.localeCompare(b));
+        departmentMemoryCache.set(school, departments);
+        setAvailableDepartments(departments);
+        return;
+      }
+
+      if (BANNER_FALLBACKS[schoolConfig.id]) {
+        const liveDepartments = await fetchBannerDepartmentsForTerm(schoolConfig.id, selectedQuarter);
+        if (cancelled) return;
+        liveDepartments.forEach((department) => departmentsSet.add(department));
+        if (liveDepartments.length > 0) {
+          const departments = [...departmentsSet].sort((a, b) => a.localeCompare(b));
+          departmentMemoryCache.set(school, departments);
+          setAvailableDepartments(departments);
+          return;
+        }
+      }
+
       if (!hasAuthoritativeDepartments) {
-        await scanSectionDepartments(qk);
+        await scanSectionDepartments();
       }
 
       // If the selected term has no rows yet, still show the school's departments
@@ -499,7 +909,7 @@ export default function CoursePickerScreen({
     return () => {
       cancelled = true;
     };
-  }, [localDepartmentOptions, selectedQuarter, school]);
+  }, [localDepartmentOptions, schoolConfig.id, selectedQuarter, school]);
 
   // Global search: fires when search text >= 2 and no category selected
   useEffect(() => {
@@ -624,7 +1034,23 @@ export default function CoursePickerScreen({
           .order('code', { ascending: true });
         if (cancelled) return;
         if (error) { console.warn('Supabase fetch failed:', error); return; }
-        const { catalog, sections } = buildCatalogFromRows(data ?? []);
+        let rows = data ?? [];
+        if (BANNER_FALLBACKS[schoolConfig.id]) {
+          const departmentsWithRows = new Set(rows.map((row: any) => String(row.department ?? '').trim().toUpperCase()).filter(Boolean));
+          const missingDepartments = selectedDepts.filter((dept) => !departmentsWithRows.has(dept.trim().toUpperCase()));
+          try {
+            if (missingDepartments.length > 0) {
+              const liveRows = await fetchBannerFallbackRows(schoolConfig.id, school, selectedQuarter, missingDepartments);
+              const merged = new Map<string, any>();
+              rows.forEach((row: any) => merged.set(String(row.id), row));
+              liveRows.forEach((row: any) => merged.set(String(row.id), row));
+              rows = [...merged.values()];
+            }
+          } catch (fallbackError) {
+            console.warn('Banner fallback fetch failed:', fallbackError);
+          }
+        }
+        const { catalog, sections } = buildCatalogFromRows(rows);
         setCatalogCourses(catalog);
         setSectionsMap(sections);
       } finally {
@@ -1037,6 +1463,13 @@ export default function CoursePickerScreen({
       ? selectedDepts[0]
       : `${selectedDepts.length} departments selected`
     : selectedGELabel;
+  const isCourseListLoading = (catalogLoading && hasSelectedCategory) || (globalSearchLoading && isGlobalSearch);
+  const courseLoadingTitle = isGlobalSearch ? 'Searching courses' : 'Loading courses';
+  const courseLoadingSubtitle = isGlobalSearch
+    ? `Checking ${termLabel(selectedQuarter, school)} for "${searchText.trim()}".`
+    : selectedCategorySummary
+      ? `Checking ${selectedCategorySummary} for ${termLabel(selectedQuarter, school)}. New schools can take a few seconds the first time.`
+      : `Checking ${termLabel(selectedQuarter, school)} now.`;
 
   const clearSelectedCategory = () => {
     setSelectedDepts([]);
@@ -1450,12 +1883,38 @@ export default function CoursePickerScreen({
               Search by course name, code, or professor — or select departments below
             </Text>
           </View>
+        ) : isCourseListLoading ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingBottom: 60 }}>
+            <View
+              style={{
+                width: '100%',
+                maxWidth: 340,
+                alignItems: 'center',
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: '#dbe4ff',
+                backgroundColor: '#f8fbff',
+                paddingHorizontal: 20,
+                paddingVertical: 24,
+              }}
+            >
+              <ActivityIndicator color={courseAccent} size="small" />
+              <Text style={{ color: '#111827', fontSize: 16, fontWeight: '800', marginTop: 14, textAlign: 'center' }}>
+                {courseLoadingTitle}
+              </Text>
+              <Text style={{ color: '#6b7280', fontSize: 13, lineHeight: 19, marginTop: 6, textAlign: 'center' }}>
+                {courseLoadingSubtitle}
+              </Text>
+            </View>
+          </View>
         ) : filteredCatalog.length === 0 ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
-            <Text style={{ color: '#9ca3af', fontSize: 15 }}>
-              {(catalogLoading && hasSelectedCategory) || (globalSearchLoading && isGlobalSearch)
-                ? 'Courses will appear here'
-                : 'No courses found'}
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingBottom: 60 }}>
+            <Ionicons name="school-outline" size={30} color="#d1d5db" style={{ marginBottom: 10 }} />
+            <Text style={{ color: '#111827', fontSize: 15, fontWeight: '700', textAlign: 'center' }}>
+              No courses found
+            </Text>
+            <Text style={{ color: '#9ca3af', fontSize: 13, lineHeight: 19, marginTop: 5, textAlign: 'center' }}>
+              Try another department, search term, or switch terms.
             </Text>
           </View>
         ) : (
@@ -1527,6 +1986,7 @@ export default function CoursePickerScreen({
                           const waitlistLabel = enroll?.status === 'Waitl'
                             ? `${enroll.waitlist}/${enroll.waitlistCap} waitlist`
                             : null;
+                          const sectionDisplayId = displaySectionId(course.id);
 
                           return (
                             <TouchableOpacity
@@ -1547,7 +2007,7 @@ export default function CoursePickerScreen({
                                 <View style={{ flex: 1 }}>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                                     <Text style={{ fontWeight: '600', fontSize: 13, color: '#111827' }}>
-                                      {course.id} · {course.sectionLabel ?? course.id}
+                                      {sectionDisplayId} · {course.sectionLabel ?? sectionDisplayId}
                                     </Text>
                                     {statusLabel && (
                                       <View style={{ backgroundColor: `${statusColor}18`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>

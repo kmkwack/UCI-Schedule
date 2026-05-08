@@ -105,11 +105,21 @@ function isUnmappableLocation(rawLocation) {
     normalized === 'no' ||
     normalized === 'none' ||
     normalized === 'null' ||
+    normalized === 'main' ||
+    normalized === 'na' ||
+    normalized === 'health sciences' ||
+    normalized === 'atlanta' ||
+    normalized === 'arrngd' ||
+    normalized === 'japan' ||
+    normalized === 'rome' ||
     normalized === 'online' ||
     normalized === 'on line' ||
     normalized === 'bos' ||
     normalized === 'boston' ||
     normalized === 'riverside' ||
+    normalized.startsWith('nappl') ||
+    normalized.startsWith('arrngd') ||
+    normalized.startsWith('japan ') ||
     normalized.startsWith('bos ') ||
     normalized.startsWith('boston ') ||
     normalized.startsWith('no ') ||
@@ -119,6 +129,7 @@ function isUnmappableLocation(rawLocation) {
     normalized.includes('location pending') ||
     normalized.includes('main campus') ||
     normalized.includes('offcmp') ||
+    normalized.includes('off-campus') ||
     normalized.includes('off campus')
   );
 }

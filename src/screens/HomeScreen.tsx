@@ -305,6 +305,67 @@ function createFallbackCampusInfoResources(school: string): CampusInfoResource[]
   ];
 }
 
+type StandardCampusInfoConfig = {
+  schoolShortName: string;
+  registrationTitle?: string;
+  registrationUrl: string;
+  handshakeSlug?: string;
+  jobsSubtitle: string;
+  libraryUrl: string;
+  studyRoomsUrl: string;
+  transitTitle?: string;
+  transitSubtitle?: string;
+  transitUrl: string;
+  clubsTitle?: string;
+  clubsSubtitle?: string;
+  clubsUrl: string;
+  athleticsUrl?: string;
+};
+
+function createStandardCampusInfoResources(config: StandardCampusInfoConfig): CampusInfoResource[] {
+  const athleticsResource = config.athleticsUrl
+    ? [createSingleLinkResource(
+      'athletics',
+      'Athletics',
+      'Schedules and team links',
+      'trophy-outline',
+      '#F97316',
+      '#fff7ed',
+      { id: 'athletics-site', title: 'Athletics', subtitle: 'Open official athletics site', url: config.athleticsUrl },
+    )]
+    : [];
+
+  return [
+    createRegistrationResource(
+      config.registrationTitle ?? 'Class Search',
+      'Register and manage classes',
+      config.registrationUrl,
+    ),
+    createJobsResource(handshakeJobSearchUrl(config.handshakeSlug), config.jobsSubtitle),
+    createLibraryResource(config.schoolShortName, config.libraryUrl, config.studyRoomsUrl),
+    createSingleLinkResource(
+      'transit',
+      config.transitTitle ?? 'Transit',
+      config.transitSubtitle ?? 'Campus shuttle and transportation links',
+      'bus-outline',
+      '#0EA5E9',
+      '#f0f9ff',
+      { id: 'transportation', title: config.transitTitle ?? 'Transportation', subtitle: config.transitSubtitle ?? 'Parking, shuttle, and transit info', url: config.transitUrl },
+    ),
+    createSingleLinkResource(
+      'clubs',
+      'Clubs',
+      'Student organizations and campus groups',
+      'people-outline',
+      '#8B5CF6',
+      '#f5f3ff',
+      { id: 'organizations', title: config.clubsTitle ?? 'Organizations', subtitle: config.clubsSubtitle ?? 'Browse student organizations', url: config.clubsUrl },
+    ),
+    ...athleticsResource,
+    STUDENT_DEALS_RESOURCE,
+  ];
+}
+
 const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
   'UC Irvine': [
     createRegistrationResource(
@@ -461,7 +522,7 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       'bus-outline',
       '#0EA5E9',
       '#f0f9ff',
-      { id: 'ucr-transportation', title: 'Transportation', subtitle: 'Bus, shuttle, and transit options', url: 'https://transportation.ucr.edu/transportation-options/bus' },
+      { id: 'ucr-transportation', title: 'Transportation', subtitle: 'Bus, shuttle, and transit options', url: 'https://transportation.ucr.edu/bus' },
     ),
     createSingleLinkResource(
       'clubs',
@@ -498,7 +559,7 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       'people-outline',
       '#8B5CF6',
       '#f5f3ff',
-      { id: 'neu-engage', title: 'Engage', subtitle: 'Browse organizations', url: 'https://neu.campuslabs.com/engage/organizations' },
+      { id: 'neu-engage', title: 'NU Engage', subtitle: 'Browse organizations', url: 'https://engage.northeastern.edu/club_signup' },
     ),
     STUDENT_DEALS_RESOURCE,
   ],
@@ -509,7 +570,7 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       'https://prd-xereg.temple.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
     ),
     createJobsResource(handshakeJobSearchUrl('temple'), 'Temple jobs and internships'),
-    createLibraryResource('Temple', 'https://library.temple.edu/', 'https://temple.libcal.com/'),
+    createLibraryResource('Temple', 'https://library.temple.edu/', 'https://charlesstudy.temple.edu/'),
     createSingleLinkResource(
       'transit',
       'Transit',
@@ -517,7 +578,7 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       'bus-outline',
       '#0EA5E9',
       '#f0f9ff',
-      { id: 'temple-transportation', title: 'Transportation', subtitle: 'Parking and transportation', url: 'https://campusoperations.temple.edu/parking-transportation' },
+      { id: 'temple-transportation', title: 'Transportation', subtitle: 'Parking, shuttle, and transit help', url: 'https://temple-university.helpscoutdocs.com/article/1247-parking-transportation' },
     ),
     createSingleLinkResource(
       'clubs',
@@ -526,7 +587,7 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       'people-outline',
       '#8B5CF6',
       '#f5f3ff',
-      { id: 'temple-engage', title: 'OwlConnect', subtitle: 'Browse organizations', url: 'https://temple.campuslabs.com/engage/organizations' },
+      { id: 'temple-engage', title: 'OwlConnect', subtitle: 'Browse organizations', url: 'https://app.suitable.co/student-organizations/AylYSXoFG3YR?tab=profile' },
     ),
     STUDENT_DEALS_RESOURCE,
   ],
@@ -558,6 +619,187 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
     ),
     STUDENT_DEALS_RESOURCE,
   ],
+  'Georgia Institute of Technology': createStandardCampusInfoResources({
+    schoolShortName: 'Georgia Tech',
+    registrationUrl: 'https://registration.banner.gatech.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'gatech',
+    jobsSubtitle: 'Georgia Tech jobs and internships',
+    libraryUrl: 'https://library.gatech.edu/',
+    studyRoomsUrl: 'https://library.gatech.edu/spaces',
+    transitUrl: 'https://www.pts.gatech.edu/',
+    clubsTitle: 'Engage',
+    clubsUrl: 'https://gatech.campuslabs.com/engage/organizations',
+    athleticsUrl: 'https://ramblinwreck.com/sports/genrel/',
+  }),
+  'West Virginia University': createStandardCampusInfoResources({
+    schoolShortName: 'WVU',
+    registrationUrl: 'https://starss.wvu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'wvu',
+    jobsSubtitle: 'WVU jobs and internships',
+    libraryUrl: 'https://library.wvu.edu/',
+    studyRoomsUrl: 'https://wvu.libcal.com/',
+    transitUrl: 'https://transportation.wvu.edu/',
+    clubsTitle: 'WVU Engage',
+    clubsUrl: 'https://wvuengage.wvu.edu/organizations',
+    athleticsUrl: 'https://wvusports.com/calendar',
+  }),
+  'Sam Houston State University': createStandardCampusInfoResources({
+    schoolShortName: 'SHSU',
+    registrationUrl: 'https://banxeappx.shsu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'shsu',
+    jobsSubtitle: 'Sam Houston jobs and internships',
+    libraryUrl: 'https://library.shsu.edu/',
+    studyRoomsUrl: 'https://shsu.libcal.com/reserve',
+    transitUrl: 'https://www.shsu.edu/offices-departments/parking/',
+    clubsTitle: 'OrgLINK',
+    clubsUrl: 'https://shsu.campuslabs.com/engage/organizations',
+    athleticsUrl: 'https://gobearkats.com/calendar',
+  }),
+  'Denison University': createStandardCampusInfoResources({
+    schoolShortName: 'Denison',
+    registrationUrl: 'https://banner.denison.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'denison',
+    jobsSubtitle: 'Denison jobs and internships',
+    libraryUrl: 'https://denison.edu/campus/library',
+    studyRoomsUrl: 'https://denison.libcal.com/',
+    transitUrl: 'https://denison.edu/campus/granville-and-beyond/transportation-shuttles',
+    clubsTitle: 'Organizations',
+    clubsUrl: 'https://denison.edu/campus/student-organizations',
+    athleticsUrl: 'https://denisonbigred.com/calendar',
+  }),
+  'University of North Carolina Greensboro': createStandardCampusInfoResources({
+    schoolShortName: 'UNCG',
+    registrationUrl: 'https://erp-registration.uncg.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'uncg',
+    jobsSubtitle: 'UNCG jobs and internships',
+    libraryUrl: 'https://library.uncg.edu/',
+    studyRoomsUrl: 'https://library.uncg.edu/spaces/',
+    transitUrl: 'https://parking.uncg.edu/transportation/',
+    clubsTitle: 'Spartan Connect',
+    clubsUrl: 'https://www.uncg.edu/campus-life-resources/groups-activities-programs/student-groups-organizations/',
+    athleticsUrl: 'https://uncgspartans.com/calendar',
+  }),
+  'Eastern Illinois University': createStandardCampusInfoResources({
+    schoolShortName: 'EIU',
+    registrationUrl: 'https://banner.eiu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'eiu',
+    jobsSubtitle: 'EIU jobs and internships',
+    libraryUrl: 'https://www.eiu.edu/booth/',
+    studyRoomsUrl: 'https://eiu.libcal.com/reserve/studyrooms',
+    transitTitle: 'Parking',
+    transitSubtitle: 'Parking and campus transportation links',
+    transitUrl: 'https://www.eiu.edu/police/parkinginfo.php',
+    clubsTitle: 'PantherLife',
+    clubsUrl: 'https://www.eiu.edu/slo/',
+    athleticsUrl: 'https://eiupanthers.com/calendar',
+  }),
+  'University of North Georgia': createStandardCampusInfoResources({
+    schoolShortName: 'UNG',
+    registrationUrl: 'https://ssb.ungprod.ung.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'ung',
+    jobsSubtitle: 'UNG jobs and internships',
+    libraryUrl: 'https://ung.edu/libraries/',
+    studyRoomsUrl: 'https://ung.libcal.com/spaces',
+    transitTitle: 'Parking',
+    transitSubtitle: 'Parking and transportation services',
+    transitUrl: 'https://ung.edu/parking-transportation/',
+    clubsTitle: 'UNiFY',
+    clubsUrl: 'https://ung.campuslabs.com/engage/organizations',
+    athleticsUrl: 'https://ungathletics.com/calendar',
+  }),
+  'Alfred State College': createStandardCampusInfoResources({
+    schoolShortName: 'Alfred State',
+    registrationUrl: 'https://banner.alfredstate.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'alfredstate',
+    jobsSubtitle: 'Alfred State jobs and internships',
+    libraryUrl: 'https://library.alfredstate.edu/c.php?g=372677&p=2556186',
+    studyRoomsUrl: 'https://alfredstate.libcal.com/',
+    transitTitle: 'Parking',
+    transitSubtitle: 'Parking and transportation links',
+    transitUrl: 'https://www.alfredstate.edu/university-police/parking-campus',
+    clubsTitle: 'Pioneer Link',
+    clubsUrl: 'https://pioneerlink.alfredstate.edu/organizations',
+    athleticsUrl: 'https://alfredstateathletics.com/calendar',
+  }),
+  'Canisius University': createStandardCampusInfoResources({
+    schoolShortName: 'Canisius',
+    registrationUrl: 'https://banner.canisius.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'canisius',
+    jobsSubtitle: 'Canisius jobs and internships',
+    libraryUrl: 'https://library.canisius.edu/',
+    studyRoomsUrl: 'https://canisius.libcal.com/',
+    transitTitle: 'Parking',
+    transitSubtitle: 'Parking and transportation links',
+    transitUrl: 'https://www.canisius.edu/student-experience/student-support-services/public-safety',
+    clubsTitle: 'GriffLink',
+    clubsUrl: 'https://www.canisius.edu/student-experience/student-life-housing/student-engagement-leadership-development/clubs',
+    athleticsUrl: 'https://gogriffs.com/calendar',
+  }),
+  'Genesee Community College': createStandardCampusInfoResources({
+    schoolShortName: 'Genesee',
+    registrationUrl: 'https://bannerprod.genesee.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    jobsSubtitle: 'Genesee jobs and internships',
+    libraryUrl: 'https://www.genesee.edu/academics/library/',
+    studyRoomsUrl: 'https://www.genesee.edu/academics/library/',
+    transitUrl: 'https://www.genesee.edu/about/offices-departments/campus-safety/parking/',
+    clubsTitle: 'Clubs',
+    clubsUrl: 'https://www.genesee.edu/campus-life/student-groups/',
+    athleticsUrl: 'https://www.gccathletics.com/landing/index',
+  }),
+  'Utah Valley University': createStandardCampusInfoResources({
+    schoolShortName: 'UVU',
+    registrationUrl: 'https://userve.uvu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'uvu',
+    jobsSubtitle: 'UVU jobs and internships',
+    libraryUrl: 'https://www.uvu.edu/library/',
+    studyRoomsUrl: 'https://www.uvu.edu/library/services/study_spaces.html',
+    transitTitle: 'Parking',
+    transitSubtitle: 'Parking and transportation links',
+    transitUrl: 'https://www.uvu.edu/parking/',
+    clubsTitle: 'Clubs',
+    clubsUrl: 'https://www.uvu.edu/clubs/index.html',
+    athleticsUrl: 'https://gouvu.com/calendar',
+  }),
+  'Lehigh University': createStandardCampusInfoResources({
+    schoolShortName: 'Lehigh',
+    registrationUrl: 'https://reg-prod.ec.lehigh.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'lehigh',
+    jobsSubtitle: 'Lehigh jobs and internships',
+    libraryUrl: 'https://lts.lehigh.edu/',
+    studyRoomsUrl: 'https://lts.lehigh.edu/spaces',
+    transitTitle: 'Parking',
+    transitSubtitle: 'Transportation and parking services',
+    transitUrl: 'https://auxiliaryservices.lehigh.edu/departments/transportation-office',
+    clubsTitle: 'LINC',
+    clubsUrl: 'https://lehigh.campuslabs.com/engage/organizations',
+    athleticsUrl: 'https://lehighsports.com/calendar',
+  }),
+  'Rider University': createStandardCampusInfoResources({
+    schoolShortName: 'Rider',
+    registrationUrl: 'https://reg-prod.ec.rider.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'rider',
+    jobsSubtitle: 'Rider jobs and internships',
+    libraryUrl: 'https://www.rider.edu/academics/libraries',
+    studyRoomsUrl: 'https://rider.libcal.com/spaces',
+    transitUrl: 'https://www.rider.edu/about/offices-services/facilities-university-operations/auxiliary/transportation',
+    clubsTitle: 'Bronection',
+    clubsUrl: 'https://rider.campuslabs.com/engage/organizations',
+    athleticsUrl: 'https://gobroncs.com/calendar',
+  }),
+  'Wheaton College (Massachusetts)': createStandardCampusInfoResources({
+    schoolShortName: 'Wheaton',
+    registrationUrl: 'https://banprodselfservice.wheatonma.edu:7341/StudentRegistrationSsb/ssb/classSearch/classSearch',
+    handshakeSlug: 'wheatoncollege',
+    jobsSubtitle: 'Wheaton jobs and internships',
+    libraryUrl: 'https://map.wheatoncollege.edu/location/wallace-library/',
+    studyRoomsUrl: 'https://wheatoncollege.libcal.com/',
+    transitTitle: 'Parking',
+    transitSubtitle: 'Parking and transportation links',
+    transitUrl: 'https://wheatoncollege.edu/campus-life/campus-safety/campus-safety-department/parking/',
+    clubsTitle: 'Engage',
+    clubsUrl: 'https://engage.wheatoncollege.edu/organizations',
+    athleticsUrl: 'https://wheatoncollegelyons.com/calendar',
+  }),
 };
 
 function getCampusInfoResources(school: string): CampusInfoResource[] {
@@ -1740,6 +1982,7 @@ export default function HomeScreen({
   );
   const homeDiningMenus = diningMenus.slice(0, 2);
   const diningMenuItemCount = diningMenus.reduce((total, menu) => total + menu.itemCount, 0);
+  const diningMenusExternalOnly = diningMenus.length > 0 && diningMenus.every((menu) => menu.isExternalLinkOnly);
   const homeSportsEvents = visibleCampusEvents.slice(0, 2);
   const remainingHomeSportsEventCount = Math.max(visibleCampusEvents.length - homeSportsEvents.length, 0);
   const visibleSportsEventIds = useMemo(
@@ -2006,6 +2249,10 @@ export default function HomeScreen({
       Animated.timing(diningListBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
       Animated.timing(diningListSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
     ]).start(() => setShowDiningMenuList(false));
+  }
+
+  function openDiningOfficialMenu(url: string) {
+    void openCampusInfoLink({ url });
   }
 
   function openSportsMoreList() {
@@ -2537,7 +2784,9 @@ export default function HomeScreen({
                           </Text>
                           <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
                             {diningMenus.length > 0
-                              ? `${diningMenus.length} location${diningMenus.length === 1 ? '' : 's'} · ${diningMenuItemCount} items`
+                              ? diningMenusExternalOnly
+                                ? 'Official dining menu link'
+                                : `${diningMenus.length} location${diningMenus.length === 1 ? '' : 's'} · ${diningMenuItemCount} items`
                               : diningLoading
                                 ? 'Loading campus dining menus'
                                 : 'No menu data yet'}
@@ -3783,7 +4032,9 @@ export default function HomeScreen({
                 </Text>
                 <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
                   {diningMenus.length > 0
-                    ? `${diningMenus.length} location${diningMenus.length === 1 ? '' : 's'} · ${diningMenuItemCount} items`
+                    ? diningMenusExternalOnly
+                      ? 'Official dining menu link'
+                      : `${diningMenus.length} location${diningMenus.length === 1 ? '' : 's'} · ${diningMenuItemCount} items`
                     : schoolCampusLabel(school)}
                 </Text>
               </View>
@@ -3828,7 +4079,7 @@ export default function HomeScreen({
                             {menu.name}
                           </Text>
                           <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 3 }}>
-                            {menu.itemCount} items today
+                            {menu.isExternalLinkOnly ? 'Official menu link' : `${menu.itemCount} items today`}
                           </Text>
                         </View>
                       </View>
@@ -3889,6 +4140,25 @@ export default function HomeScreen({
                           </View>
                         );
                       })}
+
+                      <TouchableOpacity
+                        onPress={() => openDiningOfficialMenu(menu.officialUrl)}
+                        activeOpacity={0.72}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          borderTopWidth: 1,
+                          borderTopColor: colors.borderSubtle,
+                          marginTop: 14,
+                          paddingTop: 13,
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: diningAccent }}>
+                          Open official menu
+                        </Text>
+                        <Ionicons name="open-outline" size={15} color={diningAccent} />
+                      </TouchableOpacity>
                     </View>
                   ))}
                 </View>

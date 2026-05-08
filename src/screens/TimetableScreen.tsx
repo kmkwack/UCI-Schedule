@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme } from '../data/courses';
+import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown } from '../data/courses';
 import { buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
 import { getCampusMapLocation, isUnmappableLocation, type CampusMapLocation } from '../data/campusLocations';
 import { useTheme } from '../context/ThemeContext';
@@ -219,8 +219,10 @@ function formatHourLabel(hour: number) {
 }
 
 function getProfLastName(professor: string) {
+  const displayName = professorDisplayName(professor);
+  if (!professorIsKnown(displayName)) return displayName;
   const last = professor.split(',')[0].trim();
-  if (!last) return professor;
+  if (!last) return displayName;
   return last.charAt(0).toUpperCase() + last.slice(1).toLowerCase();
 }
 
@@ -1577,9 +1579,9 @@ export default function TimetableScreen({
       >
           {/* Detail sheet */}
           {selectedCourse && (() => {
-            const professor = selectedCourse.professor;
-            const hasRmp = !!professor && professor !== 'STAFF' && professor.trim() !== '';
-            const profRmpUrl = hasRmp ? rmpUrl(professor, school) : null;
+            const professor = professorDisplayName(selectedCourse.professor);
+            const hasRmp = professorIsKnown(selectedCourse.professor);
+            const profRmpUrl = hasRmp ? rmpUrl(selectedCourse.professor, school) : null;
             const rawLocation = selectedCourse.location?.trim() ?? '';
             const hasMapLocation = !isUnmappableLocation(rawLocation);
             const mappedLocation = getCampusMapLocation(school, rawLocation);
@@ -1790,7 +1792,7 @@ export default function TimetableScreen({
               sectionType={reviewsCourse.sectionLabel?.split(' ')[0] ?? 'Lec'}
               title={reviewsCourse.title}
               professors={
-                reviewsCourse.professor && !reviewsCourse.professor.includes('STAFF')
+                professorIsKnown(reviewsCourse.professor)
                   ? [reviewsCourse.professor] : []
               }
               school={school}

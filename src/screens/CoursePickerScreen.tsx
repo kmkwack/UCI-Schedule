@@ -21,7 +21,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatMinutesAs24Hour, formatTimeOfDay12, parseTimeToMinutes, quarterKey } from '../data/courses';
+import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatMinutesAs24Hour, formatTimeOfDay12, parseTimeToMinutes, professorDisplayName, professorIsKnown, quarterKey } from '../data/courses';
 import { getSchoolConfig, termLabel } from '../data/schools';
 import { departmentsForSchoolId } from '../data/schoolDepartments';
 import PreviewTimetable from '../components/PreviewTimetable';
@@ -275,6 +275,90 @@ function htmlDecode(value: string | null | undefined) {
     .replace(/&gt;/g, '>');
 }
 
+function cleanBannerDisplayText(value: string | number | null | undefined) {
+  return htmlDecode(value == null ? '' : String(value))
+    .replace(/\*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function comparableDisplayText(value: string | number | null | undefined) {
+  return cleanBannerDisplayText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function schoolLocationPhrases(schoolName?: string) {
+  if (!schoolName) return [];
+  const config = getSchoolConfig(schoolName);
+  const phrases = [
+    schoolName,
+    config.name,
+    config.shortName,
+    config.campus,
+    config.location,
+  ];
+  const [city, state] = config.location.split(',').map((part) => part.trim()).filter(Boolean);
+  phrases.push(city, state);
+  return [...new Set(phrases.map(comparableDisplayText).filter((phrase) => phrase.length > 1))];
+}
+
+function isGenericCampusLocation(value: string, schoolName?: string) {
+  const normalized = comparableDisplayText(value);
+  if (!normalized) return true;
+  if (['tba', 'to be announced', 'arranged', 'none', 'n/a'].includes(normalized)) return true;
+  if (/(online|remote|virtual)/i.test(value)) return false;
+  if (/\bcampus$/.test(normalized)) return true;
+
+  let remainder = normalized;
+  schoolLocationPhrases(schoolName).forEach((phrase) => {
+    remainder = remainder.replace(new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'g'), ' ');
+  });
+  remainder = remainder
+    .replace(/\b(main|campus|online|remote|virtual|university|college|institute|school|state|of|the|at|and)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!remainder) return true;
+
+  return false;
+}
+
+function normalizeLocationForDisplay(value: string | number | null | undefined, schoolName?: string) {
+  const cleaned = cleanBannerDisplayText(value);
+  if (!cleaned) return undefined;
+  if (/(online|remote|virtual)/i.test(cleaned)) return 'Online';
+  if (isGenericCampusLocation(cleaned, schoolName)) return undefined;
+  return cleaned;
+}
+
+function normalizeSectionLabelForDisplay(value: string | number | null | undefined) {
+  const cleaned = cleanBannerDisplayText(value);
+  if (!cleaned) return undefined;
+
+  const [rawType, ...rest] = cleaned.split(' ');
+  const lowerType = rawType.toLowerCase();
+  const type = lowerType === 'lecture'
+    ? 'Lec'
+    : lowerType === 'discussion'
+      ? 'Dis'
+      : lowerType === 'laboratory'
+        ? 'Lab'
+        : lowerType === 'seminar'
+          ? 'Sem'
+          : rawType;
+
+  return [type, ...rest].join(' ').replace(/\s+/g, ' ').trim();
+}
+
 function bannerPath(config: BannerFallbackConfig, path: string) {
   return `${config.baseUrl}/StudentRegistrationSsb/ssb${path}`;
 }
@@ -340,10 +424,12 @@ function bannerTimeLabel(meetingTime: any) {
   return start && end ? `${start} - ${end}` : 'TBA';
 }
 
-function bannerLocation(meetingTime: any, row: any) {
-  const building = htmlDecode(meetingTime?.building ?? meetingTime?.buildingDescription ?? '').trim();
-  const room = String(meetingTime?.room ?? '').trim();
-  return [building, room].filter(Boolean).join(' ') || htmlDecode(row.campusDescription ?? '').trim() || null;
+function bannerLocation(meetingTime: any, row: any, schoolName: string) {
+  const building = cleanBannerDisplayText(meetingTime?.building ?? meetingTime?.buildingDescription ?? '');
+  const room = cleanBannerDisplayText(meetingTime?.room ?? '');
+  return normalizeLocationForDisplay([building, room].filter(Boolean).join(' '), schoolName)
+    ?? normalizeLocationForDisplay(row.campusDescription, schoolName)
+    ?? null;
 }
 
 function bannerInstructors(row: any, meeting: any) {
@@ -355,7 +441,7 @@ function bannerInstructors(row: any, meeting: any) {
 }
 
 function bannerSectionLabel(type: string | null | undefined, sectionNumber: string | number | null | undefined) {
-  const label = htmlDecode(type || 'Section');
+  const label = cleanBannerDisplayText(type || 'Section');
   const lower = label.toLowerCase();
   const shortType = lower.includes('lecture') && lower.includes('lab')
     ? 'Lec/Lab'
@@ -368,7 +454,7 @@ function bannerSectionLabel(type: string | null | undefined, sectionNumber: stri
           : lower.includes('seminar')
             ? 'Sem'
             : label;
-  return [shortType, sectionNumber].filter(Boolean).join(' ');
+  return normalizeSectionLabelForDisplay([shortType, sectionNumber].filter(Boolean).join(' ')) ?? undefined;
 }
 
 function bannerRowToSectionRow(row: any, config: BannerFallbackConfig, schoolName: string, termCode: string, qKey: string) {
@@ -392,7 +478,7 @@ function bannerRowToSectionRow(row: any, config: BannerFallbackConfig, schoolNam
     professor: instructors[0] ?? '',
     days: bannerDayLetters(meetingTime),
     time: bannerTimeLabel(meetingTime),
-    location: bannerLocation(meetingTime, row),
+    location: bannerLocation(meetingTime, row, schoolName),
     units: Number.isFinite(credits) ? credits : null,
     section_label: bannerSectionLabel(row.scheduleTypeDescription, row.sequenceNumber),
   };
@@ -742,15 +828,15 @@ export default function CoursePickerScreen({
       });
       sections[courseId] = sorted.map((row: any): Course => ({
         id: row.id.split('::')[0],
-        code: row.code,
+        code: cleanBannerDisplayText(row.code),
         title: formatCatalogTitle(row.title),
-        professor: String(row.professor ?? '').trim(),
+        professor: professorDisplayName(cleanBannerDisplayText(row.professor)),
         days: normalizeCourseDays(row.days),
         time: row.time ?? 'TBA',
-        department: String(row.department ?? '').trim(),
-        location: String(row.location ?? '').trim() || undefined,
+        department: cleanBannerDisplayText(row.department),
+        location: normalizeLocationForDisplay(row.location, row.school ?? school),
         units: row.units ?? undefined,
-        sectionLabel: String(row.section_label ?? '').replace(/\s+/g, ' ').trim() || undefined,
+        sectionLabel: normalizeSectionLabelForDisplay(row.section_label),
       }));
     });
 
@@ -2137,7 +2223,7 @@ export default function CoursePickerScreen({
           sectionType={reviewsCourse.sectionLabel?.split(' ')[0] ?? 'Lec'}
           title={reviewsCourse.title}
           professors={[...new Set(
-            [reviewsCourse.professor].filter((p): p is string => !!p && !p.includes('STAFF'))
+            [reviewsCourse.professor].filter((p): p is string => professorIsKnown(p))
           )]}
           school={school}
           userId={userId}

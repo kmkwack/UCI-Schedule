@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Linking, Keyboard,
@@ -75,12 +75,12 @@ function formatFinalExam(fe: FinalExam | string | null): string | null {
   return parts.length ? parts.join(' · ') : null;
 }
 
-function finalExamFallback(sectionComment?: string | null): string {
+function finalExamFallback(sectionComment?: string | null): string | null {
   const trimmed = sectionComment?.trim() ?? '';
   if (trimmed && /final|exam/i.test(trimmed)) {
     return trimmed;
   }
-  return 'Final exam details are not available in the current course data. Check WebSOC, Canvas, or your instructor for the latest final exam information.';
+  return null;
 }
 
 const courseInfoCache: Record<string, CourseInfo> = {};
@@ -95,6 +95,15 @@ type CourseReview = {
   id: string; userId: string; author: string; rating: number; date: string;
   content: string; semester: string; quarter: string; difficulty: number; workload: number;
 };
+
+function average(values: number[]) {
+  const valid = values.filter((value) => Number.isFinite(value));
+  return valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : null;
+}
+
+function oneDecimal(value: number | null) {
+  return value == null ? '—' : value.toFixed(1);
+}
 
 type Props = {
   visible: boolean;
@@ -328,6 +337,27 @@ export default function ReviewsModal({
   ].filter((e) => e.count > 0) : [];
   const total = allEntries.reduce((s, e) => s + e.count, 0);
   const visibleEntries = allEntries.filter((e) => !['P', 'NP'].includes(e.label) || (total > 0 && Math.round(e.count / total * 100) >= 1));
+  const reviewStats = useMemo(() => ({
+    rating: average(reviews.map((review) => review.rating)),
+    difficulty: average(reviews.map((review) => review.difficulty)),
+    workload: average(reviews.map((review) => review.workload)),
+  }), [reviews]);
+  const officialFinalText = courseInfo
+    ? formatFinalExam(courseInfo.finalExam) ?? finalExamFallback(courseInfo.sectionComment)
+    : null;
+  const restrictionText = courseInfo ? decodeRestrictions(courseInfo.restrictions) : null;
+  const courseNote = courseInfo?.sectionComment?.trim() || null;
+  const showCourseInfoDetails = Boolean(courseInfo && (
+    restrictionText ||
+    courseInfo.prerequisiteLink ||
+    officialFinalText ||
+    (courseNote && courseNote !== officialFinalText)
+  ));
+  const reviewPromptCards = [
+    { icon: 'sparkles-outline' as const, title: 'Overall vibe', body: 'How clear, useful, or fair did the class feel?' },
+    { icon: 'barbell-outline' as const, title: 'Difficulty', body: 'Was it concept-heavy, project-heavy, or exam-heavy?' },
+    { icon: 'time-outline' as const, title: 'Workload', body: 'Share the weekly rhythm: readings, labs, projects, prep.' },
+  ];
 
   return (
     <Modal
@@ -367,38 +397,34 @@ export default function ReviewsModal({
                     <View style={{ paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, alignItems: 'center' }}>
                       <ActivityIndicator size="small" color={colors.brand} />
                     </View>
-                  ) : courseInfo && (() => {
-                    const finalStr = formatFinalExam(courseInfo.finalExam) ?? finalExamFallback(courseInfo.sectionComment);
-                    const restrictionStr = decodeRestrictions(courseInfo.restrictions);
-                    const comment = courseInfo.sectionComment?.trim() || null;
-                    return (
-                      <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, gap: 10 }}>
-                        {restrictionStr ? (
+                  ) : showCourseInfoDetails ? (
+                    <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, gap: 10 }}>
+                        {restrictionText ? (
                           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                             <Ionicons name="lock-closed-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Restrictions</Text>
-                              <Text style={{ fontSize: 13, color: colors.text }}>{restrictionStr}</Text>
+                              <Text style={{ fontSize: 13, color: colors.text }}>{restrictionText}</Text>
                             </View>
                           </View>
                         ) : null}
-                        {courseInfo.prerequisiteLink ? (
+                        {courseInfo?.prerequisiteLink ? (
                           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                             <Ionicons name="link-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Prerequisites</Text>
-                              <TouchableOpacity onPress={() => Linking.openURL(courseInfo.prerequisiteLink!)}>
+                              <TouchableOpacity onPress={() => courseInfo?.prerequisiteLink && Linking.openURL(courseInfo.prerequisiteLink)}>
                                 <Text style={{ fontSize: 13, color: colors.brand, textDecorationLine: 'underline' }}>View prerequisites ›</Text>
                               </TouchableOpacity>
                             </View>
                           </View>
                         ) : null}
-                        {finalStr ? (
+                        {officialFinalText ? (
                           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                             <Ionicons name="calendar-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Final Exam</Text>
-                              <Text style={{ fontSize: 13, color: colors.text }}>{finalStr}</Text>
+                              <Text style={{ fontSize: 13, color: colors.text }}>{officialFinalText}</Text>
                             </View>
                           </View>
                         ) : null}
@@ -422,18 +448,17 @@ export default function ReviewsModal({
                             </View>
                           );
                         })()}
-                        {comment ? (
+                        {courseNote && courseNote !== officialFinalText ? (
                           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                             <Ionicons name="information-circle-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Note</Text>
-                              <Text style={{ fontSize: 13, color: colors.text }}>{comment}</Text>
+                              <Text style={{ fontSize: 13, color: colors.text }}>{courseNote}</Text>
                             </View>
                           </View>
                         ) : null}
-                      </View>
-                    );
-                  })()}
+                    </View>
+                  ) : null}
 
                   {/* Grade Distribution */}
                   <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
@@ -463,11 +488,17 @@ export default function ReviewsModal({
                         <ActivityIndicator size="small" color={colors.brand} />
                       </View>
                     ) : !grades || visibleEntries.length === 0 ? (
-                      <Text style={{ fontSize: 13, color: colors.textTertiary, textAlign: 'center', paddingVertical: 12 }}>
-                        {supportsOfficialGradeDistribution
-                          ? 'No official grade distribution data available for this course yet.'
-                          : `Official grade distributions are not connected for ${schoolConfig.shortName} yet. Your own grades and GPA still work in Grades.`}
-                      </Text>
+                      <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, borderWidth: 1, borderColor: colors.borderSubtle, padding: 13 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Ionicons name="stats-chart-outline" size={16} color={colors.textTertiary} />
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Official grade data unavailable</Text>
+                        </View>
+                        <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 17, marginTop: 7 }}>
+                          {supportsOfficialGradeDistribution
+                            ? 'No official grade distribution has been published for this course yet.'
+                            : `${schoolConfig.shortName} does not expose official grade distributions through a connected public source yet.`}
+                        </Text>
+                      </View>
                     ) : (
                       <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
                         <View style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandBg, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, minWidth: 72 }}>
@@ -501,27 +532,68 @@ export default function ReviewsModal({
                       <View style={{ alignItems: 'center', paddingVertical: 24 }}>
                         <ActivityIndicator size="small" color={colors.brand} />
                       </View>
-                    ) : reviews.length === 0 ? (
-                      <Text style={{ fontSize: 13, color: colors.textTertiary, textAlign: 'center', paddingVertical: 20 }}>
-                        No reviews yet. Be the first to write one!
-                      </Text>
                     ) : (
                       <>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                          {(() => {
-                            const avg = reviews.reduce((s, r) => s + r.rating, 0) / reviews.length;
-                            return (
-                              <>
-                                <View style={{ flexDirection: 'row', gap: 2 }}>
-                                  {[1,2,3,4,5].map(i => <Ionicons key={i} name={i <= Math.round(avg) ? 'star' : 'star-outline'} size={16} color="#f59e0b" />)}
-                                </View>
-                                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{avg.toFixed(1)}</Text>
-                                <Text style={{ fontSize: 13, color: colors.textTertiary }}>{reviews.length} {reviews.length === 1 ? 'review' : 'reviews'}</Text>
-                              </>
-                            );
-                          })()}
+                        <View style={{ backgroundColor: colors.brandBg, borderRadius: 18, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: colors.borderSubtle }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase', color: colors.brand }}>ClassMate Reviews</Text>
+                              <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 5 }}>
+                                {reviews.length > 0 ? `${oneDecimal(reviewStats.rating)} student rating` : 'No student reviews yet'}
+                              </Text>
+                              <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 18, marginTop: 5 }}>
+                                {reviews.length > 0
+                                  ? `${reviews.length} ${reviews.length === 1 ? 'review' : 'reviews'} from classmates who saved this course.`
+                                  : 'Help the next person understand the workload, pacing, grading style, and what to watch for.'}
+                              </Text>
+                            </View>
+                            <View style={{ width: 58, height: 58, borderRadius: 18, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' }}>
+                              <Ionicons name="chatbubbles-outline" size={25} color={colors.brand} />
+                            </View>
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+                            {[
+                              { label: 'Rating', value: oneDecimal(reviewStats.rating), suffix: '/5' },
+                              { label: 'Difficulty', value: oneDecimal(reviewStats.difficulty), suffix: '/5' },
+                              { label: 'Workload', value: oneDecimal(reviewStats.workload), suffix: '/5' },
+                            ].map((item) => (
+                              <View key={item.label} style={{ flex: 1, backgroundColor: colors.card, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 8, alignItems: 'center' }}>
+                                <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>
+                                  {item.value}<Text style={{ fontSize: 11, color: colors.textTertiary }}>{item.value === '—' ? '' : item.suffix}</Text>
+                                </Text>
+                                <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 2 }}>{item.label}</Text>
+                              </View>
+                            ))}
+                          </View>
                         </View>
-                        {reviews.map((review) => (
+
+                        {reviews.length === 0 ? (
+                          <>
+                            <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: colors.borderSubtle }}>
+                              <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text, marginBottom: 9 }}>Good reviews usually mention</Text>
+                              <View style={{ gap: 10 }}>
+                                {reviewPromptCards.map((prompt) => (
+                                  <View key={prompt.title} style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+                                    <View style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' }}>
+                                      <Ionicons name={prompt.icon} size={15} color={colors.brand} />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{prompt.title}</Text>
+                                      <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 17, marginTop: 2 }}>{prompt.body}</Text>
+                                    </View>
+                                  </View>
+                                ))}
+                              </View>
+                            </View>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                              {[sectionType, semesterLabel, schoolConfig.shortName, 'Student-written'].filter(Boolean).map((label) => (
+                                <View key={label} style={{ backgroundColor: colors.bgTertiary, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary }}>{label}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          </>
+                        ) : reviews.map((review) => (
                           <View key={review.id} style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, padding: 14, marginBottom: 10 }}>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
                               <View>

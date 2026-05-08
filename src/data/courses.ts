@@ -42,6 +42,22 @@ export type Course = {
 
 export type Quarter = { year: string; quarter: string };
 
+export const INSTRUCTOR_TBA_LABEL = 'Instructor TBA';
+
+export function professorIsKnown(value: string | null | undefined) {
+  const normalized = String(value ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
+  return Boolean(normalized)
+    && normalized !== 'STAFF'
+    && normalized !== 'TBA'
+    && normalized !== 'INSTRUCTOR TBA'
+    && normalized !== 'TO BE ANNOUNCED';
+}
+
+export function professorDisplayName(value: string | null | undefined) {
+  const cleaned = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return professorIsKnown(cleaned) ? cleaned : INSTRUCTOR_TBA_LABEL;
+}
+
 export function quarterKey(q: Quarter): string {
   return `${q.year}-${q.quarter}`;
 }

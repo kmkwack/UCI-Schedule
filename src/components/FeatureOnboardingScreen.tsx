@@ -867,7 +867,8 @@ export default function FeatureOnboardingScreen({
   const slide = SLIDES[index];
   const schoolBrand = useMemo(() => getOnboardingSchoolBrand(schoolName), [schoolName]);
   const slideAccent = slide.kind === 'arrival' ? schoolBrand.accent : slide.accent;
-  const slideTitle = slide.kind === 'arrival' ? `Welcome, ${schoolBrand.welcomeName}.` : slide.title;
+  const arrivalTitleName = `${schoolBrand.welcomeName}.`;
+  const slideTitle = slide.kind === 'arrival' ? 'Welcome,' : slide.title;
   const slideBody = slide.kind === 'arrival'
     ? `Let's set up ClassMate for ${schoolBrand.communityName}: your schedule, classmates, boards, and campus life in one place.`
     : slide.body;
@@ -1039,6 +1040,19 @@ export default function FeatureOnboardingScreen({
                   }}
                 >
                   {slideTitle}
+                </Animated.Text>
+                <Animated.Text
+                  style={{
+                    fontSize: 44,
+                    lineHeight: 48,
+                    fontWeight: '900',
+                    color: colors.text,
+                    letterSpacing: -1.4,
+                    marginTop: 2,
+                    ...heroTitleStyle,
+                  }}
+                >
+                  {arrivalTitleName}
                 </Animated.Text>
                 <Animated.Text style={{ fontSize: 16, lineHeight: 24, color: colors.textSecondary, marginTop: 14, fontWeight: '600', ...heroBodyStyle }}>
                   {slideBody}

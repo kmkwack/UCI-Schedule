@@ -2744,3 +2744,17 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/data/diningMenus.ts`** — Replaced broken new-school dining fallback URLs for Georgia Tech, Denison, North Georgia, Alfred State, Canisius, Genesee, and Lehigh with verified public official dining pages.
 - **`src/screens/HomeScreen.tsx`** — Replaced broken Campus Info links for Georgia Tech, Sam Houston, Denison, UNCG, EIU, Alfred State, Canisius, Genesee, UVU, Lehigh, Rider, and Wheaton with verified public official pages; also fixed Georgia Tech athletics so it no longer redirects to the sports-medicine page.
 - **`scripts/audit-school-parity.js`** — Added stronger school parity checks for email domains, term lists, grade scales, dynamic Settings copy, and known-bad dining/Campus Info URLs so regressions are caught by `npm run audit:schools`.
+
+### Session 64sdo (Normalize Banner course display)
+- **`src/screens/CoursePickerScreen.tsx`** — Added display-only normalization for Banner-backed school rows so section labels, professors, and locations are cleaned before rendering. This strips Banner marker asterisks, maps long section types like `Lecture`/`Discussion` to the existing UCI-style labels, and uses each school config's name, short name, campus, city, and state to hide generic campus-only locations across all supported schools without modifying stored section data.
+
+### Session 64sdp (Force welcome title line break)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Split the arrival headline into two fixed lines so `Welcome,` always stays on the top line and the school welcome/mascot name renders beneath it instead of relying on automatic text wrapping.
+
+### Session 64sdq (Show instructor TBA consistently)
+- **`src/data/courses.ts`** — Added shared professor display helpers so blank, `STAFF`, and `TBA` instructor values render as `Instructor TBA` without being treated as real professors.
+- **`src/screens/CoursePickerScreen.tsx`** — Applied the professor display fallback to section rows and excluded unknown instructors from Reviews professor selection.
+- **`src/screens/TimetableScreen.tsx`** and **`src/components/PreviewTimetable.tsx`** — Used the same professor display fallback in saved timetable details, grid blocks, TBA pills, and preview blocks so all schools handle missing instructor data consistently.
+
+### Session 64sdr (Richer empty reviews state)
+- **`src/components/ReviewsModal.tsx`** — Rebalanced the reviews modal so official final-exam and grade-distribution data only appear when a connected source has useful data, while unavailable official data is shown as a compact status card. Added a richer ClassMate reviews summary, empty-state writing prompts, review metric cards, and course/context tags so courses with no reviews still have a useful review-centered screen.

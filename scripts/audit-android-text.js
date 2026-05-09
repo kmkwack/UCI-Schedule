@@ -49,6 +49,10 @@ function hasTailEllipsis(tag) {
   return /ellipsizeMode\s*=\s*["']tail["']/.test(tag);
 }
 
+function hasTextOverflowGuard(tag) {
+  return hasFitGuard(tag) || hasTailEllipsis(tag);
+}
+
 function hasNegativeLetterSpacing(tag) {
   return /letterSpacing\s*:\s*-\d/.test(tag);
 }
@@ -77,7 +81,7 @@ for (const target of TARGETS) {
     for (const tag of getTextOpenTags(source)) {
       const issues = [];
       if (hasNegativeLetterSpacing(tag.text)) issues.push('negative-letter-spacing');
-      if (hasSingleLine(tag.text) && !hasFitGuard(tag.text)) issues.push(hasTailEllipsis(tag.text) ? 'single-line-tail-ellipsis' : 'single-line-no-fit-guard');
+      if (hasSingleLine(tag.text) && !hasTextOverflowGuard(tag.text)) issues.push('single-line-no-fit-guard');
       if (isTightLineHeight(tag.text)) issues.push('tight-line-height');
       if (!issues.length) continue;
 

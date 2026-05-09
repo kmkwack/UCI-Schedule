@@ -10,7 +10,6 @@ import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } f
 import { fetchDiningMenusForSchool, schoolDiningMenusSupported, type DiningLocationMenu, type DiningMenuMeal } from '../data/diningMenus';
 import { academicSystemNoun, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
-import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
@@ -25,12 +24,6 @@ type Props = {
   bottomInset?: number;
   scrollToTopTrigger?: number;
   onAssignmentCalendarChange?: () => void;
-  legalUpdateAcknowledgment?: {
-    required: boolean;
-    effectiveLabel: string;
-    saving: boolean;
-    onAccept: () => Promise<boolean>;
-  };
 };
 
 type FriendRequestRow = {
@@ -147,6 +140,19 @@ type CampusInfoResource = {
 };
 
 type CampusInfoChild = NonNullable<CampusInfoResource['children']>[number];
+
+function campusInfoResourceCaption(resource: CampusInfoResource) {
+  const captions: Record<string, string> = {
+    'student-portal': 'Registration, tuition payments, and academic dates in one place.',
+    transit: 'Campus shuttle routes, transit apps, and transportation updates.',
+    library: 'Library services, study spaces, and room reservations.',
+    clubs: 'Student organizations and campus groups.',
+    jobs: 'Campus jobs, internships, and career listings.',
+    'student-deals': 'Student discounts, plans, and verified deals.',
+    athletics: 'Team schedules, game links, and athletics info.',
+  };
+  return captions[resource.id] ?? '';
+}
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -1229,7 +1235,6 @@ export default function HomeScreen({
   bottomInset = 0,
   scrollToTopTrigger = 0,
   onAssignmentCalendarChange,
-  legalUpdateAcknowledgment,
 }: Props) {
   const { colors, isDark } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -1286,7 +1291,6 @@ export default function HomeScreen({
   const [calendarSetupKeyboardVisible, setCalendarSetupKeyboardVisible] = useState(false);
   const [calendarSetupKeyboardHeight, setCalendarSetupKeyboardHeight] = useState(0);
   const [showCampusInfo, setShowCampusInfo] = useState(false);
-  const [activeLegalDocument, setActiveLegalDocument] = useState<LegalDocumentType | null>(null);
   const [expandedCampusInfoCards, setExpandedCampusInfoCards] = useState<Record<string, boolean>>({});
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
@@ -1917,6 +1921,22 @@ export default function HomeScreen({
   } as const;
 
   const heroCardWidth = Math.max(windowWidth - 36, 0);
+  const isCompactCampusInfoCard = heroCardWidth > 0 && heroCardWidth < 340;
+  const campusInfoHeroIconBoxSize = isCompactCampusInfoCard ? 34 : 36;
+  const campusInfoHeroIconSize = isCompactCampusInfoCard ? 17 : 18;
+  const campusInfoHeroTitleSize = isCompactCampusInfoCard ? 13 : 14;
+  const campusInfoHeroTitleLineHeight = isCompactCampusInfoCard ? 17 : 18;
+  const campusInfoHeroCaptionSize = isCompactCampusInfoCard ? 10 : 11;
+  const campusInfoHeroCaptionLineHeight = isCompactCampusInfoCard ? 13 : 14;
+  const campusInfoHeroChildSize = isCompactCampusInfoCard ? 10 : 11;
+  const campusInfoHeroChildLineHeight = isCompactCampusInfoCard ? 13 : 14;
+  const isCompactCampusInfoSheet = windowWidth < 360;
+  const campusInfoSheetTitleSize = isCompactCampusInfoSheet ? 14 : 15;
+  const campusInfoSheetTitleLineHeight = isCompactCampusInfoSheet ? 18 : 19;
+  const campusInfoSheetChildTitleSize = isCompactCampusInfoSheet ? 12 : 13;
+  const campusInfoSheetChildTitleLineHeight = isCompactCampusInfoSheet ? 16 : 17;
+  const campusInfoSheetCaptionSize = isCompactCampusInfoSheet ? 11 : 12;
+  const campusInfoSheetCaptionLineHeight = isCompactCampusInfoSheet ? 14 : 15;
   const activeHeroItem = heroItems[activeHeroIndex] ?? null;
   const sportsGoingAccent = getSchoolConfig(school).accent;
   const diningAccent = '#F97316';
@@ -2547,7 +2567,7 @@ export default function HomeScreen({
       >
       <View style={{ marginBottom: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <Text numberOfLines={1} style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: 0 }} adjustsFontSizeToFit minimumFontScale={0.72}>
+          <Text numberOfLines={1} style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: 0 }} adjustsFontSizeToFit minimumFontScale={0.86}>
             {schoolHomeLabel(school)}
           </Text>
           <TouchableOpacity
@@ -2567,87 +2587,10 @@ export default function HomeScreen({
             <Ionicons name="person-outline" size={18} color={colors.brand} />
           </TouchableOpacity>
         </View>
-        <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }} adjustsFontSizeToFit minimumFontScale={0.72}>
+        <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }} adjustsFontSizeToFit minimumFontScale={0.86}>
           {getDateLabel(now, selectedQuarter, quarterStart, quarterEnd, school)}
         </Text>
       </View>
-
-      {legalUpdateAcknowledgment?.required ? (
-        <View
-          style={{
-            marginBottom: 14,
-            borderRadius: 18,
-            padding: 16,
-            backgroundColor: colors.card,
-            borderWidth: 1,
-            borderColor: colors.brand,
-            shadowColor: '#0f172a',
-            shadowOpacity: isDark ? 0 : 0.08,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 2,
-          }}
-        >
-          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
-            <View
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 17,
-                backgroundColor: colors.brandBg,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Ionicons name="shield-checkmark-outline" size={18} color={colors.brand} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
-                Privacy update
-              </Text>
-              <Text style={{ fontSize: 12, lineHeight: 18, color: colors.textSecondary, marginTop: 4 }}>
-                We tightened ClassMate's privacy language and defaults. Please review the {legalUpdateAcknowledgment.effectiveLabel} update.
-              </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                <TouchableOpacity onPress={() => setActiveLegalDocument('terms')}>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Terms</Text>
-                </TouchableOpacity>
-                <Text style={{ fontSize: 12, color: colors.textTertiary }}>•</Text>
-                <TouchableOpacity onPress={() => setActiveLegalDocument('privacy')}>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Privacy Policy</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-          <TouchableOpacity
-            disabled={legalUpdateAcknowledgment.saving}
-            onPress={() => {
-              void legalUpdateAcknowledgment.onAccept();
-            }}
-            style={{
-              marginTop: 14,
-              borderRadius: 14,
-              paddingVertical: 12,
-              paddingHorizontal: 14,
-              backgroundColor: colors.brand,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              opacity: legalUpdateAcknowledgment.saving ? 0.7 : 1,
-            }}
-          >
-            {legalUpdateAcknowledgment.saving ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Ionicons name="checkbox-outline" size={18} color="white" />
-            )}
-            <Text style={{ fontSize: 13, fontWeight: '800', color: 'white' }}>
-              {legalUpdateAcknowledgment.saving ? 'Saving...' : 'I agree to the updated terms'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
 
       <View style={{ marginBottom: 14, width: heroCardWidth }}>
         {activeHeroItem ? (
@@ -2709,11 +2652,11 @@ export default function HomeScreen({
                                       <Ionicons name="restaurant-outline" size={20} color={diningAccent} />
                                     </View>
                                     <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>
                                         {menu.name}
                                       </Text>
                                       {previewItems.length > 0 ? (
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }} adjustsFontSizeToFit minimumFontScale={0.86}>
                                           {previewItems.join(' · ')}
                                         </Text>
                                       ) : null}
@@ -2895,9 +2838,6 @@ export default function HomeScreen({
                             <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
                               Campus Info
                             </Text>
-                            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
-                              Registration, jobs, transit, clubs, and official links
-                            </Text>
                           </View>
                           <TouchableOpacity
                             onPress={() => setShowCampusInfo(true)}
@@ -2917,6 +2857,7 @@ export default function HomeScreen({
 
                         <View style={{ marginTop: 16, gap: 8 }}>
                           {campusInfoResources.slice(0, 3).map((resource) => {
+                            const resourceCaption = campusInfoResourceCaption(resource);
                             if (resource.children?.length) {
                               return (
                                 <View
@@ -2933,24 +2874,26 @@ export default function HomeScreen({
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                                     <View
                                       style={{
-                                        width: 36,
-                                        height: 36,
-                                        borderRadius: 14,
+                                        width: campusInfoHeroIconBoxSize,
+                                        height: campusInfoHeroIconBoxSize,
+                                        borderRadius: isCompactCampusInfoCard ? 13 : 14,
                                         backgroundColor: resource.bg,
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         flexShrink: 0,
                                       }}
                                     >
-                                      <Ionicons name={resource.icon} size={18} color={resource.color} />
+                                      <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={resource.color} />
                                     </View>
                                     <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroTitleSize, lineHeight: campusInfoHeroTitleLineHeight, fontWeight: '800', color: colors.text }}>
                                         {resource.title}
                                       </Text>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, lineHeight: 16, color: colors.textSecondary, marginTop: 3 }} adjustsFontSizeToFit minimumFontScale={0.72}>
-                                        {resource.subtitle}
-                                      </Text>
+                                      {resourceCaption ? (
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroCaptionSize, lineHeight: campusInfoHeroCaptionLineHeight, color: colors.textSecondary, marginTop: 2 }}>
+                                          {resourceCaption}
+                                        </Text>
+                                      ) : null}
                                     </View>
                                   </View>
                                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
@@ -2970,7 +2913,7 @@ export default function HomeScreen({
                                           paddingHorizontal: 8,
                                         }}
                                       >
-                                        <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 14, fontWeight: '800', color: resource.color }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroChildSize, lineHeight: campusInfoHeroChildLineHeight, fontWeight: '800', color: resource.color }}>
                                           {child.title}
                                         </Text>
                                       </TouchableOpacity>
@@ -3000,24 +2943,26 @@ export default function HomeScreen({
                               >
                                 <View
                                   style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: 14,
+                                    width: campusInfoHeroIconBoxSize,
+                                    height: campusInfoHeroIconBoxSize,
+                                    borderRadius: isCompactCampusInfoCard ? 13 : 14,
                                     backgroundColor: resource.bg,
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     flexShrink: 0,
                                   }}
                                 >
-                                  <Ionicons name={resource.icon} size={18} color={resource.color} />
+                                  <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={resource.color} />
                                 </View>
                                 <View style={{ flex: 1, minWidth: 0 }}>
-                                  <Text numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroTitleSize, lineHeight: campusInfoHeroTitleLineHeight, fontWeight: '800', color: colors.text }}>
                                     {resource.title}
                                   </Text>
-                                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, lineHeight: 16, color: colors.textSecondary, marginTop: 3 }} adjustsFontSizeToFit minimumFontScale={0.72}>
-                                    {resource.subtitle}
-                                  </Text>
+                                  {resourceCaption ? (
+                                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroCaptionSize, lineHeight: campusInfoHeroCaptionLineHeight, color: colors.textSecondary, marginTop: 2 }}>
+                                      {resourceCaption}
+                                    </Text>
+                                  ) : null}
                                 </View>
                                 <Ionicons name="chevron-forward" size={17} color={colors.textTertiary} />
                               </TouchableOpacity>
@@ -3048,9 +2993,6 @@ export default function HomeScreen({
                       }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
                           <View style={{ flex: 1 }}>
-                            <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: `${colors.brand}14`, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                              <Ionicons name="calendar-outline" size={22} color={colors.brand} />
-                            </View>
                             <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
                               {todayCourses.length > 0 ? 'You are clear for the rest of today' : 'No classes on your schedule today'}
                             </Text>
@@ -3163,7 +3105,7 @@ export default function HomeScreen({
                             <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
                               {value}
                             </Text>
-                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }} adjustsFontSizeToFit minimumFontScale={0.86}>
                               {title}
                             </Text>
                             {courseClassmates.length > 0 ? (
@@ -3272,11 +3214,11 @@ export default function HomeScreen({
                                 >
                                   <View style={{ width: 64 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'flex-end', gap: 2 }}>
-                                      <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                                      <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.86}>
                                         {rowStartClock.time}
                                       </Text>
                                       {rowStartClock.period ? (
-                                        <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                                        <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.86}>
                                           {rowStartClock.period}
                                         </Text>
                                       ) : null}
@@ -3294,11 +3236,11 @@ export default function HomeScreen({
                                       }}
                                     />
                                     <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, lineHeight: 19, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, lineHeight: 19, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.86}>
                                         {summaryCourse.code}
                                       </Text>
                                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 17, color: rowSecondaryColor }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 17, color: rowSecondaryColor }} adjustsFontSizeToFit minimumFontScale={0.86}>
                                           {summaryCourse.title}
                                         </Text>
                                         {rowLocationLabel ? (
@@ -3311,7 +3253,7 @@ export default function HomeScreen({
                                               paddingVertical: 2,
                                             }}
                                           >
-                                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 10, lineHeight: 13, fontWeight: '800', color: colors.textTertiary }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 10, lineHeight: 13, fontWeight: '800', color: colors.textTertiary }} adjustsFontSizeToFit minimumFontScale={0.86}>
                                               {rowLocationLabel}
                                             </Text>
                                           </View>
@@ -3361,6 +3303,20 @@ export default function HomeScreen({
               <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 }}>
                 {heroItems.map((item, index) => {
                   const isActive = index === activeHeroIndex;
+                  const indicatorAccent = item.type === 'sportsEvents'
+                    ? sportsGoingAccent
+                    : item.type === 'diningMenu'
+                      ? diningAccent
+                      : colors.brand;
+                  const indicatorIcon = item.type === 'sportsEvents'
+                    ? 'trophy-outline'
+                    : item.type === 'diningMenu'
+                      ? 'restaurant-outline'
+                      : item.type === 'campusInfo'
+                        ? 'grid-outline'
+                        : item.type === 'completedSummary'
+                          ? 'checkmark-done-outline'
+                          : 'calendar-outline';
                   return (
                     <TouchableOpacity
                       key={`${item.type}-${index}-dot`}
@@ -3370,39 +3326,28 @@ export default function HomeScreen({
                       style={{
                         alignItems: 'center',
                         justifyContent: 'center',
-                        minWidth: item.type === 'diningMenu' || item.type === 'sportsEvents' || item.type === 'campusInfo' ? 24 : 18,
+                        minWidth: 24,
                         height: 18,
                       }}
                     >
-                      {item.type === 'diningMenu' || item.type === 'sportsEvents' || item.type === 'campusInfo' ? (
-                        <View
-                          style={{
-                            width: isActive ? 24 : 18,
-                            height: 18,
-                            borderRadius: 9,
-                            backgroundColor: isActive ? `${item.type === 'sportsEvents' ? sportsGoingAccent : item.type === 'diningMenu' ? diningAccent : colors.brand}1F` : 'transparent',
-                            borderWidth: isActive ? 1 : 0,
-                            borderColor: `${item.type === 'sportsEvents' ? sportsGoingAccent : item.type === 'diningMenu' ? diningAccent : colors.brand}55`,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Ionicons
-                            name={item.type === 'sportsEvents' ? 'trophy-outline' : item.type === 'diningMenu' ? 'restaurant-outline' : 'grid-outline'}
-                            size={12}
-                            color={isActive ? item.type === 'sportsEvents' ? sportsGoingAccent : item.type === 'diningMenu' ? diningAccent : colors.brand : colors.textTertiary}
-                          />
-                        </View>
-                      ) : (
-                        <View
-                          style={{
-                            width: isActive ? 16 : 6,
-                            height: 6,
-                            borderRadius: 3,
-                            backgroundColor: isActive ? heroAccent : colors.bgTertiary,
-                          }}
+                      <View
+                        style={{
+                          width: isActive ? 24 : 18,
+                          height: 18,
+                          borderRadius: 9,
+                          backgroundColor: isActive ? `${indicatorAccent}1F` : 'transparent',
+                          borderWidth: isActive ? 1 : 0,
+                          borderColor: `${indicatorAccent}55`,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Ionicons
+                          name={indicatorIcon}
+                          size={12}
+                          color={isActive ? indicatorAccent : colors.textTertiary}
                         />
-                      )}
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
@@ -3586,7 +3531,7 @@ export default function HomeScreen({
                             textDecorationLine: completed ? 'line-through' : 'none',
                           }}
                           adjustsFontSizeToFit
-                          minimumFontScale={0.72}
+                          minimumFontScale={0.86}
                         >
                           {assignment.title}
                         </Text>
@@ -3710,13 +3655,6 @@ export default function HomeScreen({
       </View>
       </ScrollView>
 
-      <LegalDocumentModal
-        visible={activeLegalDocument !== null}
-        document={activeLegalDocument ?? 'terms'}
-        onClose={() => setActiveLegalDocument(null)}
-        accentColor={colors.brand}
-      />
-
       <Modal
         visible={showCampusInfo}
         transparent
@@ -3771,6 +3709,7 @@ export default function HomeScreen({
               contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: Math.max(bottomInset, 18) + 18, gap: 10 }}
             >
               {campusInfoResources.map((resource) => {
+                const resourceCaption = campusInfoResourceCaption(resource);
                 if (resource.children?.length) {
                   const isExpanded = expandedCampusInfoCards[resource.id] ?? true;
                   return (
@@ -3802,12 +3741,14 @@ export default function HomeScreen({
                           <Ionicons name={resource.icon} size={21} color={resource.color} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoSheetTitleSize, lineHeight: campusInfoSheetTitleLineHeight, fontWeight: '800', color: colors.text }}>
                             {resource.title}
                           </Text>
-                          <Text numberOfLines={2} style={{ fontSize: 12, lineHeight: 17, color: colors.textSecondary, marginTop: 3 }}>
-                            {resource.subtitle}
-                          </Text>
+                          {resourceCaption ? (
+                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoSheetCaptionSize, lineHeight: campusInfoSheetCaptionLineHeight, color: colors.textSecondary, marginTop: 2 }}>
+                              {resourceCaption}
+                            </Text>
+                          ) : null}
                         </View>
                         <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textTertiary} />
                       </TouchableOpacity>
@@ -3832,11 +3773,8 @@ export default function HomeScreen({
                                 justifyContent: 'center',
                               }}
                             >
-                              <Text numberOfLines={1} style={{ fontSize: 13, lineHeight: 17, fontWeight: '800', color: resource.color }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoSheetChildTitleSize, lineHeight: campusInfoSheetChildTitleLineHeight, fontWeight: '800', color: resource.color }}>
                                 {child.title}
-                              </Text>
-                              <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 15, color: colors.textSecondary, marginTop: 2 }} adjustsFontSizeToFit minimumFontScale={0.72}>
-                                {child.subtitle}
                               </Text>
                             </TouchableOpacity>
                           ))}
@@ -3878,12 +3816,14 @@ export default function HomeScreen({
                       <Ionicons name={resource.icon} size={21} color={resource.color} />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoSheetTitleSize, lineHeight: campusInfoSheetTitleLineHeight, fontWeight: '800', color: colors.text }}>
                         {resource.title}
                       </Text>
-                      <Text numberOfLines={2} style={{ fontSize: 12, lineHeight: 17, color: colors.textSecondary, marginTop: 3 }}>
-                        {resource.subtitle}
-                      </Text>
+                      {resourceCaption ? (
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoSheetCaptionSize, lineHeight: campusInfoSheetCaptionLineHeight, color: colors.textSecondary, marginTop: 2 }}>
+                          {resourceCaption}
+                        </Text>
+                      ) : null}
                     </View>
                     <Ionicons name="open-outline" size={18} color={colors.textTertiary} />
                   </TouchableOpacity>
@@ -3927,7 +3867,7 @@ export default function HomeScreen({
                 <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
                   Today's Dining
                 </Text>
-                <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }} adjustsFontSizeToFit minimumFontScale={0.86}>
                   {diningMenus.length > 0
                     ? diningMenusExternalOnly
                       ? 'Official dining menu link'
@@ -3972,7 +3912,7 @@ export default function HomeScreen({
                           <Ionicons name="restaurant-outline" size={20} color={diningAccent} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>
                             {menu.name}
                           </Text>
                           <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 3 }}>
@@ -4228,10 +4168,7 @@ export default function HomeScreen({
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, marginBottom: 12 }}>
               <View>
                 <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
-                  Completed Assignments
-                </Text>
-                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-                  {pastCalendarTaskCount} assignment{pastCalendarTaskCount === 1 ? '' : 's'} hidden from Home
+                  Completed
                 </Text>
               </View>
               <TouchableOpacity

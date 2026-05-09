@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import ClassMateMonogram from './ClassMateMonogram';
 import { useTheme } from '../context/ThemeContext';
+import { DEFAULT_UNIVERSITY } from '../data/schools';
 
 type Props = {
   onComplete: () => void;
@@ -85,7 +86,7 @@ export default function ClassMateIntroScreen({ onComplete, schoolName }: Props) 
     };
   }, [cardsOpacity, cardsTranslateY, logoOpacity, logoScale, onComplete, overlayOpacity, wordmarkOpacity, wordmarkTranslateY]);
 
-  const campusName = schoolName?.trim() || 'your campus';
+  const campusName = schoolName?.trim() || DEFAULT_UNIVERSITY.name;
   const chips = [
     { icon: 'today-outline' as const, label: 'Campus at a glance' },
     { icon: 'grid-outline' as const, label: 'Your class rhythm' },
@@ -119,15 +120,15 @@ export default function ClassMateIntroScreen({ onComplete, schoolName }: Props) 
             }}
           >
             <Text style={{ fontSize: 14, fontWeight: '800', letterSpacing: 0.8, color: isDark ? '#d7e4ff' : '#5e73a8', marginBottom: 8 }}>
-              CONNECTING TO CAMPUS
+              ENTERING TO
             </Text>
             <Text
-              numberOfLines={1}
+              numberOfLines={2}
               adjustsFontSizeToFit
-              minimumFontScale={0.74}
-              style={{ fontSize: 44, fontWeight: '800', letterSpacing: 0, color: isDark ? '#eef3ff' : '#16285b', textAlign: 'center', maxWidth: 340 }}
+              minimumFontScale={0.78}
+              style={{ fontSize: 42, lineHeight: 50, fontWeight: '800', letterSpacing: 0, color: isDark ? '#eef3ff' : '#16285b', textAlign: 'center', maxWidth: 340 }}
             >
-              Your Campus
+              {campusName}
             </Text>
             <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 15, lineHeight: 23, textAlign: 'center', maxWidth: 320 }}>
               Step into {campusName}, meet classmates, and keep your day moving in one place.

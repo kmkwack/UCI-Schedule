@@ -36,11 +36,6 @@ export type DateFormatPreference = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 export type UserSettingsState = {
   timetableVisibility: TimetableVisibility;
   boardProfileVisible: boolean;
-  legalAcknowledgment: {
-    termsVersion: string;
-    privacyVersion: string;
-    acceptedAt: string;
-  } | null;
   notifications: NotificationPreferences;
   pushPermissionStatus: PushPermissionStatus;
   language: LanguagePreference;
@@ -189,7 +184,6 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 export const DEFAULT_USER_SETTINGS: UserSettingsState = {
   timetableVisibility: 'private',
   boardProfileVisible: false,
-  legalAcknowledgment: null,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   pushPermissionStatus: 'undetermined',
   language: 'en',
@@ -255,8 +249,7 @@ export function profileDetailsFromProfile(
   profile: EditableProfile,
   boardProfileVisible = false,
   profileSetupComplete = false,
-  onboardingComplete = true,
-  legalAcknowledgment: UserSettingsState['legalAcknowledgment'] = null
+  onboardingComplete = true
 ) {
   return {
     firstName: profile.firstName,
@@ -268,7 +261,6 @@ export function profileDetailsFromProfile(
     boardProfileVisible,
     profileSetupComplete,
     onboardingComplete,
-    legalAcknowledgment,
   };
 }
 

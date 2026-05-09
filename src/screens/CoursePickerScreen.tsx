@@ -16,6 +16,7 @@ import {
   PanResponder,
   Modal,
   Keyboard,
+  KeyboardAvoidingView,
   Dimensions,
   Pressable,
 } from 'react-native';
@@ -139,7 +140,7 @@ type BannerFallbackConfig = {
   excludeTermDescriptions?: string[];
 };
 
-const SECTION_SELECT_COLUMNS = 'id,code,title,department,professor,days,time,location,units,section_label,status,enrolled,capacity,waitlist,waitlist_capacity';
+const SECTION_SELECT_COLUMNS = 'id,code,title,department,professor,days,time,location,units,section_label,status';
 const SECTION_QUERY_PAGE_SIZE = 1000;
 const COURSE_PICKER_ACCENT = '#4169E1';
 const COURSE_PICKER_ACCENT_SOFT = '#EEF3FF';
@@ -223,6 +224,17 @@ function comparableDisplayText(value: string | number | null | undefined) {
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function sectionHeaderLabel(sectionId: string, sectionLabel?: string) {
+  const displayId = displaySectionId(sectionId);
+  const label = sectionLabel?.trim();
+  if (!label) return displayId;
+
+  const idPattern = new RegExp(`(^|[^a-z0-9])${escapeRegExp(displayId)}([^a-z0-9]|$)`, 'i');
+  if (idPattern.test(label)) return label;
+
+  return `${displayId} · ${label}`;
 }
 
 function schoolLocationPhrases(schoolName?: string) {
@@ -320,22 +332,25 @@ function waitlistCountLabel(values: { waitlist?: number; waitlistCap?: number; w
 function sectionStatusPresentation(rawStatus: string | null | undefined) {
   const raw = rawStatus?.trim();
   if (!raw) return null;
-  const compact = raw.replace(/[\s_-]+/g, '').toLowerCase();
+  const compact = raw.replace(/[^a-z0-9]+/gi, '').toLowerCase();
 
-  if (compact === 'open' || compact === 'opened' || compact === 'available') {
-    return { label: 'Open', color: '#16a34a' };
-  }
   if (compact === 'waitl' || compact.includes('waitlist')) {
     return { label: 'Waitlist', color: '#d97706' };
   }
   if (compact === 'newonly' || compact.includes('newonly')) {
     return { label: 'New Only', color: '#d97706' };
   }
-  if (compact === 'full' || compact === 'closed' || compact === 'close' || compact.includes('notavailable')) {
-    return { label: compact === 'closed' || compact === 'close' ? 'Closed' : 'Full', color: '#dc2626' };
+  if (compact.includes('closed') || compact === 'close' || compact.includes('notavailable') || compact.includes('notopen')) {
+    return { label: 'Closed', color: '#dc2626' };
+  }
+  if (compact === 'full' || compact.includes('full')) {
+    return { label: 'Full', color: '#dc2626' };
+  }
+  if (compact === 'open' || compact === 'opened' || compact === 'available' || compact.includes('open')) {
+    return { label: 'Open', color: '#16a34a' };
   }
 
-  return { label: raw.length > 18 ? `${raw.slice(0, 17)}…` : raw, color: '#64748b' };
+  return null;
 }
 
 async function fetchSectionRowsForTerm(school: string, quarterKeyValue: string, departments?: string[]) {
@@ -745,9 +760,10 @@ export default function CoursePickerScreen({
   })).current;
   const [deptSearch, setDeptSearch] = useState('');
   const [showGESublist, setShowGESublist] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [keyboardBackingHeight, setKeyboardBackingHeight] = useState(0);
   const [catalogCourses, setCatalogCourses] = useState<CatalogCourse[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogReloadKey, setCatalogReloadKey] = useState(0);
   const [expandedCourseIds, setExpandedCourseIds] = useState<Record<string, boolean>>({});
   const [sectionsMap, setSectionsMap] = useState<Record<string, Course[]>>({});
   const [previewCourse, setPreviewCourse] = useState<Course | null>(null);
@@ -854,7 +870,7 @@ export default function CoursePickerScreen({
 
   useEffect(() => {
     const show = Keyboard.addListener('keyboardWillShow', (e) => {
-      setKeyboardHeight(e.endCoordinates.height);
+      setKeyboardBackingHeight(e.endCoordinates.height);
       Animated.timing(customizeKeyboardAnim, {
         toValue: e.endCoordinates.height,
         duration: e.duration || 250,
@@ -862,7 +878,7 @@ export default function CoursePickerScreen({
       }).start();
     });
     const hide = Keyboard.addListener('keyboardWillHide', (e) => {
-      setKeyboardHeight(0);
+      setKeyboardBackingHeight(0);
       Animated.timing(customizeKeyboardAnim, {
         toValue: 0,
         duration: (e as any).duration || 250,
@@ -1149,17 +1165,11 @@ export default function CoursePickerScreen({
     return () => {
       cancelled = true;
     };
-  }, [departmentOptions, hasSelectedDepartments, selectedDeptKey, selectedGE, selectedQuarter, school, schoolConfig.id]);
+  }, [catalogReloadKey, departmentOptions, hasSelectedDepartments, selectedDeptKey, selectedGE, selectedQuarter, school, schoolConfig.id]);
 
   // Fetch GE courses from Supabase when a GE category is selected
   useEffect(() => {
     if (!selectedGE) {
-      if (!hasSelectedDepartments) {
-        setCatalogCourses([]);
-        setSectionsMap({});
-        setExpandedCourseIds({});
-        setPreviewCourse(null);
-      }
       return;
     }
 
@@ -1191,7 +1201,7 @@ export default function CoursePickerScreen({
     return () => {
       cancelled = true;
     };
-  }, [selectedGE, hasSelectedDepartments, selectedQuarter, school]);
+  }, [selectedGE, selectedQuarter, school]);
 
   const fetchEnrollment = async (course: CatalogCourse) => {
     if (schoolConfig.id !== 'uci') return;
@@ -1494,7 +1504,7 @@ export default function CoursePickerScreen({
 
   const filteredCatalog = useMemo(() => {
     const stripH = (s: string) => s.replace(/^H/i, '');
-    const shouldGroupByDepartment = isGlobalSearch || selectedDepts.length > 1;
+    const shouldGroupByDepartment = isGlobalSearch || selectedDepts.length !== 1;
     const sortCatalog = (list: CatalogCourse[]) =>
       [...list].sort((a, b) => {
         if (shouldGroupByDepartment && a.department !== b.department)
@@ -1563,8 +1573,7 @@ export default function CoursePickerScreen({
   const clearSelectedCategory = () => {
     setSelectedDepts([]);
     setSelectedGE('');
-    setCatalogCourses([]);
-    setSectionsMap({});
+    setCatalogReloadKey((value) => value + 1);
     setExpandedCourseIds({});
     setPreviewCourse(null);
   };
@@ -1707,7 +1716,7 @@ export default function CoursePickerScreen({
               numberOfLines={1}
               style={{ flex: 1, color: hasSelectedCategory ? courseAccent : '#9ca3af', fontSize: 15, fontWeight: hasSelectedCategory ? '600' : '400' }}
               adjustsFontSizeToFit
-              minimumFontScale={0.72}
+              minimumFontScale={0.86}
             >
               {selectedCategorySummary || 'Department or GE category…'}
             </Text>
@@ -1739,7 +1748,7 @@ export default function CoursePickerScreen({
                     numberOfLines={1}
                     style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: courseAccent }}
                     adjustsFontSizeToFit
-                    minimumFontScale={0.72}
+                    minimumFontScale={0.86}
                   >
                     {dept}
                   </Text>
@@ -1768,7 +1777,7 @@ export default function CoursePickerScreen({
                     numberOfLines={1}
                     style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: courseAccent }}
                     adjustsFontSizeToFit
-                    minimumFontScale={0.72}
+                    minimumFontScale={0.86}
                   >
                     {selectedGELabel}
                   </Text>
@@ -1824,8 +1833,26 @@ export default function CoursePickerScreen({
             onRequestClose={() => closeDeptModal()}
           >
             <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: deptBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.3)'] }) }}>
-              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => closeDeptModal()} />
-              <Animated.View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 16, maxHeight: keyboardHeight > 0 ? Dimensions.get('window').height - keyboardHeight - 60 : Dimensions.get('window').height * 0.7, marginBottom: Math.max(0, keyboardHeight - 34), transform: [{ translateY: deptSheetSlideAnim }] }}>
+              {keyboardBackingHeight > 0 ? (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: keyboardBackingHeight,
+                    backgroundColor: 'white',
+                  }}
+                />
+              ) : null}
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={0}
+                style={{ flex: 1, justifyContent: 'flex-end' }}
+              >
+                <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => closeDeptModal()} />
+                <Animated.View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 16, maxHeight: '72%', transform: [{ translateY: deptSheetSlideAnim }] }}>
 
                 {/* Drag handle */}
                 <View style={{ alignItems: 'center', paddingBottom: 8, marginTop: -4 }} {...deptDragPan.panHandlers}>
@@ -1877,6 +1904,7 @@ export default function CoursePickerScreen({
                     keyExtractor={(item) => item.code}
                     extraData={selectedGE}
                     keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                     contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
                     renderItem={({ item: ge }) => {
                       const isSelected = selectedGE === ge.code;
@@ -1907,6 +1935,7 @@ export default function CoursePickerScreen({
                     keyExtractor={(item) => `dept-${item}`}
                     extraData={`${selectedDeptKey}|${selectedGE}`}
                     keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                     contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
                     ListHeaderComponent={
                       <>
@@ -1966,19 +1995,13 @@ export default function CoursePickerScreen({
                   />
                 )}
               </Animated.View>
+              </KeyboardAvoidingView>
             </Animated.View>
           </Modal>
         </View>
 
         {/* Content */}
-        {!hasSelectedCategory && !isGlobalSearch ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
-            <Ionicons name="search-outline" size={32} color="#d1d5db" style={{ marginBottom: 10 }} />
-            <Text style={{ color: '#9ca3af', fontSize: 15, textAlign: 'center', paddingHorizontal: 24 }}>
-              Search by course name, code, or professor — or select departments below
-            </Text>
-          </View>
-        ) : isCourseListLoading ? (
+        {isCourseListLoading ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingBottom: 60 }}>
             <View
               style={{
@@ -2076,7 +2099,7 @@ export default function CoursePickerScreen({
                             waitlistCap: enroll?.waitlistCap,
                             waitlistCapacity: course.waitlistCapacity,
                           });
-                          const sectionDisplayId = displaySectionId(course.id);
+                          const sectionDisplayTitle = sectionHeaderLabel(course.id, course.sectionLabel);
 
                           return (
                             <TouchableOpacity
@@ -2097,7 +2120,7 @@ export default function CoursePickerScreen({
                                 <View style={{ flex: 1 }}>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                                     <Text style={{ fontWeight: '600', fontSize: 13, color: '#111827' }}>
-                                      {sectionDisplayId} · {course.sectionLabel ?? sectionDisplayId}
+                                      {sectionDisplayTitle}
                                     </Text>
                                     {statusPresentation && (
                                       <View style={{ backgroundColor: `${statusPresentation.color}18`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>

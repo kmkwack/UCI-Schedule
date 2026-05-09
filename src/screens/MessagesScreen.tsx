@@ -1057,8 +1057,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>{selectedChat.avatar}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text numberOfLines={1} style={{ fontSize: 16, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>{selectedChat.name}</Text>
-              <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2, fontWeight: '700' }} adjustsFontSizeToFit minimumFontScale={0.72}>
+              <Text numberOfLines={1} style={{ fontSize: 16, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>{selectedChat.name}</Text>
+              <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2, fontWeight: '700' }} adjustsFontSizeToFit minimumFontScale={0.86}>
                 {selectedChat.label}
               </Text>
             </View>
@@ -1108,7 +1108,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 </View>
               )}
               <View style={{ flex: 1, justifyContent: 'center' }}>
-                <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>
                   {selectedChat.sourcePost.title}
                 </Text>
                 <Text numberOfLines={2} style={{ marginTop: 2, fontSize: 11, lineHeight: 16, color: colors.textSecondary }}>
@@ -1248,7 +1248,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 }}
               >
                 <Ionicons name="create-outline" size={15} color={colors.brand} />
-                <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, fontWeight: '700', color: colors.brand }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, fontWeight: '700', color: colors.brand }} adjustsFontSizeToFit minimumFontScale={0.86}>
                   Editing message
                 </Text>
                 <TouchableOpacity onPress={cancelMessageEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -1399,7 +1399,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               </View>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3, gap: 8 }}>
-                  <Text numberOfLines={1} style={{ flex: 1, fontSize: 15, fontWeight: '700', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>{chat.name}</Text>
+                  <Text numberOfLines={1} style={{ flex: 1, fontSize: 15, fontWeight: '700', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>{chat.name}</Text>
                   <Text style={{ fontSize: 11, color: colors.textTertiary }}>{chat.timestamp}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
@@ -1412,11 +1412,11 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                   <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: '700' }}>{chat.label}</Text>
                 </View>
                 {chat.kind === 'board_anonymous' && chat.sourcePost ? (
-                  <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 3 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
+                  <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 3 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>
                     From: {chat.sourcePost.title}
                   </Text>
                 ) : null}
-                <Text style={{ fontSize: 13, color: colors.textSecondary }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{chat.lastMessage}</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>{chat.lastMessage}</Text>
               </View>
             </TouchableOpacity>
           )}

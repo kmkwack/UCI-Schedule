@@ -168,6 +168,19 @@ function isHotBoard(board: Board | null) {
   return board?.id === HOT_BOARD.id;
 }
 
+function boardListDescription(board: Board) {
+  const category = boardCategory(board);
+  if (category === 'General') return 'Everyday chat';
+  if (category === 'Sports') return 'Find your sports crew';
+  if (category === 'Study Groups') return 'Find study partners';
+  if (category === 'Career') return 'Career information';
+  if (category === 'Marketplace') return 'Buy, sell, and trade';
+  if (category === 'Club Promotions') return 'Club events and announcements';
+  const department = departmentFromCategory(category);
+  if (department) return `${department} classes and department talk`;
+  return 'Student posts and campus updates';
+}
+
 function departmentBoardFor(department: string): Board {
   const color = colorForDepartment(department);
   return {
@@ -2207,11 +2220,10 @@ export default function BoardScreen({
                 <Ionicons name={HOT_BOARD.icon} size={22} color={HOT_BOARD.color} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.7, color: colors.textTertiary, marginBottom: 4 }}>
-                  TRENDING NOW
+                <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 4 }}>
+                  Trending Now
                 </Text>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{HOT_BOARD.name}</Text>
-                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>Posts over 10 likes</Text>
               </View>
               <View
                 style={{
@@ -2267,8 +2279,8 @@ export default function BoardScreen({
                 <Ionicons name="school-outline" size={22} color={colors.brand} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.7, color: colors.textTertiary, marginBottom: 4 }}>
-                  SCHOOL BOARDS
+                <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 4 }}>
+                  Browse your department
                 </Text>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Department Boards</Text>
               </View>
@@ -2325,8 +2337,8 @@ export default function BoardScreen({
                   <Ionicons name={board.icon} size={22} color={board.color} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.7, color: colors.textTertiary, marginBottom: 4 }}>
-                    COMMUNITY BOARD
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 4 }}>
+                    {boardListDescription(board)}
                   </Text>
                   <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{board.name}</Text>
                 </View>
@@ -2544,7 +2556,7 @@ export default function BoardScreen({
                 >
                   <Ionicons name="chevron-back" size={26} color={colors.text} />
                 </TouchableOpacity>
-                <Text numberOfLines={1} style={{ flex: 1, fontSize: 18, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                <Text numberOfLines={1} style={{ flex: 1, fontSize: 18, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>
                   {boardContextLabel(selectedPost.category)}
                 </Text>
               </View>
@@ -2642,7 +2654,7 @@ export default function BoardScreen({
                                 <Ionicons name="document-outline" size={24} color={colors.brand} />
                               </View>
                               <View style={{ flex: 1 }}>
-                                <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                                <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>
                                   {attachment.name}
                                 </Text>
                                 <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
@@ -3621,6 +3633,10 @@ function NewPostModal({
   const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? boards[0];
   const composerScrollRef = useRef<ScrollView>(null);
   const bodyInputFocusedRef = useRef(false);
+  const bodyInputYRef = useRef(0);
+  const bodyInputHeightRef = useRef(240);
+  const composerViewportHeightRef = useRef(0);
+  const keyboardHeightRef = useRef(0);
   const [bodyInputHeight, setBodyInputHeight] = useState(240);
   const fieldChrome = {
     backgroundColor: colors.card,
@@ -3633,20 +3649,46 @@ function NewPostModal({
     elevation: 1,
   };
 
-  const keepBodyCursorVisible = useCallback((animated = true) => {
+  const keepBodyCursorVisible = useCallback((height = bodyInputHeightRef.current, animated = true) => {
+    const viewportHeight = composerViewportHeightRef.current || Dimensions.get('window').height;
+    const keyboardHeight = keyboardHeightRef.current;
+    const visibleHeight = Math.max(180, viewportHeight - keyboardHeight);
+    const targetY = Math.max(0, bodyInputYRef.current + height - visibleHeight + 132);
+
     [0, 80, 180].forEach((delay) => {
-      setTimeout(() => composerScrollRef.current?.scrollToEnd({ animated }), delay);
+      setTimeout(() => composerScrollRef.current?.scrollTo({ y: targetY, animated }), delay);
     });
   }, []);
 
   useEffect(() => {
     if (!visible) {
       bodyInputFocusedRef.current = false;
+      bodyInputHeightRef.current = 240;
+      keyboardHeightRef.current = 0;
       setBodyInputHeight(240);
       return;
     }
-    setBodyInputHeight(estimatePostBodyInputHeight(body));
+    const estimatedHeight = estimatePostBodyInputHeight(body);
+    bodyInputHeightRef.current = estimatedHeight;
+    setBodyInputHeight(estimatedHeight);
   }, [body, visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      keyboardHeightRef.current = Math.max(event.endCoordinates?.height ?? 0, 0);
+      if (bodyInputFocusedRef.current) keepBodyCursorVisible(bodyInputHeightRef.current, true);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      keyboardHeightRef.current = 0;
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [keepBodyCursorVisible, visible]);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -3664,6 +3706,9 @@ function NewPostModal({
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
           ref={composerScrollRef}
+          onLayout={(event) => {
+            composerViewportHeightRef.current = event.nativeEvent.layout.height;
+          }}
           contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'ios' ? 140 : 90 }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
@@ -3716,19 +3761,31 @@ function NewPostModal({
             Content <Text style={{ color: '#ef4444' }}>*</Text>
           </Text>
           <TextInput
+            onLayout={(event) => {
+              bodyInputYRef.current = event.nativeEvent.layout.y;
+            }}
             value={body}
             onChangeText={(value) => {
               onBodyChange(value);
               const nextHeight = estimatePostBodyInputHeight(value);
+              bodyInputHeightRef.current = nextHeight;
               setBodyInputHeight(nextHeight);
-              if (bodyInputFocusedRef.current && nextHeight > 240) keepBodyCursorVisible(true);
+              if (bodyInputFocusedRef.current) keepBodyCursorVisible(nextHeight, true);
             }}
             placeholder="Share your thoughts, ask questions, or provide details..."
             placeholderTextColor={colors.placeholder}
             multiline
             scrollEnabled={false}
+            onContentSizeChange={(event) => {
+              const nextHeight = Math.max(240, Math.min(1800, event.nativeEvent.contentSize.height + 26));
+              if (Math.abs(nextHeight - bodyInputHeightRef.current) < 2) return;
+              bodyInputHeightRef.current = nextHeight;
+              setBodyInputHeight(nextHeight);
+              if (bodyInputFocusedRef.current) keepBodyCursorVisible(nextHeight, true);
+            }}
             onFocus={() => {
               bodyInputFocusedRef.current = true;
+              keepBodyCursorVisible(bodyInputHeightRef.current, true);
             }}
             onBlur={() => {
               bodyInputFocusedRef.current = false;
@@ -3824,7 +3881,7 @@ function NewPostModal({
                     </View>
                   )}
                   <View style={{ flex: 1 }}>
-                    <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
+                    <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>
                       {attachment.name}
                     </Text>
                     <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>

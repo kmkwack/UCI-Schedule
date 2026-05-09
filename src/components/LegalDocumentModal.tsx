@@ -1,6 +1,6 @@
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { CURRENT_LEGAL_ACKNOWLEDGMENT } from '../data/legal';
+import { CURRENT_LEGAL_DOCUMENTS } from '../data/legal';
 
 export type LegalDocumentType = 'terms' | 'privacy' | 'licenses';
 
@@ -18,7 +18,7 @@ type LegalDocument = {
 const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
   terms: {
     title: 'Terms of Service',
-    updatedLabel: `Last updated ${CURRENT_LEGAL_ACKNOWLEDGMENT.effectiveLabel}`,
+    updatedLabel: `Last updated ${CURRENT_LEGAL_DOCUMENTS.effectiveLabel}`,
     sections: [
       {
         heading: 'Eligibility and Acceptance',
@@ -104,7 +104,7 @@ const DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
   },
   privacy: {
     title: 'Privacy Policy',
-    updatedLabel: `Last updated ${CURRENT_LEGAL_ACKNOWLEDGMENT.effectiveLabel}`,
+    updatedLabel: `Last updated ${CURRENT_LEGAL_DOCUMENTS.effectiveLabel}`,
     sections: [
       {
         heading: 'Overview',

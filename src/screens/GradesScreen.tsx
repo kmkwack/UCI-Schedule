@@ -260,7 +260,7 @@ function GpaChart({ history, maxGpa }: { history: { label: string; gpa: number }
             <Text
               numberOfLines={1}
               adjustsFontSizeToFit
-              minimumFontScale={0.82}
+              minimumFontScale={0.86}
               style={{ fontSize: 10.5, lineHeight: 14, color: colors.textTertiary, textAlign: 'center', fontWeight: '700' }}
             >
               {compactQuarterLabel(p.label)}

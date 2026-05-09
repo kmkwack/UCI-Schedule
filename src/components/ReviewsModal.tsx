@@ -152,14 +152,6 @@ function formatFinalExam(fe: FinalExam | string | null): string | null {
   return parts.length ? parts.join(' · ') : null;
 }
 
-function finalExamFallback(sectionComment?: string | null): string | null {
-  const trimmed = sectionComment?.trim() ?? '';
-  if (trimmed && /final|exam/i.test(trimmed)) {
-    return trimmed;
-  }
-  return null;
-}
-
 const courseInfoCache: Record<string, CourseInfo> = {};
 const uciCatalogCourseCache: Record<string, { prerequisiteText: string | null; restrictionText: string | null; prerequisiteSourceKnown: boolean }> = {};
 
@@ -394,7 +386,6 @@ export default function ReviewsModal({
 
     const preferred =
       rows.find((row) => row.final_exam) ??
-      rows.find((row) => row.section_comment?.trim()) ??
       rows.find((row) => row.restrictions || row.prerequisite_link) ??
       rows[0];
 
@@ -495,9 +486,7 @@ export default function ReviewsModal({
     difficulty: average(reviews.map((review) => review.difficulty)),
     workload: average(reviews.map((review) => review.workload)),
   }), [reviews]);
-  const officialFinalText = courseInfo
-    ? formatFinalExam(courseInfo.finalExam) ?? finalExamFallback(courseInfo.sectionComment)
-    : null;
+  const officialFinalText = courseInfo ? formatFinalExam(courseInfo.finalExam) : null;
   const restrictionItems = courseInfo ? decodeRestrictions(courseInfo.restrictions) : [];
   const prerequisiteLink = courseInfo?.prerequisiteLink ?? null;
   const prerequisiteText = courseInfo?.prerequisiteText ?? null;
@@ -512,7 +501,6 @@ export default function ReviewsModal({
   const hiddenRestrictionCount = Math.max(0, restrictionItems.length - visibleRestrictionItems.length);
   const restrictionNeedsToggle = hiddenRestrictionCount > 0
     || restrictionItems.some((item) => item.length > LONG_RESTRICTION_LENGTH);
-  const courseNote = courseInfo?.sectionComment?.trim() || null;
   const rmpProfessor = instructor || professors[0] || '';
   const showRmpLink = Boolean(rmpProfessor && rmpProfessor !== 'STAFF' && rmpProfessor.trim());
   const rmpLastName = rmpProfessor.includes(',') ? rmpProfessor.substring(0, rmpProfessor.indexOf(',')) : rmpProfessor;
@@ -522,8 +510,7 @@ export default function ReviewsModal({
   const showCourseInfoDetails = Boolean(courseInfo && (
     shouldShowRestrictions ||
     shouldShowPrerequisites ||
-    officialFinalText ||
-    (courseNote && courseNote !== officialFinalText)
+    officialFinalText
   ) || showRmpLink);
   return (
     <Modal
@@ -630,15 +617,6 @@ export default function ReviewsModal({
                               <TouchableOpacity onPress={() => Linking.openURL(rmpUrl)}>
                                 <Text style={{ fontSize: 13, color: colors.brand, textDecorationLine: 'underline' }}>{rmpProfessor} on RateMyProfessors ›</Text>
                               </TouchableOpacity>
-                            </View>
-                          </View>
-                        ) : null}
-                        {courseNote && courseNote !== officialFinalText ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                            <Ionicons name="information-circle-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Note</Text>
-                              <Text style={{ fontSize: 13, color: colors.text }}>{courseNote}</Text>
                             </View>
                           </View>
                         ) : null}

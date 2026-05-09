@@ -37,7 +37,6 @@ import {
   profileDetailsFromProfile,
   profileFromSources,
 } from './src/data/userPreferences';
-import { CURRENT_LEGAL_ACKNOWLEDGMENT, hasAcceptedCurrentLegalDocuments } from './src/data/legal';
 import { fetchSportsEventsForSchool } from './src/data/sportsEvents';
 import { supabase } from './src/lib/supabase';
 import { isMissingSchoolColumnError } from './src/lib/supabaseErrors';
@@ -221,18 +220,25 @@ function formatNotificationStartTime(timeRange: string) {
   return formatTimeOfDay12(rawStart);
 }
 
+function buildDailyScheduleNotificationLine(course: Course) {
+  const parts = [
+    formatNotificationStartTime(course.time),
+    course.code,
+    course.location,
+  ].filter(Boolean);
+  return `• ${parts.join(' · ')}`;
+}
+
 function buildDailyScheduleNotificationBody(courses: Course[]) {
   const sortedCourses = courses.slice().sort((a, b) => courseStartMinutes(a) - courseStartMinutes(b));
-  const visibleCourses = sortedCourses.slice(0, 4);
-  const items = visibleCourses.map((course) => (
-    `${course.code} ${formatNotificationStartTime(course.time)}${course.location ? ` @ ${course.location}` : ''}`
-  ));
+  const visibleCourses = sortedCourses.slice(0, 5);
+  const items = visibleCourses.map(buildDailyScheduleNotificationLine);
   const remaining = Math.max(0, sortedCourses.length - visibleCourses.length);
   const body = remaining > 0
-    ? `${items.join(' · ')} · +${remaining} more`
-    : items.join(' · ');
+    ? [...items, `• +${remaining} more in ClassMate`].join('\n')
+    : items.join('\n');
 
-  return truncateNotificationText(body || 'Open ClassMate to see your full schedule for today.', 178);
+  return truncateNotificationText(body || 'Open ClassMate to see your full schedule for today.', 220);
 }
 
 function normalizeDailyScheduleSummaryHour(value: number | undefined) {
@@ -495,7 +501,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     : Math.max(insets.bottom - 6, 8);
   const availableTabWidth = Math.max(0, windowWidth - tabHorizontalMargin * 2);
   const tabSlotWidth = availableTabWidth / 5;
-  const tabTextMinScale = tinyTabs ? 0.62 : compactTabs ? 0.7 : 0.82;
+  const tabTextMinScale = tinyTabs ? 0.78 : compactTabs ? 0.84 : 0.9;
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
   const [authInitializing, setAuthInitializing] = useState(true);
@@ -642,7 +648,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [savingVisibility, setSavingVisibility] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [savingRegion, setSavingRegion] = useState(false);
-  const [savingLegalAcknowledgment, setSavingLegalAcknowledgment] = useState(false);
   const [assignmentCalendarRevision, setAssignmentCalendarRevision] = useState(0);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [authStack, setAuthStack] = useState<AuthScreen[]>(['welcome']);
@@ -1111,14 +1116,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         setUserSettings({
           timetableVisibility: ((settingsRow as Record<string, any> | null | undefined)?.timetable_visibility as TimetableVisibility | undefined) ?? DEFAULT_USER_SETTINGS.timetableVisibility,
           boardProfileVisible: settingsDetails?.boardProfileVisible === true,
-          legalAcknowledgment: settingsDetails?.legalAcknowledgment &&
-            typeof settingsDetails.legalAcknowledgment === 'object'
-            ? {
-                termsVersion: String(settingsDetails.legalAcknowledgment.termsVersion ?? ''),
-                privacyVersion: String(settingsDetails.legalAcknowledgment.privacyVersion ?? ''),
-                acceptedAt: String(settingsDetails.legalAcknowledgment.acceptedAt ?? ''),
-              }
-            : null,
           notifications: {
             ...DEFAULT_NOTIFICATION_PREFERENCES,
             ...(((settingsRow as Record<string, any> | null | undefined)?.notification_settings as NotificationPreferences | undefined) ?? {}),
@@ -2141,7 +2138,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           nextSettings.boardProfileVisible,
           profileSetupComplete,
           onboardingComplete,
-          nextSettings.legalAcknowledgment
         ),
         language: nextSettings.language,
         timeZone: nextSettings.timeZone,
@@ -2365,28 +2361,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       return false;
     } finally {
       setSavingRegion(false);
-    }
-  };
-
-  const handleAcceptLegalUpdate = async (): Promise<boolean> => {
-    setSavingLegalAcknowledgment(true);
-    const nextSettings: UserSettingsState = {
-      ...userSettings,
-      legalAcknowledgment: {
-        termsVersion: CURRENT_LEGAL_ACKNOWLEDGMENT.termsVersion,
-        privacyVersion: CURRENT_LEGAL_ACKNOWLEDGMENT.privacyVersion,
-        acceptedAt: new Date().toISOString(),
-      },
-    };
-
-    try {
-      await saveUserSettingsRow(nextSettings);
-      setUserSettings(nextSettings);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      setSavingLegalAcknowledgment(false);
     }
   };
 
@@ -2634,12 +2608,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         scrollToTopTrigger={homeTabTapCount}
         school={currentSchool}
         onAssignmentCalendarChange={handleAssignmentCalendarChange}
-        legalUpdateAcknowledgment={{
-          required: !!userId && userBootstrapSettled && !userBootstrapLoading && !hasAcceptedCurrentLegalDocuments(userSettings.legalAcknowledgment),
-          effectiveLabel: CURRENT_LEGAL_ACKNOWLEDGMENT.effectiveLabel,
-          saving: savingLegalAcknowledgment,
-          onAccept: handleAcceptLegalUpdate,
-        }}
       />
     );
   } else if (currentTab === 'timetable') {

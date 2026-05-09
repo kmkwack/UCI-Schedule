@@ -319,31 +319,31 @@ export default function PreviewTimetable({
                           overflow: 'hidden',
                         }}
                       >
-                        {showCode && (
-                          <Text style={{ color: getBlockColors(course, theme).text, fontSize: 9, fontWeight: '800', lineHeight: 12 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
-                            {course.code}
-                          </Text>
-                        )}
-                        {showClassName && (
-                          <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, fontWeight: '500', opacity: 0.85 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
-                            {course.title}
-                          </Text>
-                        )}
-                        {showRoomNumber && course.location ? (
-                          <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, opacity: 0.7 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
-                            {course.location}
-                          </Text>
-                        ) : null}
-                        {showInstructor ? (
-                          <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, opacity: 0.7 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
-                            {professorDisplayName(course.professor).split(',')[0]}
-                          </Text>
-                        ) : null}
-                        {showTime && (
-                          <Text style={{ color: getBlockColors(course, theme).text, fontSize: 7, opacity: 0.6 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
-                            {formatCourseTimeRange12(course.time, { compact: true })}
-                          </Text>
-                        )}
+                          {showCode && (
+                            <Text style={{ color: getBlockColors(course, theme).text, fontSize: 9, fontWeight: '800', lineHeight: 12 }} numberOfLines={1} ellipsizeMode="tail">
+                              {course.code}
+                            </Text>
+                          )}
+                          {showClassName && (
+                            <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, fontWeight: '500', opacity: 0.85 }} numberOfLines={1} ellipsizeMode="tail">
+                              {course.title}
+                            </Text>
+                          )}
+                          {showRoomNumber && course.location ? (
+                            <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, opacity: 0.7 }} numberOfLines={1} ellipsizeMode="tail">
+                              {course.location}
+                            </Text>
+                          ) : null}
+                          {showInstructor ? (
+                            <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, opacity: 0.7 }} numberOfLines={1} ellipsizeMode="tail">
+                              {professorDisplayName(course.professor).split(',')[0]}
+                            </Text>
+                          ) : null}
+                          {showTime && (
+                            <Text style={{ color: getBlockColors(course, theme).text, fontSize: 7, opacity: 0.6 }} numberOfLines={1} ellipsizeMode="tail">
+                              {formatCourseTimeRange12(course.time, { compact: true })}
+                            </Text>
+                          )}
                       </View>
                     );
                   });

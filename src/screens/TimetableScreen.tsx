@@ -37,6 +37,64 @@ function appleMapsCoordinateUrl(location: CampusMapLocation) {
   return `maps://?ll=${location.latitude},${location.longitude}&q=${encodeURIComponent(location.name)}`;
 }
 
+function cleanLocationText(value: string | null | undefined) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function comparableLocationText(value: string | null | undefined) {
+  return cleanLocationText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isGenericCampusLocation(value: string | null | undefined, school: string) {
+  const cleaned = cleanLocationText(value);
+  if (!cleaned) return true;
+  if (/(online|remote|virtual)/i.test(cleaned)) return false;
+
+  const normalized = comparableLocationText(cleaned);
+  if (!normalized) return true;
+  if (['tba', 'to be announced', 'arranged', 'none', 'n/a'].includes(normalized)) return true;
+  if (/\bcampus$/.test(normalized)) return true;
+
+  const config = getSchoolConfig(school);
+  const phrases = [
+    school,
+    config.name,
+    config.shortName,
+    config.campus,
+    config.location,
+    ...config.location.split(',').map((part) => part.trim()),
+  ];
+  let remainder = normalized;
+  [...new Set(phrases.map(comparableLocationText).filter((phrase) => phrase.length > 1))]
+    .sort((a, b) => b.length - a.length)
+    .forEach((phrase) => {
+      remainder = remainder.replace(new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'g'), ' ');
+    });
+  remainder = remainder
+    .replace(/\b(main|campus|online|remote|virtual|university|college|institute|school|state|of|the|at|and)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return !remainder;
+}
+
+function displayCourseLocation(value: string | null | undefined, school: string) {
+  const cleaned = cleanLocationText(value);
+  if (!cleaned || isGenericCampusLocation(cleaned, school)) return undefined;
+  return cleaned;
+}
+
 async function openMaps(location: string, school: string, mappedLocation?: CampusMapLocation | null) {
   const appleUrl = mappedLocation ? appleMapsCoordinateUrl(mappedLocation) : appleMapsUrl(location, school);
   const fallbackUrl = mapSearchUrl(location, school);
@@ -1582,7 +1640,7 @@ export default function TimetableScreen({
             const professor = professorDisplayName(selectedCourse.professor);
             const hasRmp = professorIsKnown(selectedCourse.professor);
             const profRmpUrl = hasRmp ? rmpUrl(selectedCourse.professor, school) : null;
-            const rawLocation = selectedCourse.location?.trim() ?? '';
+            const rawLocation = displayCourseLocation(selectedCourse.location, school) ?? '';
             const hasMapLocation = !isUnmappableLocation(rawLocation);
             const mappedLocation = getCampusMapLocation(school, rawLocation);
             const mapQuery = mappedLocation?.name ?? rawLocation;
@@ -1627,10 +1685,10 @@ export default function TimetableScreen({
                     <Ionicons name="time-outline" size={16} color={colors.textTertiary} />
                     <Text style={{ fontSize: 14, color: colors.textSecondary }}>{selectedCourse.days} · {formatCourseTimeRange12(selectedCourse.time)}</Text>
                   </View>
-                  {selectedCourse.location ? (
+                  {rawLocation ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                       <Ionicons name="location-outline" size={16} color={colors.textTertiary} />
-                      <Text style={{ fontSize: 14, color: colors.textSecondary }}>{selectedCourse.location}</Text>
+                      <Text style={{ fontSize: 14, color: colors.textSecondary }}>{rawLocation}</Text>
                     </View>
                   ) : null}
                   {selectedCourse.units != null ? (
@@ -1678,7 +1736,7 @@ export default function TimetableScreen({
                           <Marker
                             coordinate={{ latitude: mappedLocation.latitude, longitude: mappedLocation.longitude }}
                             title={mappedLocation.name}
-                            description={selectedCourse.location}
+                            description={rawLocation}
                           />
                         </MapView>
                       )}
@@ -1687,7 +1745,7 @@ export default function TimetableScreen({
                           <View style={{ flex: 1 }}>
                             <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{mappedLocation.name}</Text>
                             <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 3 }}>
-                              {selectedCourse.location}
+                              {rawLocation}
                             </Text>
                           </View>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -2146,6 +2204,7 @@ export default function TimetableScreen({
                         const top = (startHour - displayStartHour) * hourHeight;
                         const height = (endHour - startHour) * hourHeight;
                         const { bg, text, border } = getBlockColors(course, blockTheme);
+                        const courseLocation = displayCourseLocation(course.location, school);
 
                         return courseDays.map((day) => {
                           const dayIndex = visibleDays.indexOf(day);
@@ -2172,54 +2231,51 @@ export default function TimetableScreen({
                                 overflow: 'hidden',
                               }}
                             >
-                              {showCode && (
-                                <Text
-                                  style={{ color: text, fontWeight: '800', fontSize: codeFontSize, lineHeight: compactGrid ? 12 : 13 }}
-                                  numberOfLines={1}
-                                  adjustsFontSizeToFit
-                                  minimumFontScale={0.72}
-                                >
-                                  {course.code}
-                                </Text>
-                              )}
-                              {showClassName && (
-                                <Text
-                                  style={{ color: text, fontWeight: '600', fontSize: metaFontSize, lineHeight: compactGrid ? 10 : 12, opacity: 0.85 }}
-                                  numberOfLines={2}
-                                >
-                                  {course.title}
-                                </Text>
-                              )}
-                              {showRoomNumber && course.location ? (
-                                <Text
-                                  style={{ color: text, fontSize: metaFontSize, opacity: 0.75, marginTop: 2 }}
-                                  numberOfLines={1}
-                                  adjustsFontSizeToFit
-                                  minimumFontScale={0.72}
-                                >
-                                  {course.location}
-                                </Text>
-                              ) : null}
-                              {showInstructor && (
-                                <Text
-                                  style={{ color: text, fontSize: metaFontSize, opacity: 0.7, marginTop: 1 }}
-                                  numberOfLines={1}
-                                  adjustsFontSizeToFit
-                                  minimumFontScale={0.72}
-                                >
-                                  {getProfLastName(course.professor)}
-                                </Text>
-                              )}
-                              {showTime && (
-                                <Text
-                                  style={{ color: text, fontSize: timeFontSize, opacity: 0.6, marginTop: 1 }}
-                                  numberOfLines={1}
-                                  adjustsFontSizeToFit
-                                  minimumFontScale={0.72}
-                                >
-                                  {formatCourseTimeRange12(course.time, { compact: true })}
-                                </Text>
-                              )}
+                                {showCode && (
+                                  <Text
+                                    style={{ color: text, fontWeight: '800', fontSize: codeFontSize, lineHeight: compactGrid ? 12 : 13 }}
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                  >
+                                    {course.code}
+                                  </Text>
+                                )}
+                                {showClassName && (
+                                  <Text
+                                    style={{ color: text, fontWeight: '600', fontSize: metaFontSize, lineHeight: compactGrid ? 10 : 12, opacity: 0.85 }}
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                  >
+                                    {course.title}
+                                  </Text>
+                                )}
+                                {showRoomNumber && courseLocation ? (
+                                  <Text
+                                    style={{ color: text, fontSize: metaFontSize, opacity: 0.75, marginTop: 2 }}
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                  >
+                                    {courseLocation}
+                                  </Text>
+                                ) : null}
+                                {showInstructor && (
+                                  <Text
+                                    style={{ color: text, fontSize: metaFontSize, opacity: 0.7, marginTop: 1 }}
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                  >
+                                    {getProfLastName(course.professor)}
+                                  </Text>
+                                )}
+                                {showTime && (
+                                  <Text
+                                    style={{ color: text, fontSize: timeFontSize, opacity: 0.6, marginTop: 1 }}
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                  >
+                                    {formatCourseTimeRange12(course.time, { compact: true })}
+                                  </Text>
+                                )}
                             </TouchableOpacity>
                           );
                         });
@@ -2240,6 +2296,7 @@ export default function TimetableScreen({
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {tbaCourses.map((course) => {
                 const { bg, text, border } = getBlockColors(course, blockTheme);
+                const courseLocation = displayCourseLocation(course.location, school);
                 return (
                   <TouchableOpacity
                     key={course.id}
@@ -2252,23 +2309,23 @@ export default function TimetableScreen({
                       minWidth: 100, maxWidth: 160,
                     }}
                   >
-                    {showCode && (
-                      <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
-                        {course.code}
-                      </Text>
-                    )}
-                    {showClassName && (
-                      <Text style={{ color: text, fontWeight: '600', fontSize: 9, lineHeight: 12, opacity: 0.85 }} numberOfLines={2}>
-                        {course.title}
-                      </Text>
-                    )}
-                    {showInstructor && (
-                      <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
-                        {getProfLastName(course.professor)}
-                      </Text>
-                    )}
+                      {showCode && (
+                        <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1} ellipsizeMode="tail">
+                          {course.code}
+                        </Text>
+                      )}
+                      {showClassName && (
+                        <Text style={{ color: text, fontWeight: '600', fontSize: 9, lineHeight: 12, opacity: 0.85 }} numberOfLines={1} ellipsizeMode="tail">
+                          {course.title}
+                        </Text>
+                      )}
+                      {showInstructor && (
+                        <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1} ellipsizeMode="tail">
+                          {getProfLastName(course.professor)}
+                        </Text>
+                      )}
                     <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
-                      {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
+                      {courseLocation?.toLowerCase().includes('online') || courseLocation?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -2514,36 +2571,33 @@ export default function TimetableScreen({
                               overflow: 'hidden',
                             }}
                           >
-                            {showCode && (
-                              <Text
-                                style={{ color: text, fontWeight: '800', fontSize: exportCodeFontSize, lineHeight: exportCompactGrid ? 10 : 11 }}
-                                numberOfLines={1}
-                                adjustsFontSizeToFit
-                                minimumFontScale={0.72}
-                              >
-                                {course.code}
-                              </Text>
-                            )}
-                            {showClassName && canShowSecondary && (
-                              <Text
-                                style={{ color: text, fontWeight: '600', fontSize: exportMetaFontSize, lineHeight: exportCompactGrid ? 9 : 10, opacity: 0.88 }}
-                                numberOfLines={1}
-                                adjustsFontSizeToFit
-                                minimumFontScale={0.72}
-                              >
-                                {course.title}
-                              </Text>
-                            )}
-                            {showTime && canShowTime && (
-                              <Text
-                                style={{ color: text, fontSize: exportTimeFontSize, opacity: 0.68, marginTop: 1 }}
-                                numberOfLines={1}
-                                adjustsFontSizeToFit
-                                minimumFontScale={0.72}
-                              >
-                                {formatCourseTimeRange12(course.time, { compact: true })}
-                              </Text>
-                            )}
+                              {showCode && (
+                                <Text
+                                  style={{ color: text, fontWeight: '800', fontSize: exportCodeFontSize, lineHeight: exportCompactGrid ? 10 : 11 }}
+                                  numberOfLines={1}
+                                  ellipsizeMode="tail"
+                                >
+                                  {course.code}
+                                </Text>
+                              )}
+                              {showClassName && canShowSecondary && (
+                                <Text
+                                  style={{ color: text, fontWeight: '600', fontSize: exportMetaFontSize, lineHeight: exportCompactGrid ? 9 : 10, opacity: 0.88 }}
+                                  numberOfLines={1}
+                                  ellipsizeMode="tail"
+                                >
+                                  {course.title}
+                                </Text>
+                              )}
+                              {showTime && canShowTime && (
+                                <Text
+                                  style={{ color: text, fontSize: exportTimeFontSize, opacity: 0.68, marginTop: 1 }}
+                                  numberOfLines={1}
+                                  ellipsizeMode="tail"
+                                >
+                                  {formatCourseTimeRange12(course.time, { compact: true })}
+                                </Text>
+                              )}
                           </View>
                         );
                       });
@@ -2561,6 +2615,7 @@ export default function TimetableScreen({
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {tbaCourses.map((course) => {
                     const { bg, text, border } = getBlockColors(course, blockTheme);
+                    const courseLocation = displayCourseLocation(course.location, school);
                     return (
                       <View
                         key={`export-tba-${course.id}`}
@@ -2575,14 +2630,14 @@ export default function TimetableScreen({
                           maxWidth: 180,
                         }}
                       >
-                        <Text style={{ color: text, fontWeight: '800', fontSize: 10 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
-                          {course.code}
-                        </Text>
-                        <Text style={{ color: text, fontSize: 8, opacity: 0.82, marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
-                          {course.title}
-                        </Text>
+                          <Text style={{ color: text, fontWeight: '800', fontSize: 10 }} numberOfLines={1} ellipsizeMode="tail">
+                            {course.code}
+                          </Text>
+                          <Text style={{ color: text, fontSize: 8, opacity: 0.82, marginTop: 2 }} numberOfLines={1} ellipsizeMode="tail">
+                            {course.title}
+                          </Text>
                         <Text style={{ color: text, fontSize: 8, opacity: 0.58, marginTop: 2, fontWeight: '600' }}>
-                          {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
+                          {courseLocation?.toLowerCase().includes('online') || courseLocation?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
                         </Text>
                       </View>
                     );

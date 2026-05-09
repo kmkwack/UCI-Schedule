@@ -2847,6 +2847,9 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64sem (Catch remaining unapproved sections by source)
 - **`supabase/sql/remove_unsupported_banner_school_catalog_data.sql`** — Added source-based matching for all unapproved Banner source labels plus a sample query for remaining `sections` rows. This catches catalog rows even if the stored school display name differs from the expected cleanup list.
 
+### Session 64sen (Show school name on app entry)
+- **`src/components/ClassMateIntroScreen.tsx`** — Replaced the hardcoded `Your Campus` entry title with `ENTERING TO` plus the selected university name on the next line. The fallback now uses the default university name instead of generic campus copy.
+
 ### Session 64sel (Use UIUC CIS API for sections)
 - **`scripts/seed-uiuc-sections.js`** — Replaced UIUC Course Explorer HTML scraping and embedded `sectionDataObj` parsing with the official CIS XML API endpoints for term subjects, subject courses, and detailed course sections. The seeder now parses XML with `xml2js`, maps meetings/instructors/statuses/GE metadata from the API response, and writes `source: 'uiuc-cis-api'` so UIUC course data no longer depends on page markup.
 - **`scripts/reconcile-school-terms.js`** — Updated UIUC term reconciliation metadata to use the same `uiuc-cis-api` source label as the seeder so regenerated `school_terms` rows stay consistent with newly seeded section rows.
@@ -2893,3 +2896,109 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sez (Prevent overdue assignment auto-completion)
 - **`src/screens/HomeScreen.tsx`** — Tightened LMS calendar import seeding so only assignments that are already past the first time the app sees them are auto-marked complete. Assignments that were previously imported while still upcoming now remain open after their due date until the user manually checks them off, even across repeated calendar syncs.
+
+### Session 64sfa (Use ellipsis for timetable block text)
+- **`src/screens/TimetableScreen.tsx`**, **`src/components/PreviewTimetable.tsx`**, and **`src/screens/FriendsScreen.tsx`** — Removed forced font scaling from compact course blocks and switched course code/title/location/professor/time labels to fixed-size one-line tail ellipsis. This prevents cramped timetable cells from shrinking text or splitting words like `Econometrics` across lines.
+- **`scripts/audit-android-text.js`** — Treated tail ellipsis as a valid single-line overflow guard so compact fixed-width UI can use truncation instead of forced font scaling.
+
+### Session 64sfb (Render All Departments course list)
+- **`src/screens/CoursePickerScreen.tsx`** — Removed the old empty-category prompt from the course picker content state and starts the catalog in a loading state. `All Departments` now actually renders the fetched full-term course list instead of being treated as “no department selected,” which made classes appear blank even after the query succeeded.
+
+### Session 64sfc (Stop GE effect clearing All Departments)
+- **`src/screens/CoursePickerScreen.tsx`** — Removed the no-GE cleanup branch from the GE-only fetch effect. That branch was racing against the full-term `All Departments` query and clearing `catalogCourses`/`sectionsMap` after the real section rows loaded, so the picker could still appear empty.
+
+### Session 64sfd (Relax campus intro title line height)
+- **`src/components/ClassMateIntroScreen.tsx`** — Increased the two-line campus title line height so Android font metrics do not clip or trigger the text-risk audit after the selected-school intro title change.
+
+### Session 64sfe (Stabilize department picker keyboard)
+- **`src/screens/CoursePickerScreen.tsx`** — Replaced the department/GE picker sheet's manual keyboard-height margin/max-height adjustments with a `KeyboardAvoidingView`, kept the sheet height stable, and added keyboard dismiss behavior to the department lists. This prevents the bottom sheet from jumping or resizing unpredictably when the search keyboard opens.
+
+### Session 64sff (Remove forced legal acknowledgment)
+- **`App.tsx`** and **`src/screens/HomeScreen.tsx`** — Removed the post-login legal/privacy update acknowledgment card, its save handler, and the required-version check so users are no longer prompted to accept updated terms after signing in.
+- **`src/data/userPreferences.ts`** — Removed `legalAcknowledgment` from app user settings/profile details persistence because the app no longer tracks forced in-app legal acknowledgments.
+- **`src/data/legal.ts`** and **`src/components/LegalDocumentModal.tsx`** — Removed the unused legal-acknowledgment checker and renamed the legal document metadata export so legal documents can remain viewable without implying a forced acceptance workflow.
+
+### Session 64sfg (Bullet daily class briefing)
+- **`App.tsx`** — Changed the morning daily schedule notification body from one long joined sentence into a compact bullet list with time, course code, and location on separate lines. This makes the briefing easier to scan directly from the notification.
+
+### Session 64sfh (White backing behind keyboard)
+- **`src/screens/CoursePickerScreen.tsx`** — Added a white absolute backing view behind the system keyboard while the department picker search is focused. This prevents the dimmed timetable/background from showing through translucent keyboard areas when the keyboard is open.
+
+### Session 64sfl (Restore course picker section queries)
+- **`src/screens/CoursePickerScreen.tsx`** — Removed not-yet-migrated enrollment count columns from the default `sections` select list so course queries no longer fail when Supabase lacks `enrolled`, `capacity`, `waitlist`, or `waitlist_capacity`. Stored status remains selected, while UCI live enrollment still loads on expand.
+- **`src/screens/CoursePickerScreen.tsx`** — Stopped `All Departments` clearing `catalogCourses`/`sectionsMap` directly. Re-selecting All Departments no longer wipes the visible course list without triggering a refetch.
+
+### Session 64sfm (Force reload on All Departments)
+- **`src/screens/CoursePickerScreen.tsx`** — Added an explicit course catalog reload key and bumps it whenever `All Departments` is selected. Pressing All Departments now always re-runs the full-term query across every department, even if the filter state was already cleared.
+
+### Session 64sfh (Fix Campus Info label sizing)
+- **`src/screens/HomeScreen.tsx`** — Removed forced font scaling from Campus Info resource and child-link labels while keeping the normal card sizes, then switched labels to fixed-size tail ellipsis. This prevents labels like `Student Portal` from shrinking to an unreadable size inside the Campus Info card.
+
+### Session 64sfi (Scope Campus Info compact sizing)
+- **`src/screens/HomeScreen.tsx`** — Restored the original Campus Info title, subtitle, child-link, and icon sizes for normal-width screens, and added width-gated compact sizes only for narrow layouts. This keeps large phones from shrinking text while still protecting small screens from overflow.
+
+### Session 64sfj (Move hero icons to carousel indicators)
+- **`src/screens/HomeScreen.tsx`** — Removed the extra calendar icon from the empty-schedule hero card so the title returns to its original position, and changed the hero carousel indicators so every page uses an icon in the bottom indicator row instead of mixing one plain dot with icon indicators.
+
+### Session 64sfk (Describe board cards)
+- **`src/screens/BoardScreen.tsx`** — Replaced generic board-card eyebrow labels like `SCHOOL BOARDS` and `COMMUNITY BOARD` with short descriptions of what each board is for. The Hot Board card keeps its title and uses `Trending Now` as the small descriptor above it.
+
+### Session 64sfl (Simplify Career Board description)
+- **`src/screens/BoardScreen.tsx`** — Changed the Career Board card descriptor to `Career information` so the board purpose is shorter and clearer.
+
+### Session 64sfm (Simplify Study Groups descriptor)
+- **`src/screens/BoardScreen.tsx`** — Changed the Study Groups Board card descriptor from `Find study partners fast` to `Find study partners`.
+
+### Session 64sfn (Simplify Marketplace descriptor)
+- **`src/screens/BoardScreen.tsx`** — Changed the Marketplace Board card descriptor from `Buy, sell, and trade with students` to `Buy, sell, and trade`.
+
+### Session 64sfo (Track long post body input)
+- **`src/screens/BoardScreen.tsx`** — Changed the new-post composer from scrolling to the bottom of the whole form to tracking the body input's layout, content height, viewport height, and keyboard height. Long post bodies now keep the active writing area above the keyboard instead of letting the cursor fall behind the keyboard or jumping to attachment controls.
+
+### Session 64sfo (Simplify General Board descriptor)
+- **`src/screens/BoardScreen.tsx`** — Changed the General Board card descriptor from `Campus questions and everyday chat` to `Everyday chat`.
+
+### Session 64sfp (Simplify Department Boards descriptor)
+- **`src/screens/BoardScreen.tsx`** — Changed the Department Boards card descriptor from `Browse classes by department` to `Browse your department`.
+
+### Session 64sfq (Update Sports Board descriptor)
+- **`src/screens/BoardScreen.tsx`** — Changed the Sports Board card descriptor from `Games, teams, and campus sports` to `Find your sports crew`.
+
+### Session 64sfq (Shorten completed assignments sheet)
+- **`src/screens/HomeScreen.tsx`** — Renamed the completed assignments sheet title to `Completed` and removed the small hidden-from-Home helper text under it.
+
+### Session 64sfr (Normalize section status badges)
+- **`src/screens/CoursePickerScreen.tsx`** — Changed section status badge rendering so only clear enrollment states (`Open`, `Waitlist`, `New Only`, `Full`, `Closed`) are shown. Raw provider-specific strings like UIUC `CrossListOpen (...)` are normalized to a clean status when possible or hidden when ambiguous.
+
+### Session 64sfs (Sort All Departments by department)
+- **`src/screens/CoursePickerScreen.tsx`** — Changed catalog sorting so mixed-department views, including `All Departments`, group courses by department alphabetically before sorting by course number. Single-department views still keep the normal course-number order.
+
+### Session 64sft (Hide duplicate section id in labels)
+- **`src/screens/CoursePickerScreen.tsx`** — Added a section header formatter that omits the leading section id when the section label already contains the same id. This cleans up Purdue rows like `14447 · Lec 14447` to display as `Lec 14447`.
+
+### Session 64sfu (Hide generic campus course locations)
+- **`src/screens/TimetableScreen.tsx`** — Added location display sanitization for timetable course details and blocks. Generic provider locations such as Cornell `Ithaca, NY (Main Campus)` are now treated as unavailable location data, so they no longer appear as classroom information or trigger map previews.
+
+### Session 64sfv (Stop inferring final exams from comments)
+- **`src/components/ReviewsModal.tsx`** — Removed the final-exam fallback that treated any section comment containing `exam` or `final` as final exam data. Final Exam now displays only explicit `final_exam` values, preventing Cornell course descriptions with words like `examine` from being mislabeled as final exam information.
+
+### Session 64sfw (Raise font auto-shrink floors)
+- **`App.tsx`**, **`src/screens/HomeScreen.tsx`**, **`src/screens/GradesScreen.tsx`**, **`src/screens/UniversitySelectionScreen.tsx`**, **`src/screens/MessagesScreen.tsx`**, **`src/screens/BoardScreen.tsx`**, **`src/components/FeatureOnboardingScreen.tsx`**, **`src/screens/SettingsScreen.tsx`**, **`src/components/ClassMateIntroScreen.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, and **`src/screens/FriendsScreen.tsx`** — Raised `minimumFontScale` values so auto-fit text shrinks only modestly instead of dropping to tiny sizes. Bottom tab labels now use higher dynamic minimums, and the campus intro title no longer falls to an excessively small scale.
+
+### Session 64sfx (Simplify Campus Info copy)
+- **`src/screens/HomeScreen.tsx`** — Removed Campus Info subtitle/helper copy from the home hero card and Campus Info sheet. Resource cards and child links now show only the recognizable link names, keeping the section cleaner for students who already know the campus services.
+
+### Session 64sfy (Add short Campus Info captions)
+- **`src/screens/HomeScreen.tsx`** — Restored compact Campus Info helper labels with short app-specific captions instead of long descriptions. Resource cards now use terse labels like `Register · Pay · Dates` and child links use one-word cues like `Pay`, `Dates`, and `RSVP`.
+
+### Session 64sfz (Refine Campus Info captions)
+- **`src/screens/HomeScreen.tsx`** — Replaced keyword-style Campus Info captions with short sentence-style helper lines on the main resource cards, and removed the extra helper text inside child link buttons so those buttons show only their link names.
+
+### Session 64sga (Remove course-description notes from reviews)
+- **`src/components/ReviewsModal.tsx`** — Stopped using `section_comment` as a displayed course-info note and no longer prioritizes rows solely because they have comments. This prevents long catalog/course descriptions from reappearing in the reviews metadata area after the Final Exam fallback was removed.
+
+### Session 64sgb (Shorten Campus Info captions)
+- **`src/screens/HomeScreen.tsx`** — Shortened Campus Info resource captions from full helper sentences to compact phrases such as `Registration, tuition, and dates.` and `Library and study rooms.`
+
+### Session 64sgc (Restore fuller Campus Info captions)
+- **`src/screens/HomeScreen.tsx`** — Expanded the Campus Info resource captions back into natural one-line descriptions while keeping child buttons label-only. This restores context without putting helper text inside individual link buttons.

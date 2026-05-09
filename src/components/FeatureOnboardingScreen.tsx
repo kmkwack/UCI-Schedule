@@ -548,8 +548,8 @@ function TodayPreview() {
               <Text style={{ width: 58, fontSize: 12, fontWeight: '900', color: row.dimmed ? '#aeb7ca' : '#16203a' }}>{row.time}</Text>
               <View style={{ width: 4, alignSelf: 'stretch', minHeight: 34, borderRadius: 999, backgroundColor: row.dimmed ? '#d8deea' : row.color }} />
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '900', color: row.dimmed ? '#aeb7ca' : '#16203a' }} adjustsFontSizeToFit minimumFontScale={0.72}>{row.code}</Text>
-                <Text numberOfLines={1} style={{ fontSize: 12, color: '#7a859c', marginTop: 1 }} adjustsFontSizeToFit minimumFontScale={0.72}>{row.title}</Text>
+                <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '900', color: row.dimmed ? '#aeb7ca' : '#16203a' }} adjustsFontSizeToFit minimumFontScale={0.86}>{row.code}</Text>
+                <Text numberOfLines={1} style={{ fontSize: 12, color: '#7a859c', marginTop: 1 }} adjustsFontSizeToFit minimumFontScale={0.86}>{row.title}</Text>
               </View>
             </View>
           ))}
@@ -576,7 +576,7 @@ function SchedulePreview() {
         <View key={code} style={{ flexDirection: 'row', alignItems: 'stretch', gap: 12 }}>
           <Text style={{ width: 62, paddingTop: 8, textAlign: 'right', fontSize: 10, fontWeight: '800', color: PALETTE.inkMuted }}>{time}</Text>
           <View style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: `${color}14`, borderLeftWidth: 3, borderLeftColor: color }}>
-            <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '800', color: PALETTE.ink, marginBottom: 2 }} adjustsFontSizeToFit minimumFontScale={0.72}>{code}</Text>
+            <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '800', color: PALETTE.ink, marginBottom: 2 }} adjustsFontSizeToFit minimumFontScale={0.86}>{code}</Text>
             <Text style={{ fontSize: 11, color: PALETTE.inkMuted }}>{room}</Text>
           </View>
         </View>
@@ -810,7 +810,7 @@ function NotificationsStepContent({ isDark }: { isDark: boolean }) {
             <Text style={{ fontSize: 13, fontWeight: '900', color: isDark ? '#f6f8ff' : PALETTE.ink }}>
               ClassMate
             </Text>
-            <Text numberOfLines={1} style={{ fontSize: 12, lineHeight: 17, color: isDark ? 'rgba(255,255,255,0.58)' : PALETTE.inkMuted }} adjustsFontSizeToFit minimumFontScale={0.72}>
+            <Text numberOfLines={1} style={{ fontSize: 12, lineHeight: 17, color: isDark ? 'rgba(255,255,255,0.58)' : PALETTE.inkMuted }} adjustsFontSizeToFit minimumFontScale={0.86}>
               4 classes today · 2 tasks this week
             </Text>
           </View>

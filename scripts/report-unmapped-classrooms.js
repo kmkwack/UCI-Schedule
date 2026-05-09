@@ -107,24 +107,22 @@ function isUnmappableLocation(rawLocation) {
     normalized === 'null' ||
     normalized === 'main' ||
     normalized === 'na' ||
+    normalized === '*' ||
+    normalized === 'video' ||
+    normalized === 'language' ||
     normalized === 'health sciences' ||
-    normalized === 'atlanta' ||
     normalized === 'arrngd' ||
     normalized === 'japan' ||
     normalized === 'rome' ||
     normalized === 'online' ||
     normalized === 'on line' ||
-    normalized === 'bos' ||
-    normalized === 'boston' ||
-    normalized === 'riverside' ||
     normalized.startsWith('nappl') ||
     normalized.startsWith('arrngd') ||
     normalized.startsWith('japan ') ||
-    normalized.startsWith('bos ') ||
-    normalized.startsWith('boston ') ||
     normalized.startsWith('no ') ||
     normalized.includes('online') ||
     normalized.includes('remote') ||
+    normalized.includes('studies abroad') ||
     normalized.includes('to be assigned') ||
     normalized.includes('location pending') ||
     normalized.includes('main campus') ||

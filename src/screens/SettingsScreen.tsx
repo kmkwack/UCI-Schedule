@@ -55,10 +55,13 @@ function formatNotificationHour(hour: number) {
   return `${hour12}:00 ${suffix}`;
 }
 
+const LEGACY_ASSIGNMENT_REMINDER_OPTION_MINUTES = [2880, 1440, 720];
+
 const ASSIGNMENT_REMINDER_OPTIONS = [
   { minutes: 2880, label: '2 days before' },
   { minutes: 1440, label: '1 day before' },
   { minutes: 720, label: '12 hours before' },
+  { minutes: 60, label: '1 hour before' },
 ];
 
 function normalizeAssignmentReminderOffsets(offsets?: number[]) {
@@ -66,6 +69,9 @@ function normalizeAssignmentReminderOffsets(offsets?: number[]) {
   const selected = (Array.isArray(offsets) ? offsets : [])
     .filter((minutes) => allowed.has(minutes))
     .filter((minutes, index, values) => values.indexOf(minutes) === index);
+  const isLegacyDefault = selected.length === LEGACY_ASSIGNMENT_REMINDER_OPTION_MINUTES.length
+    && LEGACY_ASSIGNMENT_REMINDER_OPTION_MINUTES.every((minutes) => selected.includes(minutes));
+  if (isLegacyDefault) return ASSIGNMENT_REMINDER_OPTIONS.map((option) => option.minutes);
   return selected.length > 0 ? selected : ASSIGNMENT_REMINDER_OPTIONS.map((option) => option.minutes);
 }
 
@@ -1445,7 +1451,7 @@ function CreateBoardView({
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
               {name.trim() || 'Board Name'}
             </Text>
-            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
               {description.trim() || 'Board description'}
             </Text>
           </View>
@@ -1643,7 +1649,7 @@ function ManageBoardsView({ school, onBack }: { school: string; onBack: () => vo
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{board.name}</Text>
                 {board.description ? (
-                  <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>{board.description}</Text>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{board.description}</Text>
                 ) : null}
               </View>
               <TouchableOpacity

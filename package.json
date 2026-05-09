@@ -10,7 +10,8 @@
     "audit:schools": "node scripts/audit-school-parity.js",
     "retry:uiuc-failed": "node scripts/retry-uiuc-failed-subjects.js",
     "reconcile:school-terms": "node scripts/reconcile-school-terms.js",
-    "report:unmapped-classrooms": "node scripts/report-unmapped-classrooms.js"
+    "report:unmapped-classrooms": "node scripts/report-unmapped-classrooms.js",
+    "audit:android-text": "node scripts/audit-android-text.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -38,7 +39,8 @@
     "react-native-share": "^12.2.6",
     "react-native-svg": "15.15.3",
     "react-native-view-shot": "4.0.3",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "xml2js": "0.6.0"
   },
   "overrides": {
     "ws": "^8.18.0"

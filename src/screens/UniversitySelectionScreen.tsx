@@ -100,6 +100,8 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
                     numberOfLines={1}
                     ellipsizeMode="tail"
                     style={{ fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 2 }}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
                   >
                     {uni.name}
                   </Text>

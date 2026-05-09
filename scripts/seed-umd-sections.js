@@ -58,6 +58,12 @@ function numberEnv(name, fallback) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function quarterKey(year, term) {
   return `${year}-${term}`;
 }
@@ -223,7 +229,11 @@ function buildRows(courses, sections, qKey) {
       source_id: section.section_id,
       source_term_code: semesterCode(YEAR, TERM),
       campus: 'College Park',
-      status: null,
+      status: section.status ?? section.open_status ?? null,
+      enrolled: numberOrNull(section.enrolled ?? section.enrollment ?? section.current_enrollment),
+      capacity: numberOrNull(section.seats ?? section.capacity ?? section.max_seats),
+      waitlist: numberOrNull(section.waitlist ?? section.waitlist_count),
+      waitlist_capacity: numberOrNull(section.waitlist_capacity ?? section.waitlist_cap),
       last_synced_at: syncedAt,
       quarter_key: qKey,
       department: course.dept_id ?? department,

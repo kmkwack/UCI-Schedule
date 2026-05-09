@@ -108,6 +108,12 @@ type CalendarProviderOption = {
   placeholder: string;
 };
 
+type CalendarSyncOptions = {
+  completedSnapshot?: Record<string, boolean>;
+  tasksSnapshot?: CalendarTask[];
+  previousLastSync?: string | null;
+};
+
 function isOnConflictTargetError(error: any) {
   const message = String(error?.message ?? '').toLowerCase();
   return error?.code === '42P10' || message.includes('no unique or exclusion constraint');
@@ -162,7 +168,6 @@ const QUARTER_DATES: Record<string, { start: string; end: string }> = {
 
 const HOME_SPORTS_FETCH_DELAY_MS = 250;
 const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
-const LINKEDIN_JOBS_URL = 'https://www.linkedin.com/jobs/';
 
 const STUDENT_DEALS_RESOURCE: CampusInfoResource = {
   id: 'student-deals',
@@ -197,20 +202,28 @@ function createLibraryResource(schoolLabel: string, libraryUrl: string, studyRoo
   };
 }
 
-function createRegistrationResource(
+function createStudentPortalResource(
   portalTitle: string,
   portalSubtitle: string,
   portalUrl: string,
+  billingTitle: string,
+  billingSubtitle: string,
+  billingUrl: string,
+  calendarTitle: string,
+  calendarSubtitle: string,
+  calendarUrl: string,
 ): CampusInfoResource {
   return {
-    id: 'registration',
-    title: 'Registration',
-    subtitle: 'Course registration site',
+    id: 'student-portal',
+    title: 'Student Portal',
+    subtitle: 'Registration, billing, and academic dates',
     icon: 'school-outline',
     color: '#4F46E5',
     bg: '#eef2ff',
     children: [
       { id: 'registration-portal', title: portalTitle, subtitle: portalSubtitle, url: portalUrl },
+      { id: 'student-billing', title: billingTitle, subtitle: billingSubtitle, url: billingUrl },
+      { id: 'academic-calendar', title: calendarTitle, subtitle: calendarSubtitle, url: calendarUrl },
     ],
   };
 }
@@ -265,32 +278,36 @@ function createJobsResource(handshakeUrl: string, handshakeSubtitle: string): Ca
     '#eff6ff',
     [
       { id: 'handshake', title: 'Handshake', subtitle: handshakeSubtitle, url: handshakeUrl },
-      { id: 'linkedin', title: 'LinkedIn', subtitle: 'Jobs and professional networking', url: LINKEDIN_JOBS_URL },
     ],
   );
 }
 
 function createFallbackCampusInfoResources(school: string): CampusInfoResource[] {
   return [
-    createRegistrationResource(
+    createStudentPortalResource(
       'Registration',
       'Find the course registration site',
       campusInfoSearchUrl(school, 'course registration registrar'),
-    ),
-    createJobsResource(handshakeJobSearchUrl(), 'Handshake jobs and internships'),
-    createLibraryResource(
-      school,
-      campusInfoSearchUrl(school, 'library'),
-      campusInfoSearchUrl(school, 'library study rooms reserve'),
+      'Billing',
+      'Find tuition and payment info',
+      campusInfoSearchUrl(school, 'student billing tuition payment'),
+      'Academic Calendar',
+      'Term dates and deadlines',
+      campusInfoSearchUrl(school, 'academic calendar registrar dates deadlines'),
     ),
     createSingleLinkResource(
       'transit',
-      'Transit',
+      'Shuttle',
       'Campus shuttle, bus, and transportation links',
       'bus-outline',
       '#0EA5E9',
       '#f0f9ff',
-      { id: 'transit-search', title: 'Transit', subtitle: 'Find shuttle and bus info', url: campusInfoSearchUrl(school, 'campus shuttle bus transit') },
+      { id: 'transit-search', title: 'Shuttle', subtitle: 'Find shuttle and bus info', url: campusInfoSearchUrl(school, 'campus shuttle bus transit') },
+    ),
+    createLibraryResource(
+      school,
+      campusInfoSearchUrl(school, 'library'),
+      campusInfoSearchUrl(school, 'library study rooms reserve'),
     ),
     createSingleLinkResource(
       'clubs',
@@ -301,6 +318,7 @@ function createFallbackCampusInfoResources(school: string): CampusInfoResource[]
       '#f5f3ff',
       { id: 'clubs-search', title: 'Organizations', subtitle: 'Browse student groups', url: campusInfoSearchUrl(school, 'student organizations clubs') },
     ),
+    createJobsResource(handshakeJobSearchUrl(), 'Handshake jobs and internships'),
     STUDENT_DEALS_RESOURCE,
   ];
 }
@@ -309,6 +327,12 @@ type StandardCampusInfoConfig = {
   schoolShortName: string;
   registrationTitle?: string;
   registrationUrl: string;
+  billingTitle?: string;
+  billingSubtitle?: string;
+  billingUrl?: string;
+  calendarTitle?: string;
+  calendarSubtitle?: string;
+  calendarUrl?: string;
   handshakeSlug?: string;
   jobsSubtitle: string;
   libraryUrl: string;
@@ -336,22 +360,27 @@ function createStandardCampusInfoResources(config: StandardCampusInfoConfig): Ca
     : [];
 
   return [
-    createRegistrationResource(
+    createStudentPortalResource(
       config.registrationTitle ?? 'Class Search',
       'Register and manage classes',
       config.registrationUrl,
+      config.billingTitle ?? 'Billing',
+      config.billingSubtitle ?? 'Tuition, fees, and payments',
+      config.billingUrl ?? campusInfoSearchUrl(config.schoolShortName, 'student billing tuition payment'),
+      config.calendarTitle ?? 'Academic Calendar',
+      config.calendarSubtitle ?? 'Term dates and deadlines',
+      config.calendarUrl ?? campusInfoSearchUrl(config.schoolShortName, 'academic calendar registrar dates deadlines'),
     ),
-    createJobsResource(handshakeJobSearchUrl(config.handshakeSlug), config.jobsSubtitle),
-    createLibraryResource(config.schoolShortName, config.libraryUrl, config.studyRoomsUrl),
     createSingleLinkResource(
       'transit',
-      config.transitTitle ?? 'Transit',
+      config.transitTitle ?? 'Shuttle',
       config.transitSubtitle ?? 'Campus shuttle and transportation links',
       'bus-outline',
       '#0EA5E9',
       '#f0f9ff',
-      { id: 'transportation', title: config.transitTitle ?? 'Transportation', subtitle: config.transitSubtitle ?? 'Parking, shuttle, and transit info', url: config.transitUrl },
+      { id: 'transportation', title: config.transitTitle ?? 'Shuttle', subtitle: config.transitSubtitle ?? 'Parking, shuttle, and transit info', url: config.transitUrl },
     ),
+    createLibraryResource(config.schoolShortName, config.libraryUrl, config.studyRoomsUrl),
     createSingleLinkResource(
       'clubs',
       'Clubs',
@@ -361,6 +390,7 @@ function createStandardCampusInfoResources(config: StandardCampusInfoConfig): Ca
       '#f5f3ff',
       { id: 'organizations', title: config.clubsTitle ?? 'Organizations', subtitle: config.clubsSubtitle ?? 'Browse student organizations', url: config.clubsUrl },
     ),
+    createJobsResource(handshakeJobSearchUrl(config.handshakeSlug), config.jobsSubtitle),
     ...athleticsResource,
     STUDENT_DEALS_RESOURCE,
   ];
@@ -368,22 +398,27 @@ function createStandardCampusInfoResources(config: StandardCampusInfoConfig): Ca
 
 const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
   'UC Irvine': [
-    createRegistrationResource(
+    createStudentPortalResource(
       'WebReg',
       'Add, drop, and enroll in classes',
       'https://www.reg.uci.edu/registrar/soc/webreg.html',
+      'ZOT Account',
+      'Tuition, fees, and payments',
+      'https://zotaccount.uci.edu/',
+      'Academic Calendar',
+      'Quarter dates and deadlines',
+      'https://www.reg.uci.edu/navigation/calendars.html',
     ),
-    createJobsResource(handshakeJobSearchUrl('uci'), 'UCI jobs and internships'),
-    createLibraryResource('UCI', 'https://www.lib.uci.edu/', 'https://spaces.lib.uci.edu/'),
     createSingleLinkResource(
       'transit',
-      'Transit',
+      'Shuttle',
       'Campus shuttle and transportation links',
       'bus-outline',
       '#0EA5E9',
       '#f0f9ff',
       { id: 'anteater-express', title: 'Anteater Express', subtitle: 'Live bus tracking', url: 'https://shuttle.uci.edu/' },
     ),
+    createLibraryResource('UCI', 'https://www.lib.uci.edu/', 'https://spaces.lib.uci.edu/'),
     createSingleLinkResource(
       'clubs',
       'Clubs',
@@ -393,25 +428,31 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       '#f5f3ff',
       { id: 'zotspot', title: 'ZotSpot', subtitle: 'Browse campus groups', url: 'https://zotspot.uci.edu/club_signup' },
     ),
+    createJobsResource(handshakeJobSearchUrl('uci'), 'UCI jobs and internships'),
     STUDENT_DEALS_RESOURCE,
   ],
   'University of Maryland, College Park': [
-    createRegistrationResource(
+    createStudentPortalResource(
       'Testudo',
       'Registration and student services',
       'https://testudo.umd.edu/',
+      'Billing',
+      'Student account and payments',
+      'https://billpay.umd.edu/',
+      'Academic Calendar',
+      'Dates and deadlines',
+      'https://registrar.umd.edu/calendars',
     ),
-    createJobsResource(handshakeJobSearchUrl('umd'), 'UMD jobs and internships'),
-    createLibraryResource('UMD', 'https://www.lib.umd.edu/', 'https://umd.libcal.com/'),
     createSingleLinkResource(
       'transit',
-      'Transit',
+      'Shuttle',
       'Campus shuttle and transportation links',
       'bus-outline',
       '#0EA5E9',
       '#f0f9ff',
       { id: 'shuttle-um', title: 'Shuttle-UM', subtitle: 'Routes and app setup', url: 'https://transportation.umd.edu/transit-official-app-shuttle-um' },
     ),
+    createLibraryResource('UMD', 'https://www.lib.umd.edu/', 'https://umd.libcal.com/'),
     createSingleLinkResource(
       'clubs',
       'Clubs',
@@ -421,25 +462,31 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       '#f5f3ff',
       { id: 'terplink', title: 'TerpLink', subtitle: 'Browse organizations', url: 'https://terplink.umd.edu/organizations' },
     ),
+    createJobsResource(handshakeJobSearchUrl('umd'), 'UMD jobs and internships'),
     STUDENT_DEALS_RESOURCE,
   ],
   'Cornell University': [
-    createRegistrationResource(
+    createStudentPortalResource(
       'Student Center',
       'Enroll in classes and manage records',
       'https://studentcenter.cornell.edu/',
+      'Bursar',
+      'Bills and payments',
+      'https://bursar.cornell.edu/students-parents/paying-your-bill',
+      'Academic Calendar',
+      'Term dates and exams',
+      'https://registrar.cornell.edu/calendars-exams/academic-calendar',
     ),
-    createJobsResource(handshakeJobSearchUrl('cornell'), 'Cornell jobs and internships'),
-    createLibraryResource('Cornell', 'https://www.library.cornell.edu/', 'https://spaces.library.cornell.edu/'),
     createSingleLinkResource(
       'transit',
-      'Transit',
+      'Shuttle',
       'Campus bus and transportation links',
       'bus-outline',
       '#0EA5E9',
       '#f0f9ff',
       { id: 'bus-services', title: 'Bus Services', subtitle: 'TCAT and OmniRide', url: 'https://fcs.cornell.edu/departments/transportation-delivery-services/alternative-transportation-options/bus-services-privileges-omniride-passes' },
     ),
+    createLibraryResource('Cornell', 'https://www.library.cornell.edu/', 'https://spaces.library.cornell.edu/'),
     createSingleLinkResource(
       'clubs',
       'Clubs',
@@ -449,25 +496,31 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       '#f5f3ff',
       { id: 'campusgroups', title: 'CampusGroups', subtitle: 'Browse organizations', url: 'https://cornell.campusgroups.com/club_signup' },
     ),
+    createJobsResource(handshakeJobSearchUrl('cornell'), 'Cornell jobs and internships'),
     STUDENT_DEALS_RESOURCE,
   ],
   'Purdue University': [
-    createRegistrationResource(
+    createStudentPortalResource(
       'myPurdue',
       'Register and manage classes',
       'https://mypurdue.purdue.edu/',
+      'Bursar',
+      'Tuition, invoices, and payments',
+      'https://www.purdue.edu/bursar/',
+      'Academic Calendar',
+      'Registration dates and deadlines',
+      'https://www.purdue.edu/registrar/calendars/',
     ),
-    createJobsResource(handshakeJobSearchUrl('purdue'), 'Purdue jobs and internships'),
-    createLibraryResource('Purdue', 'https://www.lib.purdue.edu/', 'https://calendar.lib.purdue.edu/reserve'),
     createSingleLinkResource(
       'transit',
-      'Transit',
+      'Shuttle',
       'Campus shuttle and transportation links',
       'bus-outline',
       '#0EA5E9',
       '#f0f9ff',
       { id: 'campus-transit', title: 'Campus Transit', subtitle: 'Routes and ride options', url: 'https://www.purdue.edu/parking/green_benefits/campus-transit.html' },
     ),
+    createLibraryResource('Purdue', 'https://www.lib.purdue.edu/', 'https://calendar.lib.purdue.edu/reserve'),
     createSingleLinkResource(
       'clubs',
       'Clubs',
@@ -477,25 +530,31 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       '#f5f3ff',
       { id: 'boilerlink', title: 'BoilerLink', subtitle: 'Browse organizations', url: 'https://boilerlink.purdue.edu/organizations' },
     ),
+    createJobsResource(handshakeJobSearchUrl('purdue'), 'Purdue jobs and internships'),
     STUDENT_DEALS_RESOURCE,
   ],
   'University of Illinois Urbana-Champaign': [
-    createRegistrationResource(
+    createStudentPortalResource(
       'Self-Service',
       'Register and manage student records',
       'https://apps.uillinois.edu/selfservice',
+      'UI-Pay',
+      'Student account and payments',
+      'https://paymybill.uillinois.edu/Access',
+      'Academic Calendar',
+      'Term dates and deadlines',
+      'https://registrar.illinois.edu/academic-calendars/',
     ),
-    createJobsResource(handshakeJobSearchUrl('illinois'), 'Illinois jobs and internships'),
-    createLibraryResource('Illinois', 'https://www.library.illinois.edu/', 'https://libcal.library.illinois.edu/allspaces'),
     createSingleLinkResource(
       'transit',
-      'Transit',
+      'Shuttle',
       'Campus bus and transportation links',
       'bus-outline',
       '#0EA5E9',
       '#f0f9ff',
       { id: 'mtd-apps', title: 'MTD Apps', subtitle: 'Real-time transit apps', url: 'https://mtd.org/maps-and-schedules/apps/' },
     ),
+    createLibraryResource('Illinois', 'https://www.library.illinois.edu/', 'https://libcal.library.illinois.edu/allspaces'),
     createSingleLinkResource(
       'clubs',
       'Clubs',
@@ -505,301 +564,9 @@ const CAMPUS_INFO_RESOURCES: Record<string, CampusInfoResource[]> = {
       '#f5f3ff',
       { id: 'oneillinois', title: 'OneIllinois', subtitle: 'Browse organizations', url: 'https://one.illinois.edu/club_signup' },
     ),
+    createJobsResource(handshakeJobSearchUrl('illinois'), 'Illinois jobs and internships'),
     STUDENT_DEALS_RESOURCE,
   ],
-  'UC Riverside': [
-    createRegistrationResource(
-      'Class Search',
-      'Register and manage classes',
-      'https://registrationssb.ucr.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    ),
-    createJobsResource(handshakeJobSearchUrl('ucr'), 'UCR jobs and internships'),
-    createLibraryResource('UCR', 'https://library.ucr.edu/', 'https://ucr.libcal.com/'),
-    createSingleLinkResource(
-      'transit',
-      'Transit',
-      'Campus shuttle and transportation links',
-      'bus-outline',
-      '#0EA5E9',
-      '#f0f9ff',
-      { id: 'ucr-transportation', title: 'Transportation', subtitle: 'Bus, shuttle, and transit options', url: 'https://transportation.ucr.edu/bus' },
-    ),
-    createSingleLinkResource(
-      'clubs',
-      'Clubs',
-      'Student organizations and campus groups',
-      'people-outline',
-      '#8B5CF6',
-      '#f5f3ff',
-      { id: 'highlanderlink', title: 'HighlanderLink', subtitle: 'Browse organizations', url: 'https://highlanderlink.ucr.edu/organizations' },
-    ),
-    STUDENT_DEALS_RESOURCE,
-  ],
-  'Northeastern University': [
-    createRegistrationResource(
-      'Class Search',
-      'Register and manage classes',
-      'https://nubanner.neu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    ),
-    createJobsResource(handshakeJobSearchUrl('northeastern'), 'Northeastern jobs and internships'),
-    createLibraryResource('Northeastern', 'https://library.northeastern.edu/', 'https://northeastern.libcal.com/'),
-    createSingleLinkResource(
-      'transit',
-      'Transit',
-      'Campus shuttle and transportation links',
-      'bus-outline',
-      '#0EA5E9',
-      '#f0f9ff',
-      { id: 'neu-transportation', title: 'Transportation', subtitle: 'Campus transportation options', url: 'https://www.northeastern.edu/commutingservices/' },
-    ),
-    createSingleLinkResource(
-      'clubs',
-      'Clubs',
-      'Student organizations and campus groups',
-      'people-outline',
-      '#8B5CF6',
-      '#f5f3ff',
-      { id: 'neu-engage', title: 'NU Engage', subtitle: 'Browse organizations', url: 'https://engage.northeastern.edu/club_signup' },
-    ),
-    STUDENT_DEALS_RESOURCE,
-  ],
-  'Temple University': [
-    createRegistrationResource(
-      'Class Search',
-      'Register and manage classes',
-      'https://prd-xereg.temple.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    ),
-    createJobsResource(handshakeJobSearchUrl('temple'), 'Temple jobs and internships'),
-    createLibraryResource('Temple', 'https://library.temple.edu/', 'https://charlesstudy.temple.edu/'),
-    createSingleLinkResource(
-      'transit',
-      'Transit',
-      'Campus shuttle and transportation links',
-      'bus-outline',
-      '#0EA5E9',
-      '#f0f9ff',
-      { id: 'temple-transportation', title: 'Transportation', subtitle: 'Parking, shuttle, and transit help', url: 'https://temple-university.helpscoutdocs.com/article/1247-parking-transportation' },
-    ),
-    createSingleLinkResource(
-      'clubs',
-      'Clubs',
-      'Student organizations and campus groups',
-      'people-outline',
-      '#8B5CF6',
-      '#f5f3ff',
-      { id: 'temple-engage', title: 'OwlConnect', subtitle: 'Browse organizations', url: 'https://app.suitable.co/student-organizations/AylYSXoFG3YR?tab=profile' },
-    ),
-    STUDENT_DEALS_RESOURCE,
-  ],
-  'Georgia State University': [
-    createRegistrationResource(
-      'Class Search',
-      'Register and manage classes',
-      'https://registration.gosolar.gsu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    ),
-    createJobsResource(handshakeJobSearchUrl('gsu'), 'Georgia State jobs and internships'),
-    createLibraryResource('Georgia State', 'https://library.gsu.edu/', 'https://rooms.library.gsu.edu/'),
-    createSingleLinkResource(
-      'transit',
-      'Transit',
-      'Campus shuttle and transportation links',
-      'bus-outline',
-      '#0EA5E9',
-      '#f0f9ff',
-      { id: 'gsu-transportation', title: 'Transportation', subtitle: 'Parking and transportation', url: 'https://parking.gsu.edu/transportation/' },
-    ),
-    createSingleLinkResource(
-      'clubs',
-      'Clubs',
-      'Student organizations and campus groups',
-      'people-outline',
-      '#8B5CF6',
-      '#f5f3ff',
-      { id: 'pin', title: 'PIN', subtitle: 'Browse organizations', url: 'https://pin.gsu.edu/organizations' },
-    ),
-    STUDENT_DEALS_RESOURCE,
-  ],
-  'Georgia Institute of Technology': createStandardCampusInfoResources({
-    schoolShortName: 'Georgia Tech',
-    registrationUrl: 'https://registration.banner.gatech.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'gatech',
-    jobsSubtitle: 'Georgia Tech jobs and internships',
-    libraryUrl: 'https://library.gatech.edu/',
-    studyRoomsUrl: 'https://library.gatech.edu/spaces',
-    transitUrl: 'https://www.pts.gatech.edu/',
-    clubsTitle: 'Engage',
-    clubsUrl: 'https://gatech.campuslabs.com/engage/organizations',
-    athleticsUrl: 'https://ramblinwreck.com/sports/genrel/',
-  }),
-  'West Virginia University': createStandardCampusInfoResources({
-    schoolShortName: 'WVU',
-    registrationUrl: 'https://starss.wvu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'wvu',
-    jobsSubtitle: 'WVU jobs and internships',
-    libraryUrl: 'https://library.wvu.edu/',
-    studyRoomsUrl: 'https://wvu.libcal.com/',
-    transitUrl: 'https://transportation.wvu.edu/',
-    clubsTitle: 'WVU Engage',
-    clubsUrl: 'https://wvuengage.wvu.edu/organizations',
-    athleticsUrl: 'https://wvusports.com/calendar',
-  }),
-  'Sam Houston State University': createStandardCampusInfoResources({
-    schoolShortName: 'SHSU',
-    registrationUrl: 'https://banxeappx.shsu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'shsu',
-    jobsSubtitle: 'Sam Houston jobs and internships',
-    libraryUrl: 'https://library.shsu.edu/',
-    studyRoomsUrl: 'https://shsu.libcal.com/reserve',
-    transitUrl: 'https://www.shsu.edu/offices-departments/parking/',
-    clubsTitle: 'OrgLINK',
-    clubsUrl: 'https://shsu.campuslabs.com/engage/organizations',
-    athleticsUrl: 'https://gobearkats.com/calendar',
-  }),
-  'Denison University': createStandardCampusInfoResources({
-    schoolShortName: 'Denison',
-    registrationUrl: 'https://banner.denison.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'denison',
-    jobsSubtitle: 'Denison jobs and internships',
-    libraryUrl: 'https://denison.edu/campus/library',
-    studyRoomsUrl: 'https://denison.libcal.com/',
-    transitUrl: 'https://denison.edu/campus/granville-and-beyond/transportation-shuttles',
-    clubsTitle: 'Organizations',
-    clubsUrl: 'https://denison.edu/campus/student-organizations',
-    athleticsUrl: 'https://denisonbigred.com/calendar',
-  }),
-  'University of North Carolina Greensboro': createStandardCampusInfoResources({
-    schoolShortName: 'UNCG',
-    registrationUrl: 'https://erp-registration.uncg.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'uncg',
-    jobsSubtitle: 'UNCG jobs and internships',
-    libraryUrl: 'https://library.uncg.edu/',
-    studyRoomsUrl: 'https://library.uncg.edu/spaces/',
-    transitUrl: 'https://parking.uncg.edu/transportation/',
-    clubsTitle: 'Spartan Connect',
-    clubsUrl: 'https://www.uncg.edu/campus-life-resources/groups-activities-programs/student-groups-organizations/',
-    athleticsUrl: 'https://uncgspartans.com/calendar',
-  }),
-  'Eastern Illinois University': createStandardCampusInfoResources({
-    schoolShortName: 'EIU',
-    registrationUrl: 'https://banner.eiu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'eiu',
-    jobsSubtitle: 'EIU jobs and internships',
-    libraryUrl: 'https://www.eiu.edu/booth/',
-    studyRoomsUrl: 'https://eiu.libcal.com/reserve/studyrooms',
-    transitTitle: 'Parking',
-    transitSubtitle: 'Parking and campus transportation links',
-    transitUrl: 'https://www.eiu.edu/police/parkinginfo.php',
-    clubsTitle: 'PantherLife',
-    clubsUrl: 'https://www.eiu.edu/slo/',
-    athleticsUrl: 'https://eiupanthers.com/calendar',
-  }),
-  'University of North Georgia': createStandardCampusInfoResources({
-    schoolShortName: 'UNG',
-    registrationUrl: 'https://ssb.ungprod.ung.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'ung',
-    jobsSubtitle: 'UNG jobs and internships',
-    libraryUrl: 'https://ung.edu/libraries/',
-    studyRoomsUrl: 'https://ung.libcal.com/spaces',
-    transitTitle: 'Parking',
-    transitSubtitle: 'Parking and transportation services',
-    transitUrl: 'https://ung.edu/parking-transportation/',
-    clubsTitle: 'UNiFY',
-    clubsUrl: 'https://ung.campuslabs.com/engage/organizations',
-    athleticsUrl: 'https://ungathletics.com/calendar',
-  }),
-  'Alfred State College': createStandardCampusInfoResources({
-    schoolShortName: 'Alfred State',
-    registrationUrl: 'https://banner.alfredstate.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'alfredstate',
-    jobsSubtitle: 'Alfred State jobs and internships',
-    libraryUrl: 'https://library.alfredstate.edu/c.php?g=372677&p=2556186',
-    studyRoomsUrl: 'https://alfredstate.libcal.com/',
-    transitTitle: 'Parking',
-    transitSubtitle: 'Parking and transportation links',
-    transitUrl: 'https://www.alfredstate.edu/university-police/parking-campus',
-    clubsTitle: 'Pioneer Link',
-    clubsUrl: 'https://pioneerlink.alfredstate.edu/organizations',
-    athleticsUrl: 'https://alfredstateathletics.com/calendar',
-  }),
-  'Canisius University': createStandardCampusInfoResources({
-    schoolShortName: 'Canisius',
-    registrationUrl: 'https://banner.canisius.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'canisius',
-    jobsSubtitle: 'Canisius jobs and internships',
-    libraryUrl: 'https://library.canisius.edu/',
-    studyRoomsUrl: 'https://canisius.libcal.com/',
-    transitTitle: 'Parking',
-    transitSubtitle: 'Parking and transportation links',
-    transitUrl: 'https://www.canisius.edu/student-experience/student-support-services/public-safety',
-    clubsTitle: 'GriffLink',
-    clubsUrl: 'https://www.canisius.edu/student-experience/student-life-housing/student-engagement-leadership-development/clubs',
-    athleticsUrl: 'https://gogriffs.com/calendar',
-  }),
-  'Genesee Community College': createStandardCampusInfoResources({
-    schoolShortName: 'Genesee',
-    registrationUrl: 'https://bannerprod.genesee.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    jobsSubtitle: 'Genesee jobs and internships',
-    libraryUrl: 'https://www.genesee.edu/academics/library/',
-    studyRoomsUrl: 'https://www.genesee.edu/academics/library/',
-    transitUrl: 'https://www.genesee.edu/about/offices-departments/campus-safety/parking/',
-    clubsTitle: 'Clubs',
-    clubsUrl: 'https://www.genesee.edu/campus-life/student-groups/',
-    athleticsUrl: 'https://www.gccathletics.com/landing/index',
-  }),
-  'Utah Valley University': createStandardCampusInfoResources({
-    schoolShortName: 'UVU',
-    registrationUrl: 'https://userve.uvu.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'uvu',
-    jobsSubtitle: 'UVU jobs and internships',
-    libraryUrl: 'https://www.uvu.edu/library/',
-    studyRoomsUrl: 'https://www.uvu.edu/library/services/study_spaces.html',
-    transitTitle: 'Parking',
-    transitSubtitle: 'Parking and transportation links',
-    transitUrl: 'https://www.uvu.edu/parking/',
-    clubsTitle: 'Clubs',
-    clubsUrl: 'https://www.uvu.edu/clubs/index.html',
-    athleticsUrl: 'https://gouvu.com/calendar',
-  }),
-  'Lehigh University': createStandardCampusInfoResources({
-    schoolShortName: 'Lehigh',
-    registrationUrl: 'https://reg-prod.ec.lehigh.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'lehigh',
-    jobsSubtitle: 'Lehigh jobs and internships',
-    libraryUrl: 'https://lts.lehigh.edu/',
-    studyRoomsUrl: 'https://lts.lehigh.edu/spaces',
-    transitTitle: 'Parking',
-    transitSubtitle: 'Transportation and parking services',
-    transitUrl: 'https://auxiliaryservices.lehigh.edu/departments/transportation-office',
-    clubsTitle: 'LINC',
-    clubsUrl: 'https://lehigh.campuslabs.com/engage/organizations',
-    athleticsUrl: 'https://lehighsports.com/calendar',
-  }),
-  'Rider University': createStandardCampusInfoResources({
-    schoolShortName: 'Rider',
-    registrationUrl: 'https://reg-prod.ec.rider.edu/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'rider',
-    jobsSubtitle: 'Rider jobs and internships',
-    libraryUrl: 'https://www.rider.edu/academics/libraries',
-    studyRoomsUrl: 'https://rider.libcal.com/spaces',
-    transitUrl: 'https://www.rider.edu/about/offices-services/facilities-university-operations/auxiliary/transportation',
-    clubsTitle: 'Bronection',
-    clubsUrl: 'https://rider.campuslabs.com/engage/organizations',
-    athleticsUrl: 'https://gobroncs.com/calendar',
-  }),
-  'Wheaton College (Massachusetts)': createStandardCampusInfoResources({
-    schoolShortName: 'Wheaton',
-    registrationUrl: 'https://banprodselfservice.wheatonma.edu:7341/StudentRegistrationSsb/ssb/classSearch/classSearch',
-    handshakeSlug: 'wheatoncollege',
-    jobsSubtitle: 'Wheaton jobs and internships',
-    libraryUrl: 'https://map.wheatoncollege.edu/location/wallace-library/',
-    studyRoomsUrl: 'https://wheatoncollege.libcal.com/',
-    transitTitle: 'Parking',
-    transitSubtitle: 'Parking and transportation links',
-    transitUrl: 'https://wheatoncollege.edu/campus-life/campus-safety/campus-safety-department/parking/',
-    clubsTitle: 'Engage',
-    clubsUrl: 'https://engage.wheatoncollege.edu/organizations',
-    athleticsUrl: 'https://wheatoncollegelyons.com/calendar',
-  }),
 };
 
 function getCampusInfoResources(school: string): CampusInfoResource[] {
@@ -1009,14 +776,87 @@ function isCalendarTaskOverdue(assignment: CalendarTask, completed: boolean, now
   return !completed && new Date(assignment.dueAt).getTime() < now.getTime();
 }
 
-function isPastCalendarTask(assignment: CalendarTask, now: Date) {
-  return new Date(assignment.dueAt).getTime() < now.getTime();
+function isCalendarTaskCompleted(assignment: CalendarTask, completedTasks: Record<string, boolean>, _now: Date) {
+  return completedTasks[assignment.id] === true;
 }
 
-function isCalendarTaskCompleted(assignment: CalendarTask, completedTasks: Record<string, boolean>, now: Date) {
-  const stored = completedTasks[assignment.id];
-  if (stored !== undefined) return stored;
-  return isPastCalendarTask(assignment, now);
+function parseCompletedCalendarTasks(value?: string | null): Record<string, boolean> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return parsed as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+function parseStoredCalendarTasks(value?: string | null): CalendarTask[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((task): task is CalendarTask => (
+      task
+      && typeof task.id === 'string'
+      && typeof task.title === 'string'
+      && typeof task.courseCode === 'string'
+      && typeof task.dueAt === 'string'
+      && !Number.isNaN(new Date(task.dueAt).getTime())
+      && typeof task.allDay === 'boolean'
+    ));
+  } catch {
+    return [];
+  }
+}
+
+function completeImportedPastCalendarTasks(
+  tasks: CalendarTask[],
+  previouslySeenTasks: CalendarTask[],
+  completedTasks: Record<string, boolean>,
+  cutoff: Date
+) {
+  const cutoffTime = cutoff.getTime();
+  const previouslySeenTaskIds = new Set(previouslySeenTasks.map((task) => task.id));
+  let next = completedTasks;
+  let changed = false;
+
+  tasks.forEach((task) => {
+    if (next[task.id] !== undefined) return;
+    if (previouslySeenTaskIds.has(task.id)) return;
+    const dueTime = new Date(task.dueAt).getTime();
+    if (!Number.isFinite(dueTime) || dueTime > cutoffTime) return;
+    if (!changed) {
+      next = { ...completedTasks };
+      changed = true;
+    }
+    next[task.id] = true;
+  });
+
+  return { completedTasks: next, changed };
+}
+
+function mergeSyncedCalendarTasks(
+  incomingTasks: CalendarTask[],
+  existingTasks: CalendarTask[],
+  completedTasks: Record<string, boolean>,
+  now: Date
+) {
+  const mergedById = new Map<string, CalendarTask>();
+  incomingTasks.forEach((task) => mergedById.set(task.id, task));
+
+  const nowTime = now.getTime();
+  existingTasks.forEach((task) => {
+    if (mergedById.has(task.id)) return;
+    const dueTime = new Date(task.dueAt).getTime();
+    const hasManualState = completedTasks[task.id] !== undefined;
+    const isPastOrOverdue = Number.isFinite(dueTime) && dueTime <= nowTime;
+    if (hasManualState || isPastOrOverdue) mergedById.set(task.id, task);
+  });
+
+  return Array.from(mergedById.values()).sort((left, right) => (
+    new Date(left.dueAt).getTime() - new Date(right.dueAt).getTime()
+  ));
 }
 
 function getQuarterBounds(selectedQuarter: Quarter) {
@@ -1411,6 +1251,9 @@ export default function HomeScreen({
   const [calendarTasksError, setCalendarTasksError] = useState<string | null>(null);
   const [calendarLastSyncedAt, setCalendarLastSyncedAt] = useState<string | null>(null);
   const [completedCalendarTasks, setCompletedCalendarTasks] = useState<Record<string, boolean>>({});
+  const calendarTasksRef = useRef<CalendarTask[]>([]);
+  const calendarLastSyncedAtRef = useRef<string | null>(null);
+  const completedCalendarTasksRef = useRef<Record<string, boolean>>({});
   const [showPastAssignments, setShowPastAssignments] = useState(false);
   const [classmateMatches, setClassmateMatches] = useState<ClassmateMatch[]>([]);
   const [now, setNow] = useState(() => new Date());
@@ -1490,7 +1333,19 @@ export default function HomeScreen({
 
   const selectedCalendarProvider = getCalendarProviderOption(calendarProvider);
 
-  const syncCalendarTasks = useCallback(async (feedUrl: string) => {
+  useEffect(() => {
+    calendarTasksRef.current = calendarTasks;
+  }, [calendarTasks]);
+
+  useEffect(() => {
+    calendarLastSyncedAtRef.current = calendarLastSyncedAt;
+  }, [calendarLastSyncedAt]);
+
+  useEffect(() => {
+    completedCalendarTasksRef.current = completedCalendarTasks;
+  }, [completedCalendarTasks]);
+
+  const syncCalendarTasks = useCallback(async (feedUrl: string, options: CalendarSyncOptions = {}) => {
     const trimmedUrl = feedUrl.trim();
     if (!trimmedUrl) return;
     setCalendarTasksLoading(true);
@@ -1501,19 +1356,46 @@ export default function HomeScreen({
       const text = await response.text();
       const parsedTasks = parseCalendarTasksFromIcs(text);
       const syncedAt = new Date().toISOString();
-      setCalendarTasks(parsedTasks);
+      const priorLastSync = options.previousLastSync ?? calendarLastSyncedAtRef.current;
+      const previousTasks = options.tasksSnapshot ?? calendarTasksRef.current;
+      const importCutoff = priorLastSync && !Number.isNaN(new Date(priorLastSync).getTime())
+        ? new Date(priorLastSync)
+        : new Date(syncedAt);
+      const seededCompletion = completeImportedPastCalendarTasks(
+        parsedTasks,
+        previousTasks,
+        options.completedSnapshot ?? completedCalendarTasksRef.current,
+        importCutoff
+      );
+      const mergedTasks = mergeSyncedCalendarTasks(
+        parsedTasks,
+        previousTasks,
+        seededCompletion.completedTasks,
+        new Date(syncedAt)
+      );
+      calendarTasksRef.current = mergedTasks;
+      setCalendarTasks(mergedTasks);
+      if (seededCompletion.changed) {
+        completedCalendarTasksRef.current = seededCompletion.completedTasks;
+        setCompletedCalendarTasks(seededCompletion.completedTasks);
+      }
+      calendarLastSyncedAtRef.current = syncedAt;
       setCalendarLastSyncedAt(syncedAt);
-      void AsyncStorage.multiSet([
-        [calendarTasksStorageKey, JSON.stringify(parsedTasks)],
+      const updates: [string, string][] = [
+        [calendarTasksStorageKey, JSON.stringify(mergedTasks)],
         [calendarLastSyncStorageKey, syncedAt],
-      ]);
+      ];
+      if (seededCompletion.changed) {
+        updates.push([calendarCompletedStorageKey, JSON.stringify(seededCompletion.completedTasks)]);
+      }
+      void AsyncStorage.multiSet(updates);
       onAssignmentCalendarChange?.();
     } catch {
       setCalendarTasksError('Could not refresh this calendar feed. Check the link and try again.');
     } finally {
       setCalendarTasksLoading(false);
     }
-  }, [calendarTasksStorageKey, calendarLastSyncStorageKey, onAssignmentCalendarChange]);
+  }, [calendarCompletedStorageKey, calendarTasksStorageKey, calendarLastSyncStorageKey, onAssignmentCalendarChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1547,28 +1429,19 @@ export default function HomeScreen({
       const resolvedTasks = storedTasks ?? legacyTasks;
       const resolvedCompleted = storedCompleted ?? legacyCompleted;
       const resolvedLastSync = storedLastSync ?? legacyLastSync;
+      const resolvedCalendarTasks = parseStoredCalendarTasks(resolvedTasks);
+      const resolvedCompletedTasks = parseCompletedCalendarTasks(resolvedCompleted);
+      calendarTasksRef.current = resolvedCalendarTasks;
+      calendarLastSyncedAtRef.current = resolvedLastSync;
+      completedCalendarTasksRef.current = resolvedCompletedTasks;
       setCalendarProvider(resolvedProvider);
       setCalendarFeedUrl(resolvedFeedUrl);
       setCalendarFeedInput(resolvedFeedUrl ?? '');
       setCalendarLastSyncedAt(resolvedLastSync);
 
-      if (resolvedTasks) {
-        try {
-          setCalendarTasks(JSON.parse(resolvedTasks) as CalendarTask[]);
-        } catch {}
-      } else {
-        setCalendarTasks([]);
-      }
+      setCalendarTasks(resolvedCalendarTasks);
 
-      if (resolvedCompleted) {
-        try {
-          setCompletedCalendarTasks(JSON.parse(resolvedCompleted) as Record<string, boolean>);
-        } catch {
-          setCompletedCalendarTasks({});
-        }
-      } else {
-        setCompletedCalendarTasks({});
-      }
+      setCompletedCalendarTasks(resolvedCompletedTasks);
 
       if (!storedFeedUrl && legacyFeedUrl) {
         void AsyncStorage.multiSet([
@@ -1581,7 +1454,13 @@ export default function HomeScreen({
       }
 
       onAssignmentCalendarChange?.();
-      if (resolvedFeedUrl) void syncCalendarTasks(resolvedFeedUrl);
+      if (resolvedFeedUrl) {
+        void syncCalendarTasks(resolvedFeedUrl, {
+          completedSnapshot: resolvedCompletedTasks,
+          tasksSnapshot: resolvedCalendarTasks,
+          previousLastSync: resolvedLastSync,
+        });
+      }
     }
 
     void loadCalendarState();
@@ -1612,13 +1491,30 @@ export default function HomeScreen({
       Alert.alert('Use a full link', 'Paste the full calendar feed URL that starts with https://.');
       return;
     }
+    const replacingFeed = trimmedUrl !== calendarFeedUrl;
+    const completedSnapshot = replacingFeed ? {} : completedCalendarTasks;
+    const tasksSnapshot = replacingFeed ? [] : calendarTasks;
+    const previousLastSync = replacingFeed ? null : calendarLastSyncedAt;
+    if (replacingFeed) {
+      calendarTasksRef.current = [];
+      calendarLastSyncedAtRef.current = null;
+      completedCalendarTasksRef.current = {};
+      setCalendarTasks([]);
+      setCalendarLastSyncedAt(null);
+      setCompletedCalendarTasks({});
+    }
     setCalendarFeedUrl(trimmedUrl);
     closeCalendarSetup();
-    await AsyncStorage.multiSet([
+    const updates: [string, string][] = [
       [calendarProviderStorageKey, calendarProvider],
       [calendarFeedStorageKey, trimmedUrl],
-    ]);
-    void syncCalendarTasks(trimmedUrl);
+    ];
+    if (replacingFeed) updates.push([calendarCompletedStorageKey, JSON.stringify({})]);
+    await AsyncStorage.multiSet(updates);
+    if (replacingFeed) {
+      await AsyncStorage.multiRemove([calendarTasksStorageKey, calendarLastSyncStorageKey]);
+    }
+    void syncCalendarTasks(trimmedUrl, { completedSnapshot, tasksSnapshot, previousLastSync });
   }
 
   async function disconnectCalendarFeed() {
@@ -1628,6 +1524,9 @@ export default function HomeScreen({
     setCalendarTasksError(null);
     setCalendarLastSyncedAt(null);
     setCompletedCalendarTasks({});
+    calendarTasksRef.current = [];
+    calendarLastSyncedAtRef.current = null;
+    completedCalendarTasksRef.current = {};
     await AsyncStorage.multiRemove([
       calendarProviderStorageKey,
       calendarFeedStorageKey,
@@ -1645,18 +1544,14 @@ export default function HomeScreen({
 
   function toggleCalendarTask(assignment: CalendarTask) {
     setCompletedCalendarTasks((current) => {
-      const isPast = isPastCalendarTask(assignment, now);
       const currentlyCompleted = isCalendarTaskCompleted(assignment, current, now);
       const next = { ...current };
       if (currentlyCompleted) {
-        if (isPast) {
-          next[assignment.id] = false;
-        } else {
-          delete next[assignment.id];
-        }
+        next[assignment.id] = false;
       } else {
         next[assignment.id] = true;
       }
+      completedCalendarTasksRef.current = next;
       void AsyncStorage.setItem(calendarCompletedStorageKey, JSON.stringify(next));
       onAssignmentCalendarChange?.();
       return next;
@@ -2652,7 +2547,7 @@ export default function HomeScreen({
       >
       <View style={{ marginBottom: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <Text numberOfLines={1} style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>
+          <Text numberOfLines={1} style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: 0 }} adjustsFontSizeToFit minimumFontScale={0.72}>
             {schoolHomeLabel(school)}
           </Text>
           <TouchableOpacity
@@ -2672,7 +2567,7 @@ export default function HomeScreen({
             <Ionicons name="person-outline" size={18} color={colors.brand} />
           </TouchableOpacity>
         </View>
-        <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
+        <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }} adjustsFontSizeToFit minimumFontScale={0.72}>
           {getDateLabel(now, selectedQuarter, quarterStart, quarterEnd, school)}
         </Text>
       </View>
@@ -2779,7 +2674,7 @@ export default function HomeScreen({
                         elevation: 0,
                       }}>
                         <View>
-                          <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                          <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
                             Today's Dining
                           </Text>
                           <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
@@ -2814,11 +2709,11 @@ export default function HomeScreen({
                                       <Ionicons name="restaurant-outline" size={20} color={diningAccent} />
                                     </View>
                                     <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                         {menu.name}
                                       </Text>
                                       {previewItems.length > 0 ? (
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }}>
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                           {previewItems.join(' · ')}
                                         </Text>
                                       ) : null}
@@ -2883,7 +2778,7 @@ export default function HomeScreen({
                         elevation: 0,
                       }}>
                         <View>
-                          <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                          <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
                             Sports Events
                           </Text>
                           <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
@@ -2997,7 +2892,7 @@ export default function HomeScreen({
                       }}>
                         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                           <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                            <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
                               Campus Info
                             </Text>
                             <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
@@ -3050,10 +2945,10 @@ export default function HomeScreen({
                                       <Ionicons name={resource.icon} size={18} color={resource.color} />
                                     </View>
                                     <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '800', color: colors.text }}>
+                                      <Text numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                         {resource.title}
                                       </Text>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, lineHeight: 16, color: colors.textSecondary, marginTop: 3 }}>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, lineHeight: 16, color: colors.textSecondary, marginTop: 3 }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                         {resource.subtitle}
                                       </Text>
                                     </View>
@@ -3075,7 +2970,7 @@ export default function HomeScreen({
                                           paddingHorizontal: 8,
                                         }}
                                       >
-                                        <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 14, fontWeight: '800', color: resource.color }}>
+                                        <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 14, fontWeight: '800', color: resource.color }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                           {child.title}
                                         </Text>
                                       </TouchableOpacity>
@@ -3117,10 +3012,10 @@ export default function HomeScreen({
                                   <Ionicons name={resource.icon} size={18} color={resource.color} />
                                 </View>
                                 <View style={{ flex: 1, minWidth: 0 }}>
-                                  <Text numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '800', color: colors.text }}>
+                                  <Text numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                     {resource.title}
                                   </Text>
-                                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, lineHeight: 16, color: colors.textSecondary, marginTop: 3 }}>
+                                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, lineHeight: 16, color: colors.textSecondary, marginTop: 3 }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                     {resource.subtitle}
                                   </Text>
                                 </View>
@@ -3262,13 +3157,13 @@ export default function HomeScreen({
                                 Current class
                               </Text>
                             </View>
-                            <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                            <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
                               {label}
                             </Text>
-                            <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                            <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
                               {value}
                             </Text>
-                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }}>
+                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }} adjustsFontSizeToFit minimumFontScale={0.72}>
                               {title}
                             </Text>
                             {courseClassmates.length > 0 ? (
@@ -3312,10 +3207,10 @@ export default function HomeScreen({
                               <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: `${accent}14`, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
                                 <Ionicons name={item.type === 'completedSummary' ? 'checkmark-done-outline' : 'calendar-outline'} size={22} color={accent} />
                               </View>
-                              <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                              <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
                                 {label}
                               </Text>
-                              <Text style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', color: colors.text }}>
+                              <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
                                 {value}
                               </Text>
                               <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
@@ -3377,11 +3272,11 @@ export default function HomeScreen({
                                 >
                                   <View style={{ width: 64 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'flex-end', gap: 2 }}>
-                                      <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: rowPrimaryColor }}>
+                                      <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                         {rowStartClock.time}
                                       </Text>
                                       {rowStartClock.period ? (
-                                        <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: rowPrimaryColor }}>
+                                        <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                           {rowStartClock.period}
                                         </Text>
                                       ) : null}
@@ -3399,11 +3294,11 @@ export default function HomeScreen({
                                       }}
                                     />
                                     <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, lineHeight: 19, fontWeight: '800', color: rowPrimaryColor }}>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, lineHeight: 19, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                         {summaryCourse.code}
                                       </Text>
                                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 17, color: rowSecondaryColor }}>
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 17, color: rowSecondaryColor }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                           {summaryCourse.title}
                                         </Text>
                                         {rowLocationLabel ? (
@@ -3416,7 +3311,7 @@ export default function HomeScreen({
                                               paddingVertical: 2,
                                             }}
                                           >
-                                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 10, lineHeight: 13, fontWeight: '800', color: colors.textTertiary }}>
+                                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 10, lineHeight: 13, fontWeight: '800', color: colors.textTertiary }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                               {rowLocationLabel}
                                             </Text>
                                           </View>
@@ -3585,7 +3480,7 @@ export default function HomeScreen({
                   }}
                 >
                   <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
-                    Past Assignments
+                    Completed
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -3622,7 +3517,7 @@ export default function HomeScreen({
             <View style={{ gap: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
-                  {incompleteCalendarTaskCount} open
+                  {incompleteCalendarTaskCount} to do
                 </Text>
                 <TouchableOpacity
                   onPress={openCalendarSetup}
@@ -3690,6 +3585,8 @@ export default function HomeScreen({
                             color: overdue ? '#EF4444' : (completed ? colors.textTertiary : colors.text),
                             textDecorationLine: completed ? 'line-through' : 'none',
                           }}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.72}
                         >
                           {assignment.title}
                         </Text>
@@ -3769,7 +3666,7 @@ export default function HomeScreen({
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: '800', color: colors.brand }}>
-                    View Past Assignments
+                    View Completed
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -3905,7 +3802,7 @@ export default function HomeScreen({
                           <Ionicons name={resource.icon} size={21} color={resource.color} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
+                          <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
                             {resource.title}
                           </Text>
                           <Text numberOfLines={2} style={{ fontSize: 12, lineHeight: 17, color: colors.textSecondary, marginTop: 3 }}>
@@ -3935,10 +3832,10 @@ export default function HomeScreen({
                                 justifyContent: 'center',
                               }}
                             >
-                              <Text numberOfLines={1} style={{ fontSize: 13, lineHeight: 17, fontWeight: '800', color: resource.color }}>
+                              <Text numberOfLines={1} style={{ fontSize: 13, lineHeight: 17, fontWeight: '800', color: resource.color }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                 {child.title}
                               </Text>
-                              <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 15, color: colors.textSecondary, marginTop: 2 }}>
+                              <Text numberOfLines={1} style={{ fontSize: 11, lineHeight: 15, color: colors.textSecondary, marginTop: 2 }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                 {child.subtitle}
                               </Text>
                             </TouchableOpacity>
@@ -3981,7 +3878,7 @@ export default function HomeScreen({
                       <Ionicons name={resource.icon} size={21} color={resource.color} />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
+                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
                         {resource.title}
                       </Text>
                       <Text numberOfLines={2} style={{ fontSize: 12, lineHeight: 17, color: colors.textSecondary, marginTop: 3 }}>
@@ -4030,7 +3927,7 @@ export default function HomeScreen({
                 <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
                   Today's Dining
                 </Text>
-                <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }} adjustsFontSizeToFit minimumFontScale={0.72}>
                   {diningMenus.length > 0
                     ? diningMenusExternalOnly
                       ? 'Official dining menu link'
@@ -4075,7 +3972,7 @@ export default function HomeScreen({
                           <Ionicons name="restaurant-outline" size={20} color={diningAccent} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
                             {menu.name}
                           </Text>
                           <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 3 }}>
@@ -4331,7 +4228,7 @@ export default function HomeScreen({
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, marginBottom: 12 }}>
               <View>
                 <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
-                  Past Assignments
+                  Completed Assignments
                 </Text>
                 <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
                   {pastCalendarTaskCount} assignment{pastCalendarTaskCount === 1 ? '' : 's'} hidden from Home
@@ -4437,7 +4334,7 @@ export default function HomeScreen({
               ) : (
                 <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                   <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, textAlign: 'center' }}>
-                    No past assignments
+                    No completed assignments
                   </Text>
                   <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 7 }}>
                     Deadlines move here after they pass.

@@ -177,7 +177,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   classReminders: true,
   classReminderMinutes: 60,
   assignmentReminders: true,
-  assignmentReminderOffsets: [2880, 1440, 720],
+  assignmentReminderOffsets: [2880, 1440, 720, 60],
   sportsGameReminders: true,
   sportsGameReminderMinutes: 60,
   friendRequests: true,

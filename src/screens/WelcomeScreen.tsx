@@ -61,7 +61,7 @@ export default function WelcomeScreen({ onGetStarted }: Props) {
               <Text
                 style={{
                   fontSize: 46,
-                  lineHeight: 50,
+                  lineHeight: 54,
                   fontWeight: '800',
                   letterSpacing: 0,
                   textAlign: 'center',

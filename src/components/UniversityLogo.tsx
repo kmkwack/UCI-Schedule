@@ -7,10 +7,6 @@ const UNIVERSITY_LOGOS: Partial<Record<string, ImageSourcePropType>> = {
   cornell: require('../../assets/cornell-logo-white.png'),
   purdue: require('../../assets/purdue-logo-white.png'),
   uiuc: require('../../assets/uiuc-logo-white.png'),
-  ucr: require('../../assets/ucr-logo-white-bg.png'),
-  northeastern: require('../../assets/northeastern-logo-white-bg.png'),
-  temple: require('../../assets/temple-logo-white-bg.png'),
-  gsu: require('../../assets/gsu-logo-white-bg.png'),
 };
 
 type Props = {
@@ -30,17 +26,12 @@ export default function UniversityLogo({
   const accent = schoolConfig.accent;
   const source = UNIVERSITY_LOGOS[university.id];
   const size = Math.min(width, height);
-  const logoDisplay =
-    university.id === 'gsu'
-      ? { width: Math.min(92, width), height: 74 }
-      : null;
-
   if (source) {
     return (
       <View
         style={{
           width,
-          height: logoDisplay ? Math.max(height, logoDisplay.height) : height,
+          height,
           alignItems: 'center',
           justifyContent: 'center',
           marginRight,
@@ -48,7 +39,7 @@ export default function UniversityLogo({
       >
         <Image
           source={source}
-          style={logoDisplay ?? { width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%' }}
           resizeMode="contain"
         />
       </View>

@@ -60,6 +60,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 // ─── fetch one department from Anteater API ───────────────────────────────────
 
 async function fetchDepartment(year, quarter, dept, retries = 3) {
@@ -98,6 +104,10 @@ async function fetchDepartment(year, quarter, dept, retries = 3) {
             source_term_code: `${year}-${quarter}`,
             campus:          'Irvine',
             status:          section.status ?? null,
+            enrolled:        numberOrNull(section.numCurrentlyEnrolled?.totalEnrolled),
+            capacity:        numberOrNull(section.maxCapacity),
+            waitlist:        numberOrNull(section.numOnWaitlist),
+            waitlist_capacity: numberOrNull(section.numWaitlistCap),
             last_synced_at:  new Date().toISOString(),
             quarter_key:     qKey,
             department:      d.deptCode,

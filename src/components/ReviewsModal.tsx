@@ -20,6 +20,8 @@ type CourseInfo = {
   finalExam: FinalExam | string | null;
   restrictions: string | null;
   prerequisiteLink: string | null;
+  prerequisiteText: string | null;
+  prerequisiteSourceKnown: boolean;
   sectionComment: string | null;
 };
 
@@ -44,10 +46,85 @@ const RESTRICTION_LABELS: Record<string, string> = {
   X: 'Separate authorization codes required',
 };
 
-function decodeRestrictions(raw: string | null): string | null {
-  if (!raw) return null;
-  const labels = raw.toUpperCase().split('').map(c => RESTRICTION_LABELS[c] ?? c).filter(Boolean);
-  return labels.length ? labels.join(' · ') : null;
+const COLLAPSED_RESTRICTION_COUNT = 4;
+const LONG_RESTRICTION_LENGTH = 120;
+
+function decodeBasicHtmlEntities(value: string) {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function normalizeMetadataText(raw: string) {
+  return decodeBasicHtmlEntities(raw)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|li|div)>/gi, '\n')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\r/g, '\n')
+    .replace(/[•·]+/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/[ \t]*\n[ \t]*/g, '\n')
+    .trim();
+}
+
+function uniqueCleanItems(items: string[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.toLowerCase();
+    if (!item || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeRestrictionItem(value: string) {
+  const cleaned = value
+    .replace(/^restrictions?:\s*/i, '')
+    .replace(/^student\s+must\s+be\s+(?:a|an)\s+/i, '')
+    .replace(/^student\s+must\s+be\s+/i, '')
+    .replace(/^must\s+be\s+(?:a|an)\s+/i, '')
+    .replace(/^must\s+be\s+/i, '')
+    .replace(/[.;,\s]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return cleaned ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : '';
+}
+
+function decodeRestrictions(raw: string | null): string[] {
+  if (!raw) return [];
+
+  const normalized = normalizeMetadataText(raw);
+  const compactCode = normalized.replace(/[\s,;./|:_-]+/g, '').toUpperCase();
+  const hasReadableWords = /\b[a-z]{2,}\b/.test(raw);
+  const looksLikeCompactCodes = compactCode.length > 0
+    && compactCode.length <= 12
+    && /^[A-Z]+$/.test(compactCode)
+    && !hasReadableWords;
+
+  if (looksLikeCompactCodes) {
+    return uniqueCleanItems(
+      compactCode
+        .split('')
+        .map((code) => RESTRICTION_LABELS[code] ?? '')
+        .filter(Boolean)
+    );
+  }
+
+  const sentenceText = normalized
+    .replace(/\s*;\s*/g, '\n')
+    .replace(/\s*\.\s+/g, '.\n');
+
+  return uniqueCleanItems(
+    sentenceText
+      .split(/\n+/)
+      .map(normalizeRestrictionItem)
+      .filter((item) => item.length > 1)
+  );
 }
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -84,6 +161,52 @@ function finalExamFallback(sectionComment?: string | null): string | null {
 }
 
 const courseInfoCache: Record<string, CourseInfo> = {};
+const uciCatalogCourseCache: Record<string, { prerequisiteText: string | null; restrictionText: string | null; prerequisiteSourceKnown: boolean }> = {};
+
+function sectionIdLookupCandidates(sectionId?: string | null, qKey?: string) {
+  const trimmed = sectionId?.trim();
+  if (!trimmed) return [];
+  const candidates = new Set([trimmed]);
+  if (qKey && !trimmed.includes('::')) candidates.add(`${trimmed}::${qKey}`);
+  return [...candidates];
+}
+
+function normalizePrerequisiteLink(link?: string | null): string | null {
+  const trimmed = link?.trim();
+  if (!trimmed) return null;
+  return /^https?:\/\//i.test(trimmed) ? trimmed : null;
+}
+
+function normalizePrerequisiteText(value?: string | null): string | null {
+  const cleaned = normalizeMetadataText(value ?? '').replace(/[.;,\s]+$/g, '').trim();
+  if (!cleaned) return null;
+  if (/^(none|n\/a|no prerequisites?)$/i.test(cleaned)) return null;
+  if (/^prerequisites?\s+var(?:y|ies)$/i.test(cleaned)) return 'No fixed prerequisites listed';
+  return cleaned;
+}
+
+async function fetchUciCatalogCourseInfo(department: string, courseNumber: string) {
+  const cacheKey = `${department}::${courseNumber}`;
+  if (uciCatalogCourseCache[cacheKey]) return uciCatalogCourseCache[cacheKey];
+
+  try {
+    const params = new URLSearchParams({ department, courseNumber });
+    const response = await fetch(`https://anteaterapi.com/v2/rest/courses?${params.toString()}`);
+    const json = await response.json();
+    const course = Array.isArray(json?.data) ? json.data[0] : null;
+    const info = {
+      prerequisiteText: normalizePrerequisiteText(course?.prerequisiteText),
+      restrictionText: normalizeMetadataText(course?.restriction ?? '') || null,
+      prerequisiteSourceKnown: Boolean(course),
+    };
+    uciCatalogCourseCache[cacheKey] = info;
+    return info;
+  } catch (_) {
+    const empty = { prerequisiteText: null, restrictionText: null, prerequisiteSourceKnown: false };
+    uciCatalogCourseCache[cacheKey] = empty;
+    return empty;
+  }
+}
 
 type GradeDistribution = {
   averageGPA: number | null;
@@ -127,7 +250,6 @@ export default function ReviewsModal({
 }: Props) {
   const { colors } = useTheme();
   const [courseInfo, setCourseInfo] = useState<CourseInfo | null>(null);
-  const [courseInfoLoading, setCourseInfoLoading] = useState(false);
   const [instructor, setInstructor] = useState('');
   const [gradesCache, setGradesCache] = useState<Record<string, GradeDistribution | null>>({});
   const [gradeLoading, setGradeLoading] = useState(false);
@@ -141,6 +263,7 @@ export default function ReviewsModal({
   const [quarterTaken, setQuarterTaken] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+  const [showAllRestrictions, setShowAllRestrictions] = useState(false);
   const writeReviewScrollRef = useRef<ScrollView>(null);
   const reviewInputRef = useRef<TextInput>(null);
   const schoolConfig = getSchoolConfig(school);
@@ -163,10 +286,11 @@ export default function ReviewsModal({
       setRating(5); setDifficulty(3); setWorkload(3); setContent('');
       setQuarterTaken(semesterLabel);
       setCourseInfo(null);
+      setShowAllRestrictions(false);
       fetchReviews();
       fetchCourseInfo();
     }
-  }, [visible, courseCode, quarterKey]);
+  }, [visible, sectionId, courseCode, quarterKey, school]);
 
   useEffect(() => {
     if (!visible || !showWriteReview) return;
@@ -208,31 +332,36 @@ export default function ReviewsModal({
   }, [visible, instructor, school, department, courseNumber, supportsOfficialGradeDistribution]);
 
   async function fetchCourseInfo() {
-    const rowId = sectionId ? `${sectionId}::${quarterKey}` : null;
-    const cacheKey = rowId ? `${rowId}` : `${courseCode}::${quarterKey}`;
+    const sectionCandidates = sectionIdLookupCandidates(sectionId, quarterKey);
+    const cacheKey = sectionCandidates.length > 0
+      ? `${school}::section::${sectionCandidates.join('|')}`
+      : `${school}::course::${courseCode}::${quarterKey}`;
     if (courseInfoCache[cacheKey]) {
       setCourseInfo(courseInfoCache[cacheKey]);
       return;
     }
-    setCourseInfoLoading(true);
     let rows: Array<{
       final_exam: FinalExam | string | null;
       restrictions: string | null;
       prerequisite_link: string | null;
       section_comment: string | null;
     }> = [];
+    let coursePrerequisiteLink: string | null = null;
+    let catalogPrerequisiteText: string | null = null;
+    let catalogRestrictionText: string | null = null;
+    let prerequisiteSourceKnown = false;
 
-    if (rowId) {
+    if (sectionCandidates.length > 0) {
       const { data } = await supabase
         .from('sections')
         .select('final_exam, restrictions, prerequisite_link, section_comment')
         .eq('school', school)
-        .eq('id', rowId)
-        .limit(1);
+        .in('id', sectionCandidates)
+        .limit(sectionCandidates.length);
       rows = (data ?? []) as typeof rows;
     }
 
-    if (rows.length === 0) {
+    if (rows.length === 0 && sectionCandidates.length === 0) {
       const { data } = await supabase
         .from('sections')
         .select('final_exam, restrictions, prerequisite_link, section_comment')
@@ -243,6 +372,26 @@ export default function ReviewsModal({
       rows = (data ?? []) as typeof rows;
     }
 
+    if (sectionCandidates.length > 0 && !rows.some((row) => normalizePrerequisiteLink(row.prerequisite_link))) {
+      const { data } = await supabase
+        .from('sections')
+        .select('prerequisite_link')
+        .eq('school', school)
+        .eq('code', courseCode)
+        .eq('quarter_key', quarterKey)
+        .not('prerequisite_link', 'is', null)
+        .neq('prerequisite_link', '')
+        .limit(1);
+      coursePrerequisiteLink = (data?.[0] as { prerequisite_link?: string | null } | undefined)?.prerequisite_link ?? null;
+    }
+
+    if (school === 'UC Irvine') {
+      const catalogInfo = await fetchUciCatalogCourseInfo(department, courseNumber);
+      catalogPrerequisiteText = catalogInfo.prerequisiteText;
+      catalogRestrictionText = catalogInfo.restrictionText;
+      prerequisiteSourceKnown = catalogInfo.prerequisiteSourceKnown;
+    }
+
     const preferred =
       rows.find((row) => row.final_exam) ??
       rows.find((row) => row.section_comment?.trim()) ??
@@ -251,13 +400,14 @@ export default function ReviewsModal({
 
     const info: CourseInfo = {
       finalExam: preferred?.final_exam ?? null,
-      restrictions: preferred?.restrictions ?? null,
-      prerequisiteLink: preferred?.prerequisite_link ?? null,
+      restrictions: preferred?.restrictions || catalogRestrictionText,
+      prerequisiteLink: normalizePrerequisiteLink(preferred?.prerequisite_link) ?? normalizePrerequisiteLink(coursePrerequisiteLink),
+      prerequisiteText: catalogPrerequisiteText,
+      prerequisiteSourceKnown,
       sectionComment: preferred?.section_comment ?? null,
     };
     courseInfoCache[cacheKey] = info;
     setCourseInfo(info);
-    setCourseInfoLoading(false);
   }
 
   async function fetchReviews() {
@@ -337,6 +487,9 @@ export default function ReviewsModal({
   ].filter((e) => e.count > 0) : [];
   const total = allEntries.reduce((s, e) => s + e.count, 0);
   const visibleEntries = allEntries.filter((e) => !['P', 'NP'].includes(e.label) || (total > 0 && Math.round(e.count / total * 100) >= 1));
+  const hasGradeDistribution = Boolean(grades && visibleEntries.length > 0);
+  const showGradeDistribution = true;
+  const gradeDistributionTitle = instructor ? 'Professor Grade Distribution' : 'Grade Distribution for Course';
   const reviewStats = useMemo(() => ({
     rating: average(reviews.map((review) => review.rating)),
     difficulty: average(reviews.map((review) => review.difficulty)),
@@ -345,20 +498,33 @@ export default function ReviewsModal({
   const officialFinalText = courseInfo
     ? formatFinalExam(courseInfo.finalExam) ?? finalExamFallback(courseInfo.sectionComment)
     : null;
-  const restrictionText = courseInfo ? decodeRestrictions(courseInfo.restrictions) : null;
+  const restrictionItems = courseInfo ? decodeRestrictions(courseInfo.restrictions) : [];
+  const prerequisiteLink = courseInfo?.prerequisiteLink ?? null;
+  const prerequisiteText = courseInfo?.prerequisiteText ?? null;
+  const prerequisiteSourceKnown = courseInfo?.prerequisiteSourceKnown === true;
+  const shouldShowRestrictions = courseInfo !== null;
+  const shouldShowPrerequisites = courseInfo !== null;
+  const restrictionsEmptyText = schoolConfig.id === 'uci' ? 'No restrictions listed' : 'Not supported';
+  const prerequisiteDisplayText = prerequisiteText ?? (prerequisiteSourceKnown && !prerequisiteLink ? 'No prerequisites' : null);
+  const visibleRestrictionItems = showAllRestrictions
+    ? restrictionItems
+    : restrictionItems.slice(0, COLLAPSED_RESTRICTION_COUNT);
+  const hiddenRestrictionCount = Math.max(0, restrictionItems.length - visibleRestrictionItems.length);
+  const restrictionNeedsToggle = hiddenRestrictionCount > 0
+    || restrictionItems.some((item) => item.length > LONG_RESTRICTION_LENGTH);
   const courseNote = courseInfo?.sectionComment?.trim() || null;
+  const rmpProfessor = instructor || professors[0] || '';
+  const showRmpLink = Boolean(rmpProfessor && rmpProfessor !== 'STAFF' && rmpProfessor.trim());
+  const rmpLastName = rmpProfessor.includes(',') ? rmpProfessor.substring(0, rmpProfessor.indexOf(',')) : rmpProfessor;
+  const rmpUrl = schoolConfig.rmpSchoolId
+    ? `https://www.ratemyprofessors.com/search/professors/${schoolConfig.rmpSchoolId}?q=${encodeURIComponent(rmpLastName)}`
+    : `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(rmpLastName)}`;
   const showCourseInfoDetails = Boolean(courseInfo && (
-    restrictionText ||
-    courseInfo.prerequisiteLink ||
+    shouldShowRestrictions ||
+    shouldShowPrerequisites ||
     officialFinalText ||
     (courseNote && courseNote !== officialFinalText)
-  ));
-  const reviewPromptCards = [
-    { icon: 'sparkles-outline' as const, title: 'Overall vibe', body: 'How clear, useful, or fair did the class feel?' },
-    { icon: 'barbell-outline' as const, title: 'Difficulty', body: 'Was it concept-heavy, project-heavy, or exam-heavy?' },
-    { icon: 'time-outline' as const, title: 'Workload', body: 'Share the weekly rhythm: readings, labs, projects, prep.' },
-  ];
-
+  ) || showRmpLink);
   return (
     <Modal
       visible={visible}
@@ -393,29 +559,57 @@ export default function ReviewsModal({
 
                 <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
                   {/* Course Info — restrictions, finals, prereqs, comment */}
-                  {courseInfoLoading ? (
-                    <View style={{ paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, alignItems: 'center' }}>
-                      <ActivityIndicator size="small" color={colors.brand} />
-                    </View>
-                  ) : showCourseInfoDetails ? (
+                  {showCourseInfoDetails ? (
                     <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, gap: 10 }}>
-                        {restrictionText ? (
+                        {shouldShowRestrictions ? (
                           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                             <Ionicons name="lock-closed-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Restrictions</Text>
-                              <Text style={{ fontSize: 13, color: colors.text }}>{restrictionText}</Text>
+                              {restrictionItems.length > 0 ? (
+                                <View style={{ gap: 5 }}>
+                                  {visibleRestrictionItems.map((item) => (
+                                    <View key={item} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+                                      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.textTertiary, marginTop: 7 }} />
+                                      <Text
+                                        style={{ flex: 1, fontSize: 13, lineHeight: 18, color: colors.text }}
+                                        numberOfLines={showAllRestrictions ? undefined : 2}
+                                      >
+                                        {item}
+                                      </Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              ) : (
+                                <Text style={{ fontSize: 13, lineHeight: 18, color: colors.textSecondary }}>{restrictionsEmptyText}</Text>
+                              )}
+                              {restrictionNeedsToggle ? (
+                                <TouchableOpacity onPress={() => setShowAllRestrictions((current) => !current)} style={{ marginTop: 7, alignSelf: 'flex-start' }}>
+                                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.brand }}>
+                                    {showAllRestrictions
+                                      ? 'Show less'
+                                      : hiddenRestrictionCount > 0
+                                        ? `Show ${hiddenRestrictionCount} more`
+                                        : 'Show full text'}
+                                  </Text>
+                                </TouchableOpacity>
+                              ) : null}
                             </View>
                           </View>
                         ) : null}
-                        {courseInfo?.prerequisiteLink ? (
+                        {shouldShowPrerequisites ? (
                           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                             <Ionicons name="link-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Prerequisites</Text>
-                              <TouchableOpacity onPress={() => courseInfo?.prerequisiteLink && Linking.openURL(courseInfo.prerequisiteLink)}>
-                                <Text style={{ fontSize: 13, color: colors.brand, textDecorationLine: 'underline' }}>View prerequisites ›</Text>
-                              </TouchableOpacity>
+                              <Text style={{ fontSize: 13, lineHeight: 18, color: prerequisiteDisplayText ? colors.text : colors.textSecondary }}>
+                                {prerequisiteDisplayText ?? (prerequisiteLink ? 'Prerequisite details' : 'Not supported')}
+                              </Text>
+                              {prerequisiteLink ? (
+                                <TouchableOpacity onPress={() => Linking.openURL(prerequisiteLink)} style={{ marginTop: 4 }}>
+                                  <Text style={{ fontSize: 13, color: colors.brand, textDecorationLine: 'underline' }}>View prerequisites ›</Text>
+                                </TouchableOpacity>
+                              ) : null}
                             </View>
                           </View>
                         ) : null}
@@ -428,26 +622,17 @@ export default function ReviewsModal({
                             </View>
                           </View>
                         ) : null}
-                        {(() => {
-                          const prof = instructor || professors[0] || '';
-                          if (!prof || prof === 'STAFF' || prof.trim() === '') return null;
-                          const lastName = prof.includes(',') ? prof.substring(0, prof.indexOf(',')) : prof;
-                          const sid = getSchoolConfig(school).rmpSchoolId ?? '';
-                          const url = sid
-                            ? `https://www.ratemyprofessors.com/search/professors/${sid}?q=${encodeURIComponent(lastName)}`
-                            : `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(lastName)}`;
-                          return (
-                            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                              <Ionicons name="star-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
-                              <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Rate My Professors</Text>
-                                <TouchableOpacity onPress={() => Linking.openURL(url)}>
-                                  <Text style={{ fontSize: 13, color: colors.brand, textDecorationLine: 'underline' }}>{prof} on RateMyProfessors ›</Text>
-                                </TouchableOpacity>
-                              </View>
+                        {showRmpLink ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                            <Ionicons name="star-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Rate My Professors</Text>
+                              <TouchableOpacity onPress={() => Linking.openURL(rmpUrl)}>
+                                <Text style={{ fontSize: 13, color: colors.brand, textDecorationLine: 'underline' }}>{rmpProfessor} on RateMyProfessors ›</Text>
+                              </TouchableOpacity>
                             </View>
-                          );
-                        })()}
+                          </View>
+                        ) : null}
                         {courseNote && courseNote !== officialFinalText ? (
                           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                             <Ionicons name="information-circle-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
@@ -461,70 +646,81 @@ export default function ReviewsModal({
                   ) : null}
 
                   {/* Grade Distribution */}
-                  <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Grade Distribution</Text>
-                    {supportsOfficialGradeDistribution && professors.length > 0 && (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                          {['', ...professors].map((p) => {
-                            const isSel = instructor === p;
-                            return (
-                              <TouchableOpacity
-                                key={p || '__all__'}
-                                onPress={() => setInstructor(p)}
-                                style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: isSel ? colors.brand : colors.bgTertiary, borderWidth: 1, borderColor: isSel ? colors.brand : colors.border }}
-                              >
-                                <Text style={{ fontSize: 12, fontWeight: '600', color: isSel ? 'white' : colors.textSecondary }}>
-                                  {p === '' ? 'All Professors' : p.split(',')[0]}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
+                  {showGradeDistribution ? (
+                    <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 10 }}>{gradeDistributionTitle}</Text>
+                      {supportsOfficialGradeDistribution && professors.length > 0 && (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {['', ...professors].map((p) => {
+                              const isSel = instructor === p;
+                              return (
+                                <TouchableOpacity
+                                  key={p || '__all__'}
+                                  onPress={() => setInstructor(p)}
+                                  style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: isSel ? colors.brand : colors.bgTertiary, borderWidth: 1, borderColor: isSel ? colors.brand : colors.border }}
+                                >
+                                  <Text style={{ fontSize: 12, fontWeight: '600', color: isSel ? 'white' : colors.textSecondary }}>
+                                    {p === '' ? 'All Professors' : p.split(',')[0]}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </ScrollView>
+                      )}
+                      {!supportsOfficialGradeDistribution ? (
+                        <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, borderWidth: 1, borderColor: colors.borderSubtle, padding: 13 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Ionicons name="stats-chart-outline" size={16} color={colors.textTertiary} />
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>
+                              Not supported
+                            </Text>
+                          </View>
                         </View>
-                      </ScrollView>
-                    )}
-                    {gradeLoading ? (
-                      <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-                        <ActivityIndicator size="small" color={colors.brand} />
-                      </View>
-                    ) : !grades || visibleEntries.length === 0 ? (
-                      <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, borderWidth: 1, borderColor: colors.borderSubtle, padding: 13 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Ionicons name="stats-chart-outline" size={16} color={colors.textTertiary} />
-                          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Official grade data unavailable</Text>
+                      ) : gradeLoading ? (
+                        <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                          <ActivityIndicator size="small" color={colors.brand} />
                         </View>
-                        <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 17, marginTop: 7 }}>
-                          {supportsOfficialGradeDistribution
-                            ? 'No official grade distribution has been published for this course yet.'
-                            : `${schoolConfig.shortName} does not expose official grade distributions through a connected public source yet.`}
-                        </Text>
-                      </View>
-                    ) : (
-                      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
-                        <View style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandBg, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, minWidth: 72 }}>
-                          <Text style={{ fontSize: 26, fontWeight: '800', color: colors.brand }}>
-                            {grades.averageGPA != null ? grades.averageGPA.toFixed(2) : '—'}
-                          </Text>
-                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>avg GPA</Text>
-                        </View>
-                        <View style={{ flex: 1, gap: 5 }}>
-                          {visibleEntries.map((entry) => {
-                            const pct = total > 0 ? entry.count / total : 0;
-                            return (
-                              <View key={entry.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, width: 18, textAlign: 'right' }}>{entry.label}</Text>
-                                <View style={{ flex: 1, height: 10 }}>
-                                  <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: entry.color, borderRadius: 5 }} />
+                      ) : hasGradeDistribution ? (
+                        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+                          <View style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandBg, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, minWidth: 72 }}>
+                            <Text style={{ fontSize: 26, fontWeight: '800', color: colors.brand }}>
+                              {grades?.averageGPA != null ? grades.averageGPA.toFixed(2) : '—'}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>avg GPA</Text>
+                          </View>
+                          <View style={{ flex: 1, gap: 5 }}>
+                            {visibleEntries.map((entry) => {
+                              const pct = total > 0 ? entry.count / total : 0;
+                              return (
+                                <View key={entry.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, width: 18, textAlign: 'right' }}>{entry.label}</Text>
+                                  <View style={{ flex: 1, height: 10 }}>
+                                    <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: entry.color, borderRadius: 5 }} />
+                                  </View>
+                                  <Text style={{ fontSize: 11, color: colors.textSecondary, width: 34, textAlign: 'right' }}>{(pct * 100).toFixed(0)}%</Text>
                                 </View>
-                                <Text style={{ fontSize: 11, color: colors.textSecondary, width: 34, textAlign: 'right' }}>{(pct * 100).toFixed(0)}%</Text>
-                              </View>
-                            );
-                          })}
-                          <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 2 }}>Based on {total.toLocaleString()} students · all available terms</Text>
+                              );
+                            })}
+                            <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 2 }}>Based on {total.toLocaleString()} students · all available terms</Text>
+                          </View>
                         </View>
-                      </View>
-                    )}
-                  </View>
+                      ) : (
+                        <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, borderWidth: 1, borderColor: colors.borderSubtle, padding: 13 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Ionicons name="stats-chart-outline" size={16} color={colors.textTertiary} />
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
+                              No grade distribution found
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 17, marginTop: 7 }}>
+                            {instructor ? 'Switch back to All Professors to view the course-wide grade distribution.' : 'ClassMate reviews can still be used below.'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  ) : null}
 
                   {/* Student reviews */}
                   <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
@@ -567,33 +763,7 @@ export default function ReviewsModal({
                           </View>
                         </View>
 
-                        {reviews.length === 0 ? (
-                          <>
-                            <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: colors.borderSubtle }}>
-                              <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text, marginBottom: 9 }}>Good reviews usually mention</Text>
-                              <View style={{ gap: 10 }}>
-                                {reviewPromptCards.map((prompt) => (
-                                  <View key={prompt.title} style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
-                                    <View style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' }}>
-                                      <Ionicons name={prompt.icon} size={15} color={colors.brand} />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{prompt.title}</Text>
-                                      <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 17, marginTop: 2 }}>{prompt.body}</Text>
-                                    </View>
-                                  </View>
-                                ))}
-                              </View>
-                            </View>
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                              {[sectionType, semesterLabel, schoolConfig.shortName, 'Student-written'].filter(Boolean).map((label) => (
-                                <View key={label} style={{ backgroundColor: colors.bgTertiary, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-                                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary }}>{label}</Text>
-                                </View>
-                              ))}
-                            </View>
-                          </>
-                        ) : reviews.map((review) => (
+                        {reviews.map((review) => (
                           <View key={review.id} style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, padding: 14, marginBottom: 10 }}>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
                               <View>

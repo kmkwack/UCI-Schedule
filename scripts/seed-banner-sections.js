@@ -4,9 +4,7 @@
 // the shared Supabase `sections` table.
 //
 // HOW TO RUN:
-//   DRY_RUN=1 node scripts/seed-banner-sections.js ucr Spring 2026 CS,MATH
-//   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/seed-banner-sections.js temple Spring 2026 CIS
-//   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/seed-banner-sections.js northeastern Fall 2026
+//   Add a school config to BANNER_SCHOOLS only after written permission exists.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { createClient } = require('@supabase/supabase-js');
@@ -21,118 +19,7 @@ if (!DRY_RUN && (!SUPABASE_URL || !SUPABASE_SERVICE_KEY)) {
 
 const supabase = DRY_RUN ? null : createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-const BANNER_SCHOOLS = {
-  ucr: {
-    school: 'UC Riverside',
-    source: 'ucr-banner',
-    baseUrl: 'https://registrationssb.ucr.edu',
-    campus: 'Riverside campus',
-  },
-  northeastern: {
-    school: 'Northeastern University',
-    source: 'neu-banner',
-    baseUrl: 'https://nubanner.neu.edu',
-    campus: 'Boston campus',
-    excludeTermDescriptions: ['cps quarter', 'cps semester', 'law quarter', 'law semester'],
-  },
-  temple: {
-    school: 'Temple University',
-    source: 'temple-banner',
-    baseUrl: 'https://prd-xereg.temple.edu',
-    campus: 'Main campus',
-  },
-  gsu: {
-    school: 'Georgia State University',
-    source: 'gsu-banner',
-    baseUrl: 'https://registration.gosolar.gsu.edu',
-    campus: 'Atlanta campus',
-  },
-  gatech: {
-    school: 'Georgia Institute of Technology',
-    source: 'gatech-banner',
-    baseUrl: 'https://registration.banner.gatech.edu',
-    campus: 'Atlanta campus',
-  },
-  wvu: {
-    school: 'West Virginia University',
-    source: 'wvu-banner',
-    baseUrl: 'https://starss.wvu.edu',
-    campus: 'Morgantown campus',
-  },
-  shsu: {
-    school: 'Sam Houston State University',
-    source: 'shsu-banner',
-    baseUrl: 'https://banxeappx.shsu.edu',
-    campus: 'Huntsville campus',
-  },
-  denison: {
-    school: 'Denison University',
-    source: 'denison-banner',
-    baseUrl: 'https://banner.denison.edu',
-    campus: 'Granville campus',
-  },
-  uncg: {
-    school: 'University of North Carolina Greensboro',
-    source: 'uncg-banner',
-    baseUrl: 'https://erp-registration.uncg.edu',
-    campus: 'Greensboro campus',
-  },
-  eiu: {
-    school: 'Eastern Illinois University',
-    source: 'eiu-banner',
-    baseUrl: 'https://banner.eiu.edu',
-    campus: 'Charleston campus',
-  },
-  ung: {
-    school: 'University of North Georgia',
-    source: 'ung-banner',
-    baseUrl: 'https://ssb.ungprod.ung.edu',
-    campus: 'Dahlonega campus',
-  },
-  alfredstate: {
-    school: 'Alfred State College',
-    source: 'alfredstate-banner',
-    baseUrl: 'https://banner.alfredstate.edu',
-    campus: 'Alfred campus',
-  },
-  canisius: {
-    school: 'Canisius University',
-    source: 'canisius-banner',
-    baseUrl: 'https://banner.canisius.edu',
-    campus: 'Buffalo campus',
-  },
-  genesee: {
-    school: 'Genesee Community College',
-    source: 'genesee-banner',
-    baseUrl: 'https://bannerprod.genesee.edu',
-    campus: 'Batavia campus',
-  },
-  uvu: {
-    school: 'Utah Valley University',
-    source: 'uvu-banner',
-    baseUrl: 'https://userve.uvu.edu',
-    campus: 'Orem campus',
-    excludeTermDescriptions: ['non-credit'],
-  },
-  lehigh: {
-    school: 'Lehigh University',
-    source: 'lehigh-banner',
-    baseUrl: 'https://reg-prod.ec.lehigh.edu',
-    campus: 'Bethlehem campus',
-  },
-  rider: {
-    school: 'Rider University',
-    source: 'rider-banner',
-    baseUrl: 'https://reg-prod.ec.rider.edu',
-    campus: 'Lawrenceville campus',
-  },
-  wheatonma: {
-    school: 'Wheaton College (Massachusetts)',
-    source: 'wheatonma-banner',
-    baseUrl: 'https://banprodselfservice.wheatonma.edu:7341',
-    campus: 'Norton campus',
-  },
-};
+const BANNER_SCHOOLS = {};
 
 const SCHOOL_KEY = String(process.argv[2] ?? '').toLowerCase();
 const TERM = process.argv[3] ?? 'Spring';
@@ -157,6 +44,12 @@ function numberEnv(name, fallback) {
   if (raw === undefined || raw === '') return fallback;
   const value = Number(raw);
   return Number.isFinite(value) ? value : fallback;
+}
+
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function sleep(ms) {
@@ -424,6 +317,10 @@ function buildRows(sections, termCode, qKey, subjectNames) {
       source_term_code: termCode,
       campus: htmlDecode(section.campusDescription ?? config.campus),
       status: section.openSection === true ? 'OPEN' : section.openSection === false ? 'CLOSED' : null,
+      enrolled: numberOrNull(section.enrollment ?? section.enrollmentCount ?? section.actualEnrollment),
+      capacity: numberOrNull(section.maximumEnrollment ?? section.maxEnrollment ?? section.enrollmentCapacity),
+      waitlist: numberOrNull(section.waitCount ?? section.waitlistCount),
+      waitlist_capacity: numberOrNull(section.waitCapacity ?? section.waitlistCapacity ?? section.waitlistMaximum),
       last_synced_at: syncedAt,
       quarter_key: qKey,
       department,

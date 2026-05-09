@@ -1013,7 +1013,7 @@ export default function FriendsScreen({
 
         <View style={{ paddingHorizontal: 18, paddingTop: 4, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: -0.8, color: colors.text }}>ClassMates</Text>
+            <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: 0, color: colors.text }}>ClassMates</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             {onOpenMessages ? (
@@ -1178,7 +1178,7 @@ export default function FriendsScreen({
                           fontSize: 12,
                           fontWeight: '800',
                           color: getBlockColors(group.course, 'minimal').text,
-                        }}>
+                        }} minimumFontScale={0.72}>
                           {group.course.code}
                         </Text>
                       </View>
@@ -1288,7 +1288,7 @@ export default function FriendsScreen({
                         {f.major} • {f.year}
                       </Text>
                       {sharedCoursesByFriendId[f.id]?.length > 0 ? (
-                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.brand, marginTop: 4, fontWeight: '700' }}>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.brand, marginTop: 4, fontWeight: '700' }} adjustsFontSizeToFit minimumFontScale={0.72}>
                           {sharedCoursesByFriendId[f.id].length} shared • {sharedCoursesByFriendId[f.id].slice(0, 2).map((course) => course.code).join(' • ')}
                         </Text>
                       ) : null}
@@ -1532,8 +1532,8 @@ export default function FriendsScreen({
                   </Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: 'bold', color: colors.text }}>{firstLastName(friend.name)}</Text>
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{friend.email}</Text>
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: 'bold', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>{firstLastName(friend.name)}</Text>
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }} adjustsFontSizeToFit minimumFontScale={0.72}>{friend.email}</Text>
                 </View>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1666,13 +1666,13 @@ export default function FriendsScreen({
                                   overflow: 'hidden',
                                 }}
                               >
-                                <Text style={{ color: text, fontWeight: '800', fontSize: compactGrid ? 9 : 10, lineHeight: compactGrid ? 12 : 13 }} numberOfLines={1}>{course.code}</Text>
+                                <Text style={{ color: text, fontWeight: '800', fontSize: compactGrid ? 9 : 10, lineHeight: compactGrid ? 12 : 13 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{course.code}</Text>
                                 <Text style={{ color: text, fontWeight: '600', fontSize: compactGrid ? 8 : 9, lineHeight: compactGrid ? 10 : 12, opacity: 0.85 }} numberOfLines={2}>{course.title}</Text>
                                 {course.location ? (
-                                  <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.75, marginTop: 2 }} numberOfLines={1}>{course.location}</Text>
+                                  <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.75, marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{course.location}</Text>
                                 ) : null}
-                                <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.7, marginTop: 1 }} numberOfLines={1}>{getProfLastName(course.professor)}</Text>
-                                <Text style={{ color: text, fontSize: compactGrid ? 7 : 8, opacity: 0.6, marginTop: 1 }} numberOfLines={1}>{formatCourseTimeRange12(course.time, { compact: true })}</Text>
+                                <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.7, marginTop: 1 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{getProfLastName(course.professor)}</Text>
+                                <Text style={{ color: text, fontSize: compactGrid ? 7 : 8, opacity: 0.6, marginTop: 1 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{formatCourseTimeRange12(course.time, { compact: true })}</Text>
                               </View>
                             );
                           });
@@ -1694,9 +1694,9 @@ export default function FriendsScreen({
                         backgroundColor: bg, borderRadius: 8, borderWidth: 1, borderColor: border,
                         paddingHorizontal: 10, paddingVertical: 8, minWidth: 100, maxWidth: 160,
                       }}>
-                        <Text style={{ color: text, fontWeight: '800', fontSize: compactGrid ? 9 : 10 }} numberOfLines={1}>{course.code}</Text>
+                        <Text style={{ color: text, fontWeight: '800', fontSize: compactGrid ? 9 : 10 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{course.code}</Text>
                         <Text style={{ color: text, fontWeight: '600', fontSize: compactGrid ? 8 : 9, opacity: 0.85 }} numberOfLines={2}>{course.title}</Text>
-                        <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>{getProfLastName(course.professor)}</Text>
+                        <Text style={{ color: text, fontSize: compactGrid ? 8 : 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{getProfLastName(course.professor)}</Text>
                         <Text style={{ color: text, fontSize: 8, opacity: 0.55, marginTop: 2, fontWeight: '600' }}>
                           {course.location?.toLowerCase().includes('online') || course.location?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
                         </Text>

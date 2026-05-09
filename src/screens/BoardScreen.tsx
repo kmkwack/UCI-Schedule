@@ -2008,7 +2008,7 @@ export default function BoardScreen({
           }}
         >
           <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-            <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>Board</Text>
+            <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: 0 }}>Board</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexShrink: 0 }}>
             {onOpenMessages ? (
@@ -2544,7 +2544,7 @@ export default function BoardScreen({
                 >
                   <Ionicons name="chevron-back" size={26} color={colors.text} />
                 </TouchableOpacity>
-                <Text numberOfLines={1} style={{ flex: 1, fontSize: 18, fontWeight: '600', color: colors.text }}>
+                <Text numberOfLines={1} style={{ flex: 1, fontSize: 18, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
                   {boardContextLabel(selectedPost.category)}
                 </Text>
               </View>
@@ -2642,7 +2642,7 @@ export default function BoardScreen({
                                 <Ionicons name="document-outline" size={24} color={colors.brand} />
                               </View>
                               <View style={{ flex: 1 }}>
-                                <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
+                                <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
                                   {attachment.name}
                                 </Text>
                                 <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
@@ -3824,7 +3824,7 @@ function NewPostModal({
                     </View>
                   )}
                   <View style={{ flex: 1 }}>
-                    <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
+                    <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
                       {attachment.name}
                     </Text>
                     <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>

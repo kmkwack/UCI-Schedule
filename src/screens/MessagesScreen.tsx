@@ -64,8 +64,10 @@ type MessageBubble = {
   id: string;
   content: string;
   timestamp: string;
+  createdAt: string;
   isMe: boolean;
   deleted: boolean;
+  status: 'sending' | 'sent' | 'failed';
 };
 
 type ProfileRow = {
@@ -120,6 +122,28 @@ function conversationAccent(kind: ChatKind, brand: string) {
   return brand;
 }
 
+function sameMessageDay(a: MessageBubble | null | undefined, b: MessageBubble | null | undefined) {
+  if (!a || !b) return false;
+  return new Date(a.createdAt).toDateString() === new Date(b.createdAt).toDateString();
+}
+
+function shouldGroupMessages(current: MessageBubble, adjacent: MessageBubble | null | undefined) {
+  if (!adjacent || current.isMe !== adjacent.isMe || !sameMessageDay(current, adjacent)) return false;
+  const diff = Math.abs(new Date(current.createdAt).getTime() - new Date(adjacent.createdAt).getTime());
+  return diff <= 5 * 60 * 1000;
+}
+
+function formatMessageDateHeader(isoString: string) {
+  const date = new Date(isoString);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 export default function MessagesScreen({ onClose, openChatWith, userId, school }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -138,6 +162,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   const messageListRef = useRef<FlatList<MessageBubble>>(null);
   const messageInputRef = useRef<TextInput>(null);
   const messageScrollTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const shouldStickToMessageEndRef = useRef(true);
   const hasValidUserId = !!userId && isUuid(userId);
   const selectedConversationId = selectedChat?.conversationId ?? null;
   const composerBottomPadding = keyboardVisible ? 14 : Math.max(insets.bottom, 8);
@@ -170,13 +195,37 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     scrollMessagesToEnd(animated, delay);
   }, [clearPendingMessageScrolls, scrollMessagesToEnd]);
 
+  const updateMessageScrollStickiness = useCallback((event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+    shouldStickToMessageEndRef.current = distanceFromBottom < 120;
+  }, []);
+
   const mapMessageRow = useCallback((row: ConversationMessageRow): MessageBubble => ({
     id: row.id,
     content: row.deleted_at ? 'Message deleted' : row.content,
     timestamp: formatMessageTime(row.created_at),
+    createdAt: row.created_at,
     isMe: row.sender_id === userId,
     deleted: !!row.deleted_at,
+    status: 'sent',
   }), [userId]);
+
+  const mergeServerMessage = useCallback((row: ConversationMessageRow) => {
+    const mapped = mapMessageRow(row);
+    setMessages((current) => {
+      if (current.some((message) => message.id === mapped.id)) return current;
+      const optimisticIndex = current.findIndex((message) => (
+        message.status === 'sending' &&
+        message.isMe &&
+        message.content === mapped.content
+      ));
+      if (optimisticIndex >= 0) {
+        return current.map((message, index) => (index === optimisticIndex ? mapped : message));
+      }
+      return [...current, mapped];
+    });
+  }, [mapMessageRow]);
 
   const loadSourcePostsById = useCallback(async (sourcePostIds: string[]) => {
     const ids = Array.from(new Set(sourcePostIds.filter(Boolean)));
@@ -444,6 +493,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
 
     if (!options.silent) setLoadingMessages(false);
     await markThreadRead(conversation.conversationId);
+    setConversations((current) => current.map((chat) => (
+      chat.conversationId === conversation.conversationId ? { ...chat, unread: 0 } : chat
+    )));
   }, [hasValidUserId, mapMessageRow, markThreadRead, school]);
 
   const openExistingConversation = useCallback(async (conversation: ConversationPreview) => {
@@ -644,12 +696,12 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         },
         (payload) => {
           const row = payload.new as ConversationMessageRow;
-          setMessages((current) => {
-            if (current.some((message) => message.id === row.id)) return current;
-            return [...current, mapMessageRow(row)];
-          });
+          mergeServerMessage(row);
           void markThreadRead(selectedConversationId);
           void fetchConversations({ silent: true });
+          if (row.sender_id === userId || shouldStickToMessageEndRef.current) {
+            settleMessagesAtEnd(true);
+          }
         }
       )
       .on(
@@ -673,7 +725,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [fetchConversations, hasValidUserId, mapMessageRow, markThreadRead, selectedConversationId]);
+  }, [fetchConversations, hasValidUserId, mapMessageRow, markThreadRead, mergeServerMessage, selectedConversationId, settleMessagesAtEnd, userId]);
 
   const cancelMessageEdit = useCallback(() => {
     setEditingMessage(null);
@@ -738,14 +790,36 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   ]);
 
   const beginEditMessage = useCallback((message: MessageBubble) => {
-    if (!message.isMe || message.deleted) return;
+    if (!message.isMe || message.deleted || message.status !== 'sent') return;
     setEditingMessage(message);
+    setMessageInput(message.content);
+    requestAnimationFrame(() => messageInputRef.current?.focus());
+  }, []);
+
+  const retryFailedMessage = useCallback((message: MessageBubble) => {
+    if (message.status !== 'failed') return;
+    setMessages((current) => current.filter((item) => item.id !== message.id));
     setMessageInput(message.content);
     requestAnimationFrame(() => messageInputRef.current?.focus());
   }, []);
 
   const openMessageActions = useCallback((message: MessageBubble) => {
     if (!message.isMe || message.deleted) return;
+
+    if (message.status === 'failed') {
+      Alert.alert(
+        'Message not sent',
+        undefined,
+        [
+          { text: 'Try Again', onPress: () => retryFailedMessage(message) },
+          { text: 'Remove', style: 'destructive', onPress: () => setMessages((current) => current.filter((item) => item.id !== message.id)) },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
+    if (message.status !== 'sent') return;
 
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
@@ -772,7 +846,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         { text: 'Cancel', style: 'cancel' },
       ]
     );
-  }, [beginEditMessage, handleDeleteMessage]);
+  }, [beginEditMessage, handleDeleteMessage, retryFailedMessage]);
 
   const handleSend = async () => {
     if (!messageInput.trim() || !selectedChat || sending || !hasValidUserId) return;
@@ -816,6 +890,22 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       return;
     }
 
+    const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimisticCreatedAt = new Date().toISOString();
+    const optimisticMessage: MessageBubble = {
+      id: optimisticId,
+      content,
+      timestamp: formatMessageTime(optimisticCreatedAt),
+      createdAt: optimisticCreatedAt,
+      isMe: true,
+      deleted: false,
+      status: 'sending',
+    };
+    setMessageInput('');
+    setMessages((current) => [...current, optimisticMessage]);
+    shouldStickToMessageEndRef.current = true;
+    settleMessagesAtEnd(true);
+
     let conversationId = selectedChat.conversationId;
     if (!conversationId) {
       let conversationData: string | null = null;
@@ -833,6 +923,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       if (conversationError) {
         setSending(false);
         requestAnimationFrame(() => messageInputRef.current?.focus());
+        setMessages((current) => current.map((message) => (
+          message.id === optimisticId ? { ...message, status: 'failed' } : message
+        )));
         Alert.alert(
           'Could not start chat',
           messageTableMissing(conversationError)
@@ -846,6 +939,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       if (!conversationId) {
         setSending(false);
         requestAnimationFrame(() => messageInputRef.current?.focus());
+        setMessages((current) => current.map((message) => (
+          message.id === optimisticId ? { ...message, status: 'failed' } : message
+        )));
         Alert.alert('Could not start chat', 'Please try again.');
         return;
       }
@@ -869,6 +965,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     if (error) {
       setSending(false);
       requestAnimationFrame(() => messageInputRef.current?.focus());
+      setMessages((current) => current.map((message) => (
+        message.id === optimisticId ? { ...message, status: 'failed' } : message
+      )));
       Alert.alert(
         'Could not send message',
         messageTableMissing(error)
@@ -879,14 +978,12 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     }
 
     setSending(false);
-    setMessageInput('');
     requestAnimationFrame(() => messageInputRef.current?.focus());
     if (data) {
       const row = data as ConversationMessageRow;
-      setMessages((current) => {
-        if (current.some((message) => message.id === row.id)) return current;
-        return [...current, mapMessageRow(row)];
-      });
+      setMessages((current) => current.map((message) => (
+        message.id === optimisticId ? mapMessageRow(row) : message
+      )));
     }
     settleMessagesAtEnd(true);
     await fetchConversations({ silent: true });
@@ -960,8 +1057,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>{selectedChat.avatar}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text numberOfLines={1} style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{selectedChat.name}</Text>
-              <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2, fontWeight: '700' }}>
+              <Text numberOfLines={1} style={{ fontSize: 16, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>{selectedChat.name}</Text>
+              <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2, fontWeight: '700' }} adjustsFontSizeToFit minimumFontScale={0.72}>
                 {selectedChat.label}
               </Text>
             </View>
@@ -1011,7 +1108,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 </View>
               )}
               <View style={{ flex: 1, justifyContent: 'center' }}>
-                <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>
+                <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>
                   {selectedChat.sourcePost.title}
                 </Text>
                 <Text numberOfLines={2} style={{ marginTop: 2, fontSize: 11, lineHeight: 16, color: colors.textSecondary }}>
@@ -1023,7 +1120,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
             </View>
           ) : null}
 
-          {false ? (
+          {(openingConversation || loadingMessages) && messages.length === 0 ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
               <ActivityIndicator size="small" color={colors.brand} />
               <Text style={{ fontSize: 14, color: colors.textTertiary }}>
@@ -1046,39 +1143,77 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 if (messages.length > 0) settleMessagesAtEnd(false);
               }}
               onContentSizeChange={() => {
-                if (messages.length > 0) settleMessagesAtEnd(false);
+                if (messages.length > 0 && shouldStickToMessageEndRef.current) settleMessagesAtEnd(false);
               }}
+              onScroll={updateMessageScrollStickiness}
+              scrollEventThrottle={16}
               ListEmptyComponent={() => (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
                   <Text style={{ fontSize: 14, color: colors.textTertiary }}>Start the conversation.</Text>
                 </View>
               )}
-              renderItem={({ item: msg }) => (
-                <View style={{ flexDirection: 'row', justifyContent: msg.isMe ? 'flex-end' : 'flex-start' }}>
-                  <TouchableOpacity
-                    activeOpacity={msg.isMe && !msg.deleted ? 0.78 : 1}
-                    onLongPress={() => openMessageActions(msg)}
-                    delayLongPress={260}
-                    style={{
-                      maxWidth: '78%',
-                      backgroundColor: msg.isMe ? colors.brand : colors.bgTertiary,
-                      borderRadius: 18,
-                      borderBottomRightRadius: msg.isMe ? 6 : 18,
-                      borderBottomLeftRadius: msg.isMe ? 18 : 6,
-                      paddingHorizontal: 13,
-                      paddingVertical: 9,
-                      opacity: msg.deleted ? 0.68 : 1,
-                    }}
-                  >
-                    <Text style={{ fontSize: 14, color: msg.isMe ? 'white' : colors.text, lineHeight: 19 }}>
-                      {msg.content}
-                    </Text>
-                    <Text style={{ fontSize: 10, color: msg.isMe ? 'rgba(255,255,255,0.65)' : colors.textTertiary, marginTop: 3 }}>
-                      {msg.timestamp}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              renderItem={({ item: msg, index }) => {
+                const previous = messages[index - 1];
+                const next = messages[index + 1];
+                const showDateHeader = !previous || !sameMessageDay(previous, msg);
+                const groupedWithPrevious = shouldGroupMessages(msg, previous);
+                const groupedWithNext = shouldGroupMessages(msg, next);
+                const showMeta = !groupedWithNext || msg.status !== 'sent';
+                const statusLabel = msg.status === 'sending'
+                  ? 'Sending...'
+                  : msg.status === 'failed'
+                    ? 'Not sent'
+                    : msg.timestamp;
+
+                return (
+                  <View style={{ gap: showDateHeader ? 10 : 0, marginTop: groupedWithPrevious ? -4 : 0 }}>
+                    {showDateHeader ? (
+                      <View style={{ alignItems: 'center', marginVertical: 4 }}>
+                        <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.bgTertiary }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textTertiary }}>
+                            {formatMessageDateHeader(msg.createdAt)}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : null}
+                    <View style={{ flexDirection: 'row', justifyContent: msg.isMe ? 'flex-end' : 'flex-start' }}>
+                      <TouchableOpacity
+                        activeOpacity={msg.isMe && !msg.deleted ? 0.78 : 1}
+                        onLongPress={() => openMessageActions(msg)}
+                        delayLongPress={260}
+                        style={{
+                          maxWidth: '78%',
+                          backgroundColor: msg.isMe
+                            ? msg.status === 'failed' ? colors.destructive : colors.brand
+                            : colors.bgTertiary,
+                          borderRadius: 18,
+                          borderTopRightRadius: msg.isMe && groupedWithPrevious ? 7 : 18,
+                          borderBottomRightRadius: msg.isMe && groupedWithNext ? 7 : msg.isMe ? 6 : 18,
+                          borderTopLeftRadius: !msg.isMe && groupedWithPrevious ? 7 : 18,
+                          borderBottomLeftRadius: !msg.isMe && groupedWithNext ? 7 : !msg.isMe ? 6 : 18,
+                          paddingHorizontal: 13,
+                          paddingVertical: 9,
+                          opacity: msg.deleted ? 0.68 : msg.status === 'sending' ? 0.78 : 1,
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, color: msg.isMe ? 'white' : colors.text, lineHeight: 19 }}>
+                          {msg.content}
+                        </Text>
+                        {showMeta ? (
+                          <Text style={{
+                            fontSize: 10,
+                            color: msg.isMe ? 'rgba(255,255,255,0.72)' : colors.textTertiary,
+                            marginTop: 3,
+                            fontWeight: msg.status === 'failed' ? '800' : '500',
+                          }}>
+                            {statusLabel}
+                          </Text>
+                        ) : null}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              }}
             />
           )}
 
@@ -1113,7 +1248,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 }}
               >
                 <Ionicons name="create-outline" size={15} color={colors.brand} />
-                <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, fontWeight: '700', color: colors.brand }}>
+                <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, fontWeight: '700', color: colors.brand }} adjustsFontSizeToFit minimumFontScale={0.72}>
                   Editing message
                 </Text>
                 <TouchableOpacity onPress={cancelMessageEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -1215,7 +1350,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         </View>
       </View>
 
-      {false ? (
+      {loadingChats ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <ActivityIndicator size="small" color={colors.brand} />
           <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading messages...</Text>
@@ -1264,7 +1399,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               </View>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3, gap: 8 }}>
-                  <Text numberOfLines={1} style={{ flex: 1, fontSize: 15, fontWeight: '700', color: colors.text }}>{chat.name}</Text>
+                  <Text numberOfLines={1} style={{ flex: 1, fontSize: 15, fontWeight: '700', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.72}>{chat.name}</Text>
                   <Text style={{ fontSize: 11, color: colors.textTertiary }}>{chat.timestamp}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
@@ -1277,11 +1412,11 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                   <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: '700' }}>{chat.label}</Text>
                 </View>
                 {chat.kind === 'board_anonymous' && chat.sourcePost ? (
-                  <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 3 }} numberOfLines={1}>
+                  <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 3 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
                     From: {chat.sourcePost.title}
                   </Text>
                 ) : null}
-                <Text style={{ fontSize: 13, color: colors.textSecondary }} numberOfLines={1}>{chat.lastMessage}</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{chat.lastMessage}</Text>
               </View>
             </TouchableOpacity>
           )}

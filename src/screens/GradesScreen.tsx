@@ -778,7 +778,7 @@ export default function GradesScreen({ timetables, userId, school, bottomInset =
 
   return (
     <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.bgSecondary }} contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 18, paddingBottom: bottomInset + 70 }} showsVerticalScrollIndicator={false}>
-      <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: -0.8, color: colors.text, marginBottom: 16 }}>Grades</Text>
+      <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: 0, color: colors.text, marginBottom: 16 }}>Grades</Text>
 
       {/* Stats row */}
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>

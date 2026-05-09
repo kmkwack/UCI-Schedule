@@ -2583,12 +2583,12 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/data/diningMenus.ts`** — Removed the Cornell dining location cap so the dining feed returns every eatery with menu data instead of summarizing the school to the first eight locations.
 
 ### Session 64sca (Add Banner school seeder)
-- **`scripts/seed-banner-sections.js`** — Added a reusable Banner / Ellucian StudentRegistrationSsb section seeder for UC Riverside, Northeastern University, Temple University, and Georgia State University so new API-backed schools can be added without scraping HTML.
-- **`src/data/schools.ts`** — Registered UC Riverside, Northeastern University, Temple University, and Georgia State University in the university picker with term systems, branding, campus metadata, and default school features.
+- **`scripts/seed-banner-sections.js`** — Added a reusable Banner / Ellucian StudentRegistrationSsb section seeder for deferred school, deferred school, deferred school, and deferred school so new API-backed schools can be added without scraping HTML.
+- **`src/data/schools.ts`** — Registered deferred school, deferred school, deferred school, and deferred school in the university picker with term systems, branding, campus metadata, and default school features.
 - **`scripts/backfill-school-sections.js`** — Added the four Banner-backed schools to the multi-school backfill runner and taught the runner to pass seeder-specific argument prefixes.
 
 ### Session 64scb (Validate Banner seeder output)
-- **`scripts/seed-banner-sections.js`** — Fixed the department-name fallback expression, excluded Northeastern CPS Quarter terms from the Northeastern semester seeding path, and normalized verbose Banner section labels like `Base Lecture` / `Lecture and Lab` into compact ClassMate labels.
+- **`scripts/seed-banner-sections.js`** — Fixed the department-name fallback expression, excluded deferred school CPS Quarter terms from the deferred school semester seeding path, and normalized verbose Banner section labels like `Base Lecture` / `Lecture and Lab` into compact ClassMate labels.
 
 ### Session 64scc (Simplify dining hero rows)
 - **`src/screens/HomeScreen.tsx`** — Removed the small meal/today subtitle and right-side item-count badge from the `Today's Dining` hero rows so dining hall names like The Anteatery read cleaner on the home carousel.
@@ -2607,10 +2607,10 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/screens/HomeScreen.tsx`** — Added a compact calendar/check icon badge to the home class summary hero cards so the today's-classes card visually matches the sports, dining, and campus info carousel cards.
 
 ### Session 64sch (Full parity for Banner schools)
-- **`scripts/seed-banner-sections.js`** — Made Banner seeding sequential by default, filtered search results by the requested subject code, and excluded Northeastern CPS/Law terms so long historical backfills cannot accidentally save cached or non-main-campus results.
+- **`scripts/seed-banner-sections.js`** — Made Banner seeding sequential by default, filtered search results by the requested subject code, and excluded deferred school CPS/Law terms so long historical backfills cannot accidentally save cached or non-main-campus results.
 - **`scripts/backfill-school-sections.js`** — Accepted either `SUPABASE_SERVICE_KEY` or `SUPABASE_SERVICE_ROLE_KEY` for backfills so the same command works with common Supabase secret naming.
-- **`src/data/schools.ts`** — Enabled sports feeds for UC Riverside, Northeastern University, Temple University, and Georgia State University using their athletics calendar pages so the home sports carousel works like the existing schools.
-- **`src/screens/HomeScreen.tsx`** — Added official Campus Info resources for UC Riverside, Northeastern, Temple, and Georgia State, including registration, jobs, library, transit, clubs, and student deals so the new schools match the existing Campus Info feature set.
+- **`src/data/schools.ts`** — Enabled sports feeds for deferred school, deferred school, deferred school, and deferred school using their athletics calendar pages so the home sports carousel works like the existing schools.
+- **`src/screens/HomeScreen.tsx`** — Added official Campus Info resources for deferred school, deferred school, deferred school, and deferred school, including registration, jobs, library, transit, clubs, and student deals so the new schools match the existing Campus Info feature set.
 
 ### Session 64sci (Audit UCI classroom map aliases)
 - **`src/data/campusLocations.ts`** — Corrected the Social Science Lab / Social Science Lecture Hall split, added missing `SSH` and `SS1`/`SS2` classroom aliases, and kept room-code matching aligned with UCI Classroom Technologies building names so course detail map previews point to the right campus buildings.
@@ -2625,88 +2625,88 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`.github/workflows/seed-course-sections.yml`** — Added optional scheduled UCI seeding for Winter, Spring, and Fall of the current and next year when `ANTEATER_API_KEY` is configured. The workflow now runs twice daily so newly published SOC data lands in Supabase quickly while safely skipping UCI when the Anteater API secret is absent.
 
 ### Session 64scm (Extend dining and grade parity)
-- **`src/data/diningMenus.ts`** — Added official menu feed support for UC Riverside via FoodPro, Temple via MyDiningHub, and Georgia State via Nutrislice so new Banner-backed schools can show the same standalone `Today's Dining` home surface when real dining data exists. Generalized the MyDiningHub fetcher shared by UCI and Temple and changed generic single-station fallbacks to `Items` for clearer menu labels.
+- **`src/data/diningMenus.ts`** — Added official menu feed support for deferred school via FoodPro, deferred school via MyDiningHub, and deferred school via Nutrislice so new Banner-backed schools can show the same standalone `Today's Dining` home surface when real dining data exists. Generalized the MyDiningHub fetcher shared by UCI and deferred school and changed generic single-station fallbacks to `Items` for clearer menu labels.
 - **`src/screens/HomeScreen.tsx`** — Changed generic dining station display text from numbered station placeholders to `Items` so dining sheets do not imply a real station name when the source feed only exposes a flat menu.
 - **`src/components/ReviewsModal.tsx`** — Clarified grade distribution availability by hiding professor filters for schools without an official grade-distribution feed and explaining that personal Grades/GPA tracking still works even when official distribution charts are not connected.
 
-### Session 64scn (Add UCR university logo)
-- **`assets/ucr-logo-white-bg.png`** and **`assets/ucr-logo-white-bg.svg`** — Added a white-background UC Riverside logo asset matching the university picker treatment used by the other schools.
-- **`src/components/UniversityLogo.tsx`** — Mapped the `ucr` school id to the new UCR logo asset so UC Riverside no longer falls back to the text badge in the school selection screen.
+### Session 64scn (Add deferred school university logo)
+- **`assets/deferred-logo-white-bg.png`** and **`assets/deferred-logo-white-bg.svg`** — Added a white-background deferred school logo asset matching the university picker treatment used by the other schools.
+- **`src/components/UniversityLogo.tsx`** — Mapped the `deferred-id` school id to the new deferred school logo asset so deferred school no longer falls back to the text badge in the school selection screen.
 
-### Session 64sco (Add Northeastern university logo)
-- **`assets/northeastern-logo-white-bg.png`** and **`assets/northeastern-logo-white-bg.svg`** — Added a white-background Northeastern University logo asset so the school picker can show the real mark instead of initials.
-- **`src/components/UniversityLogo.tsx`** — Mapped the `northeastern` school id to the new logo asset, matching the existing logo rendering path for other supported schools.
+### Session 64sco (Add deferred school university logo)
+- **`assets/deferred-logo-white-bg.png`** and **`assets/deferred-logo-white-bg.svg`** — Added a white-background deferred school logo asset so the school picker can show the real mark instead of initials.
+- **`src/components/UniversityLogo.tsx`** — Mapped the `deferred-id` school id to the new logo asset, matching the existing logo rendering path for other supported schools.
 
-### Session 64scp (Add Temple university logo)
-- **`assets/temple-logo-white-bg.png`** and **`assets/temple-logo-white-bg.svg`** — Added a white-background Temple University logo asset so the school picker uses the real Temple mark.
-- **`src/components/UniversityLogo.tsx`** — Mapped the `temple` school id to the new logo asset, replacing the initials fallback in university selection.
+### Session 64scp (Add deferred school university logo)
+- **`assets/deferred-logo-white-bg.png`** and **`assets/deferred-logo-white-bg.svg`** — Added a white-background deferred school logo asset so the school picker uses the real deferred school mark.
+- **`src/components/UniversityLogo.tsx`** — Mapped the `deferred-id` school id to the new logo asset, replacing the initials fallback in university selection.
 
-### Session 64scq (Add Georgia State university logo)
-- **`assets/gsu-logo-white-bg.png`** and **`assets/gsu-logo-white-bg.svg`** — Added a white-background Georgia State University logo asset so the school picker shows the real GSU mark.
-- **`src/components/UniversityLogo.tsx`** — Mapped the `gsu` school id to the new logo asset, replacing the initials fallback in university selection.
+### Session 64scq (Add deferred school university logo)
+- **`assets/deferred-logo-white-bg.png`** and **`assets/deferred-logo-white-bg.svg`** — Added a white-background deferred school logo asset so the school picker shows the real deferred school mark.
+- **`src/components/UniversityLogo.tsx`** — Mapped the `deferred-id` school id to the new logo asset, replacing the initials fallback in university selection.
 
 ### Session 64scs (Replace recreated school logos with source assets)
-- **`assets/ucr-logo-white-bg.png`**, **`assets/ucr-logo-white-bg.svg`**, **`assets/northeastern-logo-white-bg.png`**, **`assets/northeastern-logo-white-bg.svg`**, **`assets/temple-logo-white-bg.png`**, **`assets/temple-logo-white-bg.svg`**, **`assets/gsu-logo-white-bg.png`**, and **`assets/gsu-logo-white-bg.svg`** — Replaced the hand-recreated logo artwork with source logo assets so the school picker displays the real marks without distorted or clipped custom redraws.
+- **`assets/deferred-logo-white-bg.png`**, **`assets/deferred-logo-white-bg.svg`**, **`assets/deferred-logo-white-bg.png`**, **`assets/deferred-logo-white-bg.svg`**, **`assets/deferred-logo-white-bg.png`**, **`assets/deferred-logo-white-bg.svg`**, **`assets/deferred-logo-white-bg.png`**, and **`assets/deferred-logo-white-bg.svg`** — Replaced the hand-recreated logo artwork with source logo assets so the school picker displays the real marks without distorted or clipped custom redraws.
 
 ### Session 64scr (Expand multi-school classroom maps)
-- **`src/data/campusLocations.ts`** — Added high-volume classroom building mappings for Cornell, University of Maryland, UIUC, and Northeastern from seeded section unmapped reports, and corrected UCI social-science/student-services aliases. This expands in-app course map previews beyond UCI while keeping ambiguous locations on external Maps fallback.
+- **`src/data/campusLocations.ts`** — Added high-volume classroom building mappings for Cornell, University of Maryland, UIUC, and deferred school from seeded section unmapped reports, and corrected UCI social-science/student-services aliases. This expands in-app course map previews beyond UCI while keeping ambiguous locations on external Maps fallback.
 
-### Session 64scx (Fill UCR/Purdue classroom map gaps)
-- **`src/data/campusLocations.ts`** — Added high-volume UC Riverside and Purdue classroom building mappings after the audit showed UCR had seeded sections but no in-app classroom map coverage. Exported `isUnmappableLocation()` and broadened generic-location handling for values like `NO`, `Boston`, and `Riverside`.
+### Session 64scx (Fill deferred school/Purdue classroom map gaps)
+- **`src/data/campusLocations.ts`** — Added high-volume deferred school and Purdue classroom building mappings after the audit showed deferred school had seeded sections but no in-app classroom map coverage. Exported `isUnmappableLocation()` and broadened generic-location handling for values like `NO`, `placeholder`, and `placeholder`.
 - **`src/screens/TimetableScreen.tsx`** — Reused `isUnmappableLocation()` before showing map actions so generic placeholders no longer open weak campus/city map searches.
 - **`scripts/report-unmapped-classrooms.js`** — Mirrored the generic-location skip list so mapping reports focus on real building candidates instead of placeholders.
 
 ### Session 64scy (Second-pass classroom map audit)
-- **`src/data/campusLocations.ts`** — Added second-pass high-volume building aliases for Purdue, UC Riverside, and Northeastern, including Purdue REC/DUDL/POTR/RHPH, UCR ARTS/SPTH/INTN/LFSC/SCLAB, and Northeastern EXP/ISEC/EV/INV. Expanded generic placeholder detection for `NO ...` and `BOS ...` prefixes.
+- **`src/data/campusLocations.ts`** — Added second-pass high-volume building aliases for Purdue, deferred school, and deferred school, including Purdue REC/DUDL/POTR/RHPH, deferred school ARTS/SPTH/INTN/LFSC/SCLAB, and deferred school EXP/ISEC/EV/INV. Expanded generic placeholder detection for `NO ...` and `placeholder ...` prefixes.
 - **`scripts/report-unmapped-classrooms.js`** — Kept the audit script's placeholder filtering in sync with app-side mapping logic so validation numbers do not count non-building prefixes as missed classroom mappings.
 
-### Session 64sct (Fit Temple logo in school picker)
-- **`src/components/UniversityLogo.tsx`** — Kept the source Temple logo asset unchanged and adjusted only the rendered image box for square school logos so the Temple mark appears larger in the university selection row without clipping or redrawing the logo.
+### Session 64sct (Fit deferred school logo in school picker)
+- **`src/components/UniversityLogo.tsx`** — Kept the source deferred school logo asset unchanged and adjusted only the rendered image box for square school logos so the deferred school mark appears larger in the university selection row without clipping or redrawing the logo.
 
-### Session 64scu (Center Georgia State logo)
-- **`src/components/UniversityLogo.tsx`** — Added a small render-only horizontal offset for the `gsu` logo so the source Georgia State mark sits more centered in the university selection logo slot without modifying the logo asset.
+### Session 64scu (Center deferred school logo)
+- **`src/components/UniversityLogo.tsx`** — Added a small render-only horizontal offset for the `deferred-id` logo so the source deferred school mark sits more centered in the university selection logo slot without modifying the logo asset.
 
-### Session 64scv (Enlarge Georgia State logo)
-- **`src/components/UniversityLogo.tsx`** — Replaced the GSU horizontal offset with a larger render-only image box so the source Georgia State logo appears centered and legible in the university selection row without changing the logo asset.
+### Session 64scv (Enlarge deferred school logo)
+- **`src/components/UniversityLogo.tsx`** — Replaced the deferred school horizontal offset with a larger render-only image box so the source deferred school logo appears centered and legible in the university selection row without changing the logo asset.
 
-### Session 64scw (Use Temple wordmark logo)
-- **`assets/temple-logo-white-bg.png`** and **`assets/temple-logo-white-bg.svg`** — Replaced the Temple T-only mark with the source Temple University wordmark so the school picker logo includes readable Temple text.
-- **`src/components/UniversityLogo.tsx`** — Removed the Temple square-logo render override so the full wordmark can use the existing logo slot instead of being squeezed into an icon box.
+### Session 64scw (Use deferred school wordmark logo)
+- **`assets/deferred-logo-white-bg.png`** and **`assets/deferred-logo-white-bg.svg`** — Replaced the deferred school T-only mark with the source deferred school wordmark so the school picker logo includes readable deferred school text.
+- **`src/components/UniversityLogo.tsx`** — Removed the deferred school square-logo render override so the full wordmark can use the existing logo slot instead of being squeezed into an icon box.
 
-### Session 64scx (Keep full GSU department list)
-- **`src/screens/CoursePickerScreen.tsx`** — Fixed department loading so an authoritative `school_departments` list is not overwritten by the selected term's partial section departments. This restores the full Georgia State department list when a currently selected term only has a small subset of seeded sections.
+### Session 64scx (Keep full deferred school department list)
+- **`src/screens/CoursePickerScreen.tsx`** — Fixed department loading so an authoritative `school_departments` list is not overwritten by the selected term's partial section departments. This restores the full deferred school department list when a currently selected term only has a small subset of seeded sections.
 
 ### Session 64scz (Normalize multi-school course display)
 - **`src/screens/CoursePickerScreen.tsx`** — Added display normalization for Supabase-backed course rows so all-caps catalog titles render in title case, `None`/blank/arranged meeting days show as `TBA`, course numbers are parsed more safely from multi-school codes, and section rows show a readable CRN/section id instead of internal source-prefixed IDs. This keeps newly seeded schools from looking oddly formatted in the course picker.
 
 ### Session 64sdb (Hide empty departments for selected term)
-- **`src/screens/CoursePickerScreen.tsx`** — Changed department loading to scan the selected term's actual `sections` rows before trusting `school_departments`, then show only departments with real sections for that term when any exist. This prevents Temple and other newly seeded schools from showing departments whose metadata exists but whose section rows are missing for the selected term.
+- **`src/screens/CoursePickerScreen.tsx`** — Changed department loading to scan the selected term's actual `sections` rows before trusting `school_departments`, then show only departments with real sections for that term when any exist. This prevents deferred school and other newly seeded schools from showing departments whose metadata exists but whose section rows are missing for the selected term.
 
-### Session 64sda (Fix Temple sports and dining feeds)
-- **`src/data/schools.ts`** — Switched Temple Athletics from the old Sidearm page-component parser to the official `responsive-calendar.ashx` JSON feed so home sports events load from the current Owls calendar.
-- **`src/data/diningMenus.ts`** — Added Temple MyDiningHub meal-period GraphQL variables (`mealPeriod` + `DAILY` view) and fetches Breakfast/Lunch/Brunch/Dinner separately, because Temple's current menu API returns `null` without those parameters even on days with published menus.
+### Session 64sda (Fix deferred school sports and dining feeds)
+- **`src/data/schools.ts`** — Switched deferred school Athletics from the old Sidearm page-component parser to the official `responsive-calendar.ashx` JSON feed so home sports events load from the current Owls calendar.
+- **`src/data/diningMenus.ts`** — Added deferred school MyDiningHub meal-period GraphQL variables (`mealPeriod` + `DAILY` view) and fetches Breakfast/Lunch/Brunch/Dinner separately, because deferred school's current menu API returns `null` without those parameters even on days with published menus.
 
 ### Session 64sdc (Audit new-school sports dining and links)
-- **`src/data/schools.ts`** — Switched UC Riverside, Northeastern, and Georgia State Athletics to the same Sidearm `responsive-calendar.ashx` JSON feed path used by Temple so the home sports carousel does not depend on brittle calendar-page scraping.
-- **`src/data/diningMenus.ts`** — Added Northeastern University to supported dining schools with an official NU Dining menu fallback link, because the Dine On Campus API is Cloudflare-protected outside the browser but the official menu page is reachable.
-- **`src/screens/HomeScreen.tsx`** — Replaced broken new-school Campus Info links for UCR transit, Northeastern clubs, Temple study rooms, Temple transportation, and Temple clubs with verified live official URLs; added an official menu button to dining detail cards so fallback/external dining sources can still be opened directly.
+- **`src/data/schools.ts`** — Switched deferred school, deferred school, and deferred school Athletics to the same Sidearm `responsive-calendar.ashx` JSON feed path used by deferred school so the home sports carousel does not depend on brittle calendar-page scraping.
+- **`src/data/diningMenus.ts`** — Added deferred school to supported dining schools with an official NU Dining menu fallback link, because the Dine On Campus API is Cloudflare-protected outside the browser but the official menu page is reachable.
+- **`src/screens/HomeScreen.tsx`** — Replaced broken new-school Campus Info links for deferred school transit, deferred school clubs, deferred school study rooms, deferred school transportation, and deferred school clubs with verified live official URLs; added an official menu button to dining detail cards so fallback/external dining sources can still be opened directly.
 
 ### Session 64sdd (Audit multi-school section coverage)
-- **`scripts/reconcile-school-terms.js`** — Added UC Riverside, Northeastern, Temple, and Georgia State to the school-term reconciliation script and changed reconciliation to count distinct departments from actual `sections` rows. This lets post-backfill metadata reflect real section coverage for the newly added Banner schools instead of stale department metadata.
+- **`scripts/reconcile-school-terms.js`** — Added deferred school, deferred school, deferred school, and deferred school to the school-term reconciliation script and changed reconciliation to count distinct departments from actual `sections` rows. This lets post-backfill metadata reflect real section coverage for the newly added Banner schools instead of stale department metadata.
 
-### Session 64sde (GSU live course fallback)
-- **`src/screens/CoursePickerScreen.tsx`** — Added a Georgia State Banner fallback for selected departments, including term-code resolution, Banner session setup, paginated section fetching, and normalization into the existing catalog row shape. When Supabase is missing a selected GSU department's current sections, the course picker now merges live GSU Banner rows so departments like ACCT/CSC can still show courses.
+### Session 64sde (deferred school live course fallback)
+- **`src/screens/CoursePickerScreen.tsx`** — Added a deferred school Banner fallback for selected departments, including term-code resolution, Banner session setup, paginated section fetching, and normalization into the existing catalog row shape. When Supabase is missing a selected deferred school department's current sections, the course picker now merges live deferred school Banner rows so departments like ACCT/CSC can still show courses.
 
-### Session 64sdf (Speed up GSU course loading)
-- **`src/screens/CoursePickerScreen.tsx`** — Optimized the Georgia State Banner fallback so live Banner fetches run only for selected departments missing from Supabase, rather than every selected department. Added an in-memory Banner row cache keyed by school/term/department so repeated GSU department selections load immediately after the first fetch.
+### Session 64sdf (Speed up deferred school course loading)
+- **`src/screens/CoursePickerScreen.tsx`** — Optimized the deferred school Banner fallback so live Banner fetches run only for selected departments missing from Supabase, rather than every selected department. Added an in-memory Banner row cache keyed by school/term/department so repeated deferred school department selections load immediately after the first fetch.
 
 ### Session 64sdg (Unify new-school course loading)
-- **`src/data/schoolDepartments.ts`** — Added local department fallback lists for UC Riverside, Northeastern, Temple, and Georgia State so newly added schools show departments immediately like UCI, UMD, Cornell, Purdue, and UIUC instead of waiting on the first Supabase round trip.
-- **`src/screens/CoursePickerScreen.tsx`** — Generalized the live missing-section fallback from Georgia State only to all Banner-backed schools (`ucr`, `northeastern`, `temple`, `gsu`) with shared term lookup, session setup, pagination, row normalization, and caching. Banner fallback now runs only for selected departments missing from Supabase, keeping normal Supabase-backed course loading fast and consistent across schools.
+- **`src/data/schoolDepartments.ts`** — Added local department fallback lists for deferred school, deferred school, deferred school, and deferred school so newly added schools show departments immediately like UCI, UMD, Cornell, Purdue, and UIUC instead of waiting on the first Supabase round trip.
+- **`src/screens/CoursePickerScreen.tsx`** — Generalized the live missing-section fallback from deferred school only to all Banner-backed schools (deferred school ids) with shared term lookup, session setup, pagination, row normalization, and caching. Banner fallback now runs only for selected departments missing from Supabase, keeping normal Supabase-backed course loading fast and consistent across schools.
 
 ### Session 64sdh (Hard-audit school parity)
-- **`src/data/schools.ts`** — Fixed quarter-school current-term resolution so schools with a plain `Summer` term, such as UC Riverside, no longer default to UCI's `Summer10wk` term during summer months.
-- **`src/data/campusLocations.ts`** and **`scripts/report-unmapped-classrooms.js`** — Expanded generic/unmappable location filtering for Temple and Georgia State placeholders like `Main`, `Health Sciences`, `NAPPL`, `Atlanta`, `ARRNGD`, Japan/Rome abroad-campus labels, and hyphenated off-campus labels so map actions do not launch weak campus-wide searches.
+- **`src/data/schools.ts`** — Fixed quarter-school current-term resolution so schools with a plain `Summer` term, such as deferred school, no longer default to UCI's `Summer10wk` term during summer months.
+- **`src/data/campusLocations.ts`** and **`scripts/report-unmapped-classrooms.js`** — Expanded generic/unmappable location filtering for deferred school and deferred school placeholders like `Main`, `Health Sciences`, `NAPPL`, `placeholder`, `ARRNGD`, Japan/Rome abroad-campus labels, and hyphenated off-campus labels so map actions do not launch weak campus-wide searches.
 - **`scripts/audit-school-parity.js`** — Added a static parity audit that checks every supported school for department fallbacks, logo assets, dining branches, campus-info resources, sports feeds, Banner fallback/seeder sync, backfill registration, and term reconciliation coverage.
 - **`package.json`** — Added `npm run audit:schools` so the multi-school parity check can be rerun before/after adding another university.
 
@@ -2720,29 +2720,29 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`App.tsx`** — Loaded/saved legal acknowledgment data inside `user_settings.profile_details` and passed a home-screen acknowledgment callback for updated terms/privacy versions.
 - **`src/screens/HomeScreen.tsx`** — Added a compact home-screen privacy update card with Terms/Privacy links and one-tap checked acceptance so users can acknowledge future legal updates without leaving Home.
 
-### Session 64sdk (Keep GSU dining visible)
-- **`src/data/diningMenus.ts`** — Added a reusable official-menu fallback and returns a Georgia State Dining link when Nutrislice is reachable but today's GSU meal feeds contain no menu items. This keeps the Home dining card visible instead of disappearing on empty-menu days.
+### Session 64sdk (Keep deferred school dining visible)
+- **`src/data/diningMenus.ts`** — Added a reusable official-menu fallback and returns a deferred school Dining link when Nutrislice is reachable but today's deferred school meal feeds contain no menu items. This keeps the Home dining card visible instead of disappearing on empty-menu days.
 
 ### Session 64sdl (Add public Banner-backed schools)
-- **`src/data/schools.ts`** — Added Georgia Tech, West Virginia, Sam Houston State, Denison, UNC Greensboro, Eastern Illinois, North Georgia, Alfred State, Canisius, Genesee, Utah Valley, Lehigh, Rider, and Wheaton College (Massachusetts) as supported universities using public class-search data. Also made semester current-term selection avoid unsupported summer terms for schools that only expose Spring/Fall.
+- **`src/data/schools.ts`** — Added deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, and deferred school as supported universities using public class-search data. Also made semester current-term selection avoid unsupported summer terms for schools that only expose Spring/Fall.
 - **`src/data/schoolDepartments.ts`** — Added empty fallback entries for the new schools so the parity audit recognizes them while Course Picker can load their public Banner subjects live.
 - **`src/screens/CoursePickerScreen.tsx`** — Added public Banner fallback configs for the new schools, live subject-list loading from public `get_subject`, and stricter Summer1/Summer2 term matching so unseeded schools can still show department/course data from their public Banner search.
-- **`scripts/seed-banner-sections.js`** — Added public Banner seeder configs for the new schools, including Utah Valley non-credit term filtering and Summer1/Summer2 matching for Rider-style split summer terms.
+- **`scripts/seed-banner-sections.js`** — Added public Banner seeder configs for the new schools, including deferred school non-credit term filtering and Summer1/Summer2 matching for deferred school-style split summer terms.
 - **`scripts/backfill-school-sections.js`** — Registered the new Banner-backed schools in the multi-school backfill runner so seeded section data can be populated with the existing workflow.
 - **`scripts/reconcile-school-terms.js`** — Added the new schools to term reconciliation so `school_terms` can be rebuilt from seeded sections.
 - **`scripts/audit-school-parity.js`** — Relaxed logo, dining, and campus-info checks to allow explicit app fallbacks for newly supported public-catalog schools without blocking the school parity audit.
 
 ### Session 64sdm (Connect new-school home links)
 - **`src/data/diningMenus.ts`** — Added official dining-menu fallback configs for the 14 newly supported public Banner schools so their Home dining card opens a real public dining page even when no structured menu API is available.
-- **`src/data/schools.ts`** — Added athletics feeds for the new schools where a public Sidearm JSON feed is available, and added Georgia Tech schedule-page sports coverage using the public RamblinWreck schedule pages.
-- **`src/data/sportsEvents.ts`** — Added a `wmt-table` schedule parser for Georgia Tech-style WMT schedule pages so sports cards can parse the actual rendered schedule table instead of returning empty results.
+- **`src/data/schools.ts`** — Added athletics feeds for the new schools where a public Sidearm JSON feed is available, and added deferred school schedule-page sports coverage using the public RamblinWreck schedule pages.
+- **`src/data/sportsEvents.ts`** — Added a `wmt-table` schedule parser for deferred school-style WMT schedule pages so sports cards can parse the actual rendered schedule table instead of returning empty results.
 - **`src/screens/HomeScreen.tsx`** — Added standardized Campus Info resources for every newly added school, including class search, jobs, library/study rooms, transportation, clubs, athletics, and student deals links.
 - **`scripts/audit-school-parity.js`** — Updated the parity audit to recognize centralized external dining fallbacks and standardized campus-info resources so future audits catch real omissions without flagging intentional link-backed support.
 
 ### Session 64sdn (Audit multi-school feature parity)
 - **`src/screens/SettingsScreen.tsx`** — Replaced stale hardcoded supported-school help copy with a dynamic `SUPPORTED_UNIVERSITIES.length` count so the Help Center reflects the current school list.
-- **`src/data/diningMenus.ts`** — Replaced broken new-school dining fallback URLs for Georgia Tech, Denison, North Georgia, Alfred State, Canisius, Genesee, and Lehigh with verified public official dining pages.
-- **`src/screens/HomeScreen.tsx`** — Replaced broken Campus Info links for Georgia Tech, Sam Houston, Denison, UNCG, EIU, Alfred State, Canisius, Genesee, UVU, Lehigh, Rider, and Wheaton with verified public official pages; also fixed Georgia Tech athletics so it no longer redirects to the sports-medicine page.
+- **`src/data/diningMenus.ts`** — Replaced broken new-school dining fallback URLs for deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, and deferred school with verified public official dining pages.
+- **`src/screens/HomeScreen.tsx`** — Replaced broken Campus Info links for deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, deferred school, and deferred school with verified public official pages; also fixed deferred school athletics so it no longer redirects to the sports-medicine page.
 - **`scripts/audit-school-parity.js`** — Added stronger school parity checks for email domains, term lists, grade scales, dynamic Settings copy, and known-bad dining/Campus Info URLs so regressions are caught by `npm run audit:schools`.
 
 ### Session 64sdo (Normalize Banner course display)
@@ -2758,3 +2758,138 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sdr (Richer empty reviews state)
 - **`src/components/ReviewsModal.tsx`** — Rebalanced the reviews modal so official final-exam and grade-distribution data only appear when a connected source has useful data, while unavailable official data is shown as a compact status card. Added a richer ClassMate reviews summary, empty-state writing prompts, review metric cards, and course/context tags so courses with no reviews still have a useful review-centered screen.
+
+### Session 64sds (Responsive bottom tab safe area)
+- **`App.tsx`** — Added an Android-specific minimum navigation inset and routed that adjusted bottom inset into all main tabs, then moved the floating tab bar above the system navigation area instead of subtracting from `insets.bottom`. Also made the existing glass tab bar responsive to narrow device widths by scaling its margins, padding, icon size, label size, and label minimum scale while preserving the same visual design. This prevents the Home/Timetable/Grades/Board/ClassMates bar from overlapping Samsung-style Home/Back navigation buttons or clipping labels on smaller iPhone/Android screens.
+
+### Session 64sdt (Remove empty-review writing tips)
+- **`src/components/ReviewsModal.tsx`** — Removed the "Good reviews usually mention" empty-state guidance card and its unused prompt data so the reviews screen stays cleaner when a course has no student reviews.
+
+### Session 64sdu (Hide unavailable review metadata)
+- **`src/components/ReviewsModal.tsx`** — Changed review metadata rendering so official grade distribution, final exam, prerequisite, restriction, and note details appear only when actual fetched data exists. Removed the unavailable grade-data card so unsupported or empty schools do not show placeholder content.
+
+### Session 64sdv (Remove empty-review context chips)
+- **`src/components/ReviewsModal.tsx`** — Removed the section, term, school, and student-written chips shown under the ClassMate Reviews empty state so the no-review screen is visually lighter.
+
+### Session 64sdw (Keep RMP row visible)
+- **`src/components/ReviewsModal.tsx`** — Made the Rate My Professors row part of the review metadata visibility condition so it appears whenever a real professor is available, even if final exam, prerequisite, restriction, or grade-distribution data is absent.
+
+### Session 64sdx (Map RMP ids for all supported schools)
+- **`src/data/schools.ts`** — Added `rmpSchoolId` mappings for every supported university, including the newly added public Banner-backed schools, so RMP links search within the correct school whenever a professor is available.
+
+### Session 64sec (Start new-school classroom map mappings)
+- **`src/data/campusLocations.ts`** — Added initial high-frequency classroom building coordinate mappings for deferred school, deferred school, deferred school, and deferred school based on seeded section location reports, so course detail sheets can show in-app map previews for many newly added Banner-backed classes.
+- **`src/data/campusLocations.ts`** and **`scripts/report-unmapped-classrooms.js`** — Expanded generic/unmappable filters for study-abroad, remote/video, off-campus, and placeholder Banner location strings so they do not produce misleading campus map previews or noisy unmapped reports.
+
+### Session 64sed (Add Android text audit)
+- **`scripts/audit-android-text.js`** and **`package.json`** — Added `npm run audit:android-text`, a static audit for Android-prone text issues such as negative letter spacing, tight line heights, and single-line text without fit guards. This lets Android text clipping/wrapping risks be checked even when no Android device is available.
+- **`App.tsx`**, **`src/components/FeatureOnboardingScreen.tsx`**, **`src/components/ClassMateIntroScreen.tsx`**, **`src/screens/HomeScreen.tsx`**, **`src/screens/TimetableScreen.tsx`**, **`src/screens/GradesScreen.tsx`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, and **`src/screens/WelcomeScreen.tsx`** — Removed negative letter spacing and loosened tight large-text line heights so Android font rendering is less likely to clip, visually break, or force awkward wrapping.
+
+### Session 64sdy (Hide missing prerequisites by school)
+- **`src/components/ReviewsModal.tsx`** — Scoped cached course metadata by school and normalized `prerequisite_link` so the prerequisites row only appears for real HTTP(S) links stored on that school's section rows. This prevents a prerequisite link from one school leaking into another school and keeps courses with no connected prerequisite data completely hidden.
+
+### Session 64sdz (Keep grade professor filters visible)
+- **`src/components/ReviewsModal.tsx`** — Kept the Grade Distribution section and professor filter chips visible when a selected professor has no individual grade data but the course has cached official grade data for another professor/all professors. This lets users return to `All Professors` instead of losing the filter controls after tapping a professor chip with no results.
+
+### Session 64sea (Clarify course grade distribution)
+- **`src/components/ReviewsModal.tsx`** — Renamed the grade section heading to `Grade Distribution for Course` and added an inline empty state when a selected professor has no official grade distribution. This makes it clear the default graph is course-wide and tells users to switch back to `All Professors` when professor-specific data is unavailable.
+
+### Session 64seb (Switch grade heading by professor filter)
+- **`src/components/ReviewsModal.tsx`** — Added a dynamic grade distribution heading so the section reads `Grade Distribution for Course` on `All Professors` and `Professor Grade Distribution` when a specific professor is selected. This makes the current distribution scope clear while users toggle professor filters.
+
+### Session 64sec (Remove unapproved Banner schools)
+- **`src/data/schools.ts`** — Removed high-risk and very-high-risk Banner-backed schools from `SCHOOL_CONFIGS`, leaving only UCI, UMD, Cornell, Purdue, and UIUC available in the app while permission is unresolved.
+- **`src/screens/CoursePickerScreen.tsx`** — Disabled the live Banner fallback map so the app cannot fetch class-search data from unapproved Banner-backed schools.
+- **`scripts/backfill-school-sections.js`** and **`scripts/reconcile-school-terms.js`** — Removed Banner-backed schools from automated catalog backfill/reconciliation targets so future jobs only process approved/conditional sources.
+- **`scripts/seed-banner-sections.js`** — Cleared the Banner school config map so no unapproved Banner source can be seeded until a permitted school config is intentionally re-added.
+- **`supabase/sql/remove_unsupported_banner_school_catalog_data.sql`** — Added a Supabase cleanup script that previews and deletes imported catalog metadata for removed Banner-backed schools from `sections`, `section_source_payloads`, `school_terms`, and `school_departments` without touching user-created data.
+
+### Session 64see (Fix UIUC dining menu fetch)
+- **`src/data/diningMenus.ts`** — Changed UIUC dining requests to match the official site's string `DiningOptionID` payload, use `YYYY-MM-DD` first, retry with padded and unpadded slash date formats, parse empty/stringified API payloads safely, add missing Field of Greens/Kosher Kitchen options, and fall back to the official Illinois Dining link only if no structured menu data is returned. This prevents UIUC dining from disappearing when the API returns an empty string for the old payload shape.
+
+### Session 64sef (Reset tabs to root on tab press)
+- **`App.tsx`** — Added a shared bottom-tab press handler that bumps a per-tab reset key, closes app-level overlays, and remounts the target tab screen. This makes tapping Today, Timetable, Grades, Board, or ClassMates return that tab to its initial/root screen, including closing Board post writing/detail state back to the board selection view.
+
+### Session 64seg (Drag across bottom tabs)
+- **`App.tsx`** — Expanded the bottom-tab PanResponder from only the active pill to the full tab row. Short presses still select/reset tabs, while horizontal drags now move the active pill under the finger and switch to the nearest tab on release.
+
+### Session 64seh (Make messages feel live)
+- **`src/screens/MessagesScreen.tsx`** — Reworked chat behavior to feel more like a real messenger: real loading states now display, sent messages appear optimistically with `Sending...`, failed sends stay visible as `Not sent` and can be retried from the input, incoming realtime rows merge with optimistic messages, open threads mark previews read locally, message bubbles now group by sender with date separators, and auto-scroll only sticks to the bottom when the user is already near the latest messages.
+
+### Session 64sei (Compact review restrictions display)
+- **`src/components/ReviewsModal.tsx`** — Reworked restrictions parsing so compact registrar restriction codes are decoded safely while prose restrictions are cleaned and split into readable items instead of being interpreted character-by-character. The reviews modal now shows only a short collapsed list with a show-more toggle so prerequisite/restriction metadata cannot flood the screen.
+- **`src/components/ReviewsModal.tsx`** — Tightened course metadata lookup so restriction details are only read from the exact selected section when a section id is available. The modal no longer falls back to another row from the same course code for restrictions, preventing unrelated section/course restrictions from appearing.
+
+### Session 64sej (Show stored non-UCI section status)
+- **`src/data/courses.ts`** — Added optional `enrollmentStatus` metadata to `Course` so course-picker rows can carry school-provided open/closed availability from Supabase without requiring live enrollment counts.
+- **`src/screens/CoursePickerScreen.tsx`** — Included the `sections.status` column in course picker queries, normalized stored statuses into section pills, and fell back to those stored statuses when UCI's live enrollment cache is unavailable. Other schools can now show Open/Closed/Waitlist-style status when the seeder/source provides it, while enrolled/capacity counts still only appear when live UCI enrollment data exists.
+
+### Session 64sek (Optional enrollment metadata by source)
+- **`supabase/sql/section_enrollment_metadata.sql`** — Added nullable `enrolled`, `capacity`, `waitlist`, and `waitlist_capacity` columns to `sections` so each school can store only the enrollment metadata its public source actually provides.
+- **`src/data/courses.ts`** and **`src/screens/CoursePickerScreen.tsx`** — Added optional section enrollment count fields and changed section pills to render only available values: enrolled/capacity when both exist, capacity alone when only capacity exists, waitlist only when available, and nothing when a source provides no count data.
+- **`scripts/seed-sections.js`**, **`scripts/seed-summer.js`**, **`scripts/seed-umd-sections.js`**, **`scripts/seed-cornell-sections.js`**, **`scripts/seed-purdue-sections.js`**, **`scripts/seed-uiuc-sections.js`**, and **`scripts/seed-banner-sections.js`** — Mapped known or likely enrollment/count fields from each source into the nullable metadata columns while leaving unsupported sources as `null`.
+
+### Session 64sel (Keep UCI course-level prerequisites visible)
+- **`src/components/ReviewsModal.tsx`** — Split prerequisite lookup from section-specific restriction lookup. Restrictions still come only from the exact selected section, but if that exact row lacks a prerequisite link, the modal now falls back to the same course/quarter for a course-level `prerequisite_link`, which preserves UCI Anteater prerequisite links without leaking unrelated section restrictions.
+- **`src/components/ReviewsModal.tsx`** — Treated empty prerequisite strings as missing values before applying the course-level fallback and added `sectionId`/`school` to the metadata reload dependencies. This prevents blank section rows from blocking a real UCI prerequisite link on another row for the same course.
+- **`src/components/ReviewsModal.tsx`** — Added a UCI Anteater `/courses` catalog fallback for prerequisite text and course-level restrictions. This shows catalog-provided text such as `Prerequisites vary` for ECON 129 when WebSoc has no prerequisite link, while still hiding the row when neither source provides prerequisite data.
+- **`src/components/ReviewsModal.tsx`** — Marked UCI catalog prerequisite lookup as an authoritative source, so UCI courses with no prerequisite text/link now explicitly show `No prerequisites` instead of hiding the row. Catalog `Prerequisites vary` is normalized to `No fixed prerequisites listed` to avoid implying a concrete prerequisite exists.
+
+### Session 64sek (Clear unapproved school traces)
+- **`src/data/schoolDepartments.ts`**, **`src/components/UniversityLogo.tsx`**, **`src/components/FeatureOnboardingScreen.tsx`**, and **`assets/*-logo-white-bg.*`** — Removed local department fallbacks, logo mappings/assets, and onboarding branding traces for schools that are not currently permitted for catalog ingestion.
+- **`src/data/schools.ts`** — Removed leftover sports-page configuration that belonged to an unapproved school expansion and kept the supported school config list to the currently allowed schools.
+- **`src/data/diningMenus.ts`**, **`src/screens/HomeScreen.tsx`**, **`src/data/campusLocations.ts`**, **`scripts/audit-school-parity.js`**, and **`scripts/report-unmapped-classrooms.js`** — Removed dining, Campus Info, classroom-map, and audit/report references tied to the unapproved school expansion so the app only exposes the currently allowed school set while permission is pending.
+- **`scripts/seed-banner-sections.js`** — Left the seeder reusable but with no school endpoints configured, so future approved schools can be connected by adding explicit configs instead of restoring the old unapproved list.
+
+### Session 64sel (Batch unapproved catalog cleanup SQL)
+- **`supabase/sql/remove_unsupported_banner_school_catalog_data.sql`** — Reworked the cleanup SQL into small SQL Editor-safe batches using `ctid` batch deletes and fast `exists` checks instead of one large transaction with full counts. This avoids Supabase Dashboard upstream timeouts while still deleting only imported catalog metadata for schools pending permission.
+
+### Session 64sem (Catch remaining unapproved sections by source)
+- **`supabase/sql/remove_unsupported_banner_school_catalog_data.sql`** — Added source-based matching for all unapproved Banner source labels plus a sample query for remaining `sections` rows. This catches catalog rows even if the stored school display name differs from the expected cleanup list.
+
+### Session 64sel (Use UIUC CIS API for sections)
+- **`scripts/seed-uiuc-sections.js`** — Replaced UIUC Course Explorer HTML scraping and embedded `sectionDataObj` parsing with the official CIS XML API endpoints for term subjects, subject courses, and detailed course sections. The seeder now parses XML with `xml2js`, maps meetings/instructors/statuses/GE metadata from the API response, and writes `source: 'uiuc-cis-api'` so UIUC course data no longer depends on page markup.
+- **`scripts/reconcile-school-terms.js`** — Updated UIUC term reconciliation metadata to use the same `uiuc-cis-api` source label as the seeder so regenerated `school_terms` rows stay consistent with newly seeded section rows.
+- **`package.json`** and **`package-lock.json`** — Added `xml2js` as a direct dependency because the UIUC seeder now uses it intentionally instead of relying on an incidental transitive install.
+
+### Session 64sen (Keep overdue assignments open)
+- **`src/screens/HomeScreen.tsx`** — Changed LMS calendar assignment completion to depend only on the user's checkbox state instead of the due date. Overdue assignments now stay in the open list and render in red until the user manually checks them off.
+
+### Session 64seo (Add one-hour assignment reminders)
+- **`App.tsx`**, **`src/data/userPreferences.ts`**, and **`src/screens/SettingsScreen.tsx`** — Added `1 hour before` as an assignment-deadline reminder option and included it in the default reminder set. Existing users with the old default assignment reminder set are upgraded to include the new one-hour alert while custom reminder selections stay unchanged.
+
+### Session 64sep (Retone campus entry intro)
+- **`src/components/ClassMateIntroScreen.tsx`** and **`App.tsx`** — Changed the post-login intro copy from `ENTERING CLASSMATE` to a campus-connection message, passes the selected school into the intro, and reframes the chips around campus, class rhythm, and meeting classmates. This makes the transition feel like entering the user's school community instead of just opening the app.
+
+### Session 64seq (Prioritize shuttle campus info)
+- **`src/screens/HomeScreen.tsx`** — Removed LinkedIn from the Campus Info jobs links and reordered campus resources so the home preview starts with Registration, Shuttle, and Library. Jobs remain available later in the full Campus Info list through Handshake only.
+
+### Session 64ser (Merge portal billing calendar links)
+- **`src/screens/HomeScreen.tsx`** — Renamed the Campus Info registration resource to `Student Portal` and expanded it to include registration, billing/payment, and academic-calendar links for each supported school. This keeps term dates and tuition/account actions in the same portal group instead of adding a separate timeline screen.
+
+### Session 64ses (Seed imported past assignments only)
+- **`src/screens/HomeScreen.tsx`** — Adjusted LMS calendar sync so assignments already past when a feed is first imported are marked complete and placed in Past Assignments, while future assignments that later become overdue remain open until the user checks them. Manual unchecked states are now preserved across syncs.
+
+### Session 64set (Stabilize assignment and legal state)
+- **`src/screens/HomeScreen.tsx`** — Preserved previously seen overdue or manually changed LMS assignments across calendar syncs even when the provider feed stops returning older events. This prevents past-due assignments from disappearing after refresh while still allowing future feed changes to update normally.
+- **`src/screens/HomeScreen.tsx`** — Renamed assignment status copy from `open`/`Past Assignments` to clearer `to do`/`Completed Assignments` language.
+- **`App.tsx`** — Suppressed the legal-update banner while user settings are still bootstrapping so accepted users do not see a brief stale default-state flash during app startup or token refresh.
+
+### Session 64seu (Exclude local build artifacts from EAS)
+- **`.easignore`** — Added `builds/` so downloaded APK/IPA artifacts are not uploaded into future EAS build archives. This keeps build uploads smaller and avoids packaging prior artifacts into new cloud builds.
+
+### Session 64sev (Tighten assignment cache and legal readiness)
+- **`src/screens/HomeScreen.tsx`** — Cleared cached assignment tasks and last-sync metadata when replacing the LMS calendar feed, preventing stale assignments from reappearing if the new feed fails to refresh.
+- **`App.tsx`** — Added an explicit user-bootstrap settled flag and gated the legal-update banner on that settled state, eliminating the first-render window where default settings could briefly show the banner before saved acknowledgments load.
+
+### Session 64sew (Clear Android single-line text audit)
+- **`App.tsx`**, **`src/components/FeatureOnboardingScreen.tsx`**, **`src/components/PreviewTimetable.tsx`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, **`src/screens/HomeScreen.tsx`**, **`src/screens/MessagesScreen.tsx`**, **`src/screens/SettingsScreen.tsx`**, **`src/screens/TimetableScreen.tsx`**, and **`src/screens/UniversitySelectionScreen.tsx`** — Added `adjustsFontSizeToFit` plus `minimumFontScale` guards to one-line text elements so Android font metrics are less likely to clip or overflow compact UI.
+
+### Session 64sex (Standardize unsupported course metadata copy)
+- **`src/components/ReviewsModal.tsx`** — Standardized unsupported course metadata messaging to short `Not supported` copy without `for this school`. The reviews modal now keeps the same Prerequisites, Restrictions, and Grade Distribution structure across schools, shows real data when present, uses `No ...` only when the source confirms an empty value, and uses `Not supported` when the capability is not connected.
+
+### Session 64sey (Load courses for All Departments)
+- **`src/screens/CoursePickerScreen.tsx`** — Changed `All Departments` from a cleared/empty filter state into a real full-term course query. The picker now pages through all selected-term section rows, builds the catalog from every department, shows the proper `All Departments` loading state, and still narrows to selected departments or GE categories when those filters are active.
+
+### Session 64sez (Prevent overdue assignment auto-completion)
+- **`src/screens/HomeScreen.tsx`** — Tightened LMS calendar import seeding so only assignments that are already past the first time the app sees them are auto-marked complete. Assignments that were previously imported while still upcoming now remain open after their due date until the user manually checks them off, even across repeated calendar syncs.

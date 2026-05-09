@@ -1,5 +1,6 @@
 .DS_Store
 .expo/
+builds/
 node_modules/
 ios/Pods/
 ios/build/

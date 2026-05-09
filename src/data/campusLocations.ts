@@ -209,53 +209,6 @@ const CLASSROOM_LOCATIONS: Record<string, LocationMatcher[]> = {
     { code: 'BIF', name: 'Business Instructional Facility', latitude: 40.1046, longitude: -88.2285, aliases: ['BIF', 'BUSINESS INSTRUCTIONAL'] },
     { code: 'GRAINGER', name: 'Grainger Engineering Library', latitude: 40.1127, longitude: -88.2269, aliases: ['GRAINGER'] },
   ],
-  'UC Riverside': [
-    { code: 'SPR', name: 'Sproul Hall', latitude: 33.9727, longitude: -117.3288, aliases: ['SPR', 'SPROUL', 'SPROUL HALL'] },
-    { code: 'OLMH', name: 'Olmsted Hall', latitude: 33.9734, longitude: -117.3293, aliases: ['OLMH', 'OLMSTED', 'OLMSTED HALL'] },
-    { code: 'HMNSS', name: 'Humanities and Social Sciences Building', latitude: 33.9744, longitude: -117.3298, aliases: ['HMNSS', 'HUMANITIES SOCIAL SCIENCES', 'HUMANITIES AND SOCIAL SCIENCES'] },
-    { code: 'INTS', name: 'Interdisciplinary South', latitude: 33.9747, longitude: -117.331, aliases: ['INTS', 'INTERDISCIPLINARY SOUTH'] },
-    { code: 'WAT', name: 'Watkins Hall', latitude: 33.9739, longitude: -117.3288, aliases: ['WAT', 'WATKINS', 'WATKINS HALL'] },
-    { code: 'CHUNG', name: 'Winston Chung Hall', latitude: 33.9742, longitude: -117.3257, aliases: ['CHUNG', 'WINSTON CHUNG', 'WINSTON CHUNG HALL'] },
-    { code: 'PRCE', name: 'Pierce Hall', latitude: 33.9745, longitude: -117.3267, aliases: ['PRCE', 'PIERCE', 'PIERCE HALL'] },
-    { code: 'SKYE', name: 'Skye Hall', latitude: 33.974, longitude: -117.3268, aliases: ['SKYE', 'SKYE HALL'] },
-    { code: 'PSYCH', name: 'Psychology Building', latitude: 33.9741, longitude: -117.3295, aliases: ['PSYCH', 'PSYCHOLOGY BUILDING'] },
-    { code: 'PHY', name: 'Physics Building', latitude: 33.975, longitude: -117.3251, aliases: ['PHY', 'PHYSICS BUILDING'] },
-    { code: 'MSE', name: 'Materials Science and Engineering Building', latitude: 33.9752, longitude: -117.3263, aliases: ['MSE', 'MATERIALS SCIENCE ENGINEERING'] },
-    { code: 'SSC', name: 'Student Success Center', latitude: 33.9739, longitude: -117.328, aliases: ['SSC', 'STUDENT SUCCESS CENTER'] },
-    { code: 'ARTS', name: 'Arts Building', latitude: 33.9722, longitude: -117.3259, aliases: ['ARTS', 'ARTS BUILDING'] },
-    { code: 'SPTH', name: 'Spieth Hall', latitude: 33.9746, longitude: -117.3258, aliases: ['SPTH', 'SPIETH', 'SPIETH HALL'] },
-    { code: 'INTN', name: 'Interdisciplinary North', latitude: 33.9752, longitude: -117.331, aliases: ['INTN', 'INTERDISCIPLINARY NORTH'] },
-    { code: 'LFSC', name: 'Life Sciences Building', latitude: 33.9739, longitude: -117.3263, aliases: ['LFSC', 'LIFE SCIENCES', 'LIFE SCIENCES BUILDING'] },
-    { code: 'SCLAB', name: 'Science Laboratories', latitude: 33.975, longitude: -117.326, aliases: ['SCLAB', 'SCIENCE LAB', 'SCIENCE LABORATORIES'] },
-    { code: 'DUNDE', name: 'Dundee Residence Hall', latitude: 33.979, longitude: -117.326, aliases: ['DUNDE', 'DUNDEE', 'DUNDEE RESIDENCE HALL'] },
-    { code: 'BRNHL', name: 'Bourns Hall', latitude: 33.9757, longitude: -117.3269, aliases: ['BRNHL', 'BOURNS HALL'] },
-    { code: 'BOYHL', name: 'Boyce Hall', latitude: 33.974, longitude: -117.3276, aliases: ['BOYHL', 'BOYCE HALL'] },
-    { code: 'SBB', name: 'School of Business Building', latitude: 33.9724, longitude: -117.328, aliases: ['SBB', 'SCHOOL OF BUSINESS BUILDING'] },
-  ],
-  'Northeastern University': [
-    { code: 'EXP', name: 'EXP', latitude: 42.337, longitude: -71.086, aliases: ['EXP', 'EXP BUILDING'] },
-    { code: 'ISEC', name: 'Interdisciplinary Science and Engineering Complex', latitude: 42.3373, longitude: -71.0872, aliases: ['ISEC', 'INTERDISCIPLINARY SCIENCE ENGINEERING COMPLEX'] },
-    { code: 'RY', name: 'Ryder Hall', latitude: 42.33674, longitude: -71.09051, aliases: ['RY', 'RYDER', 'RYDER HALL'] },
-    { code: 'BK', name: 'Behrakis Health Sciences Center', latitude: 42.33694, longitude: -71.09143, aliases: ['BK', 'BEHRAKIS', 'BEHRAKIS HEALTH SCIENCES CENTER'] },
-    { code: 'RI', name: 'Richards Hall', latitude: 42.3392, longitude: -71.0884, aliases: ['RI', 'RICHARDS', 'RICHARDS HALL'] },
-    { code: 'DG', name: 'Dodge Hall', latitude: 42.3398, longitude: -71.0889, aliases: ['DG', 'DODGE', 'DODGE HALL'] },
-    { code: 'SL', name: 'Snell Library', latitude: 42.3387, longitude: -71.0888, aliases: ['SL', 'SNELL', 'SNELL LIBRARY'] },
-    { code: 'FR', name: 'Forsyth Building', latitude: 42.3382, longitude: -71.0907, aliases: ['FR', 'FORSYTH', 'FORSYTH BUILDING'] },
-    { code: 'SH', name: 'Shillman Hall', latitude: 42.3376, longitude: -71.0906, aliases: ['SH', 'SHILLMAN', 'SHILLMAN HALL'] },
-    { code: 'HT', name: 'Hurtig Hall', latitude: 42.3393, longitude: -71.0894, aliases: ['HT', 'HURTIG', 'HURTIG HALL'] },
-    { code: 'CH', name: 'Churchill Hall', latitude: 42.3389, longitude: -71.0883, aliases: ['CH', 'CHURCHILL', 'CHURCHILL HALL'] },
-    { code: 'HS', name: 'Holmes Hall', latitude: 42.3379, longitude: -71.0899, aliases: ['HS', 'HO', 'HOLMES', 'HOLMES HALL'] },
-    { code: 'KA', name: 'Kariotis Hall', latitude: 42.3399, longitude: -71.0897, aliases: ['KA', 'KARIOTIS', 'KARIOTIS HALL'] },
-    { code: 'HA', name: 'Hayden Hall', latitude: 42.3393, longitude: -71.0889, aliases: ['HA', 'HAYDEN', 'HAYDEN HALL'] },
-    { code: 'WVH', name: 'West Village H', latitude: 42.3368, longitude: -71.0932, aliases: ['WVH', 'WEST VILLAGE H'] },
-    { code: 'EL', name: 'Ell Hall', latitude: 42.3395, longitude: -71.0885, aliases: ['EL', 'ELL', 'ELL HALL'] },
-    { code: 'WVF', name: 'West Village F', latitude: 42.3371, longitude: -71.0923, aliases: ['WVF', 'WEST VILLAGE F'] },
-    { code: 'WVG', name: 'West Village G', latitude: 42.337, longitude: -71.0928, aliases: ['WVG', 'WEST VILLAGE G'] },
-    { code: 'SN', name: 'Egan Research Center', latitude: 42.3385, longitude: -71.0901, aliases: ['SN', 'EGAN', 'EGAN RESEARCH CENTER'] },
-    { code: 'RB', name: 'Renaissance Park', latitude: 42.3364, longitude: -71.0878, aliases: ['RB', 'RENAISSANCE PARK'] },
-    { code: 'EV', name: 'East Village', latitude: 42.3396, longitude: -71.0875, aliases: ['EV', 'EAST VILLAGE'] },
-    { code: 'INV', name: 'International Village', latitude: 42.3366, longitude: -71.0872, aliases: ['INV', 'INTERNATIONAL VILLAGE'] },
-  ],
 };
 
 const SPORTS_VENUES: Record<string, Array<SportsVenue & { sports?: string[]; aliases: string[] }>> = {
@@ -321,24 +274,22 @@ export function isUnmappableLocation(rawLocation?: string | null) {
     || normalized === 'null'
     || normalized === 'main'
     || normalized === 'na'
+    || normalized === '*'
+    || normalized === 'video'
+    || normalized === 'language'
     || normalized === 'health sciences'
-    || normalized === 'atlanta'
     || normalized === 'arrngd'
     || normalized === 'japan'
     || normalized === 'rome'
     || normalized === 'online'
     || normalized === 'on line'
-    || normalized === 'bos'
-    || normalized === 'boston'
-    || normalized === 'riverside'
     || normalized.startsWith('nappl')
     || normalized.startsWith('arrngd')
     || normalized.startsWith('japan ')
-    || normalized.startsWith('bos ')
-    || normalized.startsWith('boston ')
     || normalized.startsWith('no ')
     || normalized.includes('online')
     || normalized.includes('remote')
+    || normalized.includes('studies abroad')
     || normalized.includes('to be assigned')
     || normalized.includes('location pending')
     || normalized.includes('main campus')

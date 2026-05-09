@@ -1922,7 +1922,7 @@ export default function TimetableScreen({
         <View style={{ paddingHorizontal: 18, paddingBottom: 10, paddingTop: 6 }}>
           {/* Row 1: Title + Quarter picker + three-dots */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <Text style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.8 }}>
+            <Text style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: 0 }}>
               Timetable
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -2176,6 +2176,8 @@ export default function TimetableScreen({
                                 <Text
                                   style={{ color: text, fontWeight: '800', fontSize: codeFontSize, lineHeight: compactGrid ? 12 : 13 }}
                                   numberOfLines={1}
+                                  adjustsFontSizeToFit
+                                  minimumFontScale={0.72}
                                 >
                                   {course.code}
                                 </Text>
@@ -2192,6 +2194,8 @@ export default function TimetableScreen({
                                 <Text
                                   style={{ color: text, fontSize: metaFontSize, opacity: 0.75, marginTop: 2 }}
                                   numberOfLines={1}
+                                  adjustsFontSizeToFit
+                                  minimumFontScale={0.72}
                                 >
                                   {course.location}
                                 </Text>
@@ -2200,6 +2204,8 @@ export default function TimetableScreen({
                                 <Text
                                   style={{ color: text, fontSize: metaFontSize, opacity: 0.7, marginTop: 1 }}
                                   numberOfLines={1}
+                                  adjustsFontSizeToFit
+                                  minimumFontScale={0.72}
                                 >
                                   {getProfLastName(course.professor)}
                                 </Text>
@@ -2208,6 +2214,8 @@ export default function TimetableScreen({
                                 <Text
                                   style={{ color: text, fontSize: timeFontSize, opacity: 0.6, marginTop: 1 }}
                                   numberOfLines={1}
+                                  adjustsFontSizeToFit
+                                  minimumFontScale={0.72}
                                 >
                                   {formatCourseTimeRange12(course.time, { compact: true })}
                                 </Text>
@@ -2245,7 +2253,7 @@ export default function TimetableScreen({
                     }}
                   >
                     {showCode && (
-                      <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1}>
+                      <Text style={{ color: text, fontWeight: '800', fontSize: 10, lineHeight: 13 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
                         {course.code}
                       </Text>
                     )}
@@ -2255,7 +2263,7 @@ export default function TimetableScreen({
                       </Text>
                     )}
                     {showInstructor && (
-                      <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
+                      <Text style={{ color: text, fontSize: 9, opacity: 0.7, marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
                         {getProfLastName(course.professor)}
                       </Text>
                     )}
@@ -2326,7 +2334,7 @@ export default function TimetableScreen({
                   lineHeight: exportFormat === 'square' ? 26 : 33,
                   fontWeight: '900',
                   color: colors.text,
-                  letterSpacing: -0.7,
+                  letterSpacing: 0,
                 }}
               >
                 My {termLabel(selectedQuarter, school)} schedule
@@ -2510,6 +2518,8 @@ export default function TimetableScreen({
                               <Text
                                 style={{ color: text, fontWeight: '800', fontSize: exportCodeFontSize, lineHeight: exportCompactGrid ? 10 : 11 }}
                                 numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.72}
                               >
                                 {course.code}
                               </Text>
@@ -2518,6 +2528,8 @@ export default function TimetableScreen({
                               <Text
                                 style={{ color: text, fontWeight: '600', fontSize: exportMetaFontSize, lineHeight: exportCompactGrid ? 9 : 10, opacity: 0.88 }}
                                 numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.72}
                               >
                                 {course.title}
                               </Text>
@@ -2526,6 +2538,8 @@ export default function TimetableScreen({
                               <Text
                                 style={{ color: text, fontSize: exportTimeFontSize, opacity: 0.68, marginTop: 1 }}
                                 numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.72}
                               >
                                 {formatCourseTimeRange12(course.time, { compact: true })}
                               </Text>
@@ -2561,10 +2575,10 @@ export default function TimetableScreen({
                           maxWidth: 180,
                         }}
                       >
-                        <Text style={{ color: text, fontWeight: '800', fontSize: 10 }} numberOfLines={1}>
+                        <Text style={{ color: text, fontWeight: '800', fontSize: 10 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
                           {course.code}
                         </Text>
-                        <Text style={{ color: text, fontSize: 8, opacity: 0.82, marginTop: 2 }} numberOfLines={1}>
+                        <Text style={{ color: text, fontSize: 8, opacity: 0.82, marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
                           {course.title}
                         </Text>
                         <Text style={{ color: text, fontSize: 8, opacity: 0.58, marginTop: 2, fontWeight: '600' }}>

@@ -122,10 +122,10 @@ const EMPTY_CUSTOM_DRAFT: CustomCourseDraft = {
 
 type SectionEnrollment = {
   status: string;          // "OPEN" | "Waitl" | "FULL" | "NewOnly"
-  enrolled: number;
-  capacity: number;
-  waitlist: number;
-  waitlistCap: number;
+  enrolled?: number;
+  capacity?: number;
+  waitlist?: number;
+  waitlistCap?: number;
 };
 
 type ReviewSummary = {
@@ -139,7 +139,8 @@ type BannerFallbackConfig = {
   excludeTermDescriptions?: string[];
 };
 
-const SECTION_SELECT_COLUMNS = 'id,code,title,department,professor,days,time,location,units,section_label';
+const SECTION_SELECT_COLUMNS = 'id,code,title,department,professor,days,time,location,units,section_label,status,enrolled,capacity,waitlist,waitlist_capacity';
+const SECTION_QUERY_PAGE_SIZE = 1000;
 const COURSE_PICKER_ACCENT = '#4169E1';
 const COURSE_PICKER_ACCENT_SOFT = '#EEF3FF';
 const COURSE_PICKER_ACCENT_BORDER = '#C7D4FF';
@@ -148,82 +149,9 @@ const bannerFallbackRowsCache = new Map<string, any[]>();
 const bannerTermCodeCache = new Map<string, string | null>();
 const bannerDepartmentsCache = new Map<string, string[]>();
 
-const BANNER_FALLBACKS: Record<string, BannerFallbackConfig> = {
-  ucr: {
-    baseUrl: 'https://registrationssb.ucr.edu',
-    source: 'ucr-banner',
-  },
-  northeastern: {
-    baseUrl: 'https://nubanner.neu.edu',
-    source: 'neu-banner',
-    excludeTermDescriptions: ['cps quarter', 'cps semester', 'law quarter', 'law semester'],
-  },
-  temple: {
-    baseUrl: 'https://prd-xereg.temple.edu',
-    source: 'temple-banner',
-  },
-  gsu: {
-    baseUrl: 'https://registration.gosolar.gsu.edu',
-    source: 'gsu-banner',
-  },
-  gatech: {
-    baseUrl: 'https://registration.banner.gatech.edu',
-    source: 'gatech-banner',
-  },
-  wvu: {
-    baseUrl: 'https://starss.wvu.edu',
-    source: 'wvu-banner',
-  },
-  shsu: {
-    baseUrl: 'https://banxeappx.shsu.edu',
-    source: 'shsu-banner',
-  },
-  denison: {
-    baseUrl: 'https://banner.denison.edu',
-    source: 'denison-banner',
-  },
-  uncg: {
-    baseUrl: 'https://erp-registration.uncg.edu',
-    source: 'uncg-banner',
-  },
-  eiu: {
-    baseUrl: 'https://banner.eiu.edu',
-    source: 'eiu-banner',
-  },
-  ung: {
-    baseUrl: 'https://ssb.ungprod.ung.edu',
-    source: 'ung-banner',
-  },
-  alfredstate: {
-    baseUrl: 'https://banner.alfredstate.edu',
-    source: 'alfredstate-banner',
-  },
-  canisius: {
-    baseUrl: 'https://banner.canisius.edu',
-    source: 'canisius-banner',
-  },
-  genesee: {
-    baseUrl: 'https://bannerprod.genesee.edu',
-    source: 'genesee-banner',
-  },
-  uvu: {
-    baseUrl: 'https://userve.uvu.edu',
-    source: 'uvu-banner',
-    excludeTermDescriptions: ['non-credit'],
-  },
-  lehigh: {
-    baseUrl: 'https://reg-prod.ec.lehigh.edu',
-    source: 'lehigh-banner',
-  },
-  rider: {
-    baseUrl: 'https://reg-prod.ec.rider.edu',
-    source: 'rider-banner',
-  },
-  wheatonma: {
-    baseUrl: 'https://banprodselfservice.wheatonma.edu:7341',
-    source: 'wheatonma-banner',
-  },
-};
+// Disabled until each Banner-backed school grants explicit permission for
+// third-party course catalog caching/display.
+const BANNER_FALLBACKS: Record<string, BannerFallbackConfig> = {};
 
 const TITLE_SMALL_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'into', 'nor', 'of', 'on', 'or', 'the', 'to', 'with']);
 
@@ -357,6 +285,82 @@ function normalizeSectionLabelForDisplay(value: string | number | null | undefin
           : rawType;
 
   return [type, ...rest].join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeEnrollmentStatus(value: string | number | null | undefined) {
+  const cleaned = cleanBannerDisplayText(value);
+  return cleaned || undefined;
+}
+
+function optionalCount(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === '') return undefined;
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function enrollmentCountLabel(values: { enrolled?: number; capacity?: number }) {
+  if (values.enrolled !== undefined && values.capacity !== undefined && values.capacity > 0) {
+    return `${values.enrolled}/${values.capacity} enrolled`;
+  }
+  if (values.enrolled !== undefined) return `${values.enrolled} enrolled`;
+  if (values.capacity !== undefined && values.capacity > 0) return `Capacity ${values.capacity}`;
+  return null;
+}
+
+function waitlistCountLabel(values: { waitlist?: number; waitlistCap?: number; waitlistCapacity?: number }) {
+  const waitlistCap = values.waitlistCap ?? values.waitlistCapacity;
+  if (values.waitlist !== undefined && waitlistCap !== undefined && waitlistCap > 0) {
+    return `${values.waitlist}/${waitlistCap} waitlist`;
+  }
+  if (values.waitlist !== undefined && values.waitlist > 0) return `${values.waitlist} waitlist`;
+  if (waitlistCap !== undefined && waitlistCap > 0) return `Waitlist cap ${waitlistCap}`;
+  return null;
+}
+
+function sectionStatusPresentation(rawStatus: string | null | undefined) {
+  const raw = rawStatus?.trim();
+  if (!raw) return null;
+  const compact = raw.replace(/[\s_-]+/g, '').toLowerCase();
+
+  if (compact === 'open' || compact === 'opened' || compact === 'available') {
+    return { label: 'Open', color: '#16a34a' };
+  }
+  if (compact === 'waitl' || compact.includes('waitlist')) {
+    return { label: 'Waitlist', color: '#d97706' };
+  }
+  if (compact === 'newonly' || compact.includes('newonly')) {
+    return { label: 'New Only', color: '#d97706' };
+  }
+  if (compact === 'full' || compact === 'closed' || compact === 'close' || compact.includes('notavailable')) {
+    return { label: compact === 'closed' || compact === 'close' ? 'Closed' : 'Full', color: '#dc2626' };
+  }
+
+  return { label: raw.length > 18 ? `${raw.slice(0, 17)}…` : raw, color: '#64748b' };
+}
+
+async function fetchSectionRowsForTerm(school: string, quarterKeyValue: string, departments?: string[]) {
+  const rows: any[] = [];
+  let from = 0;
+
+  while (true) {
+    let query = supabase
+      .from('sections')
+      .select(SECTION_SELECT_COLUMNS)
+      .eq('school', school)
+      .eq('quarter_key', quarterKeyValue)
+      .order('code', { ascending: true })
+      .range(from, from + SECTION_QUERY_PAGE_SIZE - 1);
+
+    if (departments?.length) query = query.in('department', departments);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < SECTION_QUERY_PAGE_SIZE) break;
+    from += SECTION_QUERY_PAGE_SIZE;
+  }
+
+  return rows;
 }
 
 function bannerPath(config: BannerFallbackConfig, path: string) {
@@ -837,6 +841,11 @@ export default function CoursePickerScreen({
         location: normalizeLocationForDisplay(row.location, row.school ?? school),
         units: row.units ?? undefined,
         sectionLabel: normalizeSectionLabelForDisplay(row.section_label),
+        enrollmentStatus: normalizeEnrollmentStatus(row.status),
+        enrolled: optionalCount(row.enrolled),
+        capacity: optionalCount(row.capacity),
+        waitlist: optionalCount(row.waitlist),
+        waitlistCapacity: optionalCount(row.waitlist_capacity),
       }));
     });
 
@@ -865,7 +874,8 @@ export default function CoursePickerScreen({
 
   const hasSelectedDepartments = selectedDepts.length > 0;
   const hasSelectedCategory = hasSelectedDepartments || !!selectedGE;
-  const shouldLoadSavedCounts = hasSelectedCategory || searchText.trim().length >= 2;
+  const isAllDepartmentsSelected = !hasSelectedDepartments && !selectedGE;
+  const shouldLoadSavedCounts = hasSelectedCategory || isAllDepartmentsSelected || searchText.trim().length >= 2;
   const selectedDeptKey = selectedDepts.join('|');
   const isUciSchool = schoolConfig.id === 'uci';
   const localDepartmentOptions = useMemo(() => departmentsForSchoolId(schoolConfig.id), [schoolConfig.id]);
@@ -1089,15 +1099,9 @@ export default function CoursePickerScreen({
     };
   }, [selectedQuarter, school, shouldLoadSavedCounts, userId]);
 
-  // Fetch courses from Supabase when one or more departments are selected
+  // Fetch courses from Supabase for selected departments, or all departments when no filter is selected.
   useEffect(() => {
-    if (!hasSelectedDepartments) {
-      if (!selectedGE) {
-        setCatalogCourses([]);
-        setSectionsMap({});
-        setExpandedCourseIds({});
-        setPreviewCourse(null);
-      }
+    if (selectedGE) {
       return;
     }
 
@@ -1111,19 +1115,16 @@ export default function CoursePickerScreen({
     let cancelled = false;
     void (async () => {
       try {
-        const { data, error } = await supabase
-          .from('sections')
-          .select(SECTION_SELECT_COLUMNS)
-          .eq('school', school)
-          .in('department', selectedDepts)
-          .eq('quarter_key', qk)
-          .order('code', { ascending: true });
+        let rows = await fetchSectionRowsForTerm(
+          school,
+          qk,
+          hasSelectedDepartments ? selectedDepts : undefined
+        );
         if (cancelled) return;
-        if (error) { console.warn('Supabase fetch failed:', error); return; }
-        let rows = data ?? [];
         if (BANNER_FALLBACKS[schoolConfig.id]) {
           const departmentsWithRows = new Set(rows.map((row: any) => String(row.department ?? '').trim().toUpperCase()).filter(Boolean));
-          const missingDepartments = selectedDepts.filter((dept) => !departmentsWithRows.has(dept.trim().toUpperCase()));
+          const requestedDepartments = hasSelectedDepartments ? selectedDepts : departmentOptions;
+          const missingDepartments = requestedDepartments.filter((dept) => !departmentsWithRows.has(dept.trim().toUpperCase()));
           try {
             if (missingDepartments.length > 0) {
               const liveRows = await fetchBannerFallbackRows(schoolConfig.id, school, selectedQuarter, missingDepartments);
@@ -1139,6 +1140,8 @@ export default function CoursePickerScreen({
         const { catalog, sections } = buildCatalogFromRows(rows);
         setCatalogCourses(catalog);
         setSectionsMap(sections);
+      } catch (error) {
+        if (!cancelled) console.warn('Supabase fetch failed:', error);
       } finally {
         if (!cancelled) setCatalogLoading(false);
       }
@@ -1146,7 +1149,7 @@ export default function CoursePickerScreen({
     return () => {
       cancelled = true;
     };
-  }, [hasSelectedDepartments, selectedDeptKey, selectedGE, selectedQuarter, school]);
+  }, [departmentOptions, hasSelectedDepartments, selectedDeptKey, selectedGE, selectedQuarter, school, schoolConfig.id]);
 
   // Fetch GE courses from Supabase when a GE category is selected
   useEffect(() => {
@@ -1212,10 +1215,10 @@ export default function CoursePickerScreen({
             for (const s of c.sections ?? []) {
               updates[s.sectionCode] = {
                 status: s.status ?? 'OPEN',
-                enrolled: parseInt(s.numCurrentlyEnrolled?.totalEnrolled ?? '0') || 0,
-                capacity: parseInt(s.maxCapacity ?? '0') || 0,
-                waitlist: parseInt(s.numOnWaitlist ?? '0') || 0,
-                waitlistCap: parseInt(s.numWaitlistCap ?? '0') || 0,
+                enrolled: optionalCount(s.numCurrentlyEnrolled?.totalEnrolled),
+                capacity: optionalCount(s.maxCapacity),
+                waitlist: optionalCount(s.numOnWaitlist),
+                waitlistCap: optionalCount(s.numWaitlistCap),
               };
             }
           }
@@ -1548,8 +1551,8 @@ export default function CoursePickerScreen({
     ? selectedDepts.length === 1
       ? selectedDepts[0]
       : `${selectedDepts.length} departments selected`
-    : selectedGELabel;
-  const isCourseListLoading = (catalogLoading && hasSelectedCategory) || (globalSearchLoading && isGlobalSearch);
+    : selectedGELabel || 'All Departments';
+  const isCourseListLoading = (catalogLoading && !selectedGE) || (globalSearchLoading && isGlobalSearch);
   const courseLoadingTitle = isGlobalSearch ? 'Searching courses' : 'Loading courses';
   const courseLoadingSubtitle = isGlobalSearch
     ? `Checking ${termLabel(selectedQuarter, school)} for "${searchText.trim()}".`
@@ -1703,6 +1706,8 @@ export default function CoursePickerScreen({
             <Text
               numberOfLines={1}
               style={{ flex: 1, color: hasSelectedCategory ? courseAccent : '#9ca3af', fontSize: 15, fontWeight: hasSelectedCategory ? '600' : '400' }}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
             >
               {selectedCategorySummary || 'Department or GE category…'}
             </Text>
@@ -1733,6 +1738,8 @@ export default function CoursePickerScreen({
                   <Text
                     numberOfLines={1}
                     style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: courseAccent }}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
                   >
                     {dept}
                   </Text>
@@ -1760,6 +1767,8 @@ export default function CoursePickerScreen({
                   <Text
                     numberOfLines={1}
                     style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: courseAccent }}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
                   >
                     {selectedGELabel}
                   </Text>
@@ -2057,21 +2066,16 @@ export default function CoursePickerScreen({
                           const sectionType = course.sectionLabel?.split(' ')[0] ?? '';
                           const reviewSummary = reviewSummaryCache[`${item.department} ${item.courseNumber}::${sectionType}`.trim()] ?? { average: null, count: 0 };
                           const savedCount = visibleSavedCountForSection(course.id);
-                          const statusColor = !enroll ? '#9ca3af'
-                            : enroll.status === 'OPEN' ? '#16a34a'
-                            : enroll.status === 'Waitl' ? '#d97706'
-                            : '#dc2626';
-                          const statusLabel = !enroll ? null
-                            : enroll.status === 'OPEN' ? 'Open'
-                            : enroll.status === 'Waitl' ? 'Waitlist'
-                            : enroll.status === 'NewOnly' ? 'New Only'
-                            : 'Full';
-                          const enrollmentLabel = enroll
-                            ? `${enroll.enrolled}/${enroll.capacity} enrolled`
-                            : null;
-                          const waitlistLabel = enroll?.status === 'Waitl'
-                            ? `${enroll.waitlist}/${enroll.waitlistCap} waitlist`
-                            : null;
+                          const statusPresentation = sectionStatusPresentation(enroll?.status ?? course.enrollmentStatus);
+                          const enrollmentLabel = enrollmentCountLabel({
+                            enrolled: enroll?.enrolled ?? course.enrolled,
+                            capacity: enroll?.capacity ?? course.capacity,
+                          });
+                          const waitlistLabel = waitlistCountLabel({
+                            waitlist: enroll?.waitlist ?? course.waitlist,
+                            waitlistCap: enroll?.waitlistCap,
+                            waitlistCapacity: course.waitlistCapacity,
+                          });
                           const sectionDisplayId = displaySectionId(course.id);
 
                           return (
@@ -2095,9 +2099,9 @@ export default function CoursePickerScreen({
                                     <Text style={{ fontWeight: '600', fontSize: 13, color: '#111827' }}>
                                       {sectionDisplayId} · {course.sectionLabel ?? sectionDisplayId}
                                     </Text>
-                                    {statusLabel && (
-                                      <View style={{ backgroundColor: `${statusColor}18`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
-                                        <Text style={{ fontSize: 11, fontWeight: '700', color: statusColor }}>{statusLabel}</Text>
+                                    {statusPresentation && (
+                                      <View style={{ backgroundColor: `${statusPresentation.color}18`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                                        <Text style={{ fontSize: 11, fontWeight: '700', color: statusPresentation.color }}>{statusPresentation.label}</Text>
                                       </View>
                                     )}
                                   </View>

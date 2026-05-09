@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, Alert, Animated, Dimensions, Easing, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, Easing, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -114,6 +114,7 @@ type BoardPostTimestampRow = {
 };
 
 type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
+type MainTab = 'home' | 'timetable' | 'grades' | 'board' | 'friends';
 
 function parseQuarterKeyValue(key: string): Quarter | null {
   const idx = key.indexOf('-');
@@ -153,7 +154,8 @@ const BOARD_BADGE_REFRESH_INTERVAL_MS = 60000;
 const SOCIAL_NOTIFICATION_BOOTSTRAP_DELAY_MS = 8000;
 const SOCIAL_NOTIFICATION_REFRESH_INTERVAL_MS = 120000;
 const REMINDER_RESCHEDULE_DELAY_MS = 4000;
-const ASSIGNMENT_REMINDER_OFFSETS = [2880, 1440, 720];
+const LEGACY_ASSIGNMENT_REMINDER_OFFSETS = [2880, 1440, 720];
+const ASSIGNMENT_REMINDER_OFFSETS = [2880, 1440, 720, 60];
 const ASSIGNMENT_REMINDER_MAX_DAYS_AHEAD = 60;
 const REVIEW_ACCOUNT_EMAILS = new Set(['review@classmate.app']);
 
@@ -345,6 +347,9 @@ function normalizeAssignmentReminderOffsets(offsets?: number[]) {
   const normalized = source
     .filter((minutes) => allowed.has(minutes))
     .filter((minutes, index, values) => values.indexOf(minutes) === index);
+  const isLegacyDefault = normalized.length === LEGACY_ASSIGNMENT_REMINDER_OFFSETS.length
+    && LEGACY_ASSIGNMENT_REMINDER_OFFSETS.every((minutes) => normalized.includes(minutes));
+  if (isLegacyDefault) return ASSIGNMENT_REMINDER_OFFSETS;
   return normalized.length > 0 ? normalized : ASSIGNMENT_REMINDER_OFFSETS;
 }
 
@@ -470,10 +475,32 @@ function AuthNavigator({
 function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const compactTabs = windowWidth < 390;
+  const tinyTabs = windowWidth < 350;
+  const tabHorizontalMargin = tinyTabs ? 8 : compactTabs ? 12 : 16;
+  const tabOuterRadius = compactTabs ? 24 : 28;
+  const tabInnerHorizontalPadding = tinyTabs ? 5 : compactTabs ? 7 : 10;
+  const tabInnerVerticalPadding = tinyTabs ? 3 : compactTabs ? 4 : 5;
+  const tabItemVerticalPadding = tinyTabs ? 5 : compactTabs ? 6 : 7;
+  const tabItemHorizontalPadding = tinyTabs ? 1 : compactTabs ? 2 : 4;
+  const tabIconSize = tinyTabs ? 18 : compactTabs ? 19 : 20;
+  const tabLabelFontSize = tinyTabs ? 8.8 : compactTabs ? 9.4 : 10;
+  const tabLabelTopMargin = tinyTabs ? 1 : 2;
+  const tabPillRadius = compactTabs ? 16 : 19;
+  const androidNavigationInset = Platform.OS === 'android' ? Math.max(insets.bottom, 24) : insets.bottom;
+  const appBottomInset = Platform.OS === 'android' ? androidNavigationInset + (compactTabs ? 14 : 10) : insets.bottom;
+  const tabBarBottomOffset = Platform.OS === 'android'
+    ? androidNavigationInset + (compactTabs ? 12 : 10)
+    : Math.max(insets.bottom - 6, 8);
+  const availableTabWidth = Math.max(0, windowWidth - tabHorizontalMargin * 2);
+  const tabSlotWidth = availableTabWidth / 5;
+  const tabTextMinScale = tinyTabs ? 0.62 : compactTabs ? 0.7 : 0.82;
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
   const [authInitializing, setAuthInitializing] = useState(true);
   const [userBootstrapLoading, setUserBootstrapLoading] = useState(false);
+  const [userBootstrapSettled, setUserBootstrapSettled] = useState(false);
   const [userBootstrapRequestId, setUserBootstrapRequestId] = useState(0);
   // Ref so the onAuthStateChange closure (created once) always sees current userId.
   const userIdRef = useRef<string | null>(null);
@@ -483,6 +510,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const pendingAuthUniversityRef = useRef<University | null>(null);
 
   const requestUserBootstrap = () => {
+    setUserBootstrapSettled(false);
     setUserBootstrapLoading(true);
     setUserBootstrapRequestId((value) => value + 1);
   };
@@ -525,6 +553,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setDeletingAccount(false);
     setUserBootstrapRequestId(0);
     setUserBootstrapLoading(false);
+    setUserBootstrapSettled(false);
     setAuthStack(returnToUniversityAfterSignOutRef.current ? ['welcome', 'university'] : ['welcome']);
     returnToUniversityAfterSignOutRef.current = false;
   };
@@ -631,7 +660,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setAssignmentCalendarRevision((revision) => revision + 1);
   }, []);
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
-  const [currentTab, setCurrentTab] = useState<'home' | 'timetable' | 'grades' | 'board' | 'friends'>('home');
+  const [currentTab, setCurrentTab] = useState<MainTab>('home');
   const [homeTabTapCount, setHomeTabTapCount] = useState(0);
   const [timetableTabTapCount, setTimetableTabTapCount] = useState(0);
   const [gradesTabTapCount, setGradesTabTapCount] = useState(0);
@@ -649,15 +678,38 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const pillXAnim = useRef(new Animated.Value(0)).current;
   const pillScaleAnim = useRef(new Animated.Value(1)).current;
   const isDraggingPill = useRef(false);
-  const pillDragStartX = useRef(0);
+  const pillTouchStartX = useRef(0);
+  const pillDragTouchOffsetX = useRef(0);
   const currentTabRef = useRef(currentTab);
   currentTabRef.current = currentTab;
 
+  function triggerTabReset(tab: MainTab) {
+    if (tab === 'home') setHomeTabTapCount(c => c + 1);
+    else if (tab === 'timetable') setTimetableTabTapCount(c => c + 1);
+    else if (tab === 'grades') setGradesTabTapCount(c => c + 1);
+    else if (tab === 'board') setBoardTabTapCount(c => c + 1);
+    else if (tab === 'friends') setFriendsTabTapCount(c => c + 1);
+
+    setShowCoursePicker(false);
+    setRenderCoursePicker(false);
+    setEditingCustomCourse(null);
+    setFocusedCourseId(null);
+    setShowSettings(false);
+    setShowMessages(false);
+    setMessageTarget(null);
+  }
+
   const pillPanResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => {
+    onPanResponderGrant: (evt) => {
       isDraggingPill.current = false;
-      pillDragStartX.current = (pillXAnim as any)._value;
+      const w = tabBarWidthRef.current;
+      const tabW = w / 5;
+      const currentX = (pillXAnim as any)._value ?? TABS.indexOf(currentTabRef.current) * tabW;
+      const touchX = Math.max(0, Math.min(w, evt.nativeEvent.locationX));
+      const touchIsOnCurrentPill = touchX >= currentX && touchX <= currentX + tabW;
+      pillTouchStartX.current = touchX;
+      pillDragTouchOffsetX.current = touchIsOnCurrentPill ? touchX - currentX : tabW / 2;
       Animated.spring(pillScaleAnim, { toValue: 1.15, useNativeDriver: false, tension: 300, friction: 10 }).start();
     },
     onPanResponderMove: (_, gs) => {
@@ -665,7 +717,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       if (!isDraggingPill.current) return;
       const w = tabBarWidthRef.current;
       const tabW = w / 5;
-      pillXAnim.setValue(Math.max(0, Math.min(w - tabW, pillDragStartX.current + gs.dx)));
+      const touchX = pillTouchStartX.current + gs.dx;
+      pillXAnim.setValue(Math.max(0, Math.min(w - tabW, touchX - pillDragTouchOffsetX.current)));
     },
     onPanResponderRelease: (_, gs) => {
       Animated.spring(pillScaleAnim, { toValue: 1, useNativeDriver: false, tension: 300, friction: 10 }).start();
@@ -675,16 +728,17 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         Animated.spring(pillXAnim, { toValue: nearestIdx * tabW, useNativeDriver: false, tension: 160, friction: 18 }).start();
         const newTab = TABS[nearestIdx];
         if (newTab !== currentTabRef.current) {
+          triggerTabReset(newTab);
           if (newTab === 'friends') handleOpenFriendsTabRef.current?.();
           else (setCurrentTab as (t: typeof TABS[number]) => void)(newTab);
         }
       } else {
-        const tab = currentTabRef.current;
-        if (tab === 'home') setHomeTabTapCount(c => c + 1);
-        else if (tab === 'timetable') setTimetableTabTapCount(c => c + 1);
-        else if (tab === 'grades') setGradesTabTapCount(c => c + 1);
-        else if (tab === 'board') setBoardTabTapCount(c => c + 1);
-        else if (tab === 'friends') setFriendsTabTapCount(c => c + 1);
+        const tabW = tabBarWidthRef.current / 5;
+        const tappedIdx = Math.max(0, Math.min(4, Math.floor(pillTouchStartX.current / tabW)));
+        const tappedTab = TABS[tappedIdx];
+        triggerTabReset(tappedTab);
+        if (tappedTab === 'friends') handleOpenFriendsTabRef.current?.();
+        else (setCurrentTab as (t: typeof TABS[number]) => void)(tappedTab);
       }
       isDraggingPill.current = false;
     },
@@ -977,11 +1031,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   }, []);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setUserBootstrapSettled(false);
+      return;
+    }
 
     let active = true;
 
     async function loadUserPreferences() {
+      setUserBootstrapSettled(false);
       setUserBootstrapLoading(true);
       const fallback = fallbackProfileFromEmail(userEmail || `student${DEFAULT_UNIVERSITY.domain}`);
       let settingsDetails: Record<string, any> | null | undefined;
@@ -1085,6 +1143,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         if (active) {
           pendingAuthUniversityRef.current = null;
           setUserBootstrapLoading(false);
+          setUserBootstrapSettled(true);
         }
       }
     }
@@ -2421,6 +2480,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   };
   handleOpenFriendsTabRef.current = handleOpenFriendsTab;
 
+  const handleTabPress = (tab: MainTab) => {
+    triggerTabReset(tab);
+    if (tab === 'friends') {
+      handleOpenFriendsTab();
+    } else {
+      setCurrentTab(tab);
+    }
+  };
+
   const openMessages = (target?: ChatTarget | null) => {
     setMessageTarget(target ?? null);
     setShowMessages(true);
@@ -2542,7 +2610,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   }
 
   if (showBrandIntro) {
-    return <ClassMateIntroScreen onComplete={() => setShowBrandIntro(false)} />;
+    return <ClassMateIntroScreen schoolName={currentSchool} onComplete={() => setShowBrandIntro(false)} />;
   }
 
   if (needsFeatureOnboarding) {
@@ -2556,17 +2624,18 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   if (currentTab === 'home') {
     content = (
       <HomeScreen
+        key={`home-${homeTabTapCount}`}
         activeCourses={homeQuarterCourses}
         selectedQuarter={homeQuarterKey === academicQuarterKey ? academicQuarter : selectedQuarter}
         onOpenSettings={openSettingsSheet}
         userId={USER_ID}
         topInset={insets.top}
-        bottomInset={insets.bottom}
+        bottomInset={appBottomInset}
         scrollToTopTrigger={homeTabTapCount}
         school={currentSchool}
         onAssignmentCalendarChange={handleAssignmentCalendarChange}
         legalUpdateAcknowledgment={{
-          required: !!userId && !hasAcceptedCurrentLegalDocuments(userSettings.legalAcknowledgment),
+          required: !!userId && userBootstrapSettled && !userBootstrapLoading && !hasAcceptedCurrentLegalDocuments(userSettings.legalAcknowledgment),
           effectiveLabel: CURRENT_LEGAL_ACKNOWLEDGMENT.effectiveLabel,
           saving: savingLegalAcknowledgment,
           onAccept: handleAcceptLegalUpdate,
@@ -2577,6 +2646,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     content = (
       <View style={{ flex: 1, paddingTop: 62, backgroundColor: colors.bg }}>
         <TimetableScreen
+          key={`timetable-${timetableTabTapCount}`}
           activeCourses={activeCourses}
           selectedQuarter={selectedQuarter}
           focusedCourseId={focusedCourseId}
@@ -2597,7 +2667,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           onAddQuarter={handleAddQuarter}
           settings={timetableSettings}
           onSettingsApply={setTimetableSettings}
-          bottomInset={insets.bottom}
+          bottomInset={appBottomInset}
           scrollToTopTrigger={timetableTabTapCount}
         />
       </View>
@@ -2605,21 +2675,23 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   } else if (currentTab === 'grades') {
     content = (
       <GradesScreen
+        key={`grades-${gradesTabTapCount}`}
         timetables={timetables}
         userId={USER_ID}
         school={currentSchool}
-        bottomInset={insets.bottom}
+        bottomInset={appBottomInset}
         scrollToTopTrigger={gradesTabTapCount}
       />
     );
   } else if (currentTab === 'board') {
     content = (
       <BoardScreen
+        key={`board-${boardTabTapCount}`}
         school={currentSchool}
         userId={USER_ID}
         boardAuthorName={userProfile.nickname.trim() || displayUserName}
         boardProfileVisible={userSettings.boardProfileVisible}
-        bottomInset={insets.bottom}
+        bottomInset={appBottomInset}
         scrollToTopTrigger={boardTabTapCount}
         onOpenMessages={() => openMessages(null)}
         onOpenChat={openMessages}
@@ -2630,12 +2702,13 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     content = (
       <View style={{ flex: 1, paddingTop: 62, backgroundColor: colors.bg }}>
         <FriendsScreen
+          key={`friends-${friendsTabTapCount}`}
           userId={USER_ID}
           userEmail={userEmail}
           school={currentSchool}
           activeCourses={homeQuarterKey === academicQuarterKey ? homeQuarterCourses : []}
           selectedQuarter={academicQuarter}
-          bottomInset={insets.bottom}
+          bottomInset={appBottomInset}
           scrollToTopTrigger={friendsTabTapCount}
           onOpenMessages={() => openMessages(null)}
           onOpenChat={openMessages}
@@ -2665,13 +2738,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 7,
-        paddingHorizontal: 4,
+        paddingVertical: tabItemVerticalPadding,
+        paddingHorizontal: tabItemHorizontalPadding,
+        minWidth: 0,
       }}
       onPress={onPress}
     >
       <View style={{ position: 'relative' }}>
-        <Ionicons name={icon} size={20} color={active ? colors.brand : colors.text} />
+        <Ionicons name={icon} size={tabIconSize} color={active ? colors.brand : colors.text} />
         {(badgeCount ?? 0) > 0 ? (
           <View
             style={{
@@ -2697,14 +2771,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       </View>
       <Text
         style={{
-          marginTop: 2,
-          fontSize: 10,
+          marginTop: tabLabelTopMargin,
+          fontSize: tabLabelFontSize,
           color: active ? colors.brand : colors.text,
           fontWeight: active ? '600' : '400',
+          maxWidth: Math.max(42, tabSlotWidth - 8),
         }}
         numberOfLines={1}
         adjustsFontSizeToFit
-        minimumFontScale={0.82}
+        minimumFontScale={tabTextMinScale}
       >
         {label}
       </Text>
@@ -2718,11 +2793,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       <View
         style={{
           position: 'absolute',
-          left: 16,
-          right: 16,
-          bottom: insets.bottom - 6,
+          left: tabHorizontalMargin,
+          right: tabHorizontalMargin,
+          bottom: tabBarBottomOffset,
           padding: 1,
-          borderRadius: 28,
+          borderRadius: tabOuterRadius,
           borderWidth: 1,
           borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.86)',
           backgroundColor: isDark ? 'rgba(30,30,34,0.72)' : 'rgba(255,255,255,0.86)',
@@ -2731,9 +2806,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       >
         <View
           style={{
-            paddingHorizontal: 10,
-            paddingVertical: 5,
-            borderRadius: 27,
+            paddingHorizontal: tabInnerHorizontalPadding,
+            paddingVertical: tabInnerVerticalPadding,
+            borderRadius: Math.max(0, tabOuterRadius - 1),
             backgroundColor: isDark ? 'rgba(20,20,24,0.26)' : 'rgba(255,255,255,0.16)',
           }}
         >
@@ -2758,7 +2833,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
                   top: 0,
                   bottom: 0,
                   width: tabBarWidthRef.current / 5,
-                  borderRadius: 19,
+                  borderRadius: tabPillRadius,
                   backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.38)',
                   borderWidth: 1,
                   borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.7)',
@@ -2766,33 +2841,33 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
                 }}
               />
             )}
-            <TabItem label="Today" icon="home-outline" active={currentTab === 'home'} onPress={() => { if (currentTab === 'home') setHomeTabTapCount(c => c + 1); else setCurrentTab('home'); }} />
-            <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => { if (currentTab === 'timetable') setTimetableTabTapCount(c => c + 1); else setCurrentTab('timetable'); }} />
-            <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => { if (currentTab === 'grades') setGradesTabTapCount(c => c + 1); else setCurrentTab('grades'); }} />
+            <TabItem label="Today" icon="home-outline" active={currentTab === 'home'} onPress={() => handleTabPress('home')} />
+            <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => handleTabPress('timetable')} />
+            <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => handleTabPress('grades')} />
             <TabItem
               label="Board"
               icon="clipboard-outline"
               active={currentTab === 'board'}
               badgeCount={currentTab === 'board' ? 0 : newBoardPostCount}
               badgeLabel="NEW"
-              onPress={() => { if (currentTab === 'board') setBoardTabTapCount(c => c + 1); else setCurrentTab('board'); }}
+              onPress={() => handleTabPress('board')}
             />
             <TabItem
               label="ClassMates"
               icon="person-add-outline"
               active={currentTab === 'friends'}
               badgeCount={unreadMessageCount}
-              onPress={() => { if (currentTab === 'friends') setFriendsTabTapCount(c => c + 1); else handleOpenFriendsTab(); }}
+              onPress={() => handleTabPress('friends')}
             />
-            {/* Transparent drag-capture layer — on top so PanResponder receives touches */}
+            {/* Full-row drag surface for swiping between tabs. */}
             {tabBarReady && (
-              <Animated.View
+              <View
                 style={{
                   position: 'absolute',
                   top: 0,
                   bottom: 0,
-                  width: tabBarWidthRef.current / 5,
-                  transform: [{ translateX: pillXAnim }],
+                  left: 0,
+                  right: 0,
                 }}
                 {...pillPanResponder.panHandlers}
               />

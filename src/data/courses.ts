@@ -37,6 +37,11 @@ export type Course = {
   location?: string;
   units?: number;
   sectionLabel?: string;  // e.g. "Lec A", "Dis A1"
+  enrollmentStatus?: string;
+  enrolled?: number;
+  capacity?: number;
+  waitlist?: number;
+  waitlistCapacity?: number;
   customColor?: string;
 };
 

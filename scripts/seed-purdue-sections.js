@@ -57,6 +57,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function quarterKey(year, term) {
   return `${year}-${term}`;
 }
@@ -186,6 +192,10 @@ function buildRows(sections, subject, qKey) {
       source_term_code: termCode(YEAR, TERM),
       campus: section.Class?.Campus?.Code || section.Class?.Campus?.Name || CAMPUS_CODE,
       status: null,
+      enrolled: numberOrNull(section.Enrolled ?? section.Enrollment ?? section.CurrentEnrollment),
+      capacity: numberOrNull(section.Capacity ?? section.MaxEnrollment ?? section.Seats),
+      waitlist: numberOrNull(section.Waitlist ?? section.WaitlistCount),
+      waitlist_capacity: numberOrNull(section.WaitlistCapacity ?? section.WaitlistCap),
       last_synced_at: syncedAt,
       quarter_key: qKey,
       department,

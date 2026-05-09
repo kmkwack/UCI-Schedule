@@ -7,9 +7,10 @@ import { useTheme } from '../context/ThemeContext';
 
 type Props = {
   onComplete: () => void;
+  schoolName?: string;
 };
 
-export default function ClassMateIntroScreen({ onComplete }: Props) {
+export default function ClassMateIntroScreen({ onComplete, schoolName }: Props) {
   const { colors, isDark } = useTheme();
   const overlayOpacity = useRef(new Animated.Value(1)).current;
   const logoScale = useRef(new Animated.Value(0.72)).current;
@@ -84,10 +85,11 @@ export default function ClassMateIntroScreen({ onComplete }: Props) {
     };
   }, [cardsOpacity, cardsTranslateY, logoOpacity, logoScale, onComplete, overlayOpacity, wordmarkOpacity, wordmarkTranslateY]);
 
+  const campusName = schoolName?.trim() || 'your campus';
   const chips = [
-    { icon: 'today-outline' as const, label: 'Home at a glance' },
-    { icon: 'grid-outline' as const, label: 'Custom schedules' },
-    { icon: 'people-outline' as const, label: 'Campus connections' },
+    { icon: 'today-outline' as const, label: 'Campus at a glance' },
+    { icon: 'grid-outline' as const, label: 'Your class rhythm' },
+    { icon: 'people-outline' as const, label: 'Meet classmates' },
   ];
 
   return (
@@ -117,14 +119,18 @@ export default function ClassMateIntroScreen({ onComplete }: Props) {
             }}
           >
             <Text style={{ fontSize: 14, fontWeight: '800', letterSpacing: 0.8, color: isDark ? '#d7e4ff' : '#5e73a8', marginBottom: 8 }}>
-              ENTERING CLASSMATE
+              CONNECTING TO CAMPUS
             </Text>
-            <Text style={{ fontSize: 48, fontWeight: '800', letterSpacing: -2.2 }}>
-              <Text style={{ color: isDark ? '#eef3ff' : '#16285b' }}>Class</Text>
-              <Text style={{ color: colors.brand }}>Mate</Text>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.74}
+              style={{ fontSize: 44, fontWeight: '800', letterSpacing: 0, color: isDark ? '#eef3ff' : '#16285b', textAlign: 'center', maxWidth: 340 }}
+            >
+              Your Campus
             </Text>
             <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 15, lineHeight: 23, textAlign: 'center', maxWidth: 320 }}>
-              Your campus life is coming together in one place.
+              Step into {campusName}, meet classmates, and keep your day moving in one place.
             </Text>
           </Animated.View>
 

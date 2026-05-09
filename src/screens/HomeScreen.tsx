@@ -143,13 +143,13 @@ type CampusInfoChild = NonNullable<CampusInfoResource['children']>[number];
 
 function campusInfoResourceCaption(resource: CampusInfoResource) {
   const captions: Record<string, string> = {
-    'student-portal': 'Registration, tuition payments, and academic dates in one place.',
-    transit: 'Campus shuttle routes, transit apps, and transportation updates.',
-    library: 'Library services, study spaces, and room reservations.',
-    clubs: 'Student organizations and campus groups.',
-    jobs: 'Campus jobs, internships, and career listings.',
-    'student-deals': 'Student discounts, plans, and verified deals.',
-    athletics: 'Team schedules, game links, and athletics info.',
+    'student-portal': 'Manage registration, tuition, and dates.',
+    transit: 'Check campus routes and transit.',
+    library: 'Use libraries and book study rooms.',
+    clubs: 'Browse campus groups.',
+    jobs: 'Find jobs and internships.',
+    'student-deals': 'Find student discounts.',
+    athletics: 'Check games and teams.',
   };
   return captions[resource.id] ?? '';
 }

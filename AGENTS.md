@@ -3002,3 +3002,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sgc (Restore fuller Campus Info captions)
 - **`src/screens/HomeScreen.tsx`** — Expanded the Campus Info resource captions back into natural one-line descriptions while keeping child buttons label-only. This restores context without putting helper text inside individual link buttons.
+
+### Session 64sgd (Short sentence Campus Info captions)
+- **`src/screens/HomeScreen.tsx`** — Shortened Campus Info captions into concise sentence-style labels, such as `Manage registration, tuition, and dates.` and `Find jobs and internships.`

@@ -768,10 +768,10 @@ async function fetchSidearmResponsiveEvents(feed: Extract<SportsFeedConfig, { ki
   return dedupeSportsEvents(filterSportsEventsByWindow(events, options).sort((a, b) => a.date.getTime() - b.date.getTime()));
 }
 
-export function formatSportsEventTime(date: Date, timeLabel?: string): string {
+export function formatSportsEventTime(date: Date, timeLabel?: string, timeZone?: string): string {
   return timeLabel
     ? timeLabel
-    : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, ...(timeZone ? { timeZone } : {}) });
 }
 
 function dedupeSportsEvents(events: SportsEvent[]) {

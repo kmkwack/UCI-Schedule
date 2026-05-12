@@ -17,10 +17,10 @@ import {
   Easing,
   LayoutAnimation,
   PanResponder,
-  Dimensions,
   Linking,
   Keyboard,
   Image as RNImage,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
@@ -138,6 +138,35 @@ const REPORT_REASONS = [
 const BOARD_ATTACHMENTS_BUCKET = 'board-attachments';
 const DEPARTMENT_BOARD_CATEGORY_PREFIX = 'Department: ';
 const BOARD_TAB_BAR_CLEARANCE = 96;
+const SUPPORTED_BOARD_FILE_MIME_TYPES = new Set([
+  'application/pdf',
+  'text/plain',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+]);
+const BOARD_FILE_MIME_BY_EXTENSION: Record<string, string> = {
+  pdf: 'application/pdf',
+  txt: 'text/plain',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
 
 function departmentBoardCategory(department: string) {
   return `${DEPARTMENT_BOARD_CATEGORY_PREFIX}${department}`;
@@ -156,6 +185,13 @@ function boardContextLabel(category: string) {
 
 function boardCategory(board: Board) {
   return board.category ?? 'General';
+}
+
+function supportedMimeTypeForAttachmentName(name: string, mimeType?: string | null) {
+  const normalizedMime = mimeType?.toLowerCase();
+  if (normalizedMime && SUPPORTED_BOARD_FILE_MIME_TYPES.has(normalizedMime)) return normalizedMime;
+  const extension = name.split('.').pop()?.toLowerCase() ?? '';
+  return BOARD_FILE_MIME_BY_EXTENSION[extension] ?? null;
 }
 
 function withDefaultBoards(remoteBoards: Board[]) {
@@ -535,7 +571,7 @@ function buildCommentTree(rows: CommentRow[], votes: CommentVoteRow[], userId: s
       id: row.id,
       post_id: row.post_id,
       user_id: row.user_id,
-      author_name: authorNames[row.user_id] ?? row.author_name ?? campusAliasForId(row.user_id, school),
+      author_name: authorNames[row.user_id] ?? campusAliasForId(row.user_id, school),
       author_meta: null,
       content: row.content,
       created_at: row.created_at,
@@ -566,8 +602,16 @@ type AuthorSummary = {
   meta: string | null;
 };
 
-function formatAuthorMeta(major?: string | null, year?: string | null) {
+type AuthorProfileMetadata = {
+  id?: string | null;
+  user_id?: string | null;
+  major?: string | null;
+  year?: string | null;
+};
+
+function formatAuthorMeta(major?: string | null, year?: string | null, verified = false) {
   const parts = [abbreviateMajor(major), year?.trim()].filter(Boolean);
+  if (parts.length === 0 && verified) return 'Verified student';
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
@@ -576,6 +620,7 @@ type Props = {
   userId: string;
   boardAuthorName: string;
   boardProfileVisible: boolean;
+  topInset?: number;
   bottomInset?: number;
   scrollToTopTrigger?: number;
   onOpenMessages?: () => void;
@@ -586,8 +631,7 @@ type Props = {
 export default function BoardScreen({
   school,
   userId,
-  boardAuthorName,
-  boardProfileVisible,
+  topInset = 0,
   bottomInset = 0,
   scrollToTopTrigger = 0,
   onOpenMessages,
@@ -595,6 +639,9 @@ export default function BoardScreen({
   unreadMessageCount = 0,
 }: Props) {
   const { colors, isDark } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
+  const screenWidthRef = useRef(screenWidth);
+  useEffect(() => { screenWidthRef.current = screenWidth; }, [screenWidth]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
@@ -633,8 +680,7 @@ export default function BoardScreen({
   const [departmentSearch, setDepartmentSearch] = useState('');
   const [departmentCodes, setDepartmentCodes] = useState<string[]>([]);
 
-  const SCREEN_W = Dimensions.get('window').width;
-  const boardSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
+  const boardSlideAnim = useRef(new Animated.Value(screenWidth)).current;
   const postsCacheKey = `board_posts_${school}_${userId}`;
   const boardsCacheKey = `board_catalog_${school}`;
   const boardListScrollRef = useRef<ScrollView>(null);
@@ -697,7 +743,7 @@ export default function BoardScreen({
         if (gs.dx > 0) boardSlideAnim.setValue(gs.dx);
       },
       onPanResponderRelease: (_, gs) => {
-        if (gs.dx > SCREEN_W * 0.35 || gs.vx > 0.6) {
+        if (gs.dx > screenWidthRef.current * 0.35 || gs.vx > 0.6) {
           closeBoard();
         } else {
           Animated.spring(boardSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
@@ -714,7 +760,7 @@ export default function BoardScreen({
     void fetchBoards();
     void fetchDepartmentBoards();
     void fetchPosts();
-  }, [boardAuthorName, boardProfileVisible, localDepartmentOptions, school, userId]);
+  }, [localDepartmentOptions, school, userId]);
 
   useEffect(() => {
     postsRef.current = posts;
@@ -754,6 +800,18 @@ export default function BoardScreen({
     resetComposer();
   }
 
+  function currentAuthorSummary(): AuthorSummary {
+    return {
+      displayName: campusAliasForId(userId, school),
+      meta: null,
+    };
+  }
+
+  async function resolveCurrentAuthorSummary(): Promise<AuthorSummary> {
+    const summaries = await resolveAuthorSummaries([userId]);
+    return summaries[userId] ?? currentAuthorSummary();
+  }
+
   async function resolveAuthorSummaries(userIds: string[]): Promise<Record<string, AuthorSummary>> {
     const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
     if (uniqueIds.length === 0) return {};
@@ -767,16 +825,34 @@ export default function BoardScreen({
 
     if (validIds.length === 0) return invalidAuthorMap;
 
-    const { data: profilesData, error: profilesError } = await supabase
-      .from('profiles')
-      .select('id, major, year')
-      .eq('school', school)
-      .in('id', validIds);
+    let profileRows: AuthorProfileMetadata[] = [];
+    const { data: metadataData, error: metadataError } = await supabase.rpc('get_board_author_metadata', {
+      author_ids: validIds,
+      target_school: school,
+    });
 
-    if (profilesError && !isNetworkRequestError(profilesError)) console.error('Failed to load board profiles:', profilesError);
+    if (!metadataError) {
+      profileRows = (metadataData ?? []) as AuthorProfileMetadata[];
+    } else {
+      if (metadataError.code !== 'PGRST202' && !isNetworkRequestError(metadataError)) {
+        console.warn('Failed to load verified board author metadata:', metadataError);
+      }
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, major, year')
+        .eq('school', school)
+        .in('id', validIds);
+
+      if (profilesError && !isNetworkRequestError(profilesError)) {
+        console.warn('Failed to load board profile metadata:', profilesError);
+      }
+      profileRows = (profilesData ?? []) as AuthorProfileMetadata[];
+    }
 
     const profilesById = Object.fromEntries(
-      ((profilesData ?? []) as Array<{ id: string; major: string | null; year: string | null }>).map((row) => [row.id, row])
+      profileRows
+        .map((row) => [row.user_id ?? row.id, row] as const)
+        .filter((entry): entry is readonly [string, AuthorProfileMetadata] => !!entry[0])
     );
 
     return {
@@ -788,7 +864,7 @@ export default function BoardScreen({
             id,
             {
               displayName: campusAliasForId(id, school),
-              meta: formatAuthorMeta(profile?.major, profile?.year),
+              meta: formatAuthorMeta(profile?.major, profile?.year, !!profile),
             },
           ];
         })
@@ -1006,14 +1082,25 @@ export default function BoardScreen({
 
     if (result.canceled || !result.assets?.length) return;
 
-    const picked = result.assets.map((asset, index) => ({
-      id: `${Date.now()}-file-${index}-${Math.random().toString(36).slice(2, 8)}`,
-      name: asset.name,
-      type: 'file' as const,
-      localUri: asset.uri,
-      mimeType: asset.mimeType ?? 'application/octet-stream',
-      size: asset.size ?? null,
-    }));
+    const picked = result.assets.flatMap((asset, index) => {
+      const mimeType = supportedMimeTypeForAttachmentName(asset.name, asset.mimeType);
+      if (!mimeType) return [];
+      return [{
+        id: `${Date.now()}-file-${index}-${Math.random().toString(36).slice(2, 8)}`,
+        name: asset.name,
+        type: 'file' as const,
+        localUri: asset.uri,
+        mimeType,
+        size: asset.size ?? null,
+      }];
+    });
+
+    if (picked.length < result.assets.length) {
+      Alert.alert(
+        'Some files were skipped',
+        'ClassMate supports images, PDFs, text files, Word, PowerPoint, and Excel documents.'
+      );
+    }
 
     setNewPostAttachments((prev) => [...prev, ...picked]);
   }
@@ -1058,6 +1145,8 @@ export default function BoardScreen({
         try {
           const cachedPosts = (JSON.parse(cached) as Post[]).map((post) => ({
             ...post,
+            author_name: campusAliasForId(post.user_id, school),
+            author_meta: typeof post.author_meta === 'string' ? post.author_meta : null,
             attachments: normalizeAttachments(post.attachments),
           }));
           postsRef.current = cachedPosts;
@@ -1293,7 +1382,7 @@ export default function BoardScreen({
       boards.find((board) => boardCategory(board) === 'General') ??
       boards[0];
 
-    boardSlideAnim.setValue(SCREEN_W);
+    boardSlideAnim.setValue(screenWidthRef.current);
     setSelectedBoard(targetBoard);
     setSelectedPost(post);
     setReplyingToComment(null);
@@ -1465,7 +1554,7 @@ export default function BoardScreen({
       return;
     }
 
-    const authorName = campusAliasForId(userId, school);
+    const authorName = currentAuthorSummary().displayName;
     const { error } = await supabase.from('post_comments').insert({
       school,
       post_id: selectedPost.id,
@@ -1507,8 +1596,9 @@ export default function BoardScreen({
 
     const board = composerBoards.find((entry) => entry.id === newPostBoardId) ?? boards[0];
     const category = board.category ?? 'General';
-    const authorName = campusAliasForId(userId, school);
     try {
+      const authorSummary = await resolveCurrentAuthorSummary();
+      const authorName = authorSummary.displayName;
       const attachments = await Promise.all(newPostAttachments.map((attachment) => uploadAttachment(attachment)));
       const payload = {
         user_id: userId,
@@ -1565,7 +1655,7 @@ export default function BoardScreen({
           id: data.id,
           user_id: data.user_id,
           author_name: authorName,
-          author_meta: formatAuthorMeta(null, null),
+          author_meta: authorSummary.meta,
           category: data.category ?? 'General',
           title: data.title,
           body: data.body ?? '',
@@ -1598,7 +1688,7 @@ export default function BoardScreen({
           id: data.id,
           user_id: data.user_id,
           author_name: authorName,
-          author_meta: formatAuthorMeta(null, null),
+          author_meta: authorSummary.meta,
           category: data.category ?? 'General',
           title: data.title,
           body: data.body ?? '',
@@ -1712,7 +1802,7 @@ export default function BoardScreen({
   }
 
   function openBoard(board: Board) {
-    boardSlideAnim.setValue(SCREEN_W);
+    boardSlideAnim.setValue(screenWidthRef.current);
     setSelectedBoard(board);
     Animated.spring(boardSlideAnim, {
       toValue: 0,
@@ -1724,7 +1814,7 @@ export default function BoardScreen({
 
   function closeBoard() {
     Animated.timing(boardSlideAnim, {
-      toValue: SCREEN_W,
+      toValue: screenWidthRef.current,
       duration: 260,
       useNativeDriver: true,
     }).start(() => {
@@ -1737,7 +1827,7 @@ export default function BoardScreen({
       setCommentComposerOpen(false);
       setSearch('');
       setSort('recent');
-      boardSlideAnim.setValue(SCREEN_W);
+      boardSlideAnim.setValue(screenWidthRef.current);
     });
   }
 
@@ -1929,6 +2019,12 @@ export default function BoardScreen({
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{comment.author_name ?? campusAliasForId(comment.user_id, school)}</Text>
+                {comment.author_meta ? (
+                  <>
+                    <Text style={{ fontSize: 11, color: colors.textTertiary }}>·</Text>
+                    <Text style={{ fontSize: 11, color: colors.textTertiary }}>{comment.author_meta}</Text>
+                  </>
+                ) : null}
                 {selectedPost?.user_id === comment.user_id ? (
                   <View
                     style={{
@@ -1942,9 +2038,6 @@ export default function BoardScreen({
                   >
                     <Text style={{ fontSize: 10, fontWeight: '700', color: colors.brand }}>Author</Text>
                   </View>
-                ) : null}
-                {comment.author_meta ? (
-                  <Text style={{ fontSize: 11, color: colors.textTertiary }}>{comment.author_meta}</Text>
                 ) : null}
                 <Text style={{ fontSize: 11, color: colors.textTertiary }}>{timeAgo(comment.created_at)}</Text>
               </View>
@@ -2008,7 +2101,7 @@ export default function BoardScreen({
     <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
       <ScrollView
         ref={boardListScrollRef}
-        contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 64, paddingBottom: bottomInset + 74 }}
+        contentContainerStyle={{ paddingHorizontal: 18, paddingTop: topInset + 14, paddingBottom: bottomInset + 74 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={colors.brand} />}
       >
@@ -2168,13 +2261,19 @@ export default function BoardScreen({
                         }}
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 7, flexWrap: 'wrap' }}>
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.brand }}>{post.category}</Text>
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ maxWidth: 150, fontSize: 12, fontWeight: '700', color: colors.brand }}>{post.category}</Text>
                           <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                           <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.author_name}</Text>
+                          {post.author_meta ? (
+                            <>
+                              <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
+                              <Text style={{ fontSize: 12, color: colors.textTertiary }}>{post.author_meta}</Text>
+                            </>
+                          ) : null}
                           <Text style={{ fontSize: 12, color: colors.textTertiary }}>·</Text>
                           <Text style={{ fontSize: 12, color: colors.textTertiary }}>{timeAgo(post.created_at)}</Text>
                         </View>
-                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 5 }}>{post.title}</Text>
+                        <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 5 }}>{post.title}</Text>
                         <Text numberOfLines={2} style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19 }}>
                           {post.body}
                         </Text>
@@ -2336,11 +2435,11 @@ export default function BoardScreen({
                 >
                   <Ionicons name={board.icon} size={22} color={board.color} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 4 }}>
                     {boardListDescription(board)}
                   </Text>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{board.name}</Text>
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{board.name}</Text>
                 </View>
                 <View
                   style={{
@@ -2505,8 +2604,8 @@ export default function BoardScreen({
                       >
                         <Text style={{ fontSize: 13, fontWeight: '800', color: board.color }}>{department}</Text>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{board.name}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{board.name}</Text>
                       </View>
                       <Ionicons name="chevron-forward" size={17} color={colors.textTertiary} />
                     </TouchableOpacity>
@@ -2534,7 +2633,7 @@ export default function BoardScreen({
             <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
               <View
                 style={{
-                  paddingTop: 64,
+                  paddingTop: topInset + 14,
                   paddingHorizontal: 16,
                   paddingBottom: 12,
                   borderBottomWidth: 1,
@@ -2901,7 +3000,7 @@ export default function BoardScreen({
             </KeyboardAvoidingView>
           ) : (
             <View style={{ flex: 1, backgroundColor: colors.bg }}>
-              <View style={{ paddingTop: 64, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <View style={{ paddingTop: topInset + 14, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                   <TouchableOpacity onPress={closeBoard} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Ionicons name="chevron-back" size={26} color={colors.text} />
@@ -3145,7 +3244,7 @@ function ImageViewerModal({
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const uri = attachment ? attachmentUri(attachment) : '';
-  const screen = Dimensions.get('window');
+  const { height: screenHeight } = useWindowDimensions();
 
   return (
     <Modal visible={!!attachment} transparent animationType="fade" onRequestClose={onClose}>
@@ -3209,7 +3308,7 @@ function ImageViewerModal({
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
-            minHeight: screen.height,
+            minHeight: screenHeight,
             alignItems: 'center',
             justifyContent: 'center',
             paddingTop: Platform.OS === 'ios' ? 112 : 82,
@@ -3388,7 +3487,7 @@ function RequestBoardModal({
   submitting: boolean;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
-  const { height: windowHeight } = Dimensions.get('window');
+  const { height: windowHeight } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const sheetAnim = useRef(new Animated.Value(600)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -3631,6 +3730,7 @@ function NewPostModal({
   colors,
 }: NewPostModalProps) {
   const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? boards[0];
+  const { height: windowHeight } = useWindowDimensions();
   const composerScrollRef = useRef<ScrollView>(null);
   const bodyInputFocusedRef = useRef(false);
   const bodyInputYRef = useRef(0);
@@ -3650,7 +3750,7 @@ function NewPostModal({
   };
 
   const keepBodyCursorVisible = useCallback((height = bodyInputHeightRef.current, animated = true) => {
-    const viewportHeight = composerViewportHeightRef.current || Dimensions.get('window').height;
+    const viewportHeight = composerViewportHeightRef.current || windowHeight;
     const keyboardHeight = keyboardHeightRef.current;
     const visibleHeight = Math.max(180, viewportHeight - keyboardHeight);
     const targetY = Math.max(0, bodyInputYRef.current + height - visibleHeight + 132);
@@ -3658,7 +3758,7 @@ function NewPostModal({
     [0, 80, 180].forEach((delay) => {
       setTimeout(() => composerScrollRef.current?.scrollTo({ y: targetY, animated }), delay);
     });
-  }, []);
+  }, [windowHeight]);
 
   useEffect(() => {
     if (!visible) {

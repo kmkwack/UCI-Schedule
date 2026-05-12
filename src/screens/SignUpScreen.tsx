@@ -44,11 +44,18 @@ function GoogleIcon() {
   );
 }
 
+function emailDomain(email: string) {
+  const normalized = email.trim().toLowerCase();
+  const atIndex = normalized.lastIndexOf('@');
+  return atIndex >= 0 ? normalized.slice(atIndex) : '';
+}
+
 export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSignIn }: Props) {
   const uni = university ?? DEFAULT_UNIVERSITY;
   const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
   const [loading, setLoading] = useState(false);
-  const hd = uni.domain.replace('@', '');
+  const expectedEmailDomain = uni.domain.trim().toLowerCase();
+  const hd = expectedEmailDomain.replace(/^@/, '');
 
   const handleGoogleSignUp = async () => {
     setLoading(true);
@@ -90,7 +97,7 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
     }
 
     const email = sessionData.user.email ?? '';
-    if (!email.endsWith(hd)) {
+    if (emailDomain(email) !== expectedEmailDomain) {
       await supabase.auth.signOut();
       Alert.alert('Wrong account', `Please sign in with your ${uni.domain} email.`);
       return;

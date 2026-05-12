@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, Alert, Animated, Dimensions, Easing, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, BackHandler, Easing, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -23,7 +23,7 @@ import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
 import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, quarterKey } from './src/data/courses';
-import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, resolveCurrentTerm, schoolFeatureEnabled, universityForName, type University } from './src/data/schools';
+import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, resolveCurrentTerm, schoolFeatureEnabled, universityForName, type University } from './src/data/schools';
 import {
   buildDisplayName,
   DEFAULT_NOTIFICATION_PREFERENCES,
@@ -33,11 +33,11 @@ import {
   needsInitialOnboarding,
   normalizeDateFormatPreference,
   normalizeLanguagePreference,
-  normalizeTimeZonePreference,
   profileDetailsFromProfile,
   profileFromSources,
 } from './src/data/userPreferences';
 import { fetchSportsEventsForSchool } from './src/data/sportsEvents';
+import { addZonedDays, getZonedDateParts, normalizeTimeZone, zonedDateFromParts, zonedWeekdayIndex } from './src/data/timeZone';
 import { supabase } from './src/lib/supabase';
 import { isMissingSchoolColumnError } from './src/lib/supabaseErrors';
 import type { ChatTarget } from './src/data/messages';
@@ -157,6 +157,71 @@ const LEGACY_ASSIGNMENT_REMINDER_OFFSETS = [2880, 1440, 720];
 const ASSIGNMENT_REMINDER_OFFSETS = [2880, 1440, 720, 60];
 const ASSIGNMENT_REMINDER_MAX_DAYS_AHEAD = 60;
 const REVIEW_ACCOUNT_EMAILS = new Set(['review@classmate.app']);
+const CLASSMATE_REMINDER_NOTIFICATION_PREFIX = 'classmate-reminder';
+
+function scopedPreferenceStorageKey(base: string, school: string, userId: string | null | undefined) {
+  return `${base}_${encodeURIComponent(school)}_${userId || 'guest'}`;
+}
+
+function notificationIdentifierPart(value: string | number | null | undefined) {
+  return encodeURIComponent(String(value ?? 'none').trim().replace(/\s+/g, '_')).slice(0, 120);
+}
+
+function reminderNotificationPrefix(userId: string, school: string) {
+  return [
+    CLASSMATE_REMINDER_NOTIFICATION_PREFIX,
+    notificationIdentifierPart(userId),
+    notificationIdentifierPart(school),
+  ].join(':');
+}
+
+function reminderNotificationIdentifier(userId: string, school: string, kind: string, parts: Array<string | number | null | undefined>) {
+  return [
+    reminderNotificationPrefix(userId, school),
+    notificationIdentifierPart(kind),
+    ...parts.map(notificationIdentifierPart),
+  ].join(':');
+}
+
+async function cancelScheduledClassMateReminders(userId: string, school: string) {
+  const prefix = `${reminderNotificationPrefix(userId, school)}:`;
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  await Promise.all(
+    scheduled
+      .filter((request) => request.identifier.startsWith(prefix))
+      .map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier))
+  );
+}
+
+function normalizeThemePreference(value: unknown): ThemePreference | null {
+  return value === 'light' || value === 'dark' || value === 'auto' ? value : null;
+}
+
+function normalizeTimetableSettings(value: unknown): TimetableSettings | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Partial<TimetableSettings>;
+  const theme = candidate.theme === 'minimal' || candidate.theme === 'colorful' || candidate.theme === 'soft' || candidate.theme === 'outline'
+    ? candidate.theme
+    : 'pastel';
+  return {
+    theme,
+    showCode: typeof candidate.showCode === 'boolean' ? candidate.showCode : DEFAULT_TIMETABLE_SETTINGS.showCode,
+    showClassName: typeof candidate.showClassName === 'boolean' ? candidate.showClassName : DEFAULT_TIMETABLE_SETTINGS.showClassName,
+    showRoomNumber: typeof candidate.showRoomNumber === 'boolean' ? candidate.showRoomNumber : DEFAULT_TIMETABLE_SETTINGS.showRoomNumber,
+    showInstructor: typeof candidate.showInstructor === 'boolean' ? candidate.showInstructor : DEFAULT_TIMETABLE_SETTINGS.showInstructor,
+    showTime: typeof candidate.showTime === 'boolean' ? candidate.showTime : DEFAULT_TIMETABLE_SETTINGS.showTime,
+  };
+}
+
+async function readStoredTimetableSettings(key: string) {
+  try {
+    const stored = await AsyncStorage.getItem(key);
+    if (!stored) return null;
+    return normalizeTimetableSettings(JSON.parse(stored));
+  } catch {
+    return null;
+  }
+}
 
 function isReviewAccountEmail(email: string | null | undefined) {
   return REVIEW_ACCOUNT_EMAILS.has((email ?? '').trim().toLowerCase());
@@ -265,9 +330,9 @@ function isNetworkRequestError(error: unknown) {
   );
 }
 
-function buildUpcomingClassReminderDates(courses: Course[], reminderMinutes: number, daysAhead = 14) {
+function buildUpcomingClassReminderDates(courses: Course[], reminderMinutes: number, timeZone: string, daysAhead = 14) {
+  const zone = normalizeTimeZone(timeZone);
   const now = new Date();
-  const end = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
   const dates: Array<{ course: Course; notifyAt: Date }> = [];
 
   for (const course of courses) {
@@ -278,11 +343,12 @@ function buildUpcomingClassReminderDates(courses: Course[], reminderMinutes: num
     const { hour, minute } = parseTimeStart(course.time);
     const courseDays = parseCourseDays(course.days);
 
-    for (let cursor = new Date(now); cursor <= end; cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000)) {
-      if (!courseDays.some((day) => weekdayIndex(day) === cursor.getDay())) continue;
+    for (let dayOffset = 0; dayOffset <= daysAhead; dayOffset++) {
+      const cursor = addZonedDays(now, dayOffset, zone);
+      if (!courseDays.some((day) => weekdayIndex(day) === zonedWeekdayIndex(cursor, zone))) continue;
 
-      const classStart = new Date(cursor);
-      classStart.setHours(hour, minute, 0, 0);
+      const dayParts = getZonedDateParts(cursor, zone);
+      const classStart = zonedDateFromParts({ ...dayParts, hour, minute, second: 0 }, zone);
       const notifyAt = new Date(classStart.getTime() - reminderMinutes * 60 * 1000);
 
       if (notifyAt <= now || classStart <= now) continue;
@@ -293,21 +359,23 @@ function buildUpcomingClassReminderDates(courses: Course[], reminderMinutes: num
   return dates;
 }
 
-function buildDailyScheduleSummaryDates(courses: Course[], daysAhead = 14, summaryHour = 8) {
+function buildDailyScheduleSummaryDates(courses: Course[], timeZone: string, daysAhead = 14, summaryHour = 8) {
+  const zone = normalizeTimeZone(timeZone);
   const now = new Date();
-  const end = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
   const dates: Array<{ notifyAt: Date; courses: Course[] }> = [];
 
-  for (let cursor = new Date(now); cursor <= end; cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000)) {
+  for (let dayOffset = 0; dayOffset <= daysAhead; dayOffset++) {
+    const cursor = addZonedDays(now, dayOffset, zone);
+    const dayIndex = zonedWeekdayIndex(cursor, zone);
     const dayCourses = courses.filter((course) => {
       if (course.time === 'TBA' || course.days === 'TBA') return false;
-      return parseCourseDays(course.days).some((day) => weekdayIndex(day) === cursor.getDay());
+      return parseCourseDays(course.days).some((day) => weekdayIndex(day) === dayIndex);
     });
 
     if (dayCourses.length === 0) continue;
 
-    const notifyAt = new Date(cursor);
-    notifyAt.setHours(summaryHour, 0, 0, 0);
+    const dayParts = getZonedDateParts(cursor, zone);
+    const notifyAt = zonedDateFromParts({ ...dayParts, hour: summaryHour, minute: 0, second: 0 }, zone);
     if (notifyAt <= now) continue;
 
     dates.push({ notifyAt, courses: dayCourses });
@@ -397,9 +465,6 @@ function buildUpcomingAssignmentReminderDates(
   return dates.sort((left, right) => left.notifyAt.getTime() - right.notifyAt.getTime());
 }
 
-
-const AUTH_SCREEN_W = Dimensions.get('window').width;
-
 function AuthNavigator({
   stack,
   onPop,
@@ -409,7 +474,7 @@ function AuthNavigator({
   onPop: () => void;
   renderScreen: (s: AuthScreen, goBack: () => void) => React.ReactNode;
 }) {
-  const W = AUTH_SCREEN_W;
+  const { width: W } = useWindowDimensions();
   const slideAnim = useRef(new Animated.Value(0)).current;
   const prevLen = useRef(stack.length);
   const wasPushRef = useRef(false);
@@ -544,8 +609,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setSelectedUniversity(null);
     setExpoPushToken(null);
     setUnreadMessageCount(0);
+    profileDetailsRef.current = {};
     setUserProfile(fallbackProfileFromEmail(`student${DEFAULT_UNIVERSITY.domain}`));
     setUserSettings(DEFAULT_USER_SETTINGS);
+    setTimetableSettings(DEFAULT_TIMETABLE_SETTINGS);
     setTimetables([]);
     setSelectedTimetableId(null);
     setShowSettings(false);
@@ -644,6 +711,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<EditableProfile>(fallbackProfileFromEmail(`student${DEFAULT_UNIVERSITY.domain}`));
   const [userSettings, setUserSettings] = useState<UserSettingsState>(DEFAULT_USER_SETTINGS);
+  const profileDetailsRef = useRef<Record<string, any>>({});
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingVisibility, setSavingVisibility] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
@@ -770,14 +838,16 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [timetableSettings, setTimetableSettings] = useState<TimetableSettings>(DEFAULT_TIMETABLE_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const settingsBackdropAnim = useRef(new Animated.Value(0)).current;
-  const settingsSheetAnim = useRef(new Animated.Value(Dimensions.get('window').height)).current;
-  const pickerTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
+  const settingsSheetAnim = useRef(new Animated.Value(windowHeight)).current;
+  const pickerTranslateY = useRef(new Animated.Value(windowHeight)).current;
   const seenFriendRequestIdsRef = useRef<Set<string>>(new Set());
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
   const seenCommentIdsRef = useRef<Set<string>>(new Set());
   const seenLikeKeysRef = useRef<Set<string>>(new Set());
   const lastSocialNotificationErrorRef = useRef(0);
   const currentSchool = selectedUniversity?.name ?? DEFAULT_UNIVERSITY.name;
+  const schoolTimeZone = normalizeTimeZone(getSchoolConfig(currentSchool).timeZone);
+  const effectiveTimeZone = normalizeTimeZone(userSettings.timeZone, schoolTimeZone);
 
   const activeKey = quarterKey(selectedQuarter);
   const quarterTimetables = timetables.filter((t) => t.quarterKey === activeKey);
@@ -1048,6 +1118,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       setUserBootstrapLoading(true);
       const fallback = fallbackProfileFromEmail(userEmail || `student${DEFAULT_UNIVERSITY.domain}`);
       let settingsDetails: Record<string, any> | null | undefined;
+      const themeStorageKey = scopedPreferenceStorageKey('theme_preference', currentSchool, userId);
+      const timetableSettingsStorageKey = scopedPreferenceStorageKey('timetable_settings', currentSchool, userId);
 
       try {
         const { data: profileRow, error: profileError } = await withTimeout(
@@ -1083,7 +1155,22 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
         settingsDetails =
           (settingsRow as Record<string, any> | null | undefined)?.profile_details as Record<string, any> | null | undefined;
+        profileDetailsRef.current = settingsDetails && typeof settingsDetails === 'object' ? { ...settingsDetails } : {};
         const forceFeatureOnboarding = forceReviewOnboardingOnce && isReviewAccountEmail(userEmail);
+        const storedThemePreference = normalizeThemePreference(settingsDetails?.themePreference)
+          ?? normalizeThemePreference(await AsyncStorage.getItem(themeStorageKey));
+        if (storedThemePreference) {
+          onThemeChange(storedThemePreference);
+          void AsyncStorage.setItem(themeStorageKey, storedThemePreference);
+        }
+        const storedTimetableSettings = normalizeTimetableSettings(settingsDetails?.timetableSettings)
+          ?? await readStoredTimetableSettings(timetableSettingsStorageKey);
+        if (storedTimetableSettings) {
+          setTimetableSettings(storedTimetableSettings);
+          void AsyncStorage.setItem(timetableSettingsStorageKey, JSON.stringify(storedTimetableSettings));
+        } else {
+          setTimetableSettings(DEFAULT_TIMETABLE_SETTINGS);
+        }
 
         setUserProfile(
           profileFromSources(
@@ -1123,15 +1210,19 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           },
           pushPermissionStatus: ((settingsRow as Record<string, any> | null | undefined)?.push_permission_status as PushPermissionStatus | undefined) ?? DEFAULT_USER_SETTINGS.pushPermissionStatus,
           language: normalizeLanguagePreference(settingsDetails?.language),
-          timeZone: normalizeTimeZonePreference(settingsDetails?.timeZone),
+          timeZone: normalizeTimeZone(settingsDetails?.timeZone, getSchoolConfig(currentSchool).timeZone),
           dateFormat: normalizeDateFormatPreference(settingsDetails?.dateFormat),
         });
         setExpoPushToken(((settingsRow as Record<string, any> | null | undefined)?.expo_push_token as string | undefined) ?? null);
       } catch (error) {
         console.warn('Failed to bootstrap user preferences:', error);
         if (!active) return;
+        profileDetailsRef.current = {};
         setUserProfile(fallback);
-        setUserSettings(DEFAULT_USER_SETTINGS);
+        setUserSettings({
+          ...DEFAULT_USER_SETTINGS,
+          timeZone: normalizeTimeZone(getSchoolConfig(currentSchool).timeZone),
+        });
         setExpoPushToken(null);
         setNeedsProfileSetup(false);
         setNeedsFeatureOnboarding(false);
@@ -1544,21 +1635,23 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     let rescheduleTimerId: ReturnType<typeof setTimeout> | null = null;
 
     async function rescheduleReminderNotifications() {
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      await cancelScheduledClassMateReminders(reminderUserId, currentSchool);
 
       const notifications = userSettings.notifications;
       if (!notifications.pushNotifications || userSettings.pushPermissionStatus !== 'granted') return;
 
+      const selectedQuarterKey = quarterKey(selectedQuarter);
       const currentQuarter = getAcademicTermForDate(currentSchool, new Date());
       const quarterMatchesCurrent =
         currentQuarter.year === selectedQuarter.year && currentQuarter.quarter === selectedQuarter.quarter;
 
       if (notifications.dailyScheduleSummary && quarterMatchesCurrent) {
-        const dailySummaries = buildDailyScheduleSummaryDates(
-          activeCourses,
-          14,
-          normalizeDailyScheduleSummaryHour(notifications.dailyScheduleSummaryHour)
-        );
+	        const dailySummaries = buildDailyScheduleSummaryDates(
+	          activeCourses,
+	          effectiveTimeZone,
+	          14,
+	          normalizeDailyScheduleSummaryHour(notifications.dailyScheduleSummaryHour)
+	        );
         for (const summary of dailySummaries) {
           if (cancelled) return;
           const classCount = summary.courses.length;
@@ -1566,10 +1659,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           const summaryBody = buildDailyScheduleNotificationBody(summary.courses);
 
           await Notifications.scheduleNotificationAsync({
+            identifier: reminderNotificationIdentifier(reminderUserId, currentSchool, 'daily-summary', [
+              selectedQuarterKey,
+              summary.notifyAt.toISOString(),
+            ]),
             content: {
               title: summaryTitle,
               body: summaryBody,
-              data: { type: 'daily-schedule-summary', count: String(classCount) },
+              data: { type: 'daily-schedule-summary', count: String(classCount), school: currentSchool, quarterKey: selectedQuarterKey },
             },
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -1580,14 +1677,19 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       }
 
       if (notifications.classReminders && quarterMatchesCurrent) {
-        const classReminders = buildUpcomingClassReminderDates(activeCourses, notifications.classReminderMinutes);
+	        const classReminders = buildUpcomingClassReminderDates(activeCourses, notifications.classReminderMinutes, effectiveTimeZone);
         for (const reminder of classReminders) {
           if (cancelled) return;
           await Notifications.scheduleNotificationAsync({
+            identifier: reminderNotificationIdentifier(reminderUserId, currentSchool, 'class', [
+              selectedQuarterKey,
+              reminder.course.id,
+              reminder.notifyAt.toISOString(),
+            ]),
             content: {
               title: `${reminder.course.code} starts soon`,
               body: `${reminder.course.title} begins in ${notifications.classReminderMinutes} minutes${reminder.course.location ? ` at ${reminder.course.location}` : ''}.`,
-              data: { type: 'class-reminder', courseId: reminder.course.id },
+              data: { type: 'class-reminder', courseId: reminder.course.id, school: currentSchool, quarterKey: selectedQuarterKey },
             },
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -1628,10 +1730,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           const offsetLabel = formatAssignmentReminderOffset(reminder.offsetMinutes);
           const courseLabel = reminder.assignment.courseCode ? `${reminder.assignment.courseCode}: ` : '';
           await Notifications.scheduleNotificationAsync({
+            identifier: reminderNotificationIdentifier(reminderUserId, currentSchool, 'assignment', [
+              reminder.assignment.id,
+              reminder.offsetMinutes,
+              reminder.notifyAt.toISOString(),
+            ]),
             content: {
               title: `Assignment due in ${offsetLabel}`,
               body: truncateNotificationText(`${courseLabel}${reminder.assignment.title}`, 178),
-              data: { type: 'assignment-reminder', assignmentId: reminder.assignment.id },
+              data: { type: 'assignment-reminder', assignmentId: reminder.assignment.id, school: currentSchool },
             },
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -1651,10 +1758,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             if (notifyAt <= new Date()) continue;
 
             await Notifications.scheduleNotificationAsync({
+              identifier: reminderNotificationIdentifier(reminderUserId, currentSchool, 'sports', [
+                event.id,
+                notifyAt.toISOString(),
+              ]),
               content: {
                 title: `${event.sport} game reminder`,
                 body: `${event.title} starts in ${notifications.sportsGameReminderMinutes} minutes${event.location ? ` at ${event.location}` : ''}.`,
-                data: { type: 'sports-reminder', eventId: event.id },
+                data: { type: 'sports-reminder', eventId: event.id, school: currentSchool },
               },
               trigger: {
                 type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -1676,7 +1787,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       cancelled = true;
       if (rescheduleTimerId) clearTimeout(rescheduleTimerId);
     };
-  }, [activeCourses, assignmentCalendarRevision, currentSchool, selectedQuarter.quarter, selectedQuarter.year, userId, userSettings]);
+  }, [activeCourses, assignmentCalendarRevision, currentSchool, effectiveTimeZone, selectedQuarter.quarter, selectedQuarter.year, userId, userSettings]);
 
   // Load all timetables from Supabase on mount (or when user logs in)
   useEffect(() => {
@@ -1868,7 +1979,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   const openSettingsSheet = () => {
     settingsBackdropAnim.setValue(0);
-    settingsSheetAnim.setValue(Dimensions.get('window').height);
+    settingsSheetAnim.setValue(windowHeight);
     setShowSettings(true);
     Animated.parallel([
       Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
@@ -1878,7 +1989,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   const closeSettingsSheet = () => {
     Animated.parallel([
-      Animated.timing(settingsSheetAnim, { toValue: Dimensions.get('window').height, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(settingsSheetAnim, { toValue: windowHeight, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
       Animated.timing(settingsBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
     ]).start(() => setShowSettings(false));
   };
@@ -1982,7 +2093,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   };
 
   useEffect(() => {
-    const screenHeight = Dimensions.get('window').height;
+    const screenHeight = windowHeight;
 
     if (showCoursePicker) {
       setRenderCoursePicker(true);
@@ -2004,7 +2115,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     }).start(({ finished }) => {
       if (finished) setRenderCoursePicker(false);
     });
-  }, [pickerTranslateY, showCoursePicker]);
+  }, [pickerTranslateY, showCoursePicker, windowHeight]);
 
   const handleLogout = () => {
     suppressNextSignedOutClearRef.current = true;
@@ -2117,7 +2228,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     );
   };
 
-  const saveUserSettingsRow = async (
+	  const saveUserSettingsRow = async (
     nextSettings: UserSettingsState,
     nextProfile: EditableProfile = userProfile,
     nextExpoPushToken: string | null = expoPushToken,
@@ -2126,23 +2237,29 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   ) => {
     if (!userId) throw new Error('missing-user-id');
 
+    const nextProfileDetails = {
+      ...profileDetailsRef.current,
+      ...profileDetailsFromProfile(
+        nextProfile,
+        nextSettings.boardProfileVisible,
+        profileSetupComplete,
+        onboardingComplete,
+      ),
+      language: nextSettings.language,
+      timeZone: nextSettings.timeZone,
+      dateFormat: nextSettings.dateFormat,
+      themePreference: normalizeThemePreference(profileDetailsRef.current.themePreference) ?? themePreference,
+      timetableSettings: normalizeTimetableSettings(profileDetailsRef.current.timetableSettings) ?? timetableSettings,
+    };
+    profileDetailsRef.current = nextProfileDetails;
+
     const payload = {
       user_id: userId,
       timetable_visibility: nextSettings.timetableVisibility,
       notification_settings: nextSettings.notifications,
       push_permission_status: nextSettings.pushPermissionStatus,
       expo_push_token: nextExpoPushToken,
-      profile_details: {
-        ...profileDetailsFromProfile(
-          nextProfile,
-          nextSettings.boardProfileVisible,
-          profileSetupComplete,
-          onboardingComplete,
-        ),
-        language: nextSettings.language,
-        timeZone: nextSettings.timeZone,
-        dateFormat: nextSettings.dateFormat,
-      },
+      profile_details: nextProfileDetails,
       updated_at: new Date().toISOString(),
     };
 
@@ -2156,10 +2273,35 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           : error.message
       );
       throw error;
-    }
-  };
+	    }
+	  };
 
-  const resolveExpoProjectId = () => {
+	  const handleThemePreferenceChange = (nextThemePreference: ThemePreference) => {
+	    onThemeChange(nextThemePreference);
+	    profileDetailsRef.current = { ...profileDetailsRef.current, themePreference: nextThemePreference };
+	    void AsyncStorage.setItem(
+	      scopedPreferenceStorageKey('theme_preference', currentSchool, USER_ID),
+	      nextThemePreference
+	    );
+	    if (userId) {
+	      void saveUserSettingsRow(userSettings).catch(() => {});
+	    }
+	  };
+
+	  const handleTimetableSettingsApply = (nextSettings: TimetableSettings) => {
+	    const normalized = normalizeTimetableSettings(nextSettings) ?? DEFAULT_TIMETABLE_SETTINGS;
+	    setTimetableSettings(normalized);
+	    profileDetailsRef.current = { ...profileDetailsRef.current, timetableSettings: normalized };
+	    void AsyncStorage.setItem(
+	      scopedPreferenceStorageKey('timetable_settings', currentSchool, USER_ID),
+	      JSON.stringify(normalized)
+	    );
+	    if (userId) {
+	      void saveUserSettingsRow(userSettings).catch(() => {});
+	    }
+	  };
+
+	  const resolveExpoProjectId = () => {
     return (
       Constants.easConfig?.projectId ||
       (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ||
@@ -2468,13 +2610,41 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setShowMessages(true);
   };
 
-  const closeMessages = () => {
-    setShowMessages(false);
-    setMessageTarget(null);
-    void loadUnreadMessageCount().then(setUnreadMessageCount);
-  };
+	  const closeMessages = () => {
+	    setShowMessages(false);
+	    setMessageTarget(null);
+	    void loadUnreadMessageCount().then(setUnreadMessageCount);
+	  };
 
-  // ── auth screens ─────────────────────────────────────────────────────────────
+	  useEffect(() => {
+	    if (Platform.OS !== 'android') return undefined;
+	    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+	      if (showCoursePicker) {
+	        setShowCoursePicker(false);
+	        return true;
+	      }
+	      if (showMessages) {
+	        closeMessages();
+	        return true;
+	      }
+	      if (showSettings) {
+	        closeSettingsSheet();
+	        return true;
+	      }
+	      if (!userId && authStack.length > 1) {
+	        popAuth();
+	        return true;
+	      }
+	      if (currentTab !== 'home') {
+	        setCurrentTab('home');
+	        return true;
+	      }
+	      return false;
+	    });
+	    return () => subscription.remove();
+	  }, [authStack.length, currentTab, showCoursePicker, showMessages, showSettings, userId]);
+
+	  // ── auth screens ─────────────────────────────────────────────────────────────
 
   if (authInitializing) {
     return (
@@ -2606,13 +2776,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         topInset={insets.top}
         bottomInset={appBottomInset}
         scrollToTopTrigger={homeTabTapCount}
-        school={currentSchool}
-        onAssignmentCalendarChange={handleAssignmentCalendarChange}
-      />
+	        school={currentSchool}
+	        timeZone={effectiveTimeZone}
+	        onAssignmentCalendarChange={handleAssignmentCalendarChange}
+	      />
     );
   } else if (currentTab === 'timetable') {
     content = (
-      <View style={{ flex: 1, paddingTop: 62, backgroundColor: colors.bg }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <TimetableScreen
           key={`timetable-${timetableTabTapCount}`}
           activeCourses={activeCourses}
@@ -2634,7 +2805,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           onReorderTimetables={handleReorderTimetables}
           onAddQuarter={handleAddQuarter}
           settings={timetableSettings}
-          onSettingsApply={setTimetableSettings}
+	          onSettingsApply={handleTimetableSettingsApply}
+          topInset={insets.top}
           bottomInset={appBottomInset}
           scrollToTopTrigger={timetableTabTapCount}
         />
@@ -2647,6 +2819,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         timetables={timetables}
         userId={USER_ID}
         school={currentSchool}
+        topInset={insets.top}
         bottomInset={appBottomInset}
         scrollToTopTrigger={gradesTabTapCount}
       />
@@ -2659,6 +2832,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         userId={USER_ID}
         boardAuthorName={userProfile.nickname.trim() || displayUserName}
         boardProfileVisible={userSettings.boardProfileVisible}
+        topInset={insets.top}
         bottomInset={appBottomInset}
         scrollToTopTrigger={boardTabTapCount}
         onOpenMessages={() => openMessages(null)}
@@ -2668,7 +2842,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     );
   } else if (currentTab === 'friends') {
     content = (
-      <View style={{ flex: 1, paddingTop: 62, backgroundColor: colors.bg }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <FriendsScreen
           key={`friends-${friendsTabTapCount}`}
           userId={USER_ID}
@@ -2676,6 +2850,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           school={currentSchool}
           activeCourses={homeQuarterKey === academicQuarterKey ? homeQuarterCourses : []}
           selectedQuarter={academicQuarter}
+          topInset={insets.top}
           bottomInset={appBottomInset}
           scrollToTopTrigger={friendsTabTapCount}
           onOpenMessages={() => openMessages(null)}
@@ -2865,7 +3040,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               userProfile={userProfile}
               userSettings={userSettings}
               themePreference={themePreference}
-              onThemeChange={onThemeChange}
+	              onThemeChange={handleThemePreferenceChange}
               onSaveProfile={handleSaveProfile}
               onSaveVisibility={handleSaveVisibility}
               onSaveNotifications={handleSaveNotifications}

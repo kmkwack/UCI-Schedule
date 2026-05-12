@@ -55,9 +55,10 @@ begin
   delete from public.timetables
   where user_id::text = uid_text;
 
-  delete from public.direct_messages
-  where sender_id::text = uid_text
-     or receiver_id::text = uid_text;
+  if to_regclass('public.direct_messages') is not null then
+    execute 'delete from public.direct_messages where sender_id::text = $1 or receiver_id::text = $1'
+    using uid_text;
+  end if;
 
   select coalesce(array_agg(conversation_id), '{}'::uuid[])
   into owned_conversation_ids
@@ -80,11 +81,24 @@ begin
   delete from public.board_requests
   where requester_id::text = uid_text;
 
+  delete from public.sports_event_comments
+  where user_id::text = uid_text;
+
+  delete from public.sports_event_rsvps
+  where user_id::text = uid_text;
+
+  delete from public.course_discord_links
+  where submitted_by::text = uid_text;
+
   delete from public.user_settings
   where user_id::text = uid_text;
 
   delete from public.profiles
   where id::text = uid_text;
+
+  delete from storage.objects
+  where bucket_id = 'board-attachments'
+    and (storage.foldername(name))[1] = uid_text;
 
   delete from auth.users
   where id = uid;

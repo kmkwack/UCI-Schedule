@@ -17,8 +17,8 @@ import {
   Modal,
   Keyboard,
   KeyboardAvoidingView,
-  Dimensions,
   Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -723,6 +723,7 @@ export default function CoursePickerScreen({
   onEditingHandled,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const schoolConfig = getSchoolConfig(school);
   const courseAccent = COURSE_PICKER_ACCENT;
   const courseAccentSoft = COURSE_PICKER_ACCENT_SOFT;
@@ -869,7 +870,9 @@ export default function CoursePickerScreen({
   }
 
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardWillShow', (e) => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, (e) => {
       setKeyboardBackingHeight(e.endCoordinates.height);
       Animated.timing(customizeKeyboardAnim, {
         toValue: e.endCoordinates.height,
@@ -877,7 +880,7 @@ export default function CoursePickerScreen({
         useNativeDriver: false,
       }).start();
     });
-    const hide = Keyboard.addListener('keyboardWillHide', (e) => {
+    const hide = Keyboard.addListener(hideEvent, (e) => {
       setKeyboardBackingHeight(0);
       Animated.timing(customizeKeyboardAnim, {
         toValue: 0,
@@ -1615,7 +1618,7 @@ export default function CoursePickerScreen({
   } as const;
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#f7f8fa', paddingTop: 54 }}>
+    <View style={{ flex: 1, backgroundColor: '#f7f8fa', paddingTop: insets.top + 8 }}>
       <View
         style={{
           paddingHorizontal: 16,
@@ -2059,11 +2062,11 @@ export default function CoursePickerScreen({
                 >
                   {/* Course header row */}
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <View style={{ flex: 1, paddingRight: 12 }}>
-                      <Text style={{ color: '#111827', fontWeight: '700', fontSize: 16 }}>
+                    <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: '#111827', fontWeight: '700', fontSize: 16 }}>
                         {item.department} {item.courseNumber}
                       </Text>
-                      <Text style={{ color: '#4b5563', marginTop: 2, fontSize: 14 }}>{item.title}</Text>
+                      <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: '#4b5563', marginTop: 2, fontSize: 14 }}>{item.title}</Text>
                       {item.units != null && (
                         <Text style={{ color: '#9ca3af', marginTop: 2, fontSize: 12 }}>
                           {item.units} units
@@ -2117,9 +2120,9 @@ export default function CoursePickerScreen({
                               }}
                             >
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                <View style={{ flex: 1 }}>
+                                <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                                    <Text style={{ fontWeight: '600', fontSize: 13, color: '#111827' }}>
+                                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ flexShrink: 1, minWidth: 0, fontWeight: '600', fontSize: 13, color: '#111827' }}>
                                       {sectionDisplayTitle}
                                     </Text>
                                     {statusPresentation && (
@@ -2128,10 +2131,10 @@ export default function CoursePickerScreen({
                                       </View>
                                     )}
                                   </View>
-                                  <Text style={{ color: '#4b5563', fontSize: 12, marginTop: 1 }}>
+                                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: '#4b5563', fontSize: 12, marginTop: 1 }}>
                                     {course.professor}
                                   </Text>
-                                  <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 1 }}>
+                                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: '#6b7280', fontSize: 12, marginTop: 1 }}>
                                     {[course.days, formatCourseTimeRange12(course.time), course.location].filter(Boolean).join(' · ')}
                                   </Text>
                                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 }}>
@@ -2276,7 +2279,7 @@ export default function CoursePickerScreen({
               paddingHorizontal: 16,
               paddingTop: 14,
               paddingBottom: Math.max(insets.bottom + 8, 18),
-              maxHeight: Dimensions.get('window').height * 0.9,
+              maxHeight: windowHeight * 0.9,
               transform: [{ translateY: customizeSheetAnim }],
             }}
           >

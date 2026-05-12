@@ -1,3 +1,5 @@
+import { deviceTimeZoneFallback as resolveDeviceTimeZoneFallback, normalizeTimeZone } from './timeZone';
+
 export type EditableProfile = {
   firstName: string;
   middleName: string;
@@ -44,7 +46,7 @@ export type UserSettingsState = {
 };
 
 export function deviceTimeZoneFallback() {
-  return 'America/Los_Angeles';
+  return resolveDeviceTimeZoneFallback();
 }
 
 export function normalizeLanguagePreference(value: unknown): LanguagePreference {
@@ -56,7 +58,7 @@ export function normalizeDateFormatPreference(value: unknown): DateFormatPrefere
 }
 
 export function normalizeTimeZonePreference(value: unknown): string {
-  return 'America/Los_Angeles';
+  return normalizeTimeZone(value);
 }
 
 const MAJOR_ABBREVIATIONS: Record<string, string> = {

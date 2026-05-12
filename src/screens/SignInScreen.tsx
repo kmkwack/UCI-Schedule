@@ -15,6 +15,7 @@ import UniversityLogo from '../components/UniversityLogo';
 WebBrowser.maybeCompleteAuthSession();
 
 const FALLBACK_AUTH_SCHEME = 'com.parksihyun.classmate';
+const REQUIRED_REVIEW_ACCOUNT_EMAIL = 'review@classmate.app';
 
 function getOAuthRedirectUrl() {
   const configuredScheme = Constants.expoConfig?.scheme;
@@ -44,20 +45,31 @@ function GoogleIcon() {
   );
 }
 
+function emailDomain(email: string) {
+  const normalized = email.trim().toLowerCase();
+  const atIndex = normalized.lastIndexOf('@');
+  return atIndex >= 0 ? normalized.slice(atIndex) : '';
+}
+
+function isRequiredReviewAccount(email: string) {
+  return email.trim().toLowerCase() === REQUIRED_REVIEW_ACCOUNT_EMAIL;
+}
+
 export default function SignInScreen({ university, onBack, onSignedIn, onGoToSignUp }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const [loading, setLoading] = useState(false);
   const [reviewEmail, setReviewEmail] = useState('');
   const [reviewPassword, setReviewPassword] = useState('');
   const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
-  const hd = university.domain.replace('@', ''); // e.g. "uci.edu"
+  const expectedEmailDomain = university.domain.trim().toLowerCase();
+  const hd = expectedEmailDomain.replace(/^@/, ''); // e.g. "uci.edu"
 
   const finalizeSignIn = async (
     userId: string,
     email: string,
-    options: { requireSchoolDomain: boolean }
+    options: { requireSchoolDomain: boolean; reviewAccount?: boolean }
   ) => {
-    if (options.requireSchoolDomain && !email.endsWith(hd)) {
+    if (options.requireSchoolDomain && emailDomain(email) !== expectedEmailDomain) {
       await supabase.auth.signOut();
       Alert.alert('Wrong account', `Please sign in with your ${university.domain} email.`);
       return false;
@@ -71,9 +83,58 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
     }
 
     const hasSignupMarker = userData.user.user_metadata?.classmate_signup_started === true;
+    const reviewAccount = options.reviewAccount === true && isRequiredReviewAccount(email);
+
+    if (options.reviewAccount && !reviewAccount) {
+      await supabase.auth.signOut();
+      Alert.alert('Review access only', `Use the ${REQUIRED_REVIEW_ACCOUNT_EMAIL} account for review access.`);
+      return false;
+    }
+
+    if (reviewAccount) {
+      const profilePayload = {
+        id: userId,
+        email,
+        name: 'App Review',
+        major: null,
+        year: null,
+        school: university.name,
+        updated_at: new Date().toISOString(),
+      };
+      const settingsPayload = {
+        user_id: userId,
+        timetable_visibility: 'friends',
+        notification_settings: { pushNotifications: false },
+        push_permission_status: 'undetermined',
+        profile_details: {
+          firstName: 'App',
+          lastName: 'Review',
+          nickname: 'Reviewer',
+          profileSetupComplete: true,
+          onboardingComplete: true,
+          boardProfileVisible: false,
+        },
+        updated_at: new Date().toISOString(),
+      };
+
+      const [{ error: reviewProfileError }, { error: reviewSettingsError }] = await Promise.all([
+        supabase.from('profiles').upsert(profilePayload),
+        supabase.from('user_settings').upsert(settingsPayload),
+      ]);
+
+      if (reviewProfileError || reviewSettingsError) {
+        await supabase.auth.signOut();
+        Alert.alert(
+          'Review setup failed',
+          reviewProfileError?.message ?? reviewSettingsError?.message ?? 'Could not prepare the review account.'
+        );
+        return false;
+      }
+    }
+
     const [{ data: existingProfile, error: profileError }, { data: existingSettings, error: settingsError }] =
       await Promise.all([
-        supabase.from('profiles').select('id').eq('id', userId).maybeSingle(),
+        supabase.from('profiles').select('id, school').eq('id', userId).eq('school', university.name).maybeSingle(),
         supabase.from('user_settings').select('user_id').eq('user_id', userId).maybeSingle(),
       ]);
 
@@ -86,11 +147,11 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
       return;
     }
 
-    if (!existingProfile) {
+    if (!existingProfile && !reviewAccount) {
       await supabase.auth.signOut();
       Alert.alert(
         'No ClassMate account found',
-        'It looks like this email has not signed up for ClassMate yet. Please create a new account first.',
+        `It looks like this email has not signed up for ClassMate at ${university.name} yet. Please create a new account first.`,
         [
           {
             text: 'Create account',
@@ -105,7 +166,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
       return false;
     }
 
-    if (!hasSignupMarker && !existingSettings) {
+    if (!reviewAccount && !hasSignupMarker && !existingSettings) {
       await supabase.auth.signOut();
       Alert.alert(
         'ClassMate setup incomplete',
@@ -203,7 +264,10 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
       return;
     }
 
-    await finalizeSignIn(data.user.id, data.user.email ?? reviewEmail.trim(), { requireSchoolDomain: false });
+    await finalizeSignIn(data.user.id, data.user.email ?? reviewEmail.trim(), {
+      requireSchoolDomain: false,
+      reviewAccount: true,
+    });
   };
 
   return (

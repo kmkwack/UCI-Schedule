@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Alert,
+  ActivityIndicator,
   Animated,
   Easing,
   PanResponder,
@@ -14,10 +15,10 @@ import {
   TextInput,
   ScrollView,
   StyleSheet,
-  Dimensions,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -29,6 +30,13 @@ import {
   getBlockColors,
   quarterKey,
 } from '../data/courses';
+import {
+  buildSectionMatchKey,
+  getSharedClassMatch,
+  isCustomCourse,
+  normalizeCourseCode,
+  type SharedClassMatch,
+} from '../data/sharedClasses';
 import { DEFAULT_UNIVERSITY, getAcademicTermForDate, getSchoolConfig, termLabel } from '../data/schools';
 import { abbreviateMajor, type TimetableVisibility } from '../data/userPreferences';
 import { useTheme } from '../context/ThemeContext';
@@ -86,8 +94,21 @@ type UserSettingsRow = {
 };
 
 type SharedClassGroup = {
+  key: string;
   course: Course;
   friends: Friend[];
+  matchType: SharedClassMatch;
+};
+
+type UserSharedCourseGroup = {
+  key: string;
+  course: Course;
+  courses: Course[];
+};
+
+type SharedCourseSummary = {
+  course: Course;
+  matchType: SharedClassMatch;
 };
 
 const DEFAULT_DAYS = ['M', 'T', 'W', 'Th', 'F'];
@@ -156,19 +177,21 @@ function firstLastName(name: string): string {
   return parts[0] + ' ' + parts[parts.length - 1];
 }
 
-function buildCourseMatchKey(course: Pick<Course, 'id' | 'code' | 'days' | 'time'>) {
-  if (course.id?.trim()) return course.id.trim();
-  return `${course.code}|${course.days}|${course.time}`;
+function buildSharedCourseGroupKey(course: Course) {
+  if (isCustomCourse(course)) return `section:${buildSectionMatchKey(course)}`;
+  return `course:${normalizeCourseCode(course)}`;
 }
 
-function buildSharedCourseKey(course: Pick<Course, 'code'>) {
-  return course.code.trim().toUpperCase();
-}
-
-function coursesMatch(a: Pick<Course, 'id' | 'code' | 'days' | 'time'>, b: Pick<Course, 'id' | 'code' | 'days' | 'time'>) {
-  if (a.code.trim().toUpperCase() === b.code.trim().toUpperCase()) return true;
-  return buildCourseMatchKey(a) === buildCourseMatchKey(b)
-    || (a.code === b.code && a.days === b.days && a.time === b.time);
+function strongestSharedClassMatch(userCourses: Course[], friendCourses: Course[]): SharedClassMatch | null {
+  let hasSameCourse = false;
+  for (const userCourse of userCourses) {
+    for (const friendCourse of friendCourses) {
+      const match = getSharedClassMatch(userCourse, friendCourse);
+      if (match === 'same_section') return 'same_section';
+      if (match === 'same_course') hasSameCourse = true;
+    }
+  }
+  return hasSameCourse ? 'same_course' : null;
 }
 
 function mapProfileToFriend(
@@ -193,6 +216,7 @@ type Props = {
   school: string;
   activeCourses: Course[];
   selectedQuarter: Quarter;
+  topInset?: number;
   bottomInset?: number;
   scrollToTopTrigger?: number;
   onOpenMessages?: () => void;
@@ -206,6 +230,7 @@ export default function FriendsScreen({
   school,
   activeCourses: userActiveCourses,
   selectedQuarter,
+  topInset = 0,
   bottomInset = 0,
   scrollToTopTrigger = 0,
   onOpenMessages,
@@ -213,6 +238,9 @@ export default function FriendsScreen({
   unreadMessageCount = 0,
 }: Props) {
   const { colors } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
+  const screenWidthRef = useRef(screenWidth);
+  useEffect(() => { screenWidthRef.current = screenWidth; }, [screenWidth]);
   const friendsScrollRef = useRef<ScrollView>(null);
   const requestsScrollRef = useRef<ScrollView>(null);
   useEffect(() => {
@@ -237,8 +265,7 @@ export default function FriendsScreen({
   const [fetchingQuarters, setFetchingQuarters] = useState(false);
   const quarterDropdownAnim = useRef(new Animated.Value(0)).current;
   const quarterItemAnims = useRef<Animated.Value[]>([]);
-  const SCREEN_W = Dimensions.get('window').width;
-  const friendSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
+  const friendSlideAnim = useRef(new Animated.Value(screenWidth)).current;
   const swipeFriendPan = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gs) => gs.dx > 6 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
@@ -246,7 +273,7 @@ export default function FriendsScreen({
         if (gs.dx > 0) friendSlideAnim.setValue(gs.dx);
       },
       onPanResponderRelease: (_, gs) => {
-        if (gs.dx > SCREEN_W * 0.35 || gs.vx > 0.6) {
+        if (gs.dx > screenWidthRef.current * 0.35 || gs.vx > 0.6) {
           closeFriendTimetable();
         } else {
           Animated.spring(friendSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
@@ -283,34 +310,51 @@ export default function FriendsScreen({
   );
 
   const sharedQuarterKey = quarterKey(selectedQuarter);
-  const userQuarterCourses = useMemo(
-    () => Array.from(new Map(userActiveCourses.map((course) => [buildSharedCourseKey(course), course])).values()),
-    [userActiveCourses]
-  );
+  const userQuarterCourseGroups = useMemo<UserSharedCourseGroup[]>(() => {
+    const groups = new Map<string, UserSharedCourseGroup>();
+    userActiveCourses.forEach((course) => {
+      const key = buildSharedCourseGroupKey(course);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.courses.push(course);
+      } else {
+        groups.set(key, { key, course, courses: [course] });
+      }
+    });
+    return Array.from(groups.values());
+  }, [userActiveCourses]);
 
   const sharedClassGroups = useMemo<SharedClassGroup[]>(() => {
-    return userQuarterCourses.flatMap((course) => {
-      const matchingFriends = friends
+    return userQuarterCourseGroups.flatMap((group) => {
+      const friendMatches = friends
         .filter((friendRow) => friendRow.timetableVisibility !== 'private')
-        .filter((friendRow) => {
+        .flatMap((friendRow) => {
           const friendCourses = friendRow.timetables[sharedQuarterKey] ?? [];
-          return friendCourses.some((friendCourse) => coursesMatch(course, friendCourse));
+          const matchType = strongestSharedClassMatch(group.courses, friendCourses);
+          return matchType ? [{ friend: friendRow, matchType }] : [];
         });
 
-      if (matchingFriends.length === 0) return [];
-      return [{ course, friends: matchingFriends }];
+      if (friendMatches.length === 0) return [];
+      const matchType: SharedClassMatch = friendMatches.some((match) => match.matchType === 'same_section') ? 'same_section' : 'same_course';
+      return [{
+        key: group.key,
+        course: group.course,
+        friends: friendMatches.map((match) => match.friend),
+        matchType,
+      }];
     }).sort((left, right) => {
+      if (left.matchType !== right.matchType) return left.matchType === 'same_section' ? -1 : 1;
       if (right.friends.length !== left.friends.length) return right.friends.length - left.friends.length;
       return left.course.code.localeCompare(right.course.code);
     });
-  }, [friends, sharedQuarterKey, userQuarterCourses]);
+  }, [friends, sharedQuarterKey, userQuarterCourseGroups]);
 
   const sharedCoursesByFriendId = useMemo(() => {
-    const map: Record<string, Course[]> = {};
+    const map: Record<string, SharedCourseSummary[]> = {};
     sharedClassGroups.forEach((group) => {
       group.friends.forEach((friendRow) => {
         if (!map[friendRow.id]) map[friendRow.id] = [];
-        map[friendRow.id].push(group.course);
+        map[friendRow.id].push({ course: group.course, matchType: group.matchType });
       });
     });
     return map;
@@ -411,10 +455,20 @@ export default function FriendsScreen({
 
       let visibilityByUserId: Record<string, TimetableVisibility> = {};
       if (acceptedIds.length > 0) {
-        const { data: settingsRows, error: settingsError } = await supabase
-          .from('user_settings')
-          .select('user_id, timetable_visibility')
-          .in('user_id', acceptedIds);
+        let { data: settingsRows, error: settingsError } = await supabase
+          .rpc('get_friend_timetable_visibility', {
+            friend_ids: acceptedIds,
+            target_school: school,
+          });
+
+        if (settingsError?.code === 'PGRST202' || settingsError?.code === '42883') {
+          const fallback = await supabase
+            .from('user_settings')
+            .select('user_id, timetable_visibility')
+            .in('user_id', acceptedIds);
+          settingsRows = fallback.data;
+          settingsError = fallback.error;
+        }
 
         if (settingsError && settingsError.code !== 'PGRST205') {
           console.error('Failed to load friend visibility settings:', settingsError);
@@ -577,15 +631,15 @@ export default function FriendsScreen({
   }, [school, selectedFriendId]);
 
   function openFriendTimetable(friendId: string) {
-    friendSlideAnim.setValue(SCREEN_W);
+    friendSlideAnim.setValue(screenWidthRef.current);
     setSelectedFriendId(friendId);
     Animated.spring(friendSlideAnim, { toValue: 0, useNativeDriver: true, tension: 120, friction: 18 }).start();
   }
 
   function closeFriendTimetable() {
-    Animated.timing(friendSlideAnim, { toValue: SCREEN_W, duration: 220, useNativeDriver: true }).start(() => {
+    Animated.timing(friendSlideAnim, { toValue: screenWidthRef.current, duration: 220, useNativeDriver: true }).start(() => {
       setSelectedFriendId(null);
-      friendSlideAnim.setValue(SCREEN_W);
+      friendSlideAnim.setValue(screenWidthRef.current);
     });
   }
 
@@ -833,7 +887,7 @@ export default function FriendsScreen({
   const usableW =
     gridWidth > 0
       ? gridWidth - TIME_LABEL_WIDTH
-      : Dimensions.get('window').width - GRID_LEFT_PAD - 24 - TIME_LABEL_WIDTH;
+      : screenWidth - GRID_LEFT_PAD - 24 - TIME_LABEL_WIDTH;
   const dayColW = usableW / visibleDays.length;
   const compactGrid = visibleDays.length >= 6 || totalHours >= 11;
 
@@ -968,9 +1022,9 @@ export default function FriendsScreen({
                               gap: 12,
                             }}
                           >
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{firstLastName(user.name)}</Text>
-                              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{user.email}</Text>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{firstLastName(user.name)}</Text>
+                              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{user.email}</Text>
                               <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
                                 {user.major} • {user.year}
                               </Text>
@@ -1011,9 +1065,9 @@ export default function FriendsScreen({
           </KeyboardAvoidingView>
         </Modal>
 
-        <View style={{ paddingHorizontal: 18, paddingTop: 4, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: 0, color: colors.text }}>ClassMates</Text>
+        <View style={{ paddingHorizontal: 18, paddingTop: topInset + 4, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 30, fontWeight: '800', letterSpacing: 0, color: colors.text }}>ClassMates</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             {onOpenMessages ? (
@@ -1086,15 +1140,16 @@ export default function FriendsScreen({
         </View>
 
         <View style={{ flexDirection: 'row', paddingHorizontal: 18, gap: 8, marginBottom: 4, alignItems: 'center', justifyContent: 'space-between' }}>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity
               onPress={() => setActiveTab('friends')}
               style={{
+                flexShrink: 1,
                 paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
                 backgroundColor: activeTab === 'friends' ? colors.brand : colors.bgTertiary,
               }}
             >
-              <Text style={{
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{
                 fontSize: 14, fontWeight: '600',
                 color: activeTab === 'friends' ? 'white' : colors.textSecondary,
               }}>
@@ -1105,12 +1160,13 @@ export default function FriendsScreen({
             <TouchableOpacity
               onPress={() => { setActiveTab('requests'); setEditMode(false); }}
               style={{
+                flexShrink: 1,
                 paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
                 backgroundColor: activeTab === 'requests' ? colors.brand : colors.bgTertiary,
                 flexDirection: 'row', alignItems: 'center', gap: 4,
               }}
             >
-              <Text style={{
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{
                 fontSize: 14, fontWeight: '600',
                 color: activeTab === 'requests' ? 'white' : colors.textSecondary,
               }}>
@@ -1162,7 +1218,7 @@ export default function FriendsScreen({
               </View>
               {sharedClassGroups.length > 0 ? (
                 sharedClassGroups.slice(0, 4).map((group, index) => (
-                  <View key={buildCourseMatchKey(group.course)}>
+                  <View key={group.key}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, gap: 10 }}>
                       <View style={{
                         borderRadius: 8,
@@ -1180,6 +1236,14 @@ export default function FriendsScreen({
                             color: getBlockColors(group.course, 'minimal').text,
                           }}>
                             {group.course.code}
+                          </Text>
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{
+                            fontSize: 9,
+                            fontWeight: '800',
+                            color: colors.textTertiary,
+                            marginTop: 1,
+                          }}>
+                            {group.matchType === 'same_section' ? 'Same section' : 'Same course'}
                           </Text>
                       </View>
                       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
@@ -1230,7 +1294,7 @@ export default function FriendsScreen({
                     ) : null}
                   </View>
                 ))
-              ) : userQuarterCourses.length > 0 ? <View style={{ height: 7 }} /> : (
+              ) : userQuarterCourseGroups.length > 0 ? <View style={{ height: 7 }} /> : (
                 <View style={{ paddingHorizontal: 14, paddingVertical: 14 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <View style={{
@@ -1253,8 +1317,9 @@ export default function FriendsScreen({
             </View>
           </View>
 
-          {false ? (
+          {friendsLoading ? (
             <View style={{ minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+              <ActivityIndicator size="small" color={colors.brand} />
               <Text style={{ fontSize: 15, color: colors.textTertiary }}>Loading classmates...</Text>
             </View>
           ) : filteredFriends.length === 0 ? (
@@ -1281,15 +1346,25 @@ export default function FriendsScreen({
                       </Text>
                     </View>
 
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{firstLastName(f.name)}</Text>
-                      <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{f.email}</Text>
-                      <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{firstLastName(f.name)}</Text>
+                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{f.email}</Text>
+                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
                         {f.major} • {f.year}
                       </Text>
                       {sharedCoursesByFriendId[f.id]?.length > 0 ? (
                         <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.brand, marginTop: 4, fontWeight: '700' }} adjustsFontSizeToFit minimumFontScale={0.86}>
-                          {sharedCoursesByFriendId[f.id].length} shared • {sharedCoursesByFriendId[f.id].slice(0, 2).map((course) => course.code).join(' • ')}
+                          {(() => {
+                            const summaries = sharedCoursesByFriendId[f.id];
+                            const allSameSection = summaries.every((summary) => summary.matchType === 'same_section');
+                            const allSameCourse = summaries.every((summary) => summary.matchType === 'same_course');
+                            const label = allSameSection
+                              ? `${summaries.length} same section${summaries.length === 1 ? '' : 's'}`
+                              : allSameCourse
+                                ? `${summaries.length} same course${summaries.length === 1 ? '' : 's'}`
+                                : `${summaries.length} shared courses`;
+                            return `${label} • ${summaries.slice(0, 2).map((summary) => summary.course.code).join(' • ')}`;
+                          })()}
                         </Text>
                       ) : null}
                       {f.timetableVisibility === 'private' && (
@@ -1365,8 +1440,9 @@ export default function FriendsScreen({
             </>
           )}
           </ScrollView>
-        ) : false ? (
+        ) : friendsLoading ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <ActivityIndicator size="small" color={colors.brand} />
             <Text style={{ fontSize: 15, color: colors.textTertiary }}>Loading requests...</Text>
           </View>
         ) : pendingRequests.length === 0 && sentRequests.length === 0 ? (
@@ -1390,10 +1466,10 @@ export default function FriendsScreen({
                       }}>
                         <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>{getInitials(req.name)}</Text>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{firstLastName(req.name)}</Text>
-                        <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{req.email}</Text>
-                        <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{req.major} • {req.year}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{firstLastName(req.name)}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{req.email}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{req.major} • {req.year}</Text>
                       </View>
                       <TouchableOpacity
                         onPress={() => handleRespondToRequest(req.id, 'accepted')}
@@ -1430,10 +1506,10 @@ export default function FriendsScreen({
                       }}>
                         <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>{getInitials(req.name)}</Text>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{firstLastName(req.name)}</Text>
-                        <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{req.email}</Text>
-                        <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{req.major} • {req.year}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{firstLastName(req.name)}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{req.email}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{req.major} • {req.year}</Text>
                       </View>
                       <TouchableOpacity
                         onPress={() => handleCancelRequest(req.id)}
@@ -1466,15 +1542,16 @@ export default function FriendsScreen({
           <Modal transparent visible={showQuarterDropdown} onRequestClose={closeQuarterDropdown}>
             <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeQuarterDropdown}>
               <Animated.View style={{
-                position: 'absolute', top: 90, right: 16,
+                position: 'absolute', top: topInset + 44, right: 16,
                 backgroundColor: colors.card, borderRadius: 12,
                 shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.15, shadowRadius: 12, elevation: 8,
                 minWidth: 160, overflow: 'hidden',
                 opacity: quarterDropdownAnim,
               }}>
-                {false ? (
+                {fetchingQuarters ? (
                   <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+                    <ActivityIndicator size="small" color={colors.brand} style={{ marginBottom: 6 }} />
                     <Text style={{ color: colors.textSecondary, fontSize: 14 }}>Loading…</Text>
                   </View>
                 ) : friendAvailableQuarters.length === 0 ? (

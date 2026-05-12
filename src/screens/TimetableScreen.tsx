@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, Dimensions, ScrollView, Modal } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, ScrollView, Modal, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown } from '../data/courses';
 import { buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
@@ -137,6 +137,7 @@ type Props = {
   onAddQuarter: (q: Quarter) => void;
   settings: TimetableSettings;
   onSettingsApply: (s: TimetableSettings) => void;
+  topInset?: number;
   bottomInset?: number;
   scrollToTopTrigger?: number;
 };
@@ -305,13 +306,17 @@ export default function TimetableScreen({
   onAddQuarter,
   settings,
   onSettingsApply,
+  topInset = 0,
   bottomInset = 0,
   scrollToTopTrigger = 0,
 }: Props) {
   const { colors, isDark } = useTheme();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const screenWidthRef = useRef(screenWidth);
+  useEffect(() => { screenWidthRef.current = screenWidth; }, [screenWidth]);
   const pickerTermLabel = (term: Quarter) => termLabel(term, school, false);
   const [gridWidth, setGridWidth] = useState(
-    Math.max(0, Dimensions.get('window').width - GRID_LEFT_PAD - GRID_OUTER_HORIZONTAL_PADDING)
+    Math.max(0, screenWidth - GRID_LEFT_PAD - GRID_OUTER_HORIZONTAL_PADDING)
   );
   const timetableScrollRef = useRef<ScrollView>(null);
   useEffect(() => {
@@ -375,7 +380,7 @@ export default function TimetableScreen({
   const [addableQuarters, setAddableQuarters] = useState<Quarter[]>([]);
   const [selectedAddYear, setSelectedAddYear] = useState<string | null>(null); // drives header
   const [mountedYear, setMountedYear] = useState<string | null>(null); // keeps quarter list alive during slide-out
-  const addYearSlideAnim = useRef(new Animated.Value(Dimensions.get('window').width)).current;
+  const addYearSlideAnim = useRef(new Animated.Value(screenWidth)).current;
   const addSheetSlideAnim = useRef(new Animated.Value(600)).current;
   const addBackdropAnim = useRef(new Animated.Value(0)).current;
   const settingsBackdropAnim = useRef(new Animated.Value(0)).current;
@@ -428,7 +433,7 @@ export default function TimetableScreen({
       Animated.timing(addBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
     ]).start(() => {
       setSelectedAddYear(null);
-      addYearSlideAnim.setValue(Dimensions.get('window').width);
+      addYearSlideAnim.setValue(screenWidthRef.current);
       setMountedYear(null);
       setShowAddQuarterModal(false);
     });
@@ -440,7 +445,7 @@ export default function TimetableScreen({
     const targetH = calcListHeight(count);
     setSelectedAddYear(year);
     setMountedYear(year);
-    addYearSlideAnim.setValue(Dimensions.get('window').width);
+    addYearSlideAnim.setValue(screenWidthRef.current);
     Animated.parallel([
       Animated.spring(addYearSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
       Animated.spring(contentHeightAnim, { toValue: targetH, useNativeDriver: false, tension: 100, friction: 16 }),
@@ -450,7 +455,7 @@ export default function TimetableScreen({
   function drillBackToYears() {
     setSelectedAddYear(null); // header switches to "Select Year" immediately
     Animated.parallel([
-      Animated.timing(addYearSlideAnim, { toValue: Dimensions.get('window').width, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(addYearSlideAnim, { toValue: screenWidthRef.current, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
       Animated.spring(contentHeightAnim, { toValue: yearListHeightRef.current, useNativeDriver: false, tension: 100, friction: 16 }),
     ]).start(() => setMountedYear(null)); // quarter list unmounts only after slide-out finishes
   }
@@ -464,7 +469,7 @@ export default function TimetableScreen({
       if (gs.dx > 0) addYearSlideAnim.setValue(gs.dx);
     },
     onPanResponderRelease: (_, gs) => {
-      if (gs.dx > Dimensions.get('window').width * 0.35 || gs.vx > 0.6) {
+      if (gs.dx > screenWidthRef.current * 0.35 || gs.vx > 0.6) {
         drillBackRef.current();
       } else {
         Animated.spring(addYearSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
@@ -507,8 +512,6 @@ export default function TimetableScreen({
   const blockTheme = normalizeTimetableTheme(settings.theme);
 
   const exportCaptureRef = useRef<View>(null);
-  const screenWidth = Dimensions.get('window').width;
-
   // Drag-to-reorder state for timetable pills
   const [localOrder, setLocalOrder] = useState<string[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -524,8 +527,6 @@ export default function TimetableScreen({
 
   // Enable LayoutAnimation on Android
   if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
-  const screenHeight = Dimensions.get('window').height;
-
   const scheduledCourses = useMemo(
     () => activeCourses.filter((course) => course.time !== 'TBA' && course.days !== 'TBA'),
     [activeCourses]
@@ -1130,7 +1131,7 @@ export default function TimetableScreen({
           <Animated.View
             style={{
               position: 'absolute',
-              top: 96,
+              top: topInset + 44,
               right: 52,
               backgroundColor: colors.card,
               borderRadius: 12,
@@ -1195,7 +1196,7 @@ export default function TimetableScreen({
           <Animated.View
             style={{
               position: 'absolute',
-              top: 96,
+              top: topInset + 44,
               right: 16,
               backgroundColor: colors.card,
               borderRadius: 14,
@@ -1977,13 +1978,13 @@ export default function TimetableScreen({
           contentContainerStyle={{ paddingBottom: bottomInset + 96 }}
         >
         {/* Header */}
-        <View style={{ paddingHorizontal: 18, paddingBottom: 10, paddingTop: 6 }}>
+        <View style={{ paddingHorizontal: 18, paddingBottom: 10, paddingTop: topInset + 6 }}>
           {/* Row 1: Title + Quarter picker + three-dots */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
             <Text style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: 0 }}>
               Timetable
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <View style={{ maxWidth: Math.max(128, screenWidth * 0.48), flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <TouchableOpacity
                 onPress={openQuarterDropdown}
                 style={{
@@ -2003,7 +2004,7 @@ export default function TimetableScreen({
                   elevation: 3,
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
+                <Text numberOfLines={1} ellipsizeMode="tail" style={{ flexShrink: 1, minWidth: 0, fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
                   {timetables.length === 0 ? '--' : pickerTermLabel(selectedQuarter)}
                 </Text>
                 <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
@@ -2075,7 +2076,7 @@ export default function TimetableScreen({
                         elevation: 3,
                       }}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: isActive ? 'white' : colors.textSecondary }}>
+                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ maxWidth: 132, fontSize: 13, fontWeight: '600', color: isActive ? 'white' : colors.textSecondary }}>
                         {t.name}
                       </Text>
                     </TouchableOpacity>

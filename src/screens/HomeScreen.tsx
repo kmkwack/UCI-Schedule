@@ -5,11 +5,13 @@ import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, blockColorKey, formatCourseTimeRange12, pastelForCourse, quarterKey } from '../data/courses';
+import { buildSectionMatchKey, getSharedClassMatch, normalizeCourseCode, type SharedClassMatch } from '../data/sharedClasses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
 import { fetchDiningMenusForSchool, schoolDiningMenusSupported, type DiningLocationMenu, type DiningMenuMeal } from '../data/diningMenus';
 import { academicSystemNoun, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
+import { formatDateInTimeZone, getZonedDateParts, normalizeTimeZone, zonedDateFromParts, zonedDateKey, zonedWeekdayIndex } from '../data/timeZone';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
@@ -21,6 +23,7 @@ type Props = {
   topInset?: number;
   userId: string;
   school: string;
+  timeZone?: string;
   bottomInset?: number;
   scrollToTopTrigger?: number;
   onAssignmentCalendarChange?: () => void;
@@ -53,8 +56,11 @@ type ClassmateMatch = {
   id: string;
   name: string;
   email: string;
-  sharedCourseIds: string[];
-  sharedCourseCodes: string[];
+  sharedCourseMatches: {
+    courseKey: string;
+    courseCode: string;
+    matchType: SharedClassMatch;
+  }[];
 };
 
 type SportsEventRsvpStatus = 'going';
@@ -157,20 +163,7 @@ function campusInfoResourceCaption(resource: CampusInfoResource) {
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-const QUARTER_DATES: Record<string, { start: string; end: string }> = {
-  '2024-Fall': { start: '2024-09-26', end: '2024-12-13T23:59:59' },
-  '2025-Winter': { start: '2025-01-06', end: '2025-03-21T23:59:59' },
-  '2025-Spring': { start: '2025-03-31', end: '2025-06-13T23:59:59' },
-  '2025-Fall': { start: '2025-09-25', end: '2025-12-12T23:59:59' },
-  '2026-Winter': { start: '2026-01-05', end: '2026-03-20T23:59:59' },
-  '2026-Spring': { start: '2026-03-30', end: '2026-06-12T23:59:59' },
-  '2026-Summer1': { start: '2026-06-22', end: '2026-07-29T23:59:59' },
-  '2026-Summer10wk': { start: '2026-06-22', end: '2026-08-28T23:59:59' },
-  '2026-Summer2': { start: '2026-08-03', end: '2026-09-09T23:59:59' },
-  '2026-Fall': { start: '2026-09-24', end: '2026-12-11T23:59:59' },
-  '2027-Winter': { start: '2027-01-04', end: '2027-03-19T23:59:59' },
-  '2027-Spring': { start: '2027-03-29', end: '2027-06-11T23:59:59' },
-};
+type SchoolTermDateRange = { start: Date; end: Date };
 
 const HOME_SPORTS_FETCH_DELAY_MS = 250;
 const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
@@ -698,11 +691,18 @@ function getIcsField(lines: string[], fieldName: string) {
   };
 }
 
-function parseIcsDate(value: string, allDay: boolean) {
+function parseIcsDate(value: string, allDay: boolean, timeZone: string) {
   const dateOnly = value.match(/^(\d{4})(\d{2})(\d{2})$/);
   if (dateOnly) {
     const [, year, month, day] = dateOnly;
-    return new Date(Number(year), Number(month) - 1, Number(day), allDay ? 23 : 0, allDay ? 59 : 0, 0);
+    return zonedDateFromParts({
+      year: Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: allDay ? 23 : 0,
+      minute: allDay ? 59 : 0,
+      second: 0,
+    }, timeZone);
   }
 
   const dateTime = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?(Z)?$/);
@@ -711,7 +711,14 @@ function parseIcsDate(value: string, allDay: boolean) {
   if (isUtc) {
     return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second ?? 0)));
   }
-  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second ?? 0));
+  return zonedDateFromParts({
+    year: Number(year),
+    month: Number(month),
+    day: Number(day),
+    hour: Number(hour),
+    minute: Number(minute),
+    second: Number(second ?? 0),
+  }, timeZone);
 }
 
 function splitCalendarSummary(summary: string) {
@@ -729,7 +736,7 @@ function splitCalendarSummary(summary: string) {
   };
 }
 
-function parseCalendarTasksFromIcs(text: string): CalendarTask[] {
+function parseCalendarTasksFromIcs(text: string, timeZone: string): CalendarTask[] {
   const lines = unfoldIcsLines(text);
   const assignments: CalendarTask[] = [];
   let current: string[] | null = null;
@@ -747,7 +754,7 @@ function parseCalendarTasksFromIcs(text: string): CalendarTask[] {
       const url = decodeIcsText(getIcsField(current, 'URL')?.value ?? '');
       const description = stripHtml(getIcsField(current, 'DESCRIPTION')?.value ?? getIcsField(current, 'X-ALT-DESC')?.value ?? '');
       const allDay = start?.raw.includes('VALUE=DATE') ?? false;
-      const dueAt = start ? parseIcsDate(start.value.trim(), allDay) : null;
+      const dueAt = start ? parseIcsDate(start.value.trim(), allDay, timeZone) : null;
 
       if (uid && summary && dueAt && !Number.isNaN(dueAt.getTime())) {
         const parsedSummary = splitCalendarSummary(summary);
@@ -770,12 +777,12 @@ function parseCalendarTasksFromIcs(text: string): CalendarTask[] {
   return assignments.sort((left, right) => new Date(left.dueAt).getTime() - new Date(right.dueAt).getTime());
 }
 
-function formatCalendarTaskDueLabel(assignment: CalendarTask, now: Date) {
+function formatCalendarTaskDueLabel(assignment: CalendarTask, now: Date, timeZone: string) {
   const due = new Date(assignment.dueAt);
-  const dayLabel = formatRelativeEventDayLabel(due, now);
+  const dayLabel = formatRelativeEventDayLabel(due, now, timeZone);
   const prefix = due.getTime() < now.getTime() ? 'Past due' : 'Due';
   if (assignment.allDay) return `${prefix} ${dayLabel}`;
-  return `${prefix} ${dayLabel} · ${due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+  return `${prefix} ${dayLabel} · ${formatDateInTimeZone(due, timeZone, { hour: 'numeric', minute: '2-digit', hour12: true })}`;
 }
 
 function isCalendarTaskOverdue(assignment: CalendarTask, completed: boolean, now: Date) {
@@ -865,21 +872,55 @@ function mergeSyncedCalendarTasks(
   ));
 }
 
-function getQuarterBounds(selectedQuarter: Quarter) {
-  const key = `${selectedQuarter.year}-${selectedQuarter.quarter}`;
-  const range = QUARTER_DATES[key];
-  if (!range) {
-    const fallbackByTerm: Record<string, { start: string; end: string }> = {
-      Spring: { start: `${selectedQuarter.year}-01-10`, end: `${selectedQuarter.year}-05-15T23:59:59` },
-      Summer: { start: `${selectedQuarter.year}-06-01`, end: `${selectedQuarter.year}-08-15T23:59:59` },
-      Fall: { start: `${selectedQuarter.year}-08-20`, end: `${selectedQuarter.year}-12-20T23:59:59` },
-    };
-    const fallback = fallbackByTerm[selectedQuarter.quarter] ?? { start: `${selectedQuarter.year}-01-01`, end: `${selectedQuarter.year}-03-31T23:59:59` };
-    const fallbackStart = new Date(fallback.start);
-    const fallbackEnd = new Date(fallback.end);
-    return { start: fallbackStart, end: fallbackEnd };
+function termBoundaryFromString(value: string | null | undefined, timeZone: string, endOfDay: boolean) {
+  if (!value) return null;
+  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return zonedDateFromParts({
+      year: Number(dateOnly[1]),
+      month: Number(dateOnly[2]),
+      day: Number(dateOnly[3]),
+      hour: endOfDay ? 23 : 0,
+      minute: endOfDay ? 59 : 0,
+      second: endOfDay ? 59 : 0,
+    }, timeZone);
   }
-  return { start: new Date(range.start), end: new Date(range.end) };
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function fallbackQuarterBounds(selectedQuarter: Quarter, school: string, timeZone: string): SchoolTermDateRange {
+  const year = Number(selectedQuarter.year);
+  const system = getSchoolConfig(school).academicSystem;
+  const normalizedTerm = selectedQuarter.quarter.toLowerCase();
+  const fallback = system === 'semester'
+    ? normalizedTerm.includes('fall')
+      ? { startMonth: 8, startDay: 20, endMonth: 12, endDay: 20 }
+      : normalizedTerm.includes('summer')
+        ? { startMonth: 6, startDay: 1, endMonth: 8, endDay: 15 }
+        : { startMonth: 1, startDay: 10, endMonth: 5, endDay: 15 }
+    : normalizedTerm.includes('fall')
+      ? { startMonth: 9, startDay: 20, endMonth: 12, endDay: 15 }
+      : normalizedTerm.includes('summer')
+        ? { startMonth: 6, startDay: 15, endMonth: 9, endDay: 10 }
+        : normalizedTerm.includes('spring')
+          ? { startMonth: 3, startDay: 25, endMonth: 6, endDay: 15 }
+          : { startMonth: 1, startDay: 3, endMonth: 3, endDay: 25 };
+
+  return {
+    start: zonedDateFromParts({ year, month: fallback.startMonth, day: fallback.startDay, hour: 0, minute: 0, second: 0 }, timeZone),
+    end: zonedDateFromParts({ year, month: fallback.endMonth, day: fallback.endDay, hour: 23, minute: 59, second: 59 }, timeZone),
+  };
+}
+
+function getQuarterBounds(
+  selectedQuarter: Quarter,
+  school: string,
+  timeZone: string,
+  termDateRange: SchoolTermDateRange | null
+) {
+  if (termDateRange) return termDateRange;
+  return fallbackQuarterBounds(selectedQuarter, school, timeZone);
 }
 
 function getWeekNumber(now: Date, quarterStart: Date, quarterEnd: Date) {
@@ -898,35 +939,34 @@ function getDaysRemainingInQuarter(now: Date, quarterEnd: Date) {
   return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
 }
 
-function getDateLabel(now: Date, selectedQuarter: Quarter, quarterStart: Date, quarterEnd: Date, school: string) {
-  const dayName = DAY_LABELS[now.getDay()];
-  const month = MONTH_LABELS[now.getMonth()];
-  const date = now.getDate();
+function getDateLabel(now: Date, selectedQuarter: Quarter, quarterStart: Date, quarterEnd: Date, school: string, timeZone: string) {
+  const parts = getZonedDateParts(now, timeZone);
+  const dayName = DAY_LABELS[zonedWeekdayIndex(now, timeZone)];
+  const month = MONTH_LABELS[parts.month - 1] ?? '';
+  const date = parts.day;
   const week = getWeekNumber(now, quarterStart, quarterEnd);
   return `${month} ${date} ${dayName} · ${termLabel(selectedQuarter, school)} · Week ${week}`;
 }
 
-function formatEventDayLabel(date: Date) {
-  const dayName = DAY_LABELS[date.getDay()];
-  const month = MONTH_LABELS[date.getMonth()];
-  return `${dayName}, ${month} ${date.getDate()}`;
+function formatEventDayLabel(date: Date, timeZone: string) {
+  const parts = getZonedDateParts(date, timeZone);
+  const dayName = DAY_LABELS[zonedWeekdayIndex(date, timeZone)];
+  const month = MONTH_LABELS[parts.month - 1] ?? '';
+  return `${dayName}, ${month} ${parts.day}`;
 }
 
-function formatRelativeEventDayLabel(date: Date, now: Date) {
-  const target = new Date(date);
-  target.setHours(0, 0, 0, 0);
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
+function formatRelativeEventDayLabel(date: Date, now: Date, timeZone: string) {
+  const targetKey = zonedDateKey(date, timeZone);
+  const todayKey = zonedDateKey(now, timeZone);
+  const tomorrowKey = zonedDateKey(zonedDateFromParts({ ...getZonedDateParts(now, timeZone), day: getZonedDateParts(now, timeZone).day + 1 }, timeZone), timeZone);
 
-  if (target.getTime() === today.getTime()) return 'Today';
-  if (target.getTime() === tomorrow.getTime()) return 'Tomorrow';
-  return formatEventDayLabel(date);
+  if (targetKey === todayKey) return 'Today';
+  if (targetKey === tomorrowKey) return 'Tomorrow';
+  return formatEventDayLabel(date, timeZone);
 }
 
-function formatSportsEventDetailDate(event: SportsEvent) {
-  return `${formatEventDayLabel(event.date)} · ${formatSportsEventTime(event.date, event.timeLabel)}`;
+function formatSportsEventDetailDate(event: SportsEvent, timeZone: string) {
+  return `${formatEventDayLabel(event.date, timeZone)} · ${formatSportsEventTime(event.date, event.timeLabel, timeZone)}`;
 }
 
 function timeAgo(isoString: string): string {
@@ -988,8 +1028,8 @@ async function openSportsVenueInMaps(venue: SportsVenue, school: string) {
   } catch {}
 }
 
-function getTodayDayCode(): string | null {
-  const day = new Date().getDay();
+function getTodayDayCode(now: Date, timeZone: string): string | null {
+  const day = zonedWeekdayIndex(now, timeZone);
   if (day === 0) return 'Su';
   if (day === 1) return 'M';
   if (day === 2) return 'T';
@@ -1031,20 +1071,19 @@ function extractEndHour(timeRange: string) {
   return hour + minute / 60;
 }
 
-function dateFromHour(baseDate: Date, hourValue: number) {
+function dateFromHour(baseDate: Date, hourValue: number, timeZone: string) {
   const hours = Math.floor(hourValue);
   const minutes = Math.round((hourValue - hours) * 60);
-  const next = new Date(baseDate);
-  next.setHours(hours, minutes, 0, 0);
-  return next;
+  const parts = getZonedDateParts(baseDate, timeZone);
+  return zonedDateFromParts({ ...parts, hour: hours, minute: minutes, second: 0 }, timeZone);
 }
 
-function formatClock(date: Date) {
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+function formatClock(date: Date, timeZone: string) {
+  return formatDateInTimeZone(date, timeZone, { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
-function formatTimelineClockParts(date: Date) {
-  const label = formatClock(date);
+function formatTimelineClockParts(date: Date, timeZone: string) {
+  const label = formatClock(date, timeZone);
   const match = label.match(/^(.+)\s([AP]M)$/i);
   return match
     ? { time: match[1], period: match[2].toUpperCase() }
@@ -1079,16 +1118,6 @@ function formatHeroTimelineLocation(location?: string) {
     return '';
   }
   return raw;
-}
-
-function buildCourseMatchKey(course: Pick<Course, 'id' | 'code' | 'days' | 'time'>) {
-  if (course.id?.trim()) return course.id.trim();
-  return `${course.code}|${course.days}|${course.time}`;
-}
-
-function coursesMatch(a: Pick<Course, 'id' | 'code' | 'days' | 'time'>, b: Pick<Course, 'id' | 'code' | 'days' | 'time'>) {
-  return buildCourseMatchKey(a) === buildCourseMatchKey(b)
-    || (a.code === b.code && a.days === b.days && a.time === b.time);
 }
 
 function ProgressRing({
@@ -1231,6 +1260,7 @@ export default function HomeScreen({
   onOpenSettings,
   userId,
   school,
+  timeZone,
   topInset = 0,
   bottomInset = 0,
   scrollToTopTrigger = 0,
@@ -1238,6 +1268,7 @@ export default function HomeScreen({
 }: Props) {
   const { colors, isDark } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const effectiveTimeZone = normalizeTimeZone(timeZone, getSchoolConfig(school).timeZone);
   const scrollRef = useRef<ScrollView>(null);
   const sportsEventScrollRef = useRef<ScrollView>(null);
   const sportsEventCommentInputRef = useRef<TextInput>(null);
@@ -1292,6 +1323,7 @@ export default function HomeScreen({
   const [calendarSetupKeyboardHeight, setCalendarSetupKeyboardHeight] = useState(0);
   const [showCampusInfo, setShowCampusInfo] = useState(false);
   const [expandedCampusInfoCards, setExpandedCampusInfoCards] = useState<Record<string, boolean>>({});
+  const [termDateRange, setTermDateRange] = useState<SchoolTermDateRange | null>(null);
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const calendarProviderStorageKey = userScopedStorageKey('assignment_calendar_provider', userId);
@@ -1303,7 +1335,7 @@ export default function HomeScreen({
   const legacyCalendarTasksStorageKey = userScopedStorageKey('canvas_assignments_cache', userId);
   const legacyCalendarCompletedStorageKey = userScopedStorageKey('canvas_assignments_completed', userId);
   const legacyCalendarLastSyncStorageKey = userScopedStorageKey('canvas_assignments_last_sync', userId);
-  const { start: quarterStart, end: quarterEnd } = getQuarterBounds(selectedQuarter);
+  const { start: quarterStart, end: quarterEnd } = getQuarterBounds(selectedQuarter, school, effectiveTimeZone, termDateRange);
   const sportsEventSheetHeight = Math.round(windowHeight * 0.88);
   const sportsListSheetHeight = Math.round(windowHeight * 0.72);
   const diningListSheetHeight = Math.round(windowHeight * 0.84);
@@ -1319,6 +1351,41 @@ export default function HomeScreen({
       setTimeout(() => sportsEventScrollRef.current?.scrollTo({ y: 0, animated: false }), delay);
     });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTermDateRange() {
+      setTermDateRange(null);
+      const { data, error } = await supabase
+        .from('school_terms')
+        .select('start_date, end_date')
+        .eq('school', school)
+        .eq('quarter_key', selectedQuarterKey)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error) {
+        const message = String(error.message ?? '').toLowerCase();
+        if (error.code !== 'PGRST205' && error.code !== 'PGRST204' && error.code !== '42703' && !message.includes('start_date') && !message.includes('end_date')) {
+          console.warn('Failed to load school term dates:', error);
+        }
+        setTermDateRange(null);
+        return;
+      }
+
+      const row = data as { start_date?: string | null; end_date?: string | null } | null;
+      const start = termBoundaryFromString(row?.start_date, effectiveTimeZone, false);
+      const end = termBoundaryFromString(row?.end_date, effectiveTimeZone, true);
+      setTermDateRange(start && end ? { start, end } : null);
+    }
+
+    void loadTermDateRange();
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveTimeZone, school, selectedQuarterKey]);
+
   const scrollSportsEventDetailToEnd = useCallback((animated = true, delay = 0) => {
     const run = () => sportsEventScrollRef.current?.scrollToEnd({ animated });
     if (delay > 0) {
@@ -1358,7 +1425,7 @@ export default function HomeScreen({
       const response = await fetch(trimmedUrl);
       if (!response.ok) throw new Error(`Calendar feed returned ${response.status}`);
       const text = await response.text();
-      const parsedTasks = parseCalendarTasksFromIcs(text);
+      const parsedTasks = parseCalendarTasksFromIcs(text, effectiveTimeZone);
       const syncedAt = new Date().toISOString();
       const priorLastSync = options.previousLastSync ?? calendarLastSyncedAtRef.current;
       const previousTasks = options.tasksSnapshot ?? calendarTasksRef.current;
@@ -1399,7 +1466,7 @@ export default function HomeScreen({
     } finally {
       setCalendarTasksLoading(false);
     }
-  }, [calendarCompletedStorageKey, calendarTasksStorageKey, calendarLastSyncStorageKey, onAssignmentCalendarChange]);
+  }, [calendarCompletedStorageKey, calendarTasksStorageKey, calendarLastSyncStorageKey, effectiveTimeZone, onAssignmentCalendarChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1600,6 +1667,7 @@ export default function HomeScreen({
 
     async function loadSports() {
       const sportsCacheKey = `sports_cache_${school}`;
+      const sportsCacheDate = zonedDateKey(new Date(), effectiveTimeZone);
       setSportsEvents([]);
       setSportsEventListParticipation({});
       setSportsEventUserRsvps({});
@@ -1618,10 +1686,15 @@ export default function HomeScreen({
       setSportsLoading(true);
       const cached = await AsyncStorage.getItem(sportsCacheKey);
       if (cached && !cancelled) {
-        setSportsEvents(JSON.parse(cached).map((event: any) => (
-          normalizeSportsEventForDisplay({ ...event, date: new Date(event.date) })
-        )));
-        setSportsLoading(false);
+        try {
+          const parsed = JSON.parse(cached) as { date?: string; events?: any[] };
+          if (parsed.date === sportsCacheDate && Array.isArray(parsed.events)) {
+            setSportsEvents(parsed.events.map((event: any) => (
+              normalizeSportsEventForDisplay({ ...event, date: new Date(event.date) })
+            )));
+            setSportsLoading(false);
+          }
+        } catch {}
       }
 
       refreshTimer = setTimeout(() => {
@@ -1631,7 +1704,7 @@ export default function HomeScreen({
             const normalizedEvents = events.map(normalizeSportsEventForDisplay);
             if (cancelled) return;
             setSportsEvents(normalizedEvents);
-            void AsyncStorage.setItem(sportsCacheKey, JSON.stringify(normalizedEvents));
+            void AsyncStorage.setItem(sportsCacheKey, JSON.stringify({ date: sportsCacheDate, events: normalizedEvents }));
           } catch {}
           if (!cancelled) setSportsLoading(false);
         })();
@@ -1643,7 +1716,7 @@ export default function HomeScreen({
       cancelled = true;
       if (refreshTimer) clearTimeout(refreshTimer);
     };
-  }, [school]);
+  }, [effectiveTimeZone, school]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1651,6 +1724,7 @@ export default function HomeScreen({
 
     async function loadDiningMenus() {
       const diningCacheKey = `dining_menus_cache_${school}`;
+      const todayDiningCacheDate = zonedDateKey(new Date(), effectiveTimeZone);
       setDiningMenus([]);
       setDiningError(null);
       setDiningLoading(false);
@@ -1662,8 +1736,7 @@ export default function HomeScreen({
       if (cached && !cancelled) {
         try {
           const parsed = JSON.parse(cached) as { date: string; menus: DiningLocationMenu[] };
-          const today = new Date().toISOString().slice(0, 10);
-          if (parsed.date === today) {
+          if (parsed.date === todayDiningCacheDate) {
             setDiningMenus(parsed.menus);
             setDiningLoading(false);
           }
@@ -1678,7 +1751,7 @@ export default function HomeScreen({
             setDiningMenus(menus);
             setDiningError(null);
             void AsyncStorage.setItem(diningCacheKey, JSON.stringify({
-              date: new Date().toISOString().slice(0, 10),
+              date: todayDiningCacheDate,
               menus,
             }));
           } catch {
@@ -1695,7 +1768,7 @@ export default function HomeScreen({
       cancelled = true;
       if (refreshTimer) clearTimeout(refreshTimer);
     };
-  }, [school]);
+  }, [effectiveTimeZone, school]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30000);
@@ -1707,7 +1780,10 @@ export default function HomeScreen({
   }, [scrollToTopTrigger]);
 
   const homeScheduleSignature = useMemo(
-    () => activeCourses.map((course) => buildCourseMatchKey(course)).sort().join(','),
+    () => activeCourses
+      .map((course) => `${buildSectionMatchKey(course)}:${normalizeCourseCode(course)}`)
+      .sort()
+      .join(','),
     [activeCourses]
   );
 
@@ -1721,7 +1797,7 @@ export default function HomeScreen({
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function loadClassmates() {
-      const cacheKey = `home_classmates_${userId}_${school}_${selectedQuarterKey}_${homeScheduleSignature}`;
+      const cacheKey = `home_classmates_v2_${userId}_${school}_${selectedQuarterKey}_${homeScheduleSignature}`;
       const cached = await AsyncStorage.getItem(cacheKey);
       if (cached && !cancelled) {
         try {
@@ -1767,13 +1843,25 @@ export default function HomeScreen({
         return;
       }
 
+      const visibilityPromise = supabase
+        .rpc('get_friend_timetable_visibility', {
+          friend_ids: acceptedIds,
+          target_school: school,
+        })
+        .then(async (result) => {
+          if (result.error?.code === 'PGRST202' || result.error?.code === '42883') {
+            return supabase.from('user_settings').select('user_id, timetable_visibility').in('user_id', acceptedIds);
+          }
+          return result;
+        });
+
       const [
         { data: profilesData, error: profilesError },
         { data: settingsData, error: settingsError },
         { data: timetableData, error: timetableError },
       ] = await Promise.all([
         supabase.from('profiles').select('id, name, email').eq('school', school).in('id', acceptedIds),
-        supabase.from('user_settings').select('user_id, timetable_visibility').in('user_id', acceptedIds),
+        visibilityPromise,
         supabase.from('timetables').select('user_id, name, courses').eq('school', school).eq('quarter_key', selectedQuarterKey).in('user_id', acceptedIds),
       ]);
 
@@ -1806,20 +1894,30 @@ export default function HomeScreen({
           ?? candidateTimetables[0]
           ?? null;
         const friendCourses = primaryTimetable?.courses ?? [];
-        const sharedCourses = activeCourses.filter((course) => friendCourses.some((friendCourse) => coursesMatch(course, friendCourse)));
+        const sharedCourseMatches = activeCourses.flatMap((course) => {
+          const matchTypes = friendCourses
+            .map((friendCourse) => getSharedClassMatch(course, friendCourse))
+            .filter((matchType): matchType is SharedClassMatch => Boolean(matchType));
+          if (matchTypes.length === 0) return [];
+          const matchType: SharedClassMatch = matchTypes.includes('same_section') ? 'same_section' : 'same_course';
+          return [{
+            courseKey: buildSectionMatchKey(course),
+            courseCode: course.code,
+            matchType,
+          }];
+        });
 
-        if (!profile || sharedCourses.length === 0) return [];
+        if (!profile || sharedCourseMatches.length === 0) return [];
 
         return [{
           id: friendId,
           name: profile.name?.trim() || (profile.email?.split('@')[0] ?? 'Classmate'),
           email: profile.email ?? '',
-          sharedCourseIds: sharedCourses.map((course) => buildCourseMatchKey(course)),
-          sharedCourseCodes: Array.from(new Set(sharedCourses.map((course) => course.code))),
+          sharedCourseMatches,
         }];
       }).sort((left, right) => {
-        if (right.sharedCourseIds.length !== left.sharedCourseIds.length) {
-          return right.sharedCourseIds.length - left.sharedCourseIds.length;
+        if (right.sharedCourseMatches.length !== left.sharedCourseMatches.length) {
+          return right.sharedCourseMatches.length - left.sharedCourseMatches.length;
         }
         return left.name.localeCompare(right.name);
       });
@@ -1838,7 +1936,7 @@ export default function HomeScreen({
     };
   }, [activeCourses, homeScheduleSignature, school, selectedQuarterKey, userId]);
 
-  const todayCode = getTodayDayCode();
+  const todayCode = getTodayDayCode(now, effectiveTimeZone);
   const todayCourses = useMemo(
     () => (todayCode
       ? activeCourses
@@ -1848,7 +1946,8 @@ export default function HomeScreen({
     [activeCourses, todayCode]
   );
 
-  const nowHour = now.getHours() + now.getMinutes() / 60;
+  const nowParts = getZonedDateParts(now, effectiveTimeZone);
+  const nowHour = nowParts.hour + nowParts.minute / 60;
   const completedClasses = todayCourses.filter((course) => extractEndHour(course.time) <= nowHour).length;
   const shouldShowDiningHeroPage = schoolDiningMenusSupported(school);
   const shouldShowSportsHeroPage = schoolFeatureEnabled(school, 'sports');
@@ -2588,7 +2687,7 @@ export default function HomeScreen({
           </TouchableOpacity>
         </View>
         <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }} adjustsFontSizeToFit minimumFontScale={0.86}>
-          {getDateLabel(now, selectedQuarter, quarterStart, quarterEnd, school)}
+          {getDateLabel(now, selectedQuarter, quarterStart, quarterEnd, school, effectiveTimeZone)}
         </Text>
       </View>
 
@@ -2752,7 +2851,7 @@ export default function HomeScreen({
                                       {event.title}
                                     </Text>
                                     <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-                                      {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
+                                      {formatRelativeEventDayLabel(event.date, now, effectiveTimeZone)} · {formatSportsEventTime(event.date, event.timeLabel, effectiveTimeZone)}
                                     </Text>
                                   </View>
                                   <View
@@ -3032,24 +3131,34 @@ export default function HomeScreen({
                 const lastSummaryCourse = summaryCourses[summaryCourses.length - 1] ?? null;
                 const isCurrent = course ? extractStartHour(course.time) <= nowHour && extractEndHour(course.time) >= nowHour : false;
                 const startDate = course
-                  ? dateFromHour(now, extractStartHour(course.time))
+                  ? dateFromHour(now, extractStartHour(course.time), effectiveTimeZone)
                   : firstSummaryCourse
-                    ? dateFromHour(now, extractStartHour(firstSummaryCourse.time))
+                    ? dateFromHour(now, extractStartHour(firstSummaryCourse.time), effectiveTimeZone)
                     : now;
                 const endDate = course
-                  ? dateFromHour(now, extractEndHour(course.time))
+                  ? dateFromHour(now, extractEndHour(course.time), effectiveTimeZone)
                   : lastSummaryCourse
-                    ? dateFromHour(now, extractEndHour(lastSummaryCourse.time))
+                    ? dateFromHour(now, extractEndHour(lastSummaryCourse.time), effectiveTimeZone)
                     : now;
                 const accent = course
                   ? pastelForCourse(blockColorKey(course)).border
                   : item.type === 'completedSummary'
                     ? colors.textTertiary
                     : colors.brand;
-                const courseKey = course ? buildCourseMatchKey(course) : '';
-                const courseClassmates = course
-                  ? classmateMatches.filter((match) => match.sharedCourseIds.includes(courseKey))
+                const courseKey = course ? buildSectionMatchKey(course) : '';
+                const rawCourseClassmates = course
+                  ? classmateMatches.flatMap((match) => {
+                    const sharedMatch = match.sharedCourseMatches.find((candidate) => candidate.courseKey === courseKey);
+                    return sharedMatch ? [{ classmate: match, matchType: sharedMatch.matchType }] : [];
+                  })
                   : [];
+                const sameSectionClassmates = rawCourseClassmates.filter((match) => match.matchType === 'same_section');
+                const courseClassmates = sameSectionClassmates.length > 0 ? sameSectionClassmates : rawCourseClassmates;
+                const courseClassmateMatchType: SharedClassMatch | null = sameSectionClassmates.length > 0
+                  ? 'same_section'
+                  : rawCourseClassmates.length > 0
+                    ? 'same_course'
+                    : null;
                 const progress = isCurrent
                   ? clamp((now.getTime() - startDate.getTime()) / Math.max(endDate.getTime() - startDate.getTime(), 1), 0, 1)
                     : 0;
@@ -3060,7 +3169,7 @@ export default function HomeScreen({
                 const summaryRangeLabel = item.type === 'course'
                   ? ''
                   : firstSummaryCourse && lastSummaryCourse
-                    ? `${formatClock(startDate)} to ${formatClock(endDate)} today`
+                    ? `${formatClock(startDate, effectiveTimeZone)} to ${formatClock(endDate, effectiveTimeZone)} today`
                     : '';
                 const title = course?.title ?? '';
                 const courseHeroLocation = course ? formatHeroTimelineLocation(course.location) : '';
@@ -3068,8 +3177,8 @@ export default function HomeScreen({
                   ? [formatHeroTimeRange(course.time), courseHeroLocation].filter(Boolean).join(' · ')
                   : '';
                 const itemKey = item.type === 'course'
-                  ? buildCourseMatchKey(item.course)
-                  : `${item.type}-${summaryCourses.map((summaryCourse) => buildCourseMatchKey(summaryCourse)).join('|')}`;
+                  ? buildSectionMatchKey(item.course)
+                  : `${item.type}-${summaryCourses.map((summaryCourse) => buildSectionMatchKey(summaryCourse)).join('|')}`;
 
                 return (
                   <Animated.View
@@ -3111,8 +3220,8 @@ export default function HomeScreen({
                             {courseClassmates.length > 0 ? (
                               <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
                                 {courseClassmates.length === 1
-                                  ? '1 friend also has this class'
-                                  : `${courseClassmates.length} friends also have this class`}
+                                  ? `1 friend also has this ${courseClassmateMatchType === 'same_section' ? 'section' : 'course'}`
+                                  : `${courseClassmates.length} friends also have this ${courseClassmateMatchType === 'same_section' ? 'section' : 'course'}`}
                               </Text>
                             ) : null}
                             <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 6 }}>
@@ -3189,9 +3298,9 @@ export default function HomeScreen({
                               </Text>
                             </View>
                             {summaryCourses.map((summaryCourse, index) => {
-                              const rowStartDate = dateFromHour(now, extractStartHour(summaryCourse.time));
-                              const rowEndDate = dateFromHour(now, extractEndHour(summaryCourse.time));
-                              const rowStartClock = formatTimelineClockParts(rowStartDate);
+                              const rowStartDate = dateFromHour(now, extractStartHour(summaryCourse.time), effectiveTimeZone);
+                              const rowEndDate = dateFromHour(now, extractEndHour(summaryCourse.time), effectiveTimeZone);
+                              const rowStartClock = formatTimelineClockParts(rowStartDate, effectiveTimeZone);
                               const rowLocationLabel = formatHeroTimelineLocation(summaryCourse.location);
                               const rowIsPast = rowEndDate.getTime() < now.getTime();
                               const rowIsCurrent = rowStartDate.getTime() <= now.getTime() && rowEndDate.getTime() >= now.getTime();
@@ -3202,7 +3311,7 @@ export default function HomeScreen({
                               const rowSecondaryColor = rowIsPast ? colors.textTertiary : colors.textSecondary;
                               return (
                                 <View
-                                  key={buildCourseMatchKey(summaryCourse)}
+                                  key={buildSectionMatchKey(summaryCourse)}
                                   style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
@@ -3272,10 +3381,10 @@ export default function HomeScreen({
                         <View style={{ marginTop: 20 }}>
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
                             <Text style={{ fontSize: 12, color: colors.textTertiary }}>
-                              {formatClock(startDate)}
+                              {formatClock(startDate, effectiveTimeZone)}
                             </Text>
                             <Text style={{ fontSize: 12, color: colors.textTertiary }}>
-                              {formatClock(endDate)}
+                              {formatClock(endDate, effectiveTimeZone)}
                             </Text>
                           </View>
                           <View style={{ position: 'relative', height: 16, justifyContent: 'center' }}>
@@ -3551,7 +3660,7 @@ export default function HomeScreen({
                             </Text>
                           </View>
                           <Text style={{ fontSize: 13, color: overdue ? '#EF4444' : colors.textSecondary }}>
-                            {formatCalendarTaskDueLabel(assignment, now)}
+                            {formatCalendarTaskDueLabel(assignment, now, effectiveTimeZone)}
                           </Text>
                         </View>
                       </View>
@@ -4095,7 +4204,7 @@ export default function HomeScreen({
                             {event.title}
                           </Text>
                           <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
-                            {formatRelativeEventDayLabel(event.date, now)} · {formatSportsEventTime(event.date, event.timeLabel)}
+                            {formatRelativeEventDayLabel(event.date, now, effectiveTimeZone)} · {formatSportsEventTime(event.date, event.timeLabel, effectiveTimeZone)}
                           </Text>
                         </View>
                         <View
@@ -4260,7 +4369,7 @@ export default function HomeScreen({
                               </Text>
                             </View>
                             <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                              {formatCalendarTaskDueLabel(assignment, now)}
+                              {formatCalendarTaskDueLabel(assignment, now, effectiveTimeZone)}
                             </Text>
                           </View>
                         </TouchableOpacity>
@@ -4562,7 +4671,7 @@ export default function HomeScreen({
                       {selectedSportsEvent.title}
                     </Text>
                     <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 5 }}>
-                      {formatSportsEventDetailDate(selectedSportsEvent)}
+                      {formatSportsEventDetailDate(selectedSportsEvent, effectiveTimeZone)}
                     </Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 7, flexWrap: 'wrap' }}>
                       <View

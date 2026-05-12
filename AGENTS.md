@@ -3005,3 +3005,48 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sgd (Short sentence Campus Info captions)
 - **`src/screens/HomeScreen.tsx`** — Shortened Campus Info captions into concise sentence-style labels, such as `Manage registration, tuition, and dates.` and `Find jobs and internships.`
+
+### Session 64sge (Production readiness P0 audit)
+- **`src/screens/BoardScreen.tsx`** — Resolved board author display through per-author `user_settings.profile_details.boardProfileVisible`. Anonymous authors now show only `campusAliasForId`, and major/year metadata is hidden unless the author opted into board profile exposure.
+- **`src/screens/GradesScreen.tsx`** — Scoped grade cache keys and Supabase grade reads/writes by `school`, preventing one user’s grades from bleeding across schools.
+- **`src/screens/SignInScreen.tsx`** and **`src/screens/SignUpScreen.tsx`** — Replaced suffix-based email validation with exact case-insensitive domain comparison and made sign-in profile verification school-aware.
+- **`src/screens/HomeScreen.tsx`**, **`src/data/timeZone.ts`**, **`src/data/sportsEvents.ts`**, and **`src/data/userPreferences.ts`** — Added school/user timezone helpers, switched Home term progress to `school_terms.start_date/end_date` when available, and updated date labels, assignment due labels, and class notification scheduling to use the effective timezone.
+- **`App.tsx`** and **`src/screens/SettingsScreen.tsx`** — Persisted theme and timetable display settings through `user_settings.profile_details` plus user/school-scoped AsyncStorage fallback, exposed non-Pacific timezone choices, and added a root Android hardware-back handler for open overlays/modals.
+- **`src/screens/CoursePickerScreen.tsx`** and **`src/components/ProfileEditorScreen.tsx`** — Switched keyboard listeners to platform-appropriate `keyboardWill*` events on iOS and `keyboardDid*` events on Android.
+- **`supabase/sql/production_readiness_p0.sql`** — Added the SQL migration for `grades.school`, the unique grade scope `(user_id, school, quarter_key, course_id)`, optional `school_terms` date columns, and a privacy-safe board author visibility RPC.
+
+### Session 64sgf (Verified-anonymous board identity correction)
+- **`src/screens/BoardScreen.tsx`** — Corrected board author rendering to the verified-anonymous model: posts and comments always display `campusAliasForId(user_id, school)` as the author name, show verified major/year metadata when available, and ignore stored `author_name` values that may contain older real-name snapshots.
+- **`src/screens/SettingsScreen.tsx`** — Updated Privacy & Security copy so the board setting no longer implies that major/year can be hidden. The copy now explains that normal board posts stay verified-anonymous and show verified academic metadata.
+- **`supabase/sql/production_readiness_p0.sql`** — Replaced the board visibility RPC with a school-scoped `get_board_author_metadata` RPC that returns only `user_id`, `major`, and `year`, requires the caller to belong to that school, and avoids email, real name, nickname, or visibility-gated metadata in board display.
+- **`src/screens/HomeScreen.tsx`** — Tightened the shared-class match type annotation so the TypeScript validation gate preserves the `same_section` / `same_course` union instead of widening it to `string`.
+- **`src/screens/FriendsScreen.tsx`** — Tightened the shared-class group match type annotation for the same validation reason, keeping shared-course labels aligned with the common matching helper.
+
+### Session 64sgg (Normalize shared class matching)
+- **`src/data/sharedClasses.ts`** — Added shared course/section matching helpers with normalized course-code comparison, exact section-id matching, and custom-course protection so custom blocks only match by identical ids.
+- **`src/screens/HomeScreen.tsx`** — Replaced local classmate matching keys with the shared helper and changed the home classmate copy to distinguish `same section` from broader `same course` overlaps.
+- **`src/screens/FriendsScreen.tsx`** — Replaced duplicate shared-class logic with the same helper, grouped shared classes by normalized course/custom section key, and labeled rows as `Same section` or `Same course` so the ClassMates screen matches Home.
+
+### Session 64sgh (Cross-device UI reliability pass)
+- **`App.tsx`**, **`src/screens/TimetableScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/SettingsScreen.tsx`**, **`src/screens/GradesScreen.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, **`src/components/ProfileEditorScreen.tsx`**, and **`src/components/PreviewTimetable.tsx`** — Replaced layout-sensitive `Dimensions.get('window')` calls with `useWindowDimensions`, including slide animations, gesture thresholds, sheet heights, chart sizing, and timetable previews.
+- **`App.tsx`**, **`src/screens/TimetableScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/GradesScreen.tsx`**, and **`src/screens/CoursePickerScreen.tsx`** — Standardized main-screen safe-area spacing through `topInset`/native insets instead of fixed top padding, keeping bottom-tab clearance intact.
+- **`src/screens/FriendsScreen.tsx`** and **`src/screens/SettingsScreen.tsx`** — Replaced dead `false ?` loading placeholders with actual loading states for classmates, friend requests, moderation reports, board management, and board requests.
+- **`src/screens/FriendsScreen.tsx`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/SettingsScreen.tsx`**, and **`src/screens/TimetableScreen.tsx`** — Added small-screen overflow guards for long names, emails, board titles, course titles, section labels, term labels, and timetable names.
+- **`src/components/ProfileEditorScreen.tsx`** and **`App.tsx`** — Aligned keyboard/back handling with the cross-platform policy by using platform-specific keyboard events in profile editing and ordering Android back handling through CoursePicker, Messages, Settings, auth sub-screens, then default behavior.
+
+### Session 64sgi (Backend/RLS production audit)
+- **`supabase/sql/production_readiness_p2.sql`** — Added an idempotent P2 migration with helper functions for current school, verified-school email checks, and school moderators; enabled same-school RLS for profiles, timetables, grades, board/social tables, friend requests, conversations, course Discord links, sports RSVPs/comments, and reviews; tightened storage policies for `board-attachments`; and replaced `delete_current_user()` with cleanup for newer social tables and attachment metadata.
+- **`supabase/sql/production_readiness_p0.sql`** — Made the grades unique-index migration duplicate-safe by skipping index creation with a notice when legacy duplicate grade rows exist instead of aborting the whole migration.
+- **`supabase/sql/delete_account.sql`** — Updated the standalone account-deletion RPC to remove sports event RSVPs/comments, submitted course Discord links, optional legacy direct messages, and board attachment storage metadata.
+- **`App.tsx`** — Replaced blanket scheduled-notification cancellation with user/school-scoped stable notification identifiers for daily class summaries, class reminders, assignment reminders, and sports reminders, preventing duplicate or orphaned reminder schedules after restarts/settings changes.
+- **`src/screens/HomeScreen.tsx`** — Bounded dining and sports cache freshness by the school timezone date so stale menus/events do not survive across local campus days.
+
+### Session 64sgj (Release-readiness QA pass)
+- **`supabase/sql/production_readiness_p2.sql`** — Added `get_friend_timetable_visibility(friend_ids, target_school)` so Home and Friends can read only accepted classmates' timetable visibility without exposing full `user_settings` rows under RLS.
+- **`src/screens/HomeScreen.tsx`** and **`src/screens/FriendsScreen.tsx`** — Switched friend timetable-visibility reads to the new RPC with a legacy direct-query fallback, keeping shared-class UI consistent after `user_settings` becomes owner-only.
+- **`src/screens/BoardScreen.tsx`** — Added client-side MIME normalization/filtering for board file attachments so unsupported files are skipped before upload instead of failing later at Storage policy time.
+- **`supabase/sql/production_readiness_p2.sql`** — Matched the P2 `board-attachments` bucket MIME allowlist to the supported board file types already defined in the standalone storage migration.
+- **`app.json`** — Removed unused Android media audio/video permissions, leaving only the image/media permissions the app needs for schedule saves and board image attachments.
+
+### Session 64sgk (Required review account handling)
+- **`src/screens/SignInScreen.tsx`** — Made `review@classmate.app` the only account accepted by the review email/password flow, kept it exempt from normal university-domain checks, and prepared its profile/settings for the selected school at sign-in so App Store / Play Store reviewers can test any supported school without making the account a moderator or super admin.

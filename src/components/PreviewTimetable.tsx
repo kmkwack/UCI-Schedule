@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Dimensions, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
 import { Course, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatHourLabel12, getBlockColors, professorDisplayName } from '../data/courses';
 import { useTheme } from '../context/ThemeContext';
 
@@ -81,6 +81,7 @@ export default function PreviewTimetable({
   settings = DEFAULT_TIMETABLE_SETTINGS,
 }: Props) {
   const { colors } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
   const { theme, showCode, showClassName, showRoomNumber, showInstructor, showTime } = settings;
   const verticalScrollRef = useRef<ScrollView>(null);
   const horizontalScrollRef = useRef<ScrollView>(null);
@@ -134,7 +135,7 @@ export default function PreviewTimetable({
   const usableGridWidth =
     gridWidth > 0
       ? gridWidth - TIME_LABEL_WIDTH
-      : Dimensions.get('window').width - 32 - TIMETABLE_CARD_PADDING * 2 - TIME_LABEL_WIDTH;
+      : windowWidth - 32 - TIMETABLE_CARD_PADDING * 2 - TIME_LABEL_WIDTH;
   const dayColumnWidth = usableGridWidth / visibleDays.length;
   const actualGridWidth = dayColumnWidth * visibleDays.length;
 

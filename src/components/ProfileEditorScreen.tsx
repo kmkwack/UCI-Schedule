@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Dimensions,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
@@ -14,10 +13,10 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
-const SCREEN_HEIGHT = Dimensions.get('window').height;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -125,6 +124,7 @@ function ProfileDropdownPicker({
   searchable?: boolean;
 }) {
   const { colors } = useTheme();
+  const { height: screenHeight } = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -132,8 +132,10 @@ function ProfileDropdownPicker({
   const sheetAnim = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardWillShow', (e) => setKeyboardHeight(e.endCoordinates.height));
-    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardHeight(0));
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
     return () => { show.remove(); hide.remove(); };
   }, []);
 
@@ -202,8 +204,8 @@ function ProfileDropdownPicker({
               borderTopRightRadius: 20,
               paddingBottom: keyboardHeight > 0 ? 8 : 32,
               maxHeight: keyboardHeight > 0
-                ? SCREEN_HEIGHT - keyboardHeight - 60
-                : SCREEN_HEIGHT * 0.75,
+                ? screenHeight - keyboardHeight - 60
+                : screenHeight * 0.75,
               marginBottom: keyboardHeight,
               transform: [{ translateY: sheetAnim }],
             }}
@@ -351,7 +353,8 @@ export default function ProfileEditorScreen({
   }, [initialProfile]);
 
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const show = Keyboard.addListener(showEvent, (e) => {
       const h = e.endCoordinates.height;
       setKbHeight(h);
       setKeyboardVisible(true);

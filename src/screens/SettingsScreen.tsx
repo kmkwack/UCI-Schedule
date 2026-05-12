@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, Platform, Animated, PanResponder, Dimensions, Image, StyleSheet, Keyboard } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, Platform, Animated, PanResponder, Image, StyleSheet, Keyboard, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
@@ -121,13 +121,13 @@ function SubHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: 8,
-      paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16,
+      paddingHorizontal: 20, paddingTop: Math.max(20, insets.top + 8), paddingBottom: 16,
       borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, backgroundColor: colors.card,
     }}>
       <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
         <Ionicons name="arrow-back" size={22} color={colors.text} />
       </TouchableOpacity>
-      <Text style={{ fontSize: 22, fontWeight: '700', color: colors.text }}>{title}</Text>
+      <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 22, fontWeight: '700', color: colors.text }}>{title}</Text>
     </View>
   );
 }
@@ -322,7 +322,7 @@ function PrivacySecurityScreen({
           </TouchableOpacity>
         ))}
 
-        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginTop: 20, marginBottom: 12 }}>Board Profile Exposure</Text>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginTop: 20, marginBottom: 12 }}>Board Identity</Text>
         <View
           style={{
             backgroundColor: colors.bgTertiary,
@@ -335,9 +335,9 @@ function PrivacySecurityScreen({
           }}
         >
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '500', color: colors.text }}>Show my profile on board posts</Text>
+            <Text style={{ fontSize: 15, fontWeight: '500', color: colors.text }}>Real-name board preference</Text>
             <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
-              Off by default. When disabled, your posts and comments appear as a {aliasName} alias.
+              Normal board posts stay verified-anonymous as {aliasName} plus verified major/year. This only applies if a non-anonymous board mode is added later.
             </Text>
           </View>
           <Switch
@@ -757,6 +757,7 @@ function AppearanceScreen({ onBack, themePreference, onThemeChange }: {
 // ─── Sub-screen: Language & Region ───────────────────────────────────────────
 function LanguageRegionScreen({
   onBack,
+  school,
   initialLanguage,
   initialTimeZone,
   initialDateFormat,
@@ -764,6 +765,7 @@ function LanguageRegionScreen({
   saving,
 }: {
   onBack: () => void;
+  school: string;
   initialLanguage: LanguagePreference;
   initialTimeZone: string;
   initialDateFormat: DateFormatPreference;
@@ -790,9 +792,24 @@ function LanguageRegionScreen({
   const languages: Array<{ value: LanguagePreference; label: string }> = [
     { value: 'en', label: 'English' },
   ];
-  const timezones = [
-    { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
-  ];
+  const schoolConfig = getSchoolConfig(school);
+  const schoolTimeZone = schoolConfig.timeZone && schoolConfig.timeZone !== 'auto'
+    ? schoolConfig.timeZone
+    : Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'America/Los_Angeles';
+  const timezones = Array.from(
+    new Map([
+      [schoolTimeZone, { value: schoolTimeZone, label: `${schoolConfig.shortName} time (${schoolTimeZone})` }],
+      ['America/Los_Angeles', { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' }],
+      ['America/Denver', { value: 'America/Denver', label: 'Mountain Time (MT)' }],
+      ['America/Chicago', { value: 'America/Chicago', label: 'Central Time (CT)' }],
+      ['America/New_York', { value: 'America/New_York', label: 'Eastern Time (ET)' }],
+      ['America/Indiana/Indianapolis', { value: 'America/Indiana/Indianapolis', label: 'Indiana Time (ET)' }],
+      ...SUPPORTED_UNIVERSITIES.map((university) => {
+        const config = getSchoolConfig(university.name);
+        return [config.timeZone, { value: config.timeZone, label: `${config.shortName} time (${config.timeZone})` }] as const;
+      }).filter(([value]) => value && value !== 'auto'),
+    ]).values()
+  );
   const dateFormats: Array<{ value: DateFormatPreference; example: string }> = [
     { value: 'MM/DD/YYYY', example: '04/21/2026' },
     { value: 'DD/MM/YYYY', example: '21/04/2026' },
@@ -1219,8 +1236,11 @@ function ModerationScreen({ school, onBack }: { school: string; onBack: () => vo
           </View>
         </View>
 
-        {false ? (
-          <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />
+        {loading ? (
+          <View style={{ alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 36 }}>
+            <ActivityIndicator color={colors.brand} />
+            <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading reports...</Text>
+          </View>
         ) : filteredReports.length === 0 ? (
           <View
             style={{
@@ -1621,8 +1641,11 @@ function ManageBoardsView({ school, onBack }: { school: string; onBack: () => vo
     <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
       <SubHeader title="Manage Boards" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-        {false ? (
-          <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />
+        {loading ? (
+          <View style={{ alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 36 }}>
+            <ActivityIndicator color={colors.brand} />
+            <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading boards...</Text>
+          </View>
         ) : boards.length === 0 ? (
           <View style={{ backgroundColor: colors.card, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: colors.borderSubtle, alignItems: 'center' }}>
             <Ionicons name="albums-outline" size={32} color={colors.textTertiary} style={{ marginBottom: 8 }} />
@@ -1694,13 +1717,15 @@ function BoardRequestsScreen({ school, onBack }: { school: string; onBack: () =>
     description: string;
   } | null>(null);
   const [showManageBoards, setShowManageBoards] = useState(false);
-  const SCREEN_W = Dimensions.get('window').width;
-  const boardsSlideAnim = useRef(new Animated.Value(SCREEN_W)).current;
+  const { width: screenWidth } = useWindowDimensions();
+  const screenWidthRef = useRef(screenWidth);
+  useEffect(() => { screenWidthRef.current = screenWidth; }, [screenWidth]);
+  const boardsSlideAnim = useRef(new Animated.Value(screenWidth)).current;
   const swipeBoardsPan = useRef(PanResponder.create({
     onMoveShouldSetPanResponder: (_, gs) => gs.dx > 6 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
     onPanResponderMove: (_, gs) => { if (gs.dx > 0) boardsSlideAnim.setValue(gs.dx); },
     onPanResponderRelease: (_, gs) => {
-      if (gs.dx > SCREEN_W * 0.35 || gs.vx > 0.6) {
+      if (gs.dx > screenWidthRef.current * 0.35 || gs.vx > 0.6) {
         closeManageBoards();
       } else {
         Animated.spring(boardsSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
@@ -1712,15 +1737,15 @@ function BoardRequestsScreen({ school, onBack }: { school: string; onBack: () =>
   })).current;
 
   function openManageBoards() {
-    boardsSlideAnim.setValue(SCREEN_W);
+    boardsSlideAnim.setValue(screenWidthRef.current);
     setShowManageBoards(true);
     Animated.spring(boardsSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
   }
 
   function closeManageBoards() {
-    Animated.timing(boardsSlideAnim, { toValue: SCREEN_W, duration: 260, useNativeDriver: true }).start(() => {
+    Animated.timing(boardsSlideAnim, { toValue: screenWidthRef.current, duration: 260, useNativeDriver: true }).start(() => {
       setShowManageBoards(false);
-      boardsSlideAnim.setValue(SCREEN_W);
+      boardsSlideAnim.setValue(screenWidthRef.current);
     });
   }
 
@@ -1857,8 +1882,11 @@ function BoardRequestsScreen({ school, onBack }: { school: string; onBack: () =>
           </View>
         </View>
 
-        {false ? (
-          <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />
+        {loading ? (
+          <View style={{ alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 36 }}>
+            <ActivityIndicator color={colors.brand} />
+            <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading board requests...</Text>
+          </View>
         ) : filtered.length === 0 ? (
           <View style={{ backgroundColor: colors.card, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: colors.borderSubtle, alignItems: 'center' }}>
             <Ionicons name="clipboard-outline" size={32} color={colors.textTertiary} style={{ marginBottom: 8 }} />
@@ -1979,12 +2007,14 @@ export default function SettingsScreen({
 }: Props) {
   const { colors } = useTheme();
   const [screen, setScreen] = useState<Screen>('main');
-  const SCREEN_W = Dimensions.get('window').width;
-  const slideAnim = useRef(new Animated.Value(SCREEN_W)).current;
+  const { width: screenWidth } = useWindowDimensions();
+  const screenWidthRef = useRef(screenWidth);
+  useEffect(() => { screenWidthRef.current = screenWidth; }, [screenWidth]);
+  const slideAnim = useRef(new Animated.Value(screenWidth)).current;
   const isModerator = MODERATOR_EMAILS.includes(userEmail.toLowerCase());
 
   const navigateTo = (next: Screen) => {
-    slideAnim.setValue(SCREEN_W);
+    slideAnim.setValue(screenWidthRef.current);
     setScreen(next);
     Animated.spring(slideAnim, {
       toValue: 0,
@@ -1996,12 +2026,12 @@ export default function SettingsScreen({
 
   const goBack = () => {
     Animated.timing(slideAnim, {
-      toValue: SCREEN_W,
+      toValue: screenWidthRef.current,
       duration: 260,
       useNativeDriver: true,
     }).start(() => {
       setScreen('main');
-      slideAnim.setValue(SCREEN_W);
+      slideAnim.setValue(screenWidthRef.current);
     });
   };
 
@@ -2011,7 +2041,7 @@ export default function SettingsScreen({
       if (gs.dx > 0) slideAnim.setValue(gs.dx);
     },
     onPanResponderRelease: (_, gs) => {
-      if (gs.dx > SCREEN_W * 0.35 || gs.vx > 0.6) {
+      if (gs.dx > screenWidthRef.current * 0.35 || gs.vx > 0.6) {
         goBack();
       } else {
         Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
@@ -2068,9 +2098,10 @@ export default function SettingsScreen({
       case 'appearance': return <AppearanceScreen onBack={goBack} themePreference={themePreference} onThemeChange={onThemeChange} />;
       case 'language':
         return (
-          <LanguageRegionScreen
-            onBack={goBack}
-            initialLanguage={userSettings.language}
+	          <LanguageRegionScreen
+	            onBack={goBack}
+	            school={school}
+	            initialLanguage={userSettings.language}
             initialTimeZone={userSettings.timeZone}
             initialDateFormat={userSettings.dateFormat}
             onSave={onSaveRegion}
@@ -2113,10 +2144,10 @@ export default function SettingsScreen({
             <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ fontSize: 24, fontWeight: '700', color: 'white' }}>{initials}</Text>
             </View>
-            <View>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>{userName}</Text>
-              <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>{userEmail}</Text>
-              <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>{userName}</Text>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>{userEmail}</Text>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>
                 {abbreviateMajor(userProfile.major) || 'UNDECL'} · {userProfile.year}
               </Text>
             </View>

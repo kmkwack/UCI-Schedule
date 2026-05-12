@@ -2,8 +2,9 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TouchableOpacity, ScrollView, Modal,
-  Animated, Easing, Dimensions, LayoutAnimation,
+  Animated, Easing, LayoutAnimation,
   Platform, UIManager,
+  useWindowDimensions,
 } from 'react-native';
 import Svg, { Path, Circle, Line, Defs, ClipPath, G, LinearGradient, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +17,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-type Props = { timetables: Timetable[]; userId: string; school: string; bottomInset?: number; scrollToTopTrigger?: number };
+type Props = { timetables: Timetable[]; userId: string; school: string; topInset?: number; bottomInset?: number; scrollToTopTrigger?: number };
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -100,7 +101,7 @@ function visibleXAxisIndices(pointCount: number, chartWidth: number) {
 
 function GpaChart({ history, maxGpa }: { history: { label: string; gpa: number }[]; maxGpa: number }) {
   const { colors } = useTheme();
-  const screenWidth = Dimensions.get('window').width;
+  const { width: screenWidth } = useWindowDimensions();
   const [containerWidth, setContainerWidth] = useState(0);
   const yAxisWidth = 46;
   const chartWidth = Math.max(220, (containerWidth || screenWidth - 72) - yAxisWidth);
@@ -332,8 +333,9 @@ function GradePickerModal({
   onClose: () => void;
 }) {
   const { colors } = useTheme();
+  const { height: screenHeight } = useWindowDimensions();
   const { rows: letterGradeRows, otherGrades } = useMemo(() => groupedLetterGrades(gradeOptions), [gradeOptions]);
-  const sheetMaxHeight = Math.min(Dimensions.get('window').height * 0.72, 580);
+  const sheetMaxHeight = Math.min(screenHeight * 0.72, 580);
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
@@ -628,7 +630,7 @@ function PastQuarterSection({
 
 // ── main screen ───────────────────────────────────────────────────────────────
 
-export default function GradesScreen({ timetables, userId, school, bottomInset = 0, scrollToTopTrigger = 0 }: Props) {
+export default function GradesScreen({ timetables, userId, school, topInset = 0, bottomInset = 0, scrollToTopTrigger = 0 }: Props) {
   const { colors } = useTheme();
   const gradeScale = gradeScaleForSchool(school);
   const gradePoints = gradeScale.points;
@@ -643,7 +645,7 @@ export default function GradesScreen({ timetables, userId, school, bottomInset =
   // Compound key: "2026-Spring|36120" — prevents collisions if section codes repeat across years
   const gk = (qk: string, courseId: string) => `${qk}|${courseId}`;
 
-  const cacheKey = `grades_${userId}`;
+  const cacheKey = `grades_${encodeURIComponent(school)}_${userId}`;
 
   useEffect(() => {
     async function loadGrades() {
@@ -654,8 +656,9 @@ export default function GradesScreen({ timetables, userId, school, bottomInset =
       // Then fetch from Supabase and update
       const { data, error } = await supabase
         .from('grades')
-        .select('quarter_key, course_id, grade')
-        .eq('user_id', userId);
+        .select('school, quarter_key, course_id, grade')
+        .eq('user_id', userId)
+        .eq('school', school);
       if (error) { console.error('Failed to load grades:', error); return; }
       const loaded: Record<string, string> = {};
       (data ?? []).forEach((row: any) => { loaded[gk(row.quarter_key, row.course_id)] = row.grade; });
@@ -663,7 +666,7 @@ export default function GradesScreen({ timetables, userId, school, bottomInset =
       AsyncStorage.setItem(cacheKey, JSON.stringify(loaded));
     }
     loadGrades();
-  }, [userId]);
+  }, [cacheKey, school, userId]);
 
   // key is the compound "qk|courseId" string
   async function handleSetGrade(key: string, grade: string) {
@@ -674,8 +677,8 @@ export default function GradesScreen({ timetables, userId, school, bottomInset =
     const { error } = await supabase
       .from('grades')
       .upsert(
-        { user_id: userId, quarter_key: qk, course_id: courseId, grade },
-        { onConflict: 'user_id,quarter_key,course_id' }
+        { user_id: userId, school, quarter_key: qk, course_id: courseId, grade },
+        { onConflict: 'user_id,school,quarter_key,course_id' }
       );
     if (error) console.error('Failed to save grade:', error);
   }
@@ -777,7 +780,7 @@ export default function GradesScreen({ timetables, userId, school, bottomInset =
   }, [scrollToTopTrigger]);
 
   return (
-    <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.bgSecondary }} contentContainerStyle={{ paddingTop: 64, paddingHorizontal: 18, paddingBottom: bottomInset + 70 }} showsVerticalScrollIndicator={false}>
+    <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.bgSecondary }} contentContainerStyle={{ paddingTop: topInset + 14, paddingHorizontal: 18, paddingBottom: bottomInset + 70 }} showsVerticalScrollIndicator={false}>
       <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: 0, color: colors.text, marginBottom: 16 }}>Grades</Text>
 
       {/* Stats row */}

@@ -2655,7 +2655,7 @@ export default function BoardScreen({
                 >
                   <Ionicons name="chevron-back" size={26} color={colors.text} />
                 </TouchableOpacity>
-                <Text numberOfLines={1} style={{ flex: 1, fontSize: 18, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 18, fontWeight: '600', color: colors.text }}>
                   {boardContextLabel(selectedPost.category)}
                 </Text>
               </View>
@@ -2752,8 +2752,8 @@ export default function BoardScreen({
                               >
                                 <Ionicons name="document-outline" size={24} color={colors.brand} />
                               </View>
-                              <View style={{ flex: 1 }}>
-                                <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
                                   {attachment.name}
                                 </Text>
                                 <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
@@ -3244,7 +3244,7 @@ function ImageViewerModal({
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const uri = attachment ? attachmentUri(attachment) : '';
-  const { height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   return (
     <Modal visible={!!attachment} transparent animationType="fade" onRequestClose={onClose}>
@@ -3325,8 +3325,8 @@ function ImageViewerModal({
             colors={colors}
             contentFit="contain"
             style={{
-              width: screen.width,
-              height: Math.max(260, screen.height - (Platform.OS === 'ios' ? 208 : 154)),
+              width: screenWidth,
+              height: Math.max(260, screenHeight - (Platform.OS === 'ios' ? 208 : 154)),
               backgroundColor: 'transparent',
             }}
           />
@@ -3980,8 +3980,8 @@ function NewPostModal({
                       <Ionicons name="document-outline" size={22} color={colors.brand} />
                     </View>
                   )}
-                  <View style={{ flex: 1 }}>
-                    <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
                       {attachment.name}
                     </Text>
                     <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>

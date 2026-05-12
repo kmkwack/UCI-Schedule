@@ -16,11 +16,11 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 const DRY_RUN = process.env.DRY_RUN === '1';
 
 if (!DRY_RUN && (!SUPABASE_URL || !SUPABASE_SERVICE_KEY)) {
-  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variable.');
+  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY/SUPABASE_SERVICE_ROLE_KEY environment variable.');
 }
 
 const supabase = DRY_RUN ? null : createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);

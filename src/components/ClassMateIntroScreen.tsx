@@ -122,10 +122,11 @@ export default function ClassMateIntroScreen({ onComplete, schoolName }: Props) 
             <Text style={{ fontSize: 14, fontWeight: '800', letterSpacing: 0.8, color: isDark ? '#d7e4ff' : '#5e73a8', marginBottom: 8 }}>
               ENTERING TO
             </Text>
+            {/* text-autoshrink-ok: large onboarding headline only; 0.85 keeps the title readable on small devices. */}
             <Text
               numberOfLines={2}
               adjustsFontSizeToFit
-              minimumFontScale={0.78}
+              minimumFontScale={0.85}
               style={{ fontSize: 42, lineHeight: 50, fontWeight: '800', letterSpacing: 0, color: isDark ? '#eef3ff' : '#16285b', textAlign: 'center', maxWidth: 340 }}
             >
               {campusName}

@@ -26,6 +26,7 @@ import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatC
 import { getSchoolConfig, termLabel } from '../data/schools';
 import { departmentsForSchoolId } from '../data/schoolDepartments';
 import PreviewTimetable from '../components/PreviewTimetable';
+import InfoChip from '../components/InfoChip';
 import { supabase } from '../lib/supabase';
 import ReviewsModal from '../components/ReviewsModal';
 
@@ -1717,9 +1718,8 @@ export default function CoursePickerScreen({
           >
             <Text
               numberOfLines={1}
-              style={{ flex: 1, color: hasSelectedCategory ? courseAccent : '#9ca3af', fontSize: 15, fontWeight: hasSelectedCategory ? '600' : '400' }}
-              adjustsFontSizeToFit
-              minimumFontScale={0.86}
+              ellipsizeMode="tail"
+              style={{ flex: 1, minWidth: 0, color: hasSelectedCategory ? courseAccent : '#9ca3af', fontSize: 15, fontWeight: hasSelectedCategory ? '600' : '400' }}
             >
               {selectedCategorySummary || 'Department or GE category…'}
             </Text>
@@ -1749,9 +1749,8 @@ export default function CoursePickerScreen({
                 >
                   <Text
                     numberOfLines={1}
-                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: courseAccent }}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.86}
+                    ellipsizeMode="tail"
+                    style={{ flexShrink: 1, minWidth: 0, fontSize: 12, fontWeight: '700', color: courseAccent }}
                   >
                     {dept}
                   </Text>
@@ -1778,9 +1777,8 @@ export default function CoursePickerScreen({
                 >
                   <Text
                     numberOfLines={1}
-                    style={{ flexShrink: 1, fontSize: 12, fontWeight: '700', color: courseAccent }}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.86}
+                    ellipsizeMode="tail"
+                    style={{ flexShrink: 1, minWidth: 0, fontSize: 12, fontWeight: '700', color: courseAccent }}
                   >
                     {selectedGELabel}
                   </Text>
@@ -2103,6 +2101,11 @@ export default function CoursePickerScreen({
                             waitlistCapacity: course.waitlistCapacity,
                           });
                           const sectionDisplayTitle = sectionHeaderLabel(course.id, course.sectionLabel);
+                          const statusTone = statusPresentation?.label === 'Open'
+                            ? 'success'
+                            : statusPresentation?.label === 'Full' || statusPresentation?.label === 'Closed'
+                              ? 'danger'
+                              : 'warning';
 
                           return (
                             <TouchableOpacity
@@ -2126,9 +2129,14 @@ export default function CoursePickerScreen({
                                       {sectionDisplayTitle}
                                     </Text>
                                     {statusPresentation && (
-                                      <View style={{ backgroundColor: `${statusPresentation.color}18`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
-                                        <Text style={{ fontSize: 11, fontWeight: '700', color: statusPresentation.color }}>{statusPresentation.label}</Text>
-                                      </View>
+                                      <InfoChip
+                                        label={statusPresentation.label}
+                                        tone={statusTone}
+                                        compact
+                                        color={statusPresentation.color}
+                                        backgroundColor={`${statusPresentation.color}18`}
+                                        borderColor={`${statusPresentation.color}28`}
+                                      />
                                     )}
                                   </View>
                                   <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: '#4b5563', fontSize: 12, marginTop: 1 }}>
@@ -2139,51 +2147,12 @@ export default function CoursePickerScreen({
                                   </Text>
                                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 }}>
                                     {enrollmentLabel ? (
-                                      <View style={{
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        gap: 4,
-                                        borderRadius: 999,
-                                        backgroundColor: '#eef2f7',
-                                        paddingHorizontal: 8,
-                                        paddingVertical: 4,
-                                      }}>
-                                        <Ionicons name="person-outline" size={11} color="#64748b" />
-                                        <Text style={{ color: '#64748b', fontSize: 10, fontWeight: '700' }}>
-                                          {enrollmentLabel}
-                                        </Text>
-                                      </View>
+                                      <InfoChip icon="person-outline" label={enrollmentLabel} tone="neutral" compact color="#64748b" backgroundColor="#eef2f7" borderColor="#e2e8f0" />
                                     ) : null}
                                     {waitlistLabel ? (
-                                      <View style={{
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        gap: 4,
-                                        borderRadius: 999,
-                                        backgroundColor: '#fff7ed',
-                                        paddingHorizontal: 8,
-                                        paddingVertical: 4,
-                                      }}>
-                                        <Ionicons name="time-outline" size={11} color="#d97706" />
-                                        <Text style={{ color: '#d97706', fontSize: 10, fontWeight: '700' }}>
-                                          {waitlistLabel}
-                                        </Text>
-                                      </View>
+                                      <InfoChip icon="time-outline" label={waitlistLabel} tone="warning" compact color="#d97706" backgroundColor="#fff7ed" borderColor="rgba(245,158,11,0.28)" />
                                     ) : null}
-                                    <View style={{
-                                      flexDirection: 'row',
-                                      alignItems: 'center',
-                                      gap: 4,
-                                      borderRadius: 999,
-                                      backgroundColor: courseAccentSoft,
-                                      paddingHorizontal: 8,
-                                      paddingVertical: 4,
-                                    }}>
-                                      <Ionicons name="people-outline" size={11} color={courseAccent} />
-                                      <Text style={{ color: courseAccent, fontSize: 10, fontWeight: '800' }}>
-                                        {savedCount} saved
-                                      </Text>
-                                    </View>
+                                    <InfoChip icon="people-outline" label={`${savedCount} saved`} tone="brand" compact color={courseAccent} backgroundColor={courseAccentSoft} borderColor={`${courseAccent}24`} />
                                   </View>
                                 </View>
 

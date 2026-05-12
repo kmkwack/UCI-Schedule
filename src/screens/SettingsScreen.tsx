@@ -1467,11 +1467,11 @@ function CreateBoardView({
           }}>
             <Ionicons name={selectedIcon.icon} size={22} color={selectedIcon.color} />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
               {name.trim() || 'Board Name'}
             </Text>
-            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1} ellipsizeMode="tail">
               {description.trim() || 'Board description'}
             </Text>
           </View>
@@ -1669,10 +1669,10 @@ function ManageBoardsView({ school, onBack }: { school: string; onBack: () => vo
               }}>
                 <Ionicons name={board.icon as React.ComponentProps<typeof Ionicons>['name']} size={20} color={board.color} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{board.name}</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{board.name}</Text>
                 {board.description ? (
-                  <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86}>{board.description}</Text>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1} ellipsizeMode="tail">{board.description}</Text>
                 ) : null}
               </View>
               <TouchableOpacity

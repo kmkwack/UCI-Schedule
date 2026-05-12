@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Easing, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +15,7 @@ import { formatDateInTimeZone, getZonedDateParts, normalizeTimeZone, zonedDateFr
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
+import InfoChip from '../components/InfoChip';
 
 type Props = {
   activeCourses: Course[];
@@ -1963,6 +1964,9 @@ export default function HomeScreen({
   const activeHeroIndexRef = useRef(0);
   const heroSlideAnim = useRef(new Animated.Value(0)).current;
   const heroOpacityAnim = useRef(new Animated.Value(1)).current;
+  const heroTransitioningRef = useRef(false);
+  const heroSlideAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const heroPendingDirectionRef = useRef<1 | -1 | null>(null);
 
   const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
   const quarterProgress = clamp(
@@ -2602,46 +2606,59 @@ export default function HomeScreen({
   useEffect(() => {
     const maxIndex = Math.max(heroItems.length - 1, 0);
     if (activeHeroIndexRef.current <= maxIndex) return;
+    heroSlideAnimationRef.current?.stop();
+    heroSlideAnimationRef.current = null;
+    heroTransitioningRef.current = false;
+    heroPendingDirectionRef.current = null;
+    heroSlideAnim.setValue(0);
+    heroOpacityAnim.setValue(1);
     setActiveHeroIndex(maxIndex);
     activeHeroIndexRef.current = maxIndex;
   }, [heroItems.length]);
 
+  useLayoutEffect(() => {
+    const direction = heroPendingDirectionRef.current;
+    if (!direction) return;
+
+    heroPendingDirectionRef.current = null;
+    heroSlideAnimationRef.current?.stop();
+    heroSlideAnim.setValue(direction * 28);
+    heroOpacityAnim.setValue(1);
+
+    const spring = Animated.spring(heroSlideAnim, {
+      toValue: 0,
+      tension: 110,
+      friction: 15,
+      useNativeDriver: true,
+    });
+    heroSlideAnimationRef.current = spring;
+    spring.start(() => {
+      if (heroSlideAnimationRef.current === spring) {
+        heroSlideAnimationRef.current = null;
+      }
+      heroSlideAnim.setValue(0);
+      heroOpacityAnim.setValue(1);
+      heroTransitioningRef.current = false;
+    });
+  }, [activeHeroIndex, heroOpacityAnim, heroSlideAnim]);
+
   function moveHeroTo(nextIndex: number) {
     const boundedNextIndex = clamp(nextIndex, 0, Math.max(heroItems.length - 1, 0));
     const currentIndex = activeHeroIndexRef.current;
-    if (boundedNextIndex === currentIndex) return;
+    if (boundedNextIndex === currentIndex || heroItems.length <= 1 || heroTransitioningRef.current) return;
 
-    const direction = boundedNextIndex > currentIndex ? 1 : -1;
-    Animated.parallel([
-      Animated.timing(heroSlideAnim, {
-        toValue: -direction * 34,
-        duration: 120,
-        useNativeDriver: true,
-      }),
-      Animated.timing(heroOpacityAnim, {
-        toValue: 0.35,
-        duration: 120,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      activeHeroIndexRef.current = boundedNextIndex;
-      setActiveHeroIndex(boundedNextIndex);
-      heroSlideAnim.setValue(direction * 34);
-      heroOpacityAnim.setValue(0.35);
-      Animated.parallel([
-        Animated.spring(heroSlideAnim, {
-          toValue: 0,
-          tension: 95,
-          friction: 13,
-          useNativeDriver: true,
-        }),
-        Animated.timing(heroOpacityAnim, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
+    const direction: 1 | -1 = boundedNextIndex > currentIndex ? 1 : -1;
+    heroTransitioningRef.current = true;
+    heroSlideAnimationRef.current?.stop();
+    heroSlideAnimationRef.current = null;
+    heroSlideAnim.stopAnimation();
+    heroOpacityAnim.stopAnimation();
+    heroSlideAnim.setValue(0);
+    heroOpacityAnim.setValue(1);
+
+    heroPendingDirectionRef.current = direction;
+    activeHeroIndexRef.current = boundedNextIndex;
+    setActiveHeroIndex(boundedNextIndex);
   }
 
   const heroPanResponder = useMemo(
@@ -2666,7 +2683,7 @@ export default function HomeScreen({
       >
       <View style={{ marginBottom: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <Text numberOfLines={1} style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: 0 }} adjustsFontSizeToFit minimumFontScale={0.86}>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: 0 }}>
             {schoolHomeLabel(school)}
           </Text>
           <TouchableOpacity
@@ -2686,7 +2703,7 @@ export default function HomeScreen({
             <Ionicons name="person-outline" size={18} color={colors.brand} />
           </TouchableOpacity>
         </View>
-        <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }} adjustsFontSizeToFit minimumFontScale={0.86}>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
           {getDateLabel(now, selectedQuarter, quarterStart, quarterEnd, school, effectiveTimeZone)}
         </Text>
       </View>
@@ -2751,11 +2768,11 @@ export default function HomeScreen({
                                       <Ionicons name="restaurant-outline" size={20} color={diningAccent} />
                                     </View>
                                     <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
                                         {menu.name}
                                       </Text>
                                       {previewItems.length > 0 ? (
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }}>
                                           {previewItems.join(' · ')}
                                         </Text>
                                       ) : null}
@@ -2854,27 +2871,25 @@ export default function HomeScreen({
                                       {formatRelativeEventDayLabel(event.date, now, effectiveTimeZone)} · {formatSportsEventTime(event.date, event.timeLabel, effectiveTimeZone)}
                                     </Text>
                                   </View>
-                                  <View
-                                    style={{
-                                      borderRadius: 999,
-                                      backgroundColor: event.isHome ? colors.brandBg : colors.bgTertiary,
-                                      borderWidth: 1,
-                                      borderColor: event.isHome ? `${colors.brand}44` : colors.borderSubtle,
-                                      paddingHorizontal: 8,
-                                      paddingVertical: 4,
-                                    }}
-                                  >
-                                    <Text style={{ fontSize: 10, fontWeight: '800', color: event.isHome ? colors.brand : colors.textSecondary }}>
-                                      {sportsHomeAwayLabel(event)}
-                                    </Text>
-                                  </View>
+                                  <InfoChip
+                                    label={sportsHomeAwayLabel(event)}
+                                    tone={event.isHome ? 'brand' : 'neutral'}
+                                    compact
+                                    color={event.isHome ? colors.brand : colors.textSecondary}
+                                    borderColor={event.isHome ? `${colors.brand}44` : colors.borderSubtle}
+                                    backgroundColor={event.isHome ? colors.brandBg : colors.bgTertiary}
+                                  />
                                 </View>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7, paddingLeft: 48 }}>
-                                  <Ionicons name="people-outline" size={12} color={sportsGoingAccent} />
-                                  <Text style={{ color: sportsGoingAccent, fontSize: 11, fontWeight: '800' }}>
-                                    {(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going
-                                  </Text>
-                                </View>
+                                <InfoChip
+                                  icon="people-outline"
+                                  label={`${(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going`}
+                                  tone="brand"
+                                  compact
+                                  color={sportsGoingAccent}
+                                  backgroundColor={`${sportsGoingAccent}14`}
+                                  borderColor={`${sportsGoingAccent}28`}
+                                  style={{ marginTop: 7, marginLeft: 48 }}
+                                />
                               </TouchableOpacity>
                             ))}
                           </View>
@@ -3214,7 +3229,7 @@ export default function HomeScreen({
                             <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
                               {value}
                             </Text>
-                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }}>
                               {title}
                             </Text>
                             {courseClassmates.length > 0 ? (
@@ -3302,6 +3317,7 @@ export default function HomeScreen({
                               const rowEndDate = dateFromHour(now, extractEndHour(summaryCourse.time), effectiveTimeZone);
                               const rowStartClock = formatTimelineClockParts(rowStartDate, effectiveTimeZone);
                               const rowLocationLabel = formatHeroTimelineLocation(summaryCourse.location);
+                              const summaryCourseCode = String(summaryCourse.code ?? '').replace(/\s+/g, ' ').trim();
                               const rowIsPast = rowEndDate.getTime() < now.getTime();
                               const rowIsCurrent = rowStartDate.getTime() <= now.getTime() && rowEndDate.getTime() >= now.getTime();
                               const summaryCourseAccent = rowIsPast
@@ -3323,11 +3339,11 @@ export default function HomeScreen({
                                 >
                                   <View style={{ width: 64 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'flex-end', gap: 2 }}>
-                                      <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, fontWeight: '800', color: rowPrimaryColor }}>
                                         {rowStartClock.time}
                                       </Text>
                                       {rowStartClock.period ? (
-                                        <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 11, fontWeight: '800', color: rowPrimaryColor }}>
                                           {rowStartClock.period}
                                         </Text>
                                       ) : null}
@@ -3345,24 +3361,25 @@ export default function HomeScreen({
                                       }}
                                     />
                                     <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, lineHeight: 19, fontWeight: '800', color: rowPrimaryColor }} adjustsFontSizeToFit minimumFontScale={0.86}>
-                                        {summaryCourse.code}
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, lineHeight: 19, fontWeight: '800', color: rowPrimaryColor }}>
+                                        {summaryCourseCode}
                                       </Text>
                                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 17, color: rowSecondaryColor }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 17, color: rowSecondaryColor }}>
                                           {summaryCourse.title}
                                         </Text>
                                         {rowLocationLabel ? (
                                           <View
                                             style={{
                                               maxWidth: 118,
+                                              flexShrink: 0,
                                               borderRadius: 999,
                                               backgroundColor: colors.bgTertiary,
                                               paddingHorizontal: 7,
                                               paddingVertical: 2,
                                             }}
                                           >
-                                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 10, lineHeight: 13, fontWeight: '800', color: colors.textTertiary }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 10, lineHeight: 13, fontWeight: '800', color: colors.textTertiary }}>
                                               {rowLocationLabel}
                                             </Text>
                                           </View>
@@ -3629,7 +3646,7 @@ export default function HomeScreen({
                       >
                         <Ionicons name="checkmark" size={16} color={completed ? 'white' : colors.textTertiary} />
                       </TouchableOpacity>
-                      <View style={{ flex: 1 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
                         <Text
                           numberOfLines={1}
                           ellipsizeMode="tail"
@@ -3639,8 +3656,6 @@ export default function HomeScreen({
                             color: overdue ? '#EF4444' : (completed ? colors.textTertiary : colors.text),
                             textDecorationLine: completed ? 'line-through' : 'none',
                           }}
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.86}
                         >
                           {assignment.title}
                         </Text>
@@ -3976,7 +3991,7 @@ export default function HomeScreen({
                 <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
                   Today's Dining
                 </Text>
-                <Text numberOfLines={1} style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
                   {diningMenus.length > 0
                     ? diningMenusExternalOnly
                       ? 'Official dining menu link'
@@ -4021,7 +4036,7 @@ export default function HomeScreen({
                           <Ionicons name="restaurant-outline" size={20} color={diningAccent} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
                             {menu.name}
                           </Text>
                           <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 3 }}>
@@ -4207,27 +4222,25 @@ export default function HomeScreen({
                             {formatRelativeEventDayLabel(event.date, now, effectiveTimeZone)} · {formatSportsEventTime(event.date, event.timeLabel, effectiveTimeZone)}
                           </Text>
                         </View>
-                        <View
-                          style={{
-                            borderRadius: 999,
-                            backgroundColor: event.isHome ? colors.brandBg : colors.bgTertiary,
-                            borderWidth: 1,
-                            borderColor: event.isHome ? `${colors.brand}44` : colors.borderSubtle,
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                          }}
-                        >
-                          <Text style={{ fontSize: 10, fontWeight: '800', color: event.isHome ? colors.brand : colors.textSecondary }}>
-                            {sportsHomeAwayLabel(event)}
-                          </Text>
-                        </View>
+                        <InfoChip
+                          label={sportsHomeAwayLabel(event)}
+                          tone={event.isHome ? 'brand' : 'neutral'}
+                          compact
+                          color={event.isHome ? colors.brand : colors.textSecondary}
+                          borderColor={event.isHome ? `${colors.brand}44` : colors.borderSubtle}
+                          backgroundColor={event.isHome ? colors.brandBg : colors.bgTertiary}
+                        />
                       </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 9, paddingLeft: 48 }}>
-                        <Ionicons name="people-outline" size={12} color={sportsGoingAccent} />
-                        <Text style={{ color: sportsGoingAccent, fontSize: 11, fontWeight: '800' }}>
-                          {(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going
-                        </Text>
-                      </View>
+                      <InfoChip
+                        icon="people-outline"
+                        label={`${(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going`}
+                        tone="brand"
+                        compact
+                        color={sportsGoingAccent}
+                        backgroundColor={`${sportsGoingAccent}14`}
+                        borderColor={`${sportsGoingAccent}28`}
+                        style={{ marginTop: 9, marginLeft: 48 }}
+                      />
                     </TouchableOpacity>
                   ))}
                 </View>

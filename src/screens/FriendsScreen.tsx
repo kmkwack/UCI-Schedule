@@ -1353,7 +1353,7 @@ export default function FriendsScreen({
                         {f.major} • {f.year}
                       </Text>
                       {sharedCoursesByFriendId[f.id]?.length > 0 ? (
-                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.brand, marginTop: 4, fontWeight: '700' }} adjustsFontSizeToFit minimumFontScale={0.86}>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.brand, marginTop: 4, fontWeight: '700' }}>
                           {(() => {
                             const summaries = sharedCoursesByFriendId[f.id];
                             const allSameSection = summaries.every((summary) => summary.matchType === 'same_section');
@@ -1609,8 +1609,8 @@ export default function FriendsScreen({
                   </Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: 'bold', color: colors.text }} adjustsFontSizeToFit minimumFontScale={0.86}>{firstLastName(friend.name)}</Text>
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }} adjustsFontSizeToFit minimumFontScale={0.86}>{friend.email}</Text>
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: 'bold', color: colors.text }}>{firstLastName(friend.name)}</Text>
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{friend.email}</Text>
                 </View>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

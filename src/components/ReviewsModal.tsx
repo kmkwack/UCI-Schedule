@@ -220,6 +220,38 @@ function oneDecimal(value: number | null) {
   return value == null ? '—' : value.toFixed(1);
 }
 
+function prerequisiteChipsFromText(value: string | null) {
+  if (!value) return [];
+  const matches = value.match(/\b[A-Z]{2,8}\s*\d{1,4}[A-Z]?\b/gi) ?? [];
+  return uniqueCleanItems(matches.map((item) => item.replace(/\s+/g, ' ').trim().toUpperCase())).slice(0, 6);
+}
+
+function prerequisiteHasDetailsBeyondCourseCodes(value: string | null, chips: string[]) {
+  if (!value || chips.length === 0) return false;
+  const remainder = value
+    .replace(/\b[A-Z]{2,8}\s*\d{1,4}[A-Z]?\b/gi, ' ')
+    .replace(/\b(prerequisites?|corequisites?|and|or|one|of|the|a|an|course|courses|listed|required|recommended|complete|completion|prior|to|enrollment|with|minimum|grade|better|equivalent|same|as)\b/gi, ' ')
+    .replace(/[^a-z0-9]+/gi, '')
+    .trim();
+  return remainder.length > 12;
+}
+
+function summarizePrerequisiteText(value: string, chipCount: number) {
+  const lower = value.toLowerCase();
+  if (chipCount <= 1) return 'Complete the listed prerequisite.';
+  if (lower.includes(' and ') && !lower.includes(' or ')) return 'Complete all listed prerequisites.';
+  if (lower.includes(' or ')) return 'Complete one of the listed prerequisites.';
+  return 'Complete the listed prerequisites.';
+}
+
+function buildPrerequisiteDisplay(value: string | null) {
+  const chips = prerequisiteChipsFromText(value);
+  if (!value) return { chips, text: null };
+  if (chips.length === 0) return { chips, text: value };
+  if (prerequisiteHasDetailsBeyondCourseCodes(value, chips)) return { chips: [], text: value };
+  return { chips, text: summarizePrerequisiteText(value, chips.length) };
+}
+
 type Props = {
   visible: boolean;
   onClose: () => void;
@@ -487,7 +519,6 @@ export default function ReviewsModal({
     workload: average(reviews.map((review) => review.workload)),
   }), [reviews]);
   const officialFinalText = courseInfo ? formatFinalExam(courseInfo.finalExam) : null;
-  const restrictionItems = courseInfo ? decodeRestrictions(courseInfo.restrictions) : [];
   const prerequisiteLink = courseInfo?.prerequisiteLink ?? null;
   const prerequisiteText = courseInfo?.prerequisiteText ?? null;
   const prerequisiteSourceKnown = courseInfo?.prerequisiteSourceKnown === true;
@@ -495,6 +526,15 @@ export default function ReviewsModal({
   const shouldShowPrerequisites = courseInfo !== null;
   const restrictionsEmptyText = schoolConfig.id === 'uci' ? 'No restrictions listed' : 'Not supported';
   const prerequisiteDisplayText = prerequisiteText ?? (prerequisiteSourceKnown && !prerequisiteLink ? 'No prerequisites' : null);
+  const prerequisiteEmptyText = prerequisiteSourceKnown ? 'No prerequisites' : 'Prerequisite data is not available yet';
+  const prerequisiteDisplay = buildPrerequisiteDisplay(prerequisiteDisplayText);
+  const prerequisiteChips = prerequisiteDisplay.chips;
+  const prerequisiteBodyText = prerequisiteDisplay.text;
+  const hasPrerequisiteInfo = Boolean(prerequisiteDisplayText || prerequisiteLink || prerequisiteSourceKnown);
+  const restrictionItems = courseInfo ? decodeRestrictions(courseInfo.restrictions).filter((item) => {
+    if (!hasPrerequisiteInfo) return true;
+    return item.toLowerCase() !== 'prerequisite required';
+  }) : [];
   const visibleRestrictionItems = showAllRestrictions
     ? restrictionItems
     : restrictionItems.slice(0, COLLAPSED_RESTRICTION_COUNT);
@@ -549,10 +589,13 @@ export default function ReviewsModal({
                   {showCourseInfoDetails ? (
                     <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, gap: 10 }}>
                         {shouldShowRestrictions ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                            <Ionicons name="lock-closed-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Restrictions</Text>
+                          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.borderSubtle, backgroundColor: colors.bgSecondary, padding: 13 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle }}>
+                                <Ionicons name="lock-closed-outline" size={14} color={colors.textTertiary} />
+                              </View>
+                              <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: colors.text }}>Restrictions</Text>
+                            </View>
                               {restrictionItems.length > 0 ? (
                                 <View style={{ gap: 5 }}>
                                   {visibleRestrictionItems.map((item) => (
@@ -581,41 +624,66 @@ export default function ReviewsModal({
                                   </Text>
                                 </TouchableOpacity>
                               ) : null}
-                            </View>
                           </View>
                         ) : null}
                         {shouldShowPrerequisites ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                            <Ionicons name="link-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Prerequisites</Text>
-                              <Text style={{ fontSize: 13, lineHeight: 18, color: prerequisiteDisplayText ? colors.text : colors.textSecondary }}>
-                                {prerequisiteDisplayText ?? (prerequisiteLink ? 'Prerequisite details' : 'Not supported')}
+                          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.borderSubtle, backgroundColor: colors.bgSecondary, padding: 13 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle }}>
+                                <Ionicons name="git-branch-outline" size={14} color={colors.textTertiary} />
+                              </View>
+                              <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: colors.text }}>Prerequisites</Text>
+                            </View>
+                              {prerequisiteChips.length > 0 ? (
+                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                                  {prerequisiteChips.map((item) => (
+                                    <View key={item} style={{ borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: colors.brandBg, borderWidth: 1, borderColor: `${colors.brand}33` }}>
+                                      <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>{item}</Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              ) : null}
+                              <Text style={{ fontSize: 13, lineHeight: 18, color: prerequisiteBodyText || prerequisiteLink ? colors.text : colors.textSecondary }}>
+                                {prerequisiteBodyText ?? (prerequisiteLink ? 'Prerequisite details are available from the official course page.' : prerequisiteEmptyText)}
                               </Text>
                               {prerequisiteLink ? (
-                                <TouchableOpacity onPress={() => Linking.openURL(prerequisiteLink)} style={{ marginTop: 4 }}>
-                                  <Text style={{ fontSize: 13, color: colors.brand, textDecorationLine: 'underline' }}>View prerequisites ›</Text>
+                                <TouchableOpacity
+                                  onPress={() => Linking.openURL(prerequisiteLink)}
+                                  style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+                                >
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                    <Ionicons name="open-outline" size={13} color={colors.brand} />
+                                    <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Open official prerequisites</Text>
+                                  </View>
                                 </TouchableOpacity>
                               ) : null}
-                            </View>
                           </View>
                         ) : null}
                         {officialFinalText ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                            <Ionicons name="calendar-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Final Exam</Text>
-                              <Text style={{ fontSize: 13, color: colors.text }}>{officialFinalText}</Text>
+                          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.borderSubtle, backgroundColor: colors.bgSecondary, padding: 13 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle }}>
+                                <Ionicons name="calendar-outline" size={14} color={colors.textTertiary} />
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Final Exam</Text>
+                                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{officialFinalText}</Text>
+                              </View>
                             </View>
                           </View>
                         ) : null}
                         {showRmpLink ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                            <Ionicons name="star-outline" size={14} color={colors.textTertiary} style={{ marginTop: 1 }} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Rate My Professors</Text>
-                              <TouchableOpacity onPress={() => Linking.openURL(rmpUrl)}>
-                                <Text style={{ fontSize: 13, color: colors.brand, textDecorationLine: 'underline' }}>{rmpProfessor} on RateMyProfessors ›</Text>
+                          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.borderSubtle, backgroundColor: colors.bgSecondary, padding: 13 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle }}>
+                                <Ionicons name="star-outline" size={14} color={colors.textTertiary} />
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Rate My Professors</Text>
+                                <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{rmpProfessor}</Text>
+                              </View>
+                              <TouchableOpacity onPress={() => Linking.openURL(rmpUrl)} style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.brandBg, borderWidth: 1, borderColor: `${colors.brand}33` }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Open</Text>
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -626,7 +694,8 @@ export default function ReviewsModal({
                   {/* Grade Distribution */}
                   {showGradeDistribution ? (
                     <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 10 }}>{gradeDistributionTitle}</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>Grade Distribution</Text>
+                      <Text style={{ fontSize: 12, lineHeight: 17, color: colors.textSecondary, marginTop: 3, marginBottom: 10 }}>{gradeDistributionTitle}</Text>
                       {supportsOfficialGradeDistribution && professors.length > 0 && (
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
                           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -647,56 +716,64 @@ export default function ReviewsModal({
                           </View>
                         </ScrollView>
                       )}
-                      {!supportsOfficialGradeDistribution ? (
-                        <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, borderWidth: 1, borderColor: colors.borderSubtle, padding: 13 }}>
+                      <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 18, borderWidth: 1, borderColor: colors.borderSubtle, padding: 14 }}>
+                        {!supportsOfficialGradeDistribution ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                             <Ionicons name="stats-chart-outline" size={16} color={colors.textTertiary} />
                             <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>
-                              Not supported
+                              Grade distribution is not supported yet
                             </Text>
                           </View>
-                        </View>
-                      ) : gradeLoading ? (
-                        <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-                          <ActivityIndicator size="small" color={colors.brand} />
-                        </View>
-                      ) : hasGradeDistribution ? (
-                        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
-                          <View style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandBg, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, minWidth: 72 }}>
-                            <Text style={{ fontSize: 26, fontWeight: '800', color: colors.brand }}>
-                              {grades?.averageGPA != null ? grades.averageGPA.toFixed(2) : '—'}
-                            </Text>
-                            <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>avg GPA</Text>
+                        ) : gradeLoading ? (
+                          <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                            <ActivityIndicator size="small" color={colors.brand} />
+                            <Text style={{ marginTop: 8, fontSize: 12, color: colors.textSecondary }}>Loading grade distribution</Text>
                           </View>
-                          <View style={{ flex: 1, gap: 5 }}>
-                            {visibleEntries.map((entry) => {
-                              const pct = total > 0 ? entry.count / total : 0;
-                              return (
-                                <View key={entry.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, width: 18, textAlign: 'right' }}>{entry.label}</Text>
-                                  <View style={{ flex: 1, height: 10 }}>
-                                    <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: entry.color, borderRadius: 5 }} />
+                        ) : hasGradeDistribution ? (
+                          <View style={{ gap: 12 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                              <View style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandBg, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, minWidth: 74 }}>
+                                <Text style={{ fontSize: 26, fontWeight: '800', color: colors.brand }}>
+                                  {grades?.averageGPA != null ? grades.averageGPA.toFixed(2) : '—'}
+                                </Text>
+                                <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>avg GPA</Text>
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Official grade history</Text>
+                                <Text style={{ fontSize: 12, lineHeight: 17, color: colors.textSecondary, marginTop: 3 }}>
+                                  Based on {total.toLocaleString()} students across available terms.
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={{ gap: 7 }}>
+                              {visibleEntries.map((entry) => {
+                                const pct = total > 0 ? entry.count / total : 0;
+                                return (
+                                  <View key={entry.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, width: 20, textAlign: 'right' }}>{entry.label}</Text>
+                                    <View style={{ flex: 1, height: 10, borderRadius: 999, backgroundColor: colors.card, overflow: 'hidden', borderWidth: 1, borderColor: colors.borderSubtle }}>
+                                      <View style={{ width: `${Math.max(pct * 100, 2)}%`, height: '100%', backgroundColor: entry.color, borderRadius: 999 }} />
+                                    </View>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, width: 36, textAlign: 'right' }}>{(pct * 100).toFixed(0)}%</Text>
                                   </View>
-                                  <Text style={{ fontSize: 11, color: colors.textSecondary, width: 34, textAlign: 'right' }}>{(pct * 100).toFixed(0)}%</Text>
-                                </View>
-                              );
-                            })}
-                            <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 2 }}>Based on {total.toLocaleString()} students · all available terms</Text>
+                                );
+                              })}
+                            </View>
                           </View>
-                        </View>
-                      ) : (
-                        <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, borderWidth: 1, borderColor: colors.borderSubtle, padding: 13 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <Ionicons name="stats-chart-outline" size={16} color={colors.textTertiary} />
-                            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
-                              No grade distribution found
+                        ) : (
+                          <View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <Ionicons name="stats-chart-outline" size={16} color={colors.textTertiary} />
+                              <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: colors.text }}>
+                                No grade distribution available yet
+                              </Text>
+                            </View>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 17, marginTop: 7 }}>
+                              {instructor ? 'Switch back to All Professors to view the course-wide grade distribution.' : 'ClassMate reviews can still be used below.'}
                             </Text>
                           </View>
-                          <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 17, marginTop: 7 }}>
-                            {instructor ? 'Switch back to All Professors to view the course-wide grade distribution.' : 'ClassMate reviews can still be used below.'}
-                          </Text>
-                        </View>
-                      )}
+                        )}
+                      </View>
                     </View>
                   ) : null}
 
@@ -711,9 +788,9 @@ export default function ReviewsModal({
                         <View style={{ backgroundColor: colors.brandBg, borderRadius: 18, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: colors.borderSubtle }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                             <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase', color: colors.brand }}>ClassMate Reviews</Text>
+                              <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase', color: colors.brand }}>Reviews</Text>
                               <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 5 }}>
-                                {reviews.length > 0 ? `${oneDecimal(reviewStats.rating)} student rating` : 'No student reviews yet'}
+                                {reviews.length > 0 ? `${oneDecimal(reviewStats.rating)} student rating` : 'No reviews yet'}
                               </Text>
                               <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 18, marginTop: 5 }}>
                                 {reviews.length > 0
@@ -742,13 +819,13 @@ export default function ReviewsModal({
                         </View>
 
                         {reviews.map((review) => (
-                          <View key={review.id} style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, padding: 14, marginBottom: 10 }}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                              <View>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <View key={review.id} style={{ backgroundColor: colors.bgSecondary, borderRadius: 16, borderWidth: 1, borderColor: colors.borderSubtle, padding: 14, marginBottom: 10 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
                                     {review.quarter ? (
-                                    <View style={{ backgroundColor: colors.brandBg, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}>
-                                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>{review.quarter}</Text>
+                                    <View style={{ backgroundColor: colors.brandBg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, maxWidth: '100%' }}>
+                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 11, fontWeight: '700', color: colors.brand }}>{review.quarter}</Text>
                                     </View>
                                   ) : null}
                                 </View>
@@ -756,13 +833,21 @@ export default function ReviewsModal({
                                   {[1,2,3,4,5].map(i => <Ionicons key={i} name={i <= review.rating ? 'star' : 'star-outline'} size={13} color={i <= review.rating ? '#f59e0b' : colors.border} />)}
                                 </View>
                               </View>
-                              <Text style={{ fontSize: 12, color: colors.textTertiary }}>{review.date}</Text>
+                              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary }}>{review.date}</Text>
                             </View>
                             <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19, marginBottom: 8 }}>{review.content}</Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <View style={{ flexDirection: 'row', gap: 16 }}>
-                                <Text style={{ fontSize: 12, color: colors.textTertiary }}>Difficulty: <Text style={{ fontWeight: '700', color: colors.textSecondary }}>{review.difficulty}/5</Text></Text>
-                                <Text style={{ fontSize: 12, color: colors.textTertiary }}>Workload: <Text style={{ fontWeight: '700', color: colors.textSecondary }}>{review.workload}/5</Text></Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                              <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                                {[
+                                  { label: 'Difficulty', value: review.difficulty },
+                                  { label: 'Workload', value: review.workload },
+                                ].map((item) => (
+                                  <View key={item.label} style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.borderSubtle }}>
+                                    <Text style={{ fontSize: 11, color: colors.textTertiary }}>
+                                      {item.label} <Text style={{ fontWeight: '800', color: colors.textSecondary }}>{item.value}/5</Text>
+                                    </Text>
+                                  </View>
+                                ))}
                               </View>
                               {review.userId === userId && (
                                 <View style={{ flexDirection: 'row', gap: 8 }}>

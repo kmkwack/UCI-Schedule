@@ -18,12 +18,12 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 const REVIEW_EMAIL = process.env.REVIEW_EMAIL || 'review@classmate.app';
 const REVIEW_PASSWORD = process.env.REVIEW_PASSWORD;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !REVIEW_PASSWORD) {
-  throw new Error('Missing SUPABASE_URL, SUPABASE_SERVICE_KEY, or REVIEW_PASSWORD environment variable.');
+  throw new Error('Missing SUPABASE_URL, SUPABASE_SERVICE_KEY/SUPABASE_SERVICE_ROLE_KEY, or REVIEW_PASSWORD environment variable.');
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {

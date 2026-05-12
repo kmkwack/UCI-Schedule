@@ -566,7 +566,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     : Math.max(insets.bottom - 6, 8);
   const availableTabWidth = Math.max(0, windowWidth - tabHorizontalMargin * 2);
   const tabSlotWidth = availableTabWidth / 5;
-  const tabTextMinScale = tinyTabs ? 0.78 : compactTabs ? 0.84 : 0.9;
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
   const [authInitializing, setAuthInitializing] = useState(true);
@@ -2921,8 +2920,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           maxWidth: Math.max(42, tabSlotWidth - 8),
         }}
         numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={tabTextMinScale}
+        ellipsizeMode="tail"
       >
         {label}
       </Text>

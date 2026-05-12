@@ -104,6 +104,7 @@ Retries only these known failed UIUC groups:
 
 Environment:
   SUPABASE_URL=... SUPABASE_SERVICE_KEY=...   Required unless DRY_RUN=1.
+  SUPABASE_SERVICE_ROLE_KEY=...               Also accepted in place of SUPABASE_SERVICE_KEY.
   UIUC_FETCH_RETRIES=2                       Defaults to 2 for retry runs.
   UIUC_TRANSIENT_RETRY_DELAY_MS=10000        Defaults to 10 seconds.
   UIUC_RETRY_DELAY_MS=60000                  Defaults to 60 seconds.
@@ -117,8 +118,9 @@ function main() {
     return;
   }
 
-  if (process.env.DRY_RUN !== '1' && (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY)) {
-    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY. Put both before the retry command in the same terminal command.');
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (process.env.DRY_RUN !== '1' && (!process.env.SUPABASE_URL || !serviceKey)) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY/SUPABASE_SERVICE_ROLE_KEY. Put both before the retry command in the same terminal command.');
   }
 
   const failures = [];

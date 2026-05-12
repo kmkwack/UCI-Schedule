@@ -3050,3 +3050,39 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sgk (Required review account handling)
 - **`src/screens/SignInScreen.tsx`** — Made `review@classmate.app` the only account accepted by the review email/password flow, kept it exempt from normal university-domain checks, and prepared its profile/settings for the selected school at sign-in so App Store / Play Store reviewers can test any supported school without making the account a moderator or super admin.
+
+### Session 64sgl (Polish course info review modal)
+- **`src/components/ReviewsModal.tsx`** — Lightly restyled the existing course-info, prerequisite, grade distribution, RMP, and review sections with native-feeling cards/chips, clearer section headers, intentional empty states, and small-screen overflow guards while preserving the same modal flow and review submission logic.
+
+### Session 64sgm (Typography autoshrink safety pass)
+- **`App.tsx`**, **`src/screens/HomeScreen.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, **`src/screens/GradesScreen.tsx`**, **`src/screens/MessagesScreen.tsx`**, **`src/screens/SettingsScreen.tsx`**, **`src/screens/UniversitySelectionScreen.tsx`**, and **`src/components/FeatureOnboardingScreen.tsx`** — Removed unsafe `adjustsFontSizeToFit` from compact rows, chips, tabs, buttons, course codes, previews, and board/message text so long labels truncate with ellipsis instead of shrinking into unreadable type.
+- **`src/components/ClassMateIntroScreen.tsx`** — Kept autoshrink only for the large onboarding campus headline, raised `minimumFontScale` to `0.85`, and added an explicit `text-autoshrink-ok` comment documenting the exception.
+- **`scripts/audit-text-autoshrink.js`** and **`package.json`** — Added `npm run audit:text-autoshrink`, which fails future unallowlisted `adjustsFontSizeToFit` usage and enforces the minimum readable scale for any approved exception.
+
+### Session 64sgn (Standardize metric chips)
+- **`src/components/InfoChip.tsx`** — Added a reusable theme-aware passive chip for metric, status, and metadata labels with consistent rounded shape, border, icon spacing, ellipsis behavior, and dark-mode tones.
+- **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/HomeScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, and **`src/screens/BoardScreen.tsx`** — Replaced repeated one-off enrolled/waitlist/saved/going/shared/comment count badges with `InfoChip` while leaving action buttons such as Add, Reviews, RSVP, Message, and Join Discord unchanged.
+
+### Session 64sgo (Single-phase Home hero carousel transition)
+- **`src/screens/HomeScreen.tsx`** — Replaced the hero carousel's two-phase fade-out/index-swap/fade-in transition with an immediate index update plus one spring slide-in, and added a transition guard so rapid swipes/taps do not queue extra transitions or desync the active dot.
+
+### Session 64sgp (Defer Home hero slide until new card commit)
+- **`src/screens/HomeScreen.tsx`** — Moved the hero slide offset/spring start into `useLayoutEffect` after `activeHeroIndex` commits, so the outgoing card no longer receives the incoming-card transform for a split moment before the next hero appears.
+
+### Session 64sgq (Graceful grades school-column fallback)
+- **`src/screens/GradesScreen.tsx`** — Added a legacy fallback for Supabase projects where `grades.school` has not been migrated yet, retrying grade loads/saves with user-scoped legacy queries and downgrading recoverable schema mismatches from `console.error` to `console.warn` so development builds do not redbox.
+- **`supabase/sql/grades_school_column_hotfix.sql`** — Added an idempotent SQL hotfix for the missing `grades.school` column, school-scoped grade uniqueness, and supporting index so the backend can be brought back in line with the production school-scoped grades model.
+
+### Session 64sgr (Fix board image viewer render crash)
+- **`src/screens/BoardScreen.tsx`** — Fixed the board attachment image viewer crash by replacing stale `screen.width` / `screen.height` references with `useWindowDimensions()` values, and restored the selected-post comment count to the previous plain icon/text display.
+- **`src/screens/FriendsScreen.tsx`** — Reverted the shared-class count and same-section/same-course labels from the reusable chip treatment back to the previous compact text styling.
+
+### Session 64sgs (Reduce prerequisite display duplication)
+- **`src/components/ReviewsModal.tsx`** — Removed duplicate prerequisite signaling by filtering `Prerequisite required` out of Restrictions when actual prerequisite information is shown, and changed simple prerequisite course-code lists to render as chips plus a short summary instead of repeating the same codes again in the body text.
+
+### Session 64sgt (Silence legacy grades fallback warning)
+- **`src/screens/GradesScreen.tsx`** — Made the temporary legacy fallback for missing `grades.school` silent and memoized per app session, so development builds no longer print repeated warnings while still using the user-scoped legacy query until the Supabase grades migration is applied.
+
+### Session 64sgu (Fix seed workflow service-role fallback)
+- **`.github/workflows/seed-course-sections.yml`** — Exported `SUPABASE_SERVICE_ROLE_KEY` as the legacy `SUPABASE_SERVICE_KEY` fallback so scheduled seed jobs do not pass the secret check and then fail inside older child seed scripts.
+- **`scripts/ensure-review-account.js`**, **`scripts/seed-umd-sections.js`**, **`scripts/seed-cornell-sections.js`**, **`scripts/seed-purdue-sections.js`**, **`scripts/seed-uiuc-sections.js`**, **`scripts/retry-uiuc-failed-subjects.js`**, **`scripts/seed-sections.js`**, **`scripts/seed-summer.js`**, and **`scripts/seed-enrollment-history.js`** — Updated Supabase service-key loading and error copy to accept either `SUPABASE_SERVICE_KEY` or `SUPABASE_SERVICE_ROLE_KEY`, matching the workflow's documented secret names.

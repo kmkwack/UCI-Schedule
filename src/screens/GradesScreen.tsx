@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, quarterKey, quarterLabel, resolveCurrentQuarter } from '../data/courses';
 import { gradeScaleForSchool } from '../data/schools';
 import { supabase } from '../lib/supabase';
+import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import { useTheme } from '../context/ThemeContext';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -18,6 +19,9 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 type Props = { timetables: Timetable[]; userId: string; school: string; topInset?: number; bottomInset?: number; scrollToTopTrigger?: number };
+type GradeRow = { school?: string; quarter_key: string; course_id: string; grade: string };
+
+let gradesSchoolColumnUnavailable = false;
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -260,8 +264,7 @@ function GpaChart({ history, maxGpa }: { history: { label: string; gpa: number }
           }}>
             <Text
               numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.86}
+              ellipsizeMode="tail"
               style={{ fontSize: 10.5, lineHeight: 14, color: colors.textTertiary, textAlign: 'center', fontWeight: '700' }}
             >
               {compactQuarterLabel(p.label)}
@@ -653,13 +656,43 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
       const cached = await AsyncStorage.getItem(cacheKey);
       if (cached) setGrades(JSON.parse(cached));
 
-      // Then fetch from Supabase and update
-      const { data, error } = await supabase
-        .from('grades')
-        .select('school, quarter_key, course_id, grade')
-        .eq('user_id', userId)
-        .eq('school', school);
-      if (error) { console.error('Failed to load grades:', error); return; }
+      // Then fetch from Supabase and update. Some deployed databases may not have
+      // the school-scoped grades migration yet, so keep a silent legacy fallback.
+      let data: GradeRow[] | null = null;
+      if (gradesSchoolColumnUnavailable) {
+        const legacyResult = await supabase
+          .from('grades')
+          .select('quarter_key, course_id, grade')
+          .eq('user_id', userId);
+        if (legacyResult.error) {
+          console.warn('Failed to load grades:', legacyResult.error);
+          return;
+        }
+        data = legacyResult.data;
+      } else {
+        const scopedResult = await supabase
+          .from('grades')
+          .select('school, quarter_key, course_id, grade')
+          .eq('user_id', userId)
+          .eq('school', school);
+        if (scopedResult.error && isMissingSchoolColumnError(scopedResult.error)) {
+          gradesSchoolColumnUnavailable = true;
+          const legacyResult = await supabase
+            .from('grades')
+            .select('quarter_key, course_id, grade')
+            .eq('user_id', userId);
+          if (legacyResult.error) {
+            console.warn('Failed to load grades:', legacyResult.error);
+            return;
+          }
+          data = legacyResult.data;
+        } else if (scopedResult.error) {
+          console.warn('Failed to load grades:', scopedResult.error);
+          return;
+        } else {
+          data = (scopedResult.data ?? null) as GradeRow[] | null;
+        }
+      }
       const loaded: Record<string, string> = {};
       (data ?? []).forEach((row: any) => { loaded[gk(row.quarter_key, row.course_id)] = row.grade; });
       setGrades(loaded);
@@ -674,13 +707,34 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
     setGrades(updated);
     AsyncStorage.setItem(cacheKey, JSON.stringify(updated));
     const [qk, courseId] = key.split('|');
-    const { error } = await supabase
-      .from('grades')
-      .upsert(
-        { user_id: userId, school, quarter_key: qk, course_id: courseId, grade },
-        { onConflict: 'user_id,school,quarter_key,course_id' }
-      );
-    if (error) console.error('Failed to save grade:', error);
+    if (gradesSchoolColumnUnavailable) {
+      const legacyResult = await supabase
+        .from('grades')
+        .upsert(
+          { user_id: userId, quarter_key: qk, course_id: courseId, grade },
+          { onConflict: 'user_id,quarter_key,course_id' }
+        );
+      if (legacyResult.error) console.warn('Failed to save grade:', legacyResult.error);
+    } else {
+      const scopedResult = await supabase
+        .from('grades')
+        .upsert(
+          { user_id: userId, school, quarter_key: qk, course_id: courseId, grade },
+          { onConflict: 'user_id,school,quarter_key,course_id' }
+        );
+      if (scopedResult.error && isMissingSchoolColumnError(scopedResult.error)) {
+        gradesSchoolColumnUnavailable = true;
+        const legacyResult = await supabase
+          .from('grades')
+          .upsert(
+            { user_id: userId, quarter_key: qk, course_id: courseId, grade },
+            { onConflict: 'user_id,quarter_key,course_id' }
+          );
+        if (legacyResult.error) console.warn('Failed to save grade:', legacyResult.error);
+      } else if (scopedResult.error) {
+        console.warn('Failed to save grade:', scopedResult.error);
+      }
+    }
   }
 
   // Past quarters: any timetable whose quarter key is before Spring 2026, derived from timetables directly

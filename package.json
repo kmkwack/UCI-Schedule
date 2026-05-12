@@ -11,7 +11,8 @@
     "retry:uiuc-failed": "node scripts/retry-uiuc-failed-subjects.js",
     "reconcile:school-terms": "node scripts/reconcile-school-terms.js",
     "report:unmapped-classrooms": "node scripts/report-unmapped-classrooms.js",
-    "audit:android-text": "node scripts/audit-android-text.js"
+    "audit:android-text": "node scripts/audit-android-text.js",
+    "audit:text-autoshrink": "node scripts/audit-text-autoshrink.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

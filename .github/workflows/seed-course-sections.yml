@@ -1,9 +1,6 @@
 name: Seed course sections
 
 on:
-  schedule:
-    # Twice daily so newly published SOC data lands in Supabase quickly.
-    - cron: "0 */12 * * *"
   workflow_dispatch:
     inputs:
       schools:

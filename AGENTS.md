@@ -3202,3 +3202,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64sic (Constrain keyboard-raised sheets)
 - **`src/utils/useKeyboardInset.ts`** — Added a bottom-sheet max-height helper that calculates the remaining visible screen height when the keyboard is open.
 - **`src/screens/BoardScreen.tsx`** — Uses the shared max-height helper for Request New Board so the sheet moves above the Android keyboard and its inner ScrollView remains scrollable within the reduced height.
+
+### Session 64sid (Disable scheduled section seeding)
+- **`.github/workflows/seed-course-sections.yml`** — Removed the twice-daily cron trigger from the Seed course sections workflow so GitHub no longer sends repeated scheduled-run failure emails; the workflow remains available for manual `workflow_dispatch` runs when seeding is intentionally needed.

@@ -238,7 +238,7 @@ export default function FriendsScreen({
   unreadMessageCount = 0,
 }: Props) {
   const { colors } = useTheme();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const screenWidthRef = useRef(screenWidth);
   useEffect(() => { screenWidthRef.current = screenWidth; }, [screenWidth]);
   const friendsScrollRef = useRef<ScrollView>(null);
@@ -908,15 +908,23 @@ export default function FriendsScreen({
           visible={showAddModal}
           onRequestClose={closeAddModal}
         >
-          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <TouchableOpacity
               style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' }}
               activeOpacity={1}
               onPress={() => { Keyboard.dismiss(); closeAddModal(); }}
             />
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} pointerEvents="box-none">
+            <View
+              style={{
+                flex: 1,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+              pointerEvents="box-none"
+            >
               <View style={{
                 backgroundColor: colors.card, borderRadius: 18, padding: 24, width: 300,
+                maxHeight: Math.max(360, screenHeight - 64),
                 shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
                 shadowOpacity: 0.18, shadowRadius: 16, elevation: 10,
               }}>
@@ -1213,7 +1221,7 @@ export default function FriendsScreen({
             }}>
               <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 5 }}>
                 <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1.2, color: colors.textTertiary }}>
-                  SHARED CLASSES THIS TERM
+                  {sharedClassGroups.length > 0 ? 'SHARED CLASSES THIS TERM' : 'NO SHARED CLASSES THIS TERM'}
                 </Text>
               </View>
               {sharedClassGroups.length > 0 ? (
@@ -1236,14 +1244,6 @@ export default function FriendsScreen({
                             color: getBlockColors(group.course, 'minimal').text,
                           }}>
                             {group.course.code}
-                          </Text>
-                          <Text numberOfLines={1} ellipsizeMode="tail" style={{
-                            fontSize: 9,
-                            fontWeight: '800',
-                            color: colors.textTertiary,
-                            marginTop: 1,
-                          }}>
-                            {group.matchType === 'same_section' ? 'Same section' : 'Same course'}
                           </Text>
                       </View>
                       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
@@ -1356,14 +1356,9 @@ export default function FriendsScreen({
                         <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.brand, marginTop: 4, fontWeight: '700' }}>
                           {(() => {
                             const summaries = sharedCoursesByFriendId[f.id];
-                            const allSameSection = summaries.every((summary) => summary.matchType === 'same_section');
-                            const allSameCourse = summaries.every((summary) => summary.matchType === 'same_course');
-                            const label = allSameSection
-                              ? `${summaries.length} same section${summaries.length === 1 ? '' : 's'}`
-                              : allSameCourse
-                                ? `${summaries.length} same course${summaries.length === 1 ? '' : 's'}`
-                                : `${summaries.length} shared courses`;
-                            return `${label} • ${summaries.slice(0, 2).map((summary) => summary.course.code).join(' • ')}`;
+                            const visibleCodes = summaries.slice(0, 2).map((summary) => summary.course.code).join(' • ');
+                            const overflowCount = summaries.length - 2;
+                            return overflowCount > 0 ? `${visibleCodes} +${overflowCount}` : visibleCodes;
                           })()}
                         </Text>
                       ) : null}
@@ -1542,7 +1537,7 @@ export default function FriendsScreen({
           <Modal transparent visible={showQuarterDropdown} onRequestClose={closeQuarterDropdown}>
             <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeQuarterDropdown}>
               <Animated.View style={{
-                position: 'absolute', top: topInset + 44, right: 16,
+                position: 'absolute', top: topInset + 58, right: 16,
                 backgroundColor: colors.card, borderRadius: 12,
                 shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.15, shadowRadius: 12, elevation: 8,
@@ -1593,7 +1588,7 @@ export default function FriendsScreen({
           </Modal>
 
           {/* Fixed header */}
-          <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: topInset + 8, paddingBottom: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, marginRight: 8 }}>
                 <TouchableOpacity onPress={closeFriendTimetable} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>

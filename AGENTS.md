@@ -3022,6 +3022,9 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/screens/HomeScreen.tsx`** — Tightened the shared-class match type annotation so the TypeScript validation gate preserves the `same_section` / `same_course` union instead of widening it to `string`.
 - **`src/screens/FriendsScreen.tsx`** — Tightened the shared-class group match type annotation for the same validation reason, keeping shared-course labels aligned with the common matching helper.
 
+### Session 64sgg (Hide shared-class match label)
+- **`src/screens/FriendsScreen.tsx`** — Removed the small `Same section` / `Same course` subtitle from the shared-classes card so the row shows only the course pill, friend avatar, and count.
+
 ### Session 64sgg (Normalize shared class matching)
 - **`src/data/sharedClasses.ts`** — Added shared course/section matching helpers with normalized course-code comparison, exact section-id matching, and custom-course protection so custom blocks only match by identical ids.
 - **`src/screens/HomeScreen.tsx`** — Replaced local classmate matching keys with the shared helper and changed the home classmate copy to distinguish `same section` from broader `same course` overlaps.
@@ -3086,3 +3089,116 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 ### Session 64sgu (Fix seed workflow service-role fallback)
 - **`.github/workflows/seed-course-sections.yml`** — Exported `SUPABASE_SERVICE_ROLE_KEY` as the legacy `SUPABASE_SERVICE_KEY` fallback so scheduled seed jobs do not pass the secret check and then fail inside older child seed scripts.
 - **`scripts/ensure-review-account.js`**, **`scripts/seed-umd-sections.js`**, **`scripts/seed-cornell-sections.js`**, **`scripts/seed-purdue-sections.js`**, **`scripts/seed-uiuc-sections.js`**, **`scripts/retry-uiuc-failed-subjects.js`**, **`scripts/seed-sections.js`**, **`scripts/seed-summer.js`**, and **`scripts/seed-enrollment-history.js`** — Updated Supabase service-key loading and error copy to accept either `SUPABASE_SERVICE_KEY` or `SUPABASE_SERVICE_ROLE_KEY`, matching the workflow's documented secret names.
+
+### Session 64sgv (Simplify prerequisite text display)
+- **`src/components/ReviewsModal.tsx`** — Removed prerequisite course-code chips/pills from the course info modal so prerequisites render as plain informational text, reducing visual clutter and avoiding duplicate-looking prerequisite UI.
+
+### Session 64sgw (Clarify no shared classes)
+- **`src/screens/FriendsScreen.tsx`** — Changed the shared-classes card header to read `NO SHARED CLASSES THIS TERM` when there are no overlaps, matching the existing heading style without adding extra empty-state copy.
+
+### Session 64sgx (Align RMP link layout)
+- **`src/components/ReviewsModal.tsx`** — Moved the Rate My Professors action out of the right side of the info row and into the same below-text link-button format used by prerequisites, keeping course-info link presentation consistent.
+
+### Session 64sgy (Move course-info links beside titles)
+- **`src/components/ReviewsModal.tsx`** — Moved both Prerequisites and Rate My Professors link buttons into their title rows with matching compact `Open` pills, leaving the body area for explanatory text only.
+
+### Session 64sgz (Group review course info)
+- **`src/components/ReviewsModal.tsx`** — Combined the review modal's restrictions, prerequisites, final exam, and Rate My Professors rows into one course-info box above grade distribution, using thin gray dividers between rows instead of separate cards.
+
+### Session 64sha (Darken review info dividers)
+- **`src/components/ReviewsModal.tsx`** — Slightly darkened the divider lines inside the grouped course-info box so row separation remains visible against the gray card background.
+
+### Session 64shb (Fill review term picker gaps)
+- **`src/components/ReviewsModal.tsx`** — Replaced the hardcoded review quarter list with school-specific term candidates from 2019 through the next academic year, so older seeded terms such as Fall 2025 and each supported school's semester/quarter naming show in the review form.
+
+### Session 64shc (Avoid review divider dark-mode reference)
+- **`src/components/ReviewsModal.tsx`** — Removed the direct `isDark` dependency from the review course-info divider color calculation, preventing stale bundles from throwing a missing-variable runtime error while keeping the divider more visible.
+
+### Session 64shd (Stabilize board post composer)
+- **`src/screens/BoardScreen.tsx`** — Removed per-keystroke auto-resizing and forced scroll jumps from the new-post body field, replacing it with a stable fixed-height multiline input that scrolls internally so Korean typing stays visible and the sheet no longer jumps on every character.
+
+### Session 64she (Remove blank message-scroll space)
+- **`src/screens/MessagesScreen.tsx`** — Removed the keyboard-height spacer from the chat message list and enabled normal overscroll bounce, so the message view no longer scrolls into empty space below the last message.
+
+### Session 64shf (Add keyboard breathing room in messages)
+- **`src/screens/MessagesScreen.tsx`** — Added a modest keyboard-open gap around the message composer and last message so the chat no longer feels stuck directly to the keyboard while avoiding the large blank scroll area that was just removed.
+
+### Session 64shg (Restore message composer shape)
+- **`src/screens/MessagesScreen.tsx`** — Removed the floating bottom margin from the message composer so the input bar keeps its normal shape, while preserving extra last-message spacing through list padding instead.
+
+### Session 64shh (Link anonymous messages to source posts)
+- **`src/screens/MessagesScreen.tsx`** — Made the anonymous-message source-post preview tappable and added a chevron affordance so students can jump back to the original board post.
+- **`App.tsx`** and **`src/screens/BoardScreen.tsx`** — Added a board-post open request path from the messages modal to the Board tab, including a direct Supabase fallback for older linked posts that are not currently in the local board list.
+
+### Session 64shi (Prevent friend-to-anonymous chat flash)
+- **`src/screens/MessagesScreen.tsx`** — Added explicit chat identity keys for friend vs anonymous board conversations, immediately swaps to the requested chat draft before async lookup, and ignores stale message loads so a ClassMate DM cannot flash before the intended anonymous-message thread.
+
+### Session 64shj (Shorten friend shared-class row copy)
+- **`src/screens/FriendsScreen.tsx`** — Removed the `1 same section` / `same course` prefix from each friend row's shared-class line and now shows only compact course codes with a `+N` overflow count to avoid clipping when several classes overlap.
+
+### Session 64shk (Inset review course-info dividers)
+- **`src/components/ReviewsModal.tsx`** — Inset the horizontal dividers inside the grouped Restrictions / Prerequisites / Final Exam / Rate My Professors card so the lines no longer run all the way to the card edges.
+
+### Session 64shl (Reduce Import Assignments bottom whitespace)
+- **`src/screens/HomeScreen.tsx`** — Moved the Import Assignments Save/Disconnect actions into a fixed sheet footer and reduced the scroll content bottom padding so the Save and Sync button no longer leaves a large empty area below it, including while the keyboard is open.
+
+### Session 64shm (Shrink Request Board sheet to content)
+- **`src/screens/BoardScreen.tsx`** — Replaced the Request New Board sheet's fixed 72% height and keyboard-only extra bottom padding with a content-sized sheet capped by max height, removing the large blank area below the Cancel/Request buttons.
+
+### Session 64shn (Retry board images after signed URL refresh)
+- **`src/screens/BoardScreen.tsx`** — Reset board image attachment failure state whenever the image URI changes, so an expired stored signed URL can recover after the app refreshes it instead of staying stuck on `Image unavailable`.
+
+### Session 64sho (Clear messages when switching chats)
+- **`src/screens/MessagesScreen.tsx`** — Cleared the current message list immediately when opening another existing conversation, entering message loading, or backing out to the conversation list, and ignored stale async message fetches after chat switches so the previous person's messages cannot remain visible while the next thread is loading.
+
+### Session 64shp (Refresh message source-post thumbnails)
+- **`src/screens/MessagesScreen.tsx`** — Changed anonymous-message source post previews to resolve fresh board-attachment signed URLs from storage paths before falling back to stored URLs, and added a thumbnail error fallback so expired attachment URLs no longer render as blank image boxes.
+
+### Session 64shq (Apply dark mode to course picker)
+- **`src/screens/CoursePickerScreen.tsx`** — Replaced hardcoded light backgrounds, borders, placeholders, and text colors across the course search screen, department picker sheet, course list rows, and custom-block modal with theme-driven colors so the entire course picker follows dark mode.
+
+### Session 64shr (Protect friend timetable header safe area)
+- **`src/screens/FriendsScreen.tsx`** — Added top safe-area padding to the friend timetable overlay header and moved its term dropdown lower so a friend's name and avatar no longer sit under the screen edge or Dynamic Island.
+
+### Session 64shs (Theme category icons in dark mode)
+- **`src/utils/themeTint.ts`** — Added shared helpers for converting saved light icon palettes into dark-mode tinted icon backgrounds, borders, and readable icon colors.
+- **`src/screens/BoardScreen.tsx`**, **`src/screens/HomeScreen.tsx`**, and **`src/screens/SettingsScreen.tsx`** — Routed board, campus-info, dining, sports, and admin board icons through the dark-mode tint helpers so their icon boxes no longer stay light in dark mode.
+- **`src/components/NotificationPermissionScreen.tsx`** and **`src/components/LegalDocumentModal.tsx`** — Updated notification benefit icons and legal-modal chrome to use themed colors so those modal icons also match dark mode.
+
+### Session 64sht (Enable Android keyboard resize)
+- **`app.json`** — Added Android `softwareKeyboardLayoutMode: "resize"` so the system resizes the app window when the soft keyboard opens instead of leaving inputs covered or unfocused.
+- **`src/components/ReviewsModal.tsx`**, **`src/components/ProfileEditorScreen.tsx`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, **`src/screens/SignInScreen.tsx`**, and **`src/screens/MessagesScreen.tsx`** — Removed Android `KeyboardAvoidingView` height behavior and switched remaining Android dismiss modes to `on-drag`, letting the Android OS handle keyboard resizing consistently while preserving iOS padding behavior.
+
+### Session 64shu (Keep Android form buttons above keyboard)
+- **`src/screens/CoursePickerScreen.tsx`** — Lifted the custom-block bottom sheet above the Android keyboard and added bottom scroll padding so the `Add Custom Block` button stays reachable.
+- **`src/screens/BoardScreen.tsx`**, **`src/components/ReviewsModal.tsx`**, **`src/screens/SignInScreen.tsx`**, and **`src/components/FeatureOnboardingScreen.tsx`** — Added Android keyboard-aware bottom padding to long form scroll views so submit/continue buttons below text inputs can scroll above the keyboard.
+- **`src/screens/FriendsScreen.tsx`**, **`src/screens/TimetableScreen.tsx`**, **`src/components/ProfileEditorScreen.tsx`**, and **`src/screens/MessagesScreen.tsx`** — Offset fixed action/composer footers by the Android keyboard height so buttons no longer sit behind the keyboard while inputs remain visible.
+
+### Session 64shv (Remove Android double keyboard offset)
+- **`src/screens/HomeScreen.tsx`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, **`src/screens/TimetableScreen.tsx`**, **`src/components/ProfileEditorScreen.tsx`**, **`src/components/FeatureOnboardingScreen.tsx`**, and **`src/screens/MessagesScreen.tsx`** — Removed manual Android keyboard `marginBottom` offsets now that the app uses system `resize`, preventing transparent gaps where the dimmed/background screen showed below raised sheets or footers.
+
+### Session 64shw (Restore modal text-input focus)
+- **`src/screens/HomeScreen.tsx`** — Added a direct ref/focus path for the Import Assignments feed URL input and raised the sheet above its dismiss backdrop so tapping the input reliably opens the keyboard on iOS and Android.
+- **`src/screens/BoardScreen.tsx`** — Removed the touchable wrapper around Request New Board form fields, added direct refs/focus handlers to both inputs, and layered the sheet above the backdrop so the board request fields can receive keyboard focus reliably.
+
+### Session 64shx (Theme post composer cancel button)
+- **`src/screens/BoardScreen.tsx`** — Changed the New/Edit Post composer `Cancel` button from a hardcoded white background to the theme tertiary background so it no longer appears bright in dark mode.
+
+### Session 64shy (Darken timetable course blocks)
+- **`src/screens/TimetableScreen.tsx`** — Added dark-mode-specific timetable block color generation and applied it to on-screen, TBA, and exported schedule blocks so the timetable no longer keeps light pastel class blocks when the app is in dark mode.
+
+### Session 64shz (Lift calendar sync footer with keyboard)
+- **`src/screens/HomeScreen.tsx`** — Restored keyboard-height tracking for the Import Assignments sheet and applies that height to the fixed footer padding so the `Save and Sync` button rises above the keyboard while the sheet background stays in place.
+
+### Session 64sia (Centralize keyboard inset handling)
+- **`src/utils/useKeyboardInset.ts`** — Added a shared keyboard inset hook that tracks keyboard height once and exposes reusable footer/scroll padding helpers for keeping bottom buttons and active inputs above the keyboard.
+- **`src/screens/HomeScreen.tsx`** — Replaced local calendar/sports keyboard state with the shared inset hook and uses its footer padding helper so the Import Assignments `Save and Sync` button clears the keyboard.
+- **`src/screens/BoardScreen.tsx`** — Replaced local board keyboard listeners with the shared inset hook and applied its scroll padding helper to Request Board and New/Edit Post forms so form buttons remain reachable when the keyboard is open.
+
+### Session 64sib (Lift Android request-board sheet)
+- **`src/utils/useKeyboardInset.ts`** — Added an Android bottom-sheet margin helper so modal sheets can move above the keyboard instead of only adding inner scroll padding.
+- **`src/screens/BoardScreen.tsx`** — Applied the Android bottom-sheet margin helper to the Request New Board sheet so the entire sheet follows the keyboard on Android like it already does on iOS.
+
+### Session 64sic (Constrain keyboard-raised sheets)
+- **`src/utils/useKeyboardInset.ts`** — Added a bottom-sheet max-height helper that calculates the remaining visible screen height when the keyboard is open.
+- **`src/screens/BoardScreen.tsx`** — Uses the shared max-height helper for Request New Board so the sheet moves above the Android keyboard and its inner ScrollView remains scrollable within the reduced height.

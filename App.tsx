@@ -114,6 +114,7 @@ type BoardPostTimestampRow = {
 
 type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
 type MainTab = 'home' | 'timetable' | 'grades' | 'board' | 'friends';
+type BoardPostOpenRequest = { postId: string; requestId: number };
 
 function parseQuarterKeyValue(key: string): Quarter | null {
   const idx = key.indexOf('-');
@@ -740,6 +741,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [friendsTabTapCount, setFriendsTabTapCount] = useState(0);
   const [showMessages, setShowMessages] = useState(false);
   const [messageTarget, setMessageTarget] = useState<ChatTarget | null>(null);
+  const [boardPostOpenRequest, setBoardPostOpenRequest] = useState<BoardPostOpenRequest | null>(null);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [newBoardPostCount, setNewBoardPostCount] = useState(0);
   const [latestBoardPostCreatedAt, setLatestBoardPostCreatedAt] = useState<string | null>(null);
@@ -2615,6 +2617,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 	    void loadUnreadMessageCount().then(setUnreadMessageCount);
 	  };
 
+  const openBoardPostFromMessages = (postId: string) => {
+    setShowMessages(false);
+    setMessageTarget(null);
+    setBoardPostOpenRequest({ postId, requestId: Date.now() });
+    setCurrentTab('board');
+    void loadUnreadMessageCount().then(setUnreadMessageCount);
+  };
+
 	  useEffect(() => {
 	    if (Platform.OS !== 'android') return undefined;
 	    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -2837,6 +2847,13 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         onOpenMessages={() => openMessages(null)}
         onOpenChat={openMessages}
         unreadMessageCount={unreadMessageCount}
+        openPostId={boardPostOpenRequest?.postId ?? null}
+        openPostRequestId={boardPostOpenRequest?.requestId ?? 0}
+        onOpenPostHandled={(postId) => {
+          setBoardPostOpenRequest((request) => (
+            request?.postId === postId ? null : request
+          ));
+        }}
       />
     );
   } else if (currentTab === 'friends') {
@@ -3065,6 +3082,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             openChatWith={messageTarget}
             userId={USER_ID}
             school={currentSchool}
+            onOpenSourcePost={openBoardPostFromMessages}
           />
         ) : null}
       </Modal>

@@ -6,8 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
-import { QUARTERS, quarterLabel } from '../data/courses';
-import { getSchoolConfig } from '../data/schools';
+import { getSchoolConfig, buildTermCandidates, termLabel } from '../data/schools';
 
 type FinalExam = {
   day?: number; month?: number; bldg?: string;
@@ -220,38 +219,6 @@ function oneDecimal(value: number | null) {
   return value == null ? '—' : value.toFixed(1);
 }
 
-function prerequisiteChipsFromText(value: string | null) {
-  if (!value) return [];
-  const matches = value.match(/\b[A-Z]{2,8}\s*\d{1,4}[A-Z]?\b/gi) ?? [];
-  return uniqueCleanItems(matches.map((item) => item.replace(/\s+/g, ' ').trim().toUpperCase())).slice(0, 6);
-}
-
-function prerequisiteHasDetailsBeyondCourseCodes(value: string | null, chips: string[]) {
-  if (!value || chips.length === 0) return false;
-  const remainder = value
-    .replace(/\b[A-Z]{2,8}\s*\d{1,4}[A-Z]?\b/gi, ' ')
-    .replace(/\b(prerequisites?|corequisites?|and|or|one|of|the|a|an|course|courses|listed|required|recommended|complete|completion|prior|to|enrollment|with|minimum|grade|better|equivalent|same|as)\b/gi, ' ')
-    .replace(/[^a-z0-9]+/gi, '')
-    .trim();
-  return remainder.length > 12;
-}
-
-function summarizePrerequisiteText(value: string, chipCount: number) {
-  const lower = value.toLowerCase();
-  if (chipCount <= 1) return 'Complete the listed prerequisite.';
-  if (lower.includes(' and ') && !lower.includes(' or ')) return 'Complete all listed prerequisites.';
-  if (lower.includes(' or ')) return 'Complete one of the listed prerequisites.';
-  return 'Complete the listed prerequisites.';
-}
-
-function buildPrerequisiteDisplay(value: string | null) {
-  const chips = prerequisiteChipsFromText(value);
-  if (!value) return { chips, text: null };
-  if (chips.length === 0) return { chips, text: value };
-  if (prerequisiteHasDetailsBeyondCourseCodes(value, chips)) return { chips: [], text: value };
-  return { chips, text: summarizePrerequisiteText(value, chips.length) };
-}
-
 type Props = {
   visible: boolean;
   onClose: () => void;
@@ -288,10 +255,15 @@ export default function ReviewsModal({
   const [submitting, setSubmitting] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
   const [showAllRestrictions, setShowAllRestrictions] = useState(false);
+  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
   const writeReviewScrollRef = useRef<ScrollView>(null);
   const reviewInputRef = useRef<TextInput>(null);
   const schoolConfig = getSchoolConfig(school);
   const supportsOfficialGradeDistribution = schoolConfig.gradeDistributionSource === 'anteaterapi';
+  const reviewTermOptions = useMemo(
+    () => buildTermCandidates(school, 2019, new Date().getFullYear() + 1).reverse(),
+    [school]
+  );
 
   function scrollToReviewComposer(animated = true) {
     requestAnimationFrame(() => {
@@ -317,7 +289,10 @@ export default function ReviewsModal({
   }, [visible, sectionId, courseCode, quarterKey, school]);
 
   useEffect(() => {
-    if (!visible || !showWriteReview) return;
+    if (!visible || !showWriteReview) {
+      setAndroidKeyboardInset(0);
+      return;
+    }
 
     scrollToReviewComposer(false);
     const focusTimer = setTimeout(() => {
@@ -326,11 +301,17 @@ export default function ReviewsModal({
     }, 220);
 
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const keyboardShow = Keyboard.addListener(showEvent, () => scrollToReviewComposer());
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const keyboardShow = Keyboard.addListener(showEvent, (event) => {
+      setAndroidKeyboardInset(Platform.OS === 'android' ? Math.max(event.endCoordinates?.height ?? 0, 0) : 0);
+      scrollToReviewComposer();
+    });
+    const keyboardHide = Keyboard.addListener(hideEvent, () => setAndroidKeyboardInset(0));
 
     return () => {
       clearTimeout(focusTimer);
       keyboardShow.remove();
+      keyboardHide.remove();
     };
   }, [showWriteReview, visible]);
 
@@ -519,6 +500,7 @@ export default function ReviewsModal({
     workload: average(reviews.map((review) => review.workload)),
   }), [reviews]);
   const officialFinalText = courseInfo ? formatFinalExam(courseInfo.finalExam) : null;
+  const hasFinalExamInfo = Boolean(officialFinalText);
   const prerequisiteLink = courseInfo?.prerequisiteLink ?? null;
   const prerequisiteText = courseInfo?.prerequisiteText ?? null;
   const prerequisiteSourceKnown = courseInfo?.prerequisiteSourceKnown === true;
@@ -527,9 +509,7 @@ export default function ReviewsModal({
   const restrictionsEmptyText = schoolConfig.id === 'uci' ? 'No restrictions listed' : 'Not supported';
   const prerequisiteDisplayText = prerequisiteText ?? (prerequisiteSourceKnown && !prerequisiteLink ? 'No prerequisites' : null);
   const prerequisiteEmptyText = prerequisiteSourceKnown ? 'No prerequisites' : 'Prerequisite data is not available yet';
-  const prerequisiteDisplay = buildPrerequisiteDisplay(prerequisiteDisplayText);
-  const prerequisiteChips = prerequisiteDisplay.chips;
-  const prerequisiteBodyText = prerequisiteDisplay.text;
+  const prerequisiteBodyText = prerequisiteDisplayText;
   const hasPrerequisiteInfo = Boolean(prerequisiteDisplayText || prerequisiteLink || prerequisiteSourceKnown);
   const restrictionItems = courseInfo ? decodeRestrictions(courseInfo.restrictions).filter((item) => {
     if (!hasPrerequisiteInfo) return true;
@@ -550,8 +530,15 @@ export default function ReviewsModal({
   const showCourseInfoDetails = Boolean(courseInfo && (
     shouldShowRestrictions ||
     shouldShowPrerequisites ||
-    officialFinalText
+    hasFinalExamInfo
   ) || showRmpLink);
+  const courseInfoDividerColor = colors.border === '#374151' ? colors.border : '#d6dce8';
+  const showDividerAfterRestrictions = shouldShowRestrictions && (shouldShowPrerequisites || hasFinalExamInfo || showRmpLink);
+  const showDividerAfterPrerequisites = shouldShowPrerequisites && (hasFinalExamInfo || showRmpLink);
+  const showDividerAfterFinalExam = hasFinalExamInfo && showRmpLink;
+  const renderCourseInfoDivider = (visible: boolean) => visible ? (
+    <View style={{ height: 1, marginHorizontal: 13, backgroundColor: courseInfoDividerColor }} />
+  ) : null;
   return (
     <Modal
       visible={visible}
@@ -564,7 +551,7 @@ export default function ReviewsModal({
     >
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.card }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
       >
           <View style={{ flex: 1 }}>
@@ -587,15 +574,17 @@ export default function ReviewsModal({
                 <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
                   {/* Course Info — restrictions, finals, prereqs, comment */}
                   {showCourseInfoDetails ? (
-                    <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, gap: 10 }}>
+                    <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
+                      <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.borderSubtle, backgroundColor: colors.bgSecondary, overflow: 'hidden' }}>
                         {shouldShowRestrictions ? (
-                          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.borderSubtle, backgroundColor: colors.bgSecondary, padding: 13 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                              <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle }}>
-                                <Ionicons name="lock-closed-outline" size={14} color={colors.textTertiary} />
+                          <>
+                            <View style={{ padding: 13 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle }}>
+                                  <Ionicons name="lock-closed-outline" size={14} color={colors.textTertiary} />
+                                </View>
+                                <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: colors.text }}>Restrictions</Text>
                               </View>
-                              <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: colors.text }}>Restrictions</Text>
-                            </View>
                               {restrictionItems.length > 0 ? (
                                 <View style={{ gap: 5 }}>
                                   {visibleRestrictionItems.map((item) => (
@@ -624,70 +613,76 @@ export default function ReviewsModal({
                                   </Text>
                                 </TouchableOpacity>
                               ) : null}
-                          </View>
+                            </View>
+                            {renderCourseInfoDivider(showDividerAfterRestrictions)}
+                          </>
                         ) : null}
                         {shouldShowPrerequisites ? (
-                          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.borderSubtle, backgroundColor: colors.bgSecondary, padding: 13 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                              <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle }}>
-                                <Ionicons name="git-branch-outline" size={14} color={colors.textTertiary} />
-                              </View>
-                              <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: colors.text }}>Prerequisites</Text>
-                            </View>
-                              {prerequisiteChips.length > 0 ? (
-                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                                  {prerequisiteChips.map((item) => (
-                                    <View key={item} style={{ borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: colors.brandBg, borderWidth: 1, borderColor: `${colors.brand}33` }}>
-                                      <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>{item}</Text>
-                                    </View>
-                                  ))}
+                          <>
+                            <View style={{ padding: 13 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle }}>
+                                  <Ionicons name="git-branch-outline" size={14} color={colors.textTertiary} />
                                 </View>
-                              ) : null}
+                                <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: colors.text }}>Prerequisites</Text>
+                                {prerequisiteLink ? (
+                                  <TouchableOpacity
+                                    onPress={() => Linking.openURL(prerequisiteLink)}
+                                    style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+                                  >
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                      <Ionicons name="open-outline" size={12} color={colors.brand} />
+                                      <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Open</Text>
+                                    </View>
+                                  </TouchableOpacity>
+                                ) : null}
+                              </View>
                               <Text style={{ fontSize: 13, lineHeight: 18, color: prerequisiteBodyText || prerequisiteLink ? colors.text : colors.textSecondary }}>
                                 {prerequisiteBodyText ?? (prerequisiteLink ? 'Prerequisite details are available from the official course page.' : prerequisiteEmptyText)}
                               </Text>
-                              {prerequisiteLink ? (
-                                <TouchableOpacity
-                                  onPress={() => Linking.openURL(prerequisiteLink)}
-                                  style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
-                                >
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                                    <Ionicons name="open-outline" size={13} color={colors.brand} />
-                                    <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Open official prerequisites</Text>
-                                  </View>
-                                </TouchableOpacity>
-                              ) : null}
-                          </View>
+                            </View>
+                            {renderCourseInfoDivider(showDividerAfterPrerequisites)}
+                          </>
                         ) : null}
                         {officialFinalText ? (
-                          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.borderSubtle, backgroundColor: colors.bgSecondary, padding: 13 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle }}>
-                                <Ionicons name="calendar-outline" size={14} color={colors.textTertiary} />
-                              </View>
-                              <View style={{ flex: 1, minWidth: 0 }}>
-                                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Final Exam</Text>
-                                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{officialFinalText}</Text>
+                          <>
+                            <View style={{ padding: 13 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle }}>
+                                  <Ionicons name="calendar-outline" size={14} color={colors.textTertiary} />
+                                </View>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Final Exam</Text>
+                                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{officialFinalText}</Text>
+                                </View>
                               </View>
                             </View>
-                          </View>
+                            {renderCourseInfoDivider(showDividerAfterFinalExam)}
+                          </>
                         ) : null}
                         {showRmpLink ? (
-                          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.borderSubtle, backgroundColor: colors.bgSecondary, padding: 13 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={{ padding: 13 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                               <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle }}>
                                 <Ionicons name="star-outline" size={14} color={colors.textTertiary} />
                               </View>
-                              <View style={{ flex: 1, minWidth: 0 }}>
-                                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Rate My Professors</Text>
-                                <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{rmpProfessor}</Text>
-                              </View>
-                              <TouchableOpacity onPress={() => Linking.openURL(rmpUrl)} style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.brandBg, borderWidth: 1, borderColor: `${colors.brand}33` }}>
-                                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Open</Text>
+                              <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: colors.text }}>Rate My Professors</Text>
+                              <TouchableOpacity
+                                onPress={() => Linking.openURL(rmpUrl)}
+                                style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+                              >
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                  <Ionicons name="open-outline" size={12} color={colors.brand} />
+                                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Open</Text>
+                                </View>
                               </TouchableOpacity>
                             </View>
+                            <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 13, lineHeight: 18, color: colors.text }}>
+                              {rmpProfessor}
+                            </Text>
                           </View>
                         ) : null}
+                      </View>
                     </View>
                   ) : null}
 
@@ -904,14 +899,14 @@ export default function ReviewsModal({
 
                 <ScrollView
                   ref={writeReviewScrollRef}
-                  contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 36 }}
+                  contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: androidKeyboardInset > 0 ? androidKeyboardInset + 36 : 36 }}
                   keyboardShouldPersistTaps="handled"
                 >
                   <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginBottom: 10 }}>Quarter Taken</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                      {[...QUARTERS].reverse().map((q) => {
-                        const label = quarterLabel(q);
+                      {reviewTermOptions.map((q) => {
+                        const label = termLabel(q, school, false);
                         const selected = quarterTaken === label;
                         return (
                           <TouchableOpacity

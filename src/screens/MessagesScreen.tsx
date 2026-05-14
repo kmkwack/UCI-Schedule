@@ -28,6 +28,8 @@ import type {
 import { formatMessageTime } from '../data/messages';
 import { campusAliasForId } from '../data/anonymousAliases';
 
+const BOARD_ATTACHMENTS_BUCKET = 'board-attachments';
+
 type ConversationPreview = {
   conversationId: string | null;
   partnerId: string;
@@ -81,6 +83,7 @@ type Props = {
   openChatWith?: ChatTarget | null;
   userId: string;
   school: string;
+  onOpenSourcePost?: (postId: string) => void;
 };
 
 function getInitials(name: string) {
@@ -117,9 +120,40 @@ function sourcePostImageAttachment(attachments: SourcePostAttachment[] | null | 
   ));
 }
 
+async function resolveSourcePostImageUrl(attachment: SourcePostAttachment | null | undefined) {
+  if (!attachment) return null;
+
+  if (attachment.path) {
+    const { data: signedData, error } = await supabase.storage
+      .from(BOARD_ATTACHMENTS_BUCKET)
+      .createSignedUrl(attachment.path, 60 * 60 * 24 * 7);
+
+    if (!error && signedData?.signedUrl) return signedData.signedUrl;
+
+    const { data: publicData } = supabase.storage.from(BOARD_ATTACHMENTS_BUCKET).getPublicUrl(attachment.path);
+    if (publicData?.publicUrl) return publicData.publicUrl;
+  }
+
+  return attachment.url ?? null;
+}
+
 function conversationAccent(kind: ChatKind, brand: string) {
   if (kind === 'board_anonymous') return '#111827';
   return brand;
+}
+
+function chatIdentityKey(kind: ChatKind, partnerId: string, sourcePostId?: string | null) {
+  return kind === 'board_anonymous'
+    ? `${kind}:${partnerId}:${sourcePostId ?? 'none'}`
+    : `${kind}:${partnerId}`;
+}
+
+function conversationIdentityKey(conversation: Pick<ConversationPreview, 'kind' | 'partnerId' | 'sourcePostId'>) {
+  return chatIdentityKey(conversation.kind, conversation.partnerId, conversation.sourcePostId);
+}
+
+function targetIdentityKey(target: ChatTarget) {
+  return chatIdentityKey(target.kind, target.id, target.sourcePostId ?? null);
 }
 
 function sameMessageDay(a: MessageBubble | null | undefined, b: MessageBubble | null | undefined) {
@@ -144,7 +178,47 @@ function formatMessageDateHeader(isoString: string) {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-export default function MessagesScreen({ onClose, openChatWith, userId, school }: Props) {
+function SourcePostPreviewImage({
+  uri,
+  colors,
+}: {
+  uri: string | null;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [uri]);
+
+  if (!uri || failed) {
+    return (
+      <View
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 10,
+          backgroundColor: colors.bgTertiary,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons name="image-outline" size={20} color={colors.textTertiary} />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri }}
+      resizeMode="cover"
+      onError={() => setFailed(true)}
+      style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: colors.bgTertiary }}
+    />
+  );
+}
+
+export default function MessagesScreen({ onClose, openChatWith, userId, school, onOpenSourcePost }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [conversations, setConversations] = useState<ConversationPreview[]>([]);
@@ -158,18 +232,22 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   const [openingConversation, setOpeningConversation] = useState(false);
   const [sending, setSending] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const selectedChatRef = useRef<ConversationPreview | null>(null);
   const messageListRef = useRef<FlatList<MessageBubble>>(null);
   const messageInputRef = useRef<TextInput>(null);
   const messageScrollTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const shouldStickToMessageEndRef = useRef(true);
   const hasValidUserId = !!userId && isUuid(userId);
   const selectedConversationId = selectedChat?.conversationId ?? null;
-  const composerBottomPadding = keyboardVisible ? 14 : Math.max(insets.bottom, 8);
-  const keyboardListSpacer = keyboardVisible ? Math.max(keyboardHeight, Platform.OS === 'ios' ? 320 : 260) : 0;
+  const composerBottomPadding = keyboardVisible ? 8 : Math.max(insets.bottom, 8);
   const messageListBottomPadding = keyboardVisible
-    ? (editingMessage ? 148 : 112) + keyboardListSpacer
-    : editingMessage ? 64 : 22;
+    ? editingMessage ? 96 : 56
+    : editingMessage ? 72 : 22;
+
+  const selectChat = useCallback((conversation: ConversationPreview | null) => {
+    selectedChatRef.current = conversation;
+    setSelectedChat(conversation);
+  }, []);
 
   const clearPendingMessageScrolls = useCallback(() => {
     messageScrollTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
@@ -245,13 +323,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     const entries = await Promise.all(
       ((data ?? []) as Array<SourcePostPreview & { attachments?: SourcePostAttachment[] | null }>).map(async (post) => {
         const imageAttachment = sourcePostImageAttachment(post.attachments);
-        let imageUrl = imageAttachment?.url ?? null;
-        if (!imageUrl && imageAttachment?.path) {
-          const { data: signedData } = await supabase.storage
-            .from('board-attachments')
-            .createSignedUrl(imageAttachment.path, 60 * 60);
-          imageUrl = signedData?.signedUrl ?? null;
-        }
+        const imageUrl = await resolveSourcePostImageUrl(imageAttachment);
 
         return [post.id, {
           id: post.id,
@@ -462,13 +534,26 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       return;
     }
 
-    if (!options.silent) setLoadingMessages(true);
+    if (!options.silent) {
+      setLoadingMessages(true);
+      setMessages([]);
+    }
+
+    const isStillRequestedConversation = () => {
+      const currentChat = selectedChatRef.current;
+      if (!currentChat) return false;
+      if (conversationIdentityKey(currentChat) !== conversationIdentityKey(conversation)) return false;
+      return !currentChat.conversationId || currentChat.conversationId === conversation.conversationId;
+    };
+
     const { data: scopedConversation, error: scopedConversationError } = await supabase
       .from('conversations')
       .select('id')
       .eq('id', conversation.conversationId)
       .eq('school', school)
       .maybeSingle();
+
+    if (!isStillRequestedConversation()) return;
 
     if (scopedConversationError || !scopedConversation) {
       if (scopedConversationError) console.error('Failed to scope conversation messages:', scopedConversationError);
@@ -482,6 +567,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
       .select('id, conversation_id, sender_id, content, created_at, deleted_at')
       .eq('conversation_id', conversation.conversationId)
       .order('created_at', { ascending: true });
+
+    if (!isStillRequestedConversation()) return;
 
     if (error) {
       console.error('Failed to load conversation messages:', error);
@@ -501,10 +588,12 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   const openExistingConversation = useCallback(async (conversation: ConversationPreview) => {
     setEditingMessage(null);
     setMessageInput('');
-    setSelectedChat(conversation);
+    setMessages([]);
+    shouldStickToMessageEndRef.current = true;
+    selectChat(conversation);
     await fetchMessages(conversation);
     await fetchConversations({ silent: true });
-  }, [fetchConversations, fetchMessages]);
+  }, [fetchConversations, fetchMessages, selectChat]);
 
   const findExistingConversationId = useCallback(async (target: ChatTarget) => {
     if (!hasValidUserId) return null;
@@ -579,8 +668,43 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     }
 
     setOpeningConversation(true);
+    const requestKey = targetIdentityKey(target);
+    const draftName = target.kind === 'board_anonymous'
+      ? campusAliasForId(target.id, school)
+      : target.name?.trim() || campusAliasForId(target.id, school);
+    const draftSourcePost = target.kind === 'board_anonymous' && target.sourcePostId
+      ? {
+          id: target.sourcePostId,
+          title: target.sourceLabel?.trim() || 'This post was deleted',
+          category: null,
+          body: null,
+          imageUrl: null,
+          deleted: !target.sourceLabel?.trim(),
+        }
+      : null;
+    const draftPreview: ConversationPreview = {
+      conversationId: target.conversationId ?? null,
+      partnerId: target.id,
+      kind: target.kind,
+      name: draftName,
+      avatar: getInitials(draftName),
+      label: conversationLabel(target.kind),
+      sourcePostId: target.sourcePostId ?? null,
+      sourceLabel: draftSourcePost?.title ?? null,
+      sourcePost: draftSourcePost,
+      lastMessage: 'Start the conversation.',
+      timestamp: '',
+      unread: 0,
+      sortStamp: Date.now(),
+    };
+    setEditingMessage(null);
+    setMessageInput('');
+    setMessages([]);
+    selectChat(draftPreview);
+
     try {
       const conversationId = target.conversationId ?? await findExistingConversationId(target);
+      if (selectedChatRef.current && conversationIdentityKey(selectedChatRef.current) !== requestKey) return;
       const name = target.kind === 'board_anonymous'
         ? campusAliasForId(target.id, school)
         : target.name?.trim() || campusAliasForId(target.id, school);
@@ -613,9 +737,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         sortStamp: Date.now(),
       };
 
-      setEditingMessage(null);
-      setMessageInput('');
-      setSelectedChat(preview);
+      selectChat(preview);
       if (conversationId) {
         await fetchMessages(preview);
         await fetchConversations({ silent: true });
@@ -630,9 +752,11 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
           : error?.message ?? 'Please try again.'
       );
     } finally {
-      setOpeningConversation(false);
+      if (!selectedChatRef.current || conversationIdentityKey(selectedChatRef.current) === requestKey) {
+        setOpeningConversation(false);
+      }
     }
-  }, [fetchConversations, fetchMessages, findExistingConversationId, hasValidUserId, loadSourcePostsById]);
+  }, [fetchConversations, fetchMessages, findExistingConversationId, hasValidUserId, loadSourcePostsById, school, selectChat]);
 
   useEffect(() => {
     void fetchConversations();
@@ -657,13 +781,11 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const showSub = Keyboard.addListener(showEvent, (event) => {
       const duration = Math.max(event.duration ?? 250, 180);
-      setKeyboardHeight(event.endCoordinates?.height ?? (Platform.OS === 'ios' ? 320 : 260));
       setKeyboardVisible(true);
       settleMessagesAtEnd(false, duration + 40);
     });
     const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardVisible(false);
-      setKeyboardHeight(0);
     });
 
     return () => {
@@ -946,9 +1068,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
         return;
       }
       setSelectedChat((current) => (
-        current && current.partnerId === selectedChat.partnerId
-          ? { ...current, conversationId }
-          : current
+        (() => {
+          const next = current && conversationIdentityKey(current) === conversationIdentityKey(selectedChat)
+            ? { ...current, conversationId }
+            : current;
+          selectedChatRef.current = next;
+          return next;
+        })()
       ));
     }
 
@@ -1023,11 +1149,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
   }
 
   if (selectedChat) {
+    const selectedSourcePost = selectedChat.kind === 'board_anonymous' ? selectedChat.sourcePost : null;
+
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <View style={{
             flexDirection: 'row', alignItems: 'center',
@@ -1041,7 +1169,10 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
           }}>
             <TouchableOpacity
               onPress={() => {
-                setSelectedChat(null);
+                selectChat(null);
+                setMessages([]);
+                setLoadingMessages(false);
+                setOpeningConversation(false);
                 setMessageInput('');
                 setEditingMessage(null);
               }}
@@ -1064,8 +1195,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
             </View>
           </View>
 
-          {selectedChat.kind === 'board_anonymous' && selectedChat.sourcePost ? (
-            <View
+          {selectedSourcePost ? (
+            <TouchableOpacity
+              activeOpacity={selectedSourcePost.deleted ? 1 : 0.82}
+              disabled={selectedSourcePost.deleted || !onOpenSourcePost}
+              onPress={() => {
+                if (!selectedSourcePost.deleted) onOpenSourcePost?.(selectedSourcePost.id);
+              }}
               style={{
                 marginHorizontal: 16,
                 marginTop: 10,
@@ -1084,11 +1220,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                 elevation: 2,
               }}
             >
-              {selectedChat.sourcePost.imageUrl ? (
-                <Image
-                  source={{ uri: selectedChat.sourcePost.imageUrl }}
-                  style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: colors.bgTertiary }}
-                />
+              {selectedSourcePost.imageUrl ? (
+                <SourcePostPreviewImage uri={selectedSourcePost.imageUrl} colors={colors} />
               ) : (
                 <View
                   style={{
@@ -1101,7 +1234,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
                   }}
                 >
                   <Ionicons
-                    name={selectedChat.sourcePost.deleted ? 'trash-outline' : 'document-text-outline'}
+                    name={selectedSourcePost.deleted ? 'trash-outline' : 'document-text-outline'}
                     size={22}
                     color={colors.textTertiary}
                   />
@@ -1109,15 +1242,18 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               )}
               <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
                 <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>
-                  {selectedChat.sourcePost.title}
+                  {selectedSourcePost.title}
                 </Text>
                 <Text numberOfLines={2} style={{ marginTop: 2, fontSize: 11, lineHeight: 16, color: colors.textSecondary }}>
-                  {selectedChat.sourcePost.deleted
+                  {selectedSourcePost.deleted
                     ? 'The original board post is no longer available.'
-                    : truncateText(selectedChat.sourcePost.body, 88) || selectedChat.sourcePost.category || 'Board post'}
+                    : truncateText(selectedSourcePost.body, 88) || selectedSourcePost.category || 'Board post'}
                 </Text>
               </View>
-            </View>
+              {!selectedSourcePost.deleted ? (
+                <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} style={{ alignSelf: 'center' }} />
+              ) : null}
+            </TouchableOpacity>
           ) : null}
 
           {(openingConversation || loadingMessages) && messages.length === 0 ? (
@@ -1139,6 +1275,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               ]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              bounces
+              alwaysBounceVertical
+              overScrollMode="always"
               onLayout={() => {
                 if (messages.length > 0) settleMessagesAtEnd(false);
               }}
@@ -1223,7 +1362,6 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
             paddingHorizontal: 12,
             paddingTop: 9,
             paddingBottom: composerBottomPadding,
-            marginBottom: keyboardVisible ? 10 : 0,
             borderTopWidth: 1,
             borderTopColor: colors.borderSubtle,
             backgroundColor: colors.card,
@@ -1267,10 +1405,8 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school }
               maxLength={2000}
               onBlur={() => {
                 setKeyboardVisible(false);
-                setKeyboardHeight(0);
               }}
               onFocus={() => {
-                setKeyboardHeight((height) => height || (Platform.OS === 'ios' ? 320 : 260));
                 setKeyboardVisible(true);
                 settleMessagesAtEnd(true);
               }}

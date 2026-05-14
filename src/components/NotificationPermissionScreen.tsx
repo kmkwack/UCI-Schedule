@@ -2,6 +2,7 @@ import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { themedIconBackground, themedIconColor } from '../utils/themeTint';
 
 type Props = {
   onEnable: () => Promise<void> | void;
@@ -105,13 +106,13 @@ export default function NotificationPermissionScreen({ onEnable, onSkip, saving 
                     width: 44,
                     height: 44,
                     borderRadius: 14,
-                    backgroundColor: isDark ? 'rgba(65,105,225,0.18)' : '#eef3ff',
+                    backgroundColor: themedIconBackground('#4169E1', isDark, '#eef3ff'),
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginRight: 14,
                   }}
                 >
-                  <Ionicons name={benefit.icon} size={20} color="#4169E1" />
+                  <Ionicons name={benefit.icon} size={20} color={themedIconColor('#4169E1', isDark)} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 3 }}>

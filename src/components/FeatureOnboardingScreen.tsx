@@ -4,6 +4,7 @@ import {
   Animated,
   Easing,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Text,
@@ -861,6 +862,7 @@ export default function FeatureOnboardingScreen({
   const [profile, setProfile] = useState<EditableProfile>(() => initialProfile ?? fallbackProfileFromEmail(userEmail || `student${DEFAULT_UNIVERSITY.domain}`));
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
+  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
   const anim = useRef(new Animated.Value(1)).current;
   const tourScrollY = useRef(new Animated.Value(0)).current;
   const slide = SLIDES[index];
@@ -954,6 +956,19 @@ export default function FeatureOnboardingScreen({
     setIndex((current) => Math.min(SLIDES.length - 1, current + 1));
   };
 
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setAndroidKeyboardInset(Platform.OS === 'android' ? Math.max(event.endCoordinates?.height ?? 0, 0) : 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => setAndroidKeyboardInset(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor }} edges={['top', 'left', 'right', 'bottom']}>
       {slide.kind === 'arrival' ? <PhotoBackdrop backgroundSource={schoolBrand.backgroundSource} isDark={isDark} /> : null}
@@ -1022,7 +1037,7 @@ export default function FeatureOnboardingScreen({
             justifyContent: isPhotoSlide ? 'center' : undefined,
             paddingHorizontal: 24,
             paddingTop: isPhotoSlide ? 0 : 18,
-            paddingBottom: isPhotoSlide ? 0 : slide.kind === 'tour' ? 96 : slide.kind === 'notifications' ? 18 : 24,
+            paddingBottom: isPhotoSlide ? 0 : androidKeyboardInset > 0 ? androidKeyboardInset + 24 : slide.kind === 'tour' ? 96 : slide.kind === 'notifications' ? 18 : 24,
           }}
         >
           <Animated.View style={animatedStyle}>

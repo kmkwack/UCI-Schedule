@@ -1,6 +1,8 @@
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CURRENT_LEGAL_DOCUMENTS } from '../data/legal';
+import { useTheme } from '../context/ThemeContext';
+import { themedIconBackground } from '../utils/themeTint';
 
 export type LegalDocumentType = 'terms' | 'privacy' | 'licenses';
 
@@ -219,6 +221,7 @@ export default function LegalDocumentModal({
   onClose,
   accentColor = '#4169E1',
 }: Props) {
+  const { colors, isDark } = useTheme();
   const content = DOCUMENTS[document];
 
   return (
@@ -228,7 +231,7 @@ export default function LegalDocumentModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={{ flex: 1, backgroundColor: 'white' }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <View
           style={{
             flexDirection: 'row',
@@ -238,15 +241,19 @@ export default function LegalDocumentModal({
             paddingTop: 20,
             paddingBottom: 16,
             borderBottomWidth: 1,
-            borderBottomColor: '#eef0f4',
+            borderBottomColor: colors.border,
           }}
         >
           <View style={{ flex: 1, paddingRight: 16 }}>
-            <Text style={{ fontSize: 24, fontWeight: '700', color: '#111827' }}>{content.title}</Text>
-            <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>{content.updatedLabel}</Text>
+            <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text }}>{content.title}</Text>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>{content.updatedLabel}</Text>
           </View>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="close" size={24} color="#6b7280" />
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="close" size={22} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -255,31 +262,31 @@ export default function LegalDocumentModal({
             <View
               key={section.heading}
               style={{
-                backgroundColor: '#f8fafc',
+                backgroundColor: colors.card,
                 borderRadius: 16,
                 padding: 18,
                 marginBottom: 14,
                 borderWidth: 1,
-                borderColor: '#e5e7eb',
+                borderColor: colors.border,
               }}
             >
-              <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 8 }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
                 {section.heading}
               </Text>
-              <Text style={{ fontSize: 14, lineHeight: 22, color: '#4b5563' }}>{section.body}</Text>
+              <Text style={{ fontSize: 14, lineHeight: 22, color: colors.textSecondary }}>{section.body}</Text>
             </View>
           ))}
 
           <View
             style={{
-              backgroundColor: `${accentColor}12`,
+              backgroundColor: themedIconBackground(accentColor, isDark, `${accentColor}12`),
               borderRadius: 14,
               padding: 16,
               borderWidth: 1,
               borderColor: `${accentColor}22`,
             }}
           >
-            <Text style={{ fontSize: 13, lineHeight: 20, color: '#374151' }}>
+            <Text style={{ fontSize: 13, lineHeight: 20, color: colors.textSecondary }}>
               These in-app legal documents describe the current ClassMate experience. You should review them
               periodically because we may update them as the app changes.
             </Text>

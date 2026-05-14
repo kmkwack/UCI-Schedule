@@ -16,6 +16,8 @@ import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import InfoChip from '../components/InfoChip';
+import { themedIconBackground, themedIconColor } from '../utils/themeTint';
+import { useKeyboardInset } from '../utils/useKeyboardInset';
 
 type Props = {
   activeCourses: Course[];
@@ -1274,6 +1276,7 @@ export default function HomeScreen({
   const sportsEventScrollRef = useRef<ScrollView>(null);
   const sportsEventCommentInputRef = useRef<TextInput>(null);
   const calendarSetupScrollRef = useRef<ScrollView>(null);
+  const calendarFeedInputRef = useRef<TextInput>(null);
   const [sportsEvents, setSportsEvents] = useState<SportsEvent[]>([]);
   const [sportsLoading, setSportsLoading] = useState(false);
   const [diningMenus, setDiningMenus] = useState<DiningLocationMenu[]>([]);
@@ -1318,10 +1321,9 @@ export default function HomeScreen({
   const [savingSportsEventRsvp, setSavingSportsEventRsvp] = useState(false);
   const [submittingSportsEventComment, setSubmittingSportsEventComment] = useState(false);
   const [deletingSportsEventCommentId, setDeletingSportsEventCommentId] = useState<string | null>(null);
-  const [sportsEventKeyboardVisible, setSportsEventKeyboardVisible] = useState(false);
-  const [sportsEventKeyboardHeight, setSportsEventKeyboardHeight] = useState(0);
-  const [calendarSetupKeyboardVisible, setCalendarSetupKeyboardVisible] = useState(false);
-  const [calendarSetupKeyboardHeight, setCalendarSetupKeyboardHeight] = useState(0);
+  const keyboardInset = useKeyboardInset({ bottomInset });
+  const sportsEventKeyboardVisible = keyboardInset.visible;
+  const calendarSetupKeyboardVisible = keyboardInset.visible;
   const [showCampusInfo, setShowCampusInfo] = useState(false);
   const [expandedCampusInfoCards, setExpandedCampusInfoCards] = useState<Record<string, boolean>>({});
   const [termDateRange, setTermDateRange] = useState<SchoolTermDateRange | null>(null);
@@ -1343,7 +1345,7 @@ export default function HomeScreen({
   const pastAssignmentsSheetHeight = Math.round(windowHeight * 0.74);
   const calendarSetupSheetHeight = Math.min(
     Math.round(windowHeight * 0.84),
-    Math.max(360, windowHeight - (calendarSetupKeyboardVisible ? calendarSetupKeyboardHeight + 18 : 88))
+    Math.max(360, windowHeight - 88)
   );
   const sportsEventCommentFooterPadding = sportsEventKeyboardVisible ? 8 : Math.max(bottomInset, 12) + 10;
   const sportsEventScrollBottomPadding = sportsEventKeyboardVisible ? 92 : 18;
@@ -1640,27 +1642,8 @@ export default function HomeScreen({
   }
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, (event) => {
-      setSportsEventKeyboardVisible(true);
-      setSportsEventKeyboardHeight(Math.max(event.endCoordinates?.height ?? 0, 0));
-      setCalendarSetupKeyboardVisible(true);
-      setCalendarSetupKeyboardHeight(Math.max(event.endCoordinates?.height ?? 0, 0));
-      if (selectedSportsEventRef.current) settleSportsEventComposer(true);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      setSportsEventKeyboardVisible(false);
-      setSportsEventKeyboardHeight(0);
-      setCalendarSetupKeyboardVisible(false);
-      setCalendarSetupKeyboardHeight(0);
-    });
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, [settleSportsEventComposer]);
+    if (keyboardInset.visible && selectedSportsEventRef.current) settleSportsEventComposer(true);
+  }, [keyboardInset.visible, settleSportsEventComposer]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2323,8 +2306,6 @@ export default function HomeScreen({
       setSavingSportsEventRsvp(false);
       setSubmittingSportsEventComment(false);
       setDeletingSportsEventCommentId(null);
-      setSportsEventKeyboardVisible(false);
-      setSportsEventKeyboardHeight(0);
     });
   }
 
@@ -2764,8 +2745,8 @@ export default function HomeScreen({
                                   }}
                                 >
                                   <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                                    <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#fff7ed', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                      <Ionicons name="restaurant-outline" size={20} color={diningAccent} />
+                                    <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: themedIconBackground(diningAccent, isDark, '#fff7ed'), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                      <Ionicons name="restaurant-outline" size={20} color={themedIconColor(diningAccent, isDark)} />
                                     </View>
                                     <View style={{ flex: 1, minWidth: 0 }}>
                                       <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
@@ -2860,8 +2841,8 @@ export default function HomeScreen({
                                 }}
                               >
                                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                                  <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: event.bg, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    <Ionicons name={event.icon} size={20} color={event.color} />
+                                  <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: themedIconBackground(event.color, isDark, event.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    <Ionicons name={event.icon} size={20} color={themedIconColor(event.color, isDark)} />
                                   </View>
                                   <View style={{ flex: 1, minWidth: 0 }}>
                                     <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
@@ -2991,13 +2972,13 @@ export default function HomeScreen({
                                         width: campusInfoHeroIconBoxSize,
                                         height: campusInfoHeroIconBoxSize,
                                         borderRadius: isCompactCampusInfoCard ? 13 : 14,
-                                        backgroundColor: resource.bg,
+                                        backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         flexShrink: 0,
                                       }}
                                     >
-                                      <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={resource.color} />
+                                      <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={themedIconColor(resource.color, isDark)} />
                                     </View>
                                     <View style={{ flex: 1, minWidth: 0 }}>
                                       <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroTitleSize, lineHeight: campusInfoHeroTitleLineHeight, fontWeight: '800', color: colors.text }}>
@@ -3021,13 +3002,13 @@ export default function HomeScreen({
                                           flexBasis: '47%',
                                           minHeight: 34,
                                           borderRadius: 13,
-                                          backgroundColor: resource.bg,
+                                          backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
                                           alignItems: 'center',
                                           justifyContent: 'center',
                                           paddingHorizontal: 8,
                                         }}
                                       >
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroChildSize, lineHeight: campusInfoHeroChildLineHeight, fontWeight: '800', color: resource.color }}>
+                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroChildSize, lineHeight: campusInfoHeroChildLineHeight, fontWeight: '800', color: themedIconColor(resource.color, isDark) }}>
                                           {child.title}
                                         </Text>
                                       </TouchableOpacity>
@@ -3060,13 +3041,13 @@ export default function HomeScreen({
                                     width: campusInfoHeroIconBoxSize,
                                     height: campusInfoHeroIconBoxSize,
                                     borderRadius: isCompactCampusInfoCard ? 13 : 14,
-                                    backgroundColor: resource.bg,
+                                    backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     flexShrink: 0,
                                   }}
                                 >
-                                  <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={resource.color} />
+                                  <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={themedIconColor(resource.color, isDark)} />
                                 </View>
                                 <View style={{ flex: 1, minWidth: 0 }}>
                                   <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroTitleSize, lineHeight: campusInfoHeroTitleLineHeight, fontWeight: '800', color: colors.text }}>
@@ -3857,12 +3838,12 @@ export default function HomeScreen({
                             width: 42,
                             height: 42,
                             borderRadius: 15,
-                            backgroundColor: resource.bg,
+                            backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
                         >
-                          <Ionicons name={resource.icon} size={21} color={resource.color} />
+                          <Ionicons name={resource.icon} size={21} color={themedIconColor(resource.color, isDark)} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoSheetTitleSize, lineHeight: campusInfoSheetTitleLineHeight, fontWeight: '800', color: colors.text }}>
@@ -3891,13 +3872,13 @@ export default function HomeScreen({
                                 flexBasis: '47%',
                                 minHeight: 46,
                                 borderRadius: 15,
-                                backgroundColor: resource.bg,
+                                backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
                                 paddingHorizontal: 10,
                                 paddingVertical: 8,
                                 justifyContent: 'center',
                               }}
                             >
-                              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoSheetChildTitleSize, lineHeight: campusInfoSheetChildTitleLineHeight, fontWeight: '800', color: resource.color }}>
+                              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoSheetChildTitleSize, lineHeight: campusInfoSheetChildTitleLineHeight, fontWeight: '800', color: themedIconColor(resource.color, isDark) }}>
                                 {child.title}
                               </Text>
                             </TouchableOpacity>
@@ -3932,12 +3913,12 @@ export default function HomeScreen({
                         width: 42,
                         height: 42,
                         borderRadius: 15,
-                        backgroundColor: resource.bg,
+                        backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      <Ionicons name={resource.icon} size={21} color={resource.color} />
+                      <Ionicons name={resource.icon} size={21} color={themedIconColor(resource.color, isDark)} />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoSheetTitleSize, lineHeight: campusInfoSheetTitleLineHeight, fontWeight: '800', color: colors.text }}>
@@ -4032,8 +4013,8 @@ export default function HomeScreen({
                       }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 11 }}>
-                        <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#fff7ed', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <Ionicons name="restaurant-outline" size={20} color={diningAccent} />
+                        <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: themedIconBackground(diningAccent, isDark, '#fff7ed'), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Ionicons name="restaurant-outline" size={20} color={themedIconColor(diningAccent, isDark)} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
@@ -4211,8 +4192,8 @@ export default function HomeScreen({
                       }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                        <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: event.bg, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <Ionicons name={event.icon} size={20} color={event.color} />
+                        <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: themedIconBackground(event.color, isDark, event.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Ionicons name={event.icon} size={20} color={themedIconColor(event.color, isDark)} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text numberOfLines={2} style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
@@ -4415,17 +4396,18 @@ export default function HomeScreen({
           <TouchableOpacity
             activeOpacity={1}
             onPress={closeCalendarSetup}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}
           />
-          <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+          <View pointerEvents="box-none" style={{ flex: 1, justifyContent: 'flex-end', zIndex: 1, elevation: 1 }}>
             <Animated.View
               style={{
                 height: calendarSetupSheetHeight,
-                marginBottom: calendarSetupKeyboardVisible ? calendarSetupKeyboardHeight : 0,
                 borderTopLeftRadius: 28,
                 borderTopRightRadius: 28,
                 backgroundColor: colors.bg,
                 overflow: 'hidden',
+                zIndex: 2,
+                elevation: 2,
                 transform: [{ translateY: calendarSetupSheetAnim }],
               }}
             >
@@ -4434,12 +4416,12 @@ export default function HomeScreen({
                 style={{ flex: 1 }}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{
-                  paddingHorizontal: 18,
-                  paddingTop: 10,
-                  paddingBottom: Math.max(bottomInset, 18) + (calendarSetupKeyboardVisible ? 104 : 12),
-                }}
-              >
+	                contentContainerStyle={{
+	                  paddingHorizontal: 18,
+	                  paddingTop: 10,
+	                  paddingBottom: 12,
+	                }}
+	              >
                 <View style={{ alignItems: 'center', paddingBottom: 12 }}>
                   <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
                 </View>
@@ -4554,8 +4536,10 @@ export default function HomeScreen({
                 {selectedCalendarProvider.label} feed link
               </Text>
               <TextInput
+                ref={calendarFeedInputRef}
                 value={calendarFeedInput}
                 onChangeText={setCalendarFeedInput}
+                onPressIn={() => calendarFeedInputRef.current?.focus()}
                 onFocus={() => {
                   setTimeout(() => calendarSetupScrollRef.current?.scrollToEnd({ animated: true }), 120);
                 }}
@@ -4564,36 +4548,45 @@ export default function HomeScreen({
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"
+                showSoftInputOnFocus
                 style={{ minHeight: 44, fontSize: 14, color: colors.text }}
               />
             </View>
 
-            {calendarTasksError ? (
-              <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 10 }}>
-                {calendarTasksError}
-              </Text>
-            ) : null}
+                {calendarTasksError ? (
+                  <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 10 }}>
+                    {calendarTasksError}
+                  </Text>
+                ) : null}
+              </ScrollView>
 
-            <TouchableOpacity
-              onPress={() => void saveCalendarFeed()}
-              disabled={calendarTasksLoading}
-              activeOpacity={0.8}
-              style={{
-                minHeight: 52,
-                borderRadius: 18,
-                backgroundColor: colors.brand,
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexDirection: 'row',
-                gap: 8,
-                marginTop: 16,
-              }}
-            >
-              {calendarTasksLoading ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="sync" size={18} color="white" />}
-              <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>
-                Save and Sync
-              </Text>
-            </TouchableOpacity>
+              <View
+                style={{
+                  paddingHorizontal: 18,
+                  paddingTop: 12,
+                  paddingBottom: keyboardInset.footerPaddingBottom(Math.max(bottomInset, 18), 18),
+                  backgroundColor: colors.bg,
+                }}
+              >
+                <TouchableOpacity
+                  onPress={() => void saveCalendarFeed()}
+                  disabled={calendarTasksLoading}
+                  activeOpacity={0.8}
+                  style={{
+                    minHeight: 52,
+                    borderRadius: 18,
+                    backgroundColor: colors.brand,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: 8,
+                  }}
+                >
+                  {calendarTasksLoading ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="sync" size={18} color="white" />}
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>
+                    Save and Sync
+                  </Text>
+                </TouchableOpacity>
 
             {calendarFeedUrl ? (
               <TouchableOpacity
@@ -4615,7 +4608,7 @@ export default function HomeScreen({
                 </Text>
               </TouchableOpacity>
             ) : null}
-              </ScrollView>
+              </View>
             </Animated.View>
           </View>
         </Animated.View>
@@ -4673,11 +4666,11 @@ export default function HomeScreen({
                     width: 48,
                     height: 48,
                     borderRadius: 24,
-                    backgroundColor: selectedSportsEvent.bg,
+                    backgroundColor: themedIconBackground(selectedSportsEvent.color, isDark, selectedSportsEvent.bg),
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}>
-                    <Ionicons name={selectedSportsEvent.icon} size={23} color={selectedSportsEvent.color} />
+                    <Ionicons name={selectedSportsEvent.icon} size={23} color={themedIconColor(selectedSportsEvent.color, isDark)} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 24, lineHeight: 29, fontWeight: '800', color: colors.text }}>
@@ -4906,7 +4899,6 @@ export default function HomeScreen({
                   borderTopWidth: 1,
                   borderTopColor: colors.borderSubtle,
                   backgroundColor: colors.bg,
-                  marginBottom: sportsEventKeyboardHeight,
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>

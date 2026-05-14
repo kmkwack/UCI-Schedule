@@ -33,6 +33,8 @@ import { departmentsForSchoolId } from '../data/schoolDepartments';
 import { getSchoolConfig } from '../data/schools';
 import type { ChatTarget } from '../data/messages';
 import { abbreviateMajor } from '../data/userPreferences';
+import { themedIconBackground, themedIconBorder, themedIconColor } from '../utils/themeTint';
+import { useKeyboardInset } from '../utils/useKeyboardInset';
 
 type CommentRow = {
   id: string;
@@ -303,6 +305,10 @@ function BoardAttachmentImage({
   contentFit?: 'cover' | 'contain';
 }) {
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [uri]);
 
   if (!uri || failed) {
     return (
@@ -626,6 +632,9 @@ type Props = {
   onOpenMessages?: () => void;
   onOpenChat?: (target: ChatTarget) => void;
   unreadMessageCount?: number;
+  openPostId?: string | null;
+  openPostRequestId?: number;
+  onOpenPostHandled?: (postId: string) => void;
 };
 
 export default function BoardScreen({
@@ -637,6 +646,9 @@ export default function BoardScreen({
   onOpenMessages,
   onOpenChat,
   unreadMessageCount = 0,
+  openPostId = null,
+  openPostRequestId = 0,
+  onOpenPostHandled,
 }: Props) {
   const { colors, isDark } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
@@ -687,7 +699,9 @@ export default function BoardScreen({
   const selectedPostScrollRef = useRef<ScrollView>(null);
   const commentInputRef = useRef<TextInput>(null);
   const postsRef = useRef<Post[]>([]);
-  const [boardKeyboardVisible, setBoardKeyboardVisible] = useState(false);
+  const handledOpenPostRequestRef = useRef<string | null>(null);
+  const boardKeyboard = useKeyboardInset({ bottomInset });
+  const boardKeyboardVisible = boardKeyboard.visible;
   const shouldShowCommentComposer =
     commentComposerOpen ||
     boardKeyboardVisible ||
@@ -771,19 +785,8 @@ export default function BoardScreen({
   }, [scrollToTopTrigger]);
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, () => {
-      setBoardKeyboardVisible(true);
-      if (selectedPost) settleSelectedPostComposer(true);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, () => setBoardKeyboardVisible(false));
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, [selectedPost, settleSelectedPostComposer]);
+    if (boardKeyboard.visible && selectedPost) settleSelectedPostComposer(true);
+  }, [boardKeyboard.visible, selectedPost, settleSelectedPostComposer]);
 
   function resetComposer() {
     setEditingPostId(null);
@@ -1397,6 +1400,76 @@ export default function BoardScreen({
     }).start();
     await loadCommentsForPost(post.id);
   }
+
+  async function fetchPostById(postId: string): Promise<Post | null> {
+    const { data: postData, error } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('school', school)
+      .eq('id', postId)
+      .maybeSingle();
+
+    if (error) {
+      if (!isNetworkRequestError(error)) console.warn('Failed to load linked board post:', error);
+      return null;
+    }
+
+    if (!postData) return null;
+
+    const [{ data: votesData }, { data: commentsData }, authorSummaries] = await Promise.all([
+      supabase.from('post_votes').select('post_id, user_id').eq('school', school).eq('post_id', postId),
+      supabase.from('post_comments').select('id, post_id').eq('school', school).eq('post_id', postId),
+      resolveAuthorSummaries([(postData as any).user_id]),
+    ]);
+
+    const row = postData as any;
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      author_name: authorSummaries[row.user_id]?.displayName ?? campusAliasForId(row.user_id, school),
+      author_meta: authorSummaries[row.user_id]?.meta ?? null,
+      category: row.category ?? 'General',
+      title: row.title,
+      body: row.body ?? '',
+      created_at: row.created_at,
+      edited_at: row.edited_at ?? row.updated_at ?? null,
+      likes: (votesData ?? []).length,
+      commentCount: (commentsData ?? []).length,
+      liked: (votesData ?? []).some((vote: any) => vote.user_id === userId),
+      attachments: normalizeAttachments(row.attachments),
+      is_locked: !!row.is_locked,
+    };
+  }
+
+  async function openPostById(postId: string) {
+    const existingPost = postsRef.current.find((post) => post.id === postId);
+    if (existingPost) {
+      await openPostFromBoardList(existingPost);
+      return;
+    }
+
+    const linkedPost = await fetchPostById(postId);
+    if (!linkedPost) {
+      Alert.alert('Post unavailable', 'This board post may have been deleted.');
+      return;
+    }
+
+    postsRef.current = [linkedPost, ...postsRef.current.filter((post) => post.id !== linkedPost.id)];
+    setPosts(postsRef.current);
+    hydrateAttachmentUrlsForPosts([linkedPost]);
+    await openPostFromBoardList(linkedPost);
+  }
+
+  useEffect(() => {
+    if (!openPostId || !openPostRequestId) return;
+    const requestKey = `${openPostRequestId}:${openPostId}`;
+    if (handledOpenPostRequestRef.current === requestKey) return;
+    handledOpenPostRequestRef.current = requestKey;
+
+    void openPostById(openPostId).finally(() => {
+      onOpenPostHandled?.(openPostId);
+    });
+  }, [openPostId, openPostRequestId]);
 
   async function togglePostLike(postId: string) {
     const post = posts.find((entry) => entry.id === postId);
@@ -2308,15 +2381,15 @@ export default function BoardScreen({
                   width: 48,
                   height: 48,
                   borderRadius: 14,
-                  backgroundColor: HOT_BOARD.iconBg,
+                  backgroundColor: themedIconBackground(HOT_BOARD.color, isDark, HOT_BOARD.iconBg),
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginRight: 14,
                   borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(249,115,22,0.22)',
+                  borderColor: themedIconBorder(HOT_BOARD.color, isDark),
                 }}
               >
-                <Ionicons name={HOT_BOARD.icon} size={22} color={HOT_BOARD.color} />
+                <Ionicons name={HOT_BOARD.icon} size={22} color={themedIconColor(HOT_BOARD.color, isDark)} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 4 }}>
@@ -2329,14 +2402,14 @@ export default function BoardScreen({
                   width: 28,
                   height: 28,
                   borderRadius: 14,
-                  backgroundColor: HOT_BOARD.iconBg,
+                  backgroundColor: themedIconBackground(HOT_BOARD.color, isDark, HOT_BOARD.iconBg),
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderWidth: 1,
-                  borderColor: 'rgba(249,115,22,0.18)',
+                  borderColor: themedIconBorder(HOT_BOARD.color, isDark),
                 }}
               >
-                <Ionicons name="chevron-forward" size={16} color={HOT_BOARD.color} />
+                <Ionicons name="chevron-forward" size={16} color={themedIconColor(HOT_BOARD.color, isDark)} />
               </View>
             </TouchableOpacity>
 
@@ -2425,15 +2498,15 @@ export default function BoardScreen({
                     width: 48,
                     height: 48,
                     borderRadius: 14,
-                    backgroundColor: board.iconBg,
+                    backgroundColor: themedIconBackground(board.color, isDark, board.iconBg),
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginRight: 14,
                     borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(188,199,221,0.25)',
+                    borderColor: themedIconBorder(board.color, isDark),
                   }}
                 >
-                  <Ionicons name={board.icon} size={22} color={board.color} />
+                  <Ionicons name={board.icon} size={22} color={themedIconColor(board.color, isDark)} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 4 }}>
@@ -2597,12 +2670,12 @@ export default function BoardScreen({
                           borderRadius: 10,
                           paddingHorizontal: 10,
                           paddingVertical: 7,
-                          backgroundColor: board.iconBg,
+                          backgroundColor: themedIconBackground(board.color, isDark, board.iconBg),
                           alignItems: 'center',
                           marginRight: 12,
                         }}
                       >
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: board.color }}>{department}</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: themedIconColor(board.color, isDark) }}>{department}</Text>
                       </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{board.name}</Text>
@@ -2630,7 +2703,7 @@ export default function BoardScreen({
           {...swipeBoardPan.panHandlers}
         >
           {selectedPost ? (
-            <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
               <View
                 style={{
                   paddingTop: topInset + 14,
@@ -3005,8 +3078,8 @@ export default function BoardScreen({
                   <TouchableOpacity onPress={closeBoard} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Ionicons name="chevron-back" size={26} color={colors.text} />
                   </TouchableOpacity>
-                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: selectedBoard.iconBg, alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name={selectedBoard.icon} size={18} color={selectedBoard.color} />
+                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: themedIconBackground(selectedBoard.color, isDark, selectedBoard.iconBg), alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name={selectedBoard.icon} size={18} color={themedIconColor(selectedBoard.color, isDark)} />
                   </View>
                   <Text style={{ flex: 1, fontSize: 18, fontWeight: '700', color: colors.text }}>{selectedBoard.name}</Text>
                   {!isHotBoard(selectedBoard) ? (
@@ -3187,6 +3260,7 @@ export default function BoardScreen({
         submitting={submittingPost}
         uploadingAttachments={uploadingAttachments}
         colors={colors}
+        isDark={isDark}
       />
 
       <ReportModal
@@ -3489,14 +3563,17 @@ function RequestBoardModal({
 }) {
   const { height: windowHeight } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
+  const boardNameInputRef = useRef<TextInput>(null);
+  const boardDescriptionInputRef = useRef<TextInput>(null);
+  const keyboardInset = useKeyboardInset({ enabled: visible });
   const sheetAnim = useRef(new Animated.Value(600)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const sheetHeight = Math.min(
+  const sheetMaxHeight = Math.min(
     Math.round(windowHeight * 0.72),
-    Math.max(320, windowHeight - (keyboardVisible ? keyboardHeight + 18 : 96))
+    Math.max(320, windowHeight - 96)
   );
+  const keyboardAwareSheetMaxHeight = keyboardInset.bottomSheetMaxHeight(sheetMaxHeight, windowHeight, 24, 280);
+  const requestBoardScrollMaxHeight = Math.max(220, keyboardAwareSheetMaxHeight - 20);
   const closeRef = useRef<(() => void) | null>(null);
   const dragPan = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -3531,50 +3608,39 @@ function RequestBoardModal({
     if (visible) openSheet();
   }, [visible]);
 
-  useEffect(() => {
-    if (!visible) return;
-    const scrollToBottom = () => {
-      requestAnimationFrame(() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120));
-    };
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, (event) => {
-      setKeyboardVisible(true);
-      setKeyboardHeight(Math.max(event.endCoordinates?.height ?? 0, 0));
-      scrollToBottom();
-    });
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      setKeyboardVisible(false);
-      setKeyboardHeight(0);
-    });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, [visible]);
-
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={closeSheet}>
       <View style={{ flex: 1 }}>
         <Animated.View
           style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }) }}
         >
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeSheet} />
-          <Animated.View style={{ height: sheetHeight, marginBottom: keyboardVisible ? keyboardHeight : 0, transform: [{ translateY: sheetAnim }] }}>
+          <TouchableOpacity style={{ flex: 1, zIndex: 0 }} activeOpacity={1} onPress={closeSheet} />
+          <Animated.View
+            style={{
+              maxHeight: keyboardAwareSheetMaxHeight,
+              backgroundColor: colors.card,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              overflow: 'hidden',
+              zIndex: 1,
+              elevation: 1,
+              marginBottom: keyboardInset.androidBottomSheetMarginBottom(8),
+              transform: [{ translateY: sheetAnim }],
+            }}
+          >
             {/* Drag handle */}
-            <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, alignItems: 'center', paddingTop: 12, paddingBottom: 4 }} {...dragPan.panHandlers}>
+            <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 4 }} {...dragPan.panHandlers}>
               <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
             </View>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()} style={{ flex: 1 }}>
+          <View>
             <ScrollView
               ref={scrollRef}
-              style={{ flex: 1 }}
+              style={{ flexGrow: 0, maxHeight: requestBoardScrollMaxHeight }}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{
-                backgroundColor: colors.card,
                 paddingHorizontal: 20,
                 paddingTop: 8,
-                paddingBottom: (Platform.OS === 'ios' ? 34 : 20) + (keyboardVisible ? 96 : 0),
+                paddingBottom: (Platform.OS === 'ios' ? 24 : 18) + (keyboardInset.visible ? 28 : 0),
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -3591,10 +3657,13 @@ function RequestBoardModal({
                 Board Name <Text style={{ color: '#ef4444' }}>*</Text>
               </Text>
               <TextInput
+                ref={boardNameInputRef}
                 value={boardName}
                 onChangeText={onBoardNameChange}
+                onPressIn={() => boardNameInputRef.current?.focus()}
                 placeholder="e.g. Pre-Med Students, Housing Tips…"
                 placeholderTextColor={colors.placeholder}
+                showSoftInputOnFocus
                 style={{
                   backgroundColor: colors.inputBg,
                   borderRadius: 14,
@@ -3610,8 +3679,10 @@ function RequestBoardModal({
                 Brief Description
               </Text>
               <TextInput
+                ref={boardDescriptionInputRef}
                 value={description}
                 onChangeText={onDescriptionChange}
+                onPressIn={() => boardDescriptionInputRef.current?.focus()}
                 onFocus={() => {
                   setTimeout(() => {
                     scrollRef.current?.scrollToEnd({ animated: true });
@@ -3620,6 +3691,7 @@ function RequestBoardModal({
                 placeholder="What would this board be used for?"
                 placeholderTextColor={colors.placeholder}
                 multiline
+                showSoftInputOnFocus
                 style={{
                   backgroundColor: colors.inputBg,
                   borderRadius: 14,
@@ -3664,7 +3736,7 @@ function RequestBoardModal({
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </TouchableOpacity>
+          </View>
           </Animated.View>
         </Animated.View>
       </View>
@@ -3695,15 +3767,8 @@ type NewPostModalProps = {
   submitting: boolean;
   uploadingAttachments: boolean;
   colors: ReturnType<typeof useTheme>['colors'];
+  isDark: boolean;
 };
-
-function estimatePostBodyInputHeight(value: string) {
-  if (!value.trim()) return 240;
-  const visualLines = value
-    .split('\n')
-    .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / 34)), 0);
-  return Math.max(240, Math.min(1800, visualLines * 24 + 42));
-}
 
 function NewPostModal({
   visible,
@@ -3728,16 +3793,11 @@ function NewPostModal({
   submitting,
   uploadingAttachments,
   colors,
+  isDark,
 }: NewPostModalProps) {
   const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? boards[0];
-  const { height: windowHeight } = useWindowDimensions();
   const composerScrollRef = useRef<ScrollView>(null);
-  const bodyInputFocusedRef = useRef(false);
-  const bodyInputYRef = useRef(0);
-  const bodyInputHeightRef = useRef(240);
-  const composerViewportHeightRef = useRef(0);
-  const keyboardHeightRef = useRef(0);
-  const [bodyInputHeight, setBodyInputHeight] = useState(240);
+  const composerKeyboard = useKeyboardInset({ enabled: visible && Platform.OS === 'android' });
   const fieldChrome = {
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -3749,46 +3809,12 @@ function NewPostModal({
     elevation: 1,
   };
 
-  const keepBodyCursorVisible = useCallback((height = bodyInputHeightRef.current, animated = true) => {
-    const viewportHeight = composerViewportHeightRef.current || windowHeight;
-    const keyboardHeight = keyboardHeightRef.current;
-    const visibleHeight = Math.max(180, viewportHeight - keyboardHeight);
-    const targetY = Math.max(0, bodyInputYRef.current + height - visibleHeight + 132);
-
-    [0, 80, 180].forEach((delay) => {
-      setTimeout(() => composerScrollRef.current?.scrollTo({ y: targetY, animated }), delay);
-    });
-  }, [windowHeight]);
-
   useEffect(() => {
     if (!visible) {
-      bodyInputFocusedRef.current = false;
-      bodyInputHeightRef.current = 240;
-      keyboardHeightRef.current = 0;
-      setBodyInputHeight(240);
       return;
     }
-    const estimatedHeight = estimatePostBodyInputHeight(body);
-    bodyInputHeightRef.current = estimatedHeight;
-    setBodyInputHeight(estimatedHeight);
-  }, [body, visible]);
-
-  useEffect(() => {
-    if (!visible) return;
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, (event) => {
-      keyboardHeightRef.current = Math.max(event.endCoordinates?.height ?? 0, 0);
-      if (bodyInputFocusedRef.current) keepBodyCursorVisible(bodyInputHeightRef.current, true);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      keyboardHeightRef.current = 0;
-    });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, [keepBodyCursorVisible, visible]);
+    requestAnimationFrame(() => composerScrollRef.current?.scrollTo({ y: 0, animated: false }));
+  }, [visible]);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -3803,17 +3829,14 @@ function NewPostModal({
           <View style={{ width: 36 }} />
         </View>
 
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView
-          ref={composerScrollRef}
-          onLayout={(event) => {
-            composerViewportHeightRef.current = event.nativeEvent.layout.height;
-          }}
-          contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'ios' ? 140 : 90 }}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          showsVerticalScrollIndicator={false}
-        >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView
+            ref={composerScrollRef}
+            contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'ios' ? 140 : composerKeyboard.scrollPaddingBottom(90, 20) }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            showsVerticalScrollIndicator={false}
+          >
           <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 }}>
             Board <Text style={{ color: '#ef4444' }}>*</Text>
           </Text>
@@ -3836,8 +3859,8 @@ function NewPostModal({
                   }}
                   style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: index < boards.length - 1 ? 1 : 0, borderBottomColor: colors.borderSubtle }}
                 >
-                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: board.iconBg, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                    <Ionicons name={board.icon} size={14} color={board.color} />
+                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: themedIconBackground(board.color, isDark, board.iconBg), alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                    <Ionicons name={board.icon} size={14} color={themedIconColor(board.color, isDark)} />
                   </View>
                   <Text style={{ flex: 1, fontSize: 15, color: colors.text }}>{board.name}</Text>
                   {board.id === selectedBoardId ? <Ionicons name="checkmark" size={18} color={colors.brand} /> : null}
@@ -3861,35 +3884,12 @@ function NewPostModal({
             Content <Text style={{ color: '#ef4444' }}>*</Text>
           </Text>
           <TextInput
-            onLayout={(event) => {
-              bodyInputYRef.current = event.nativeEvent.layout.y;
-            }}
             value={body}
-            onChangeText={(value) => {
-              onBodyChange(value);
-              const nextHeight = estimatePostBodyInputHeight(value);
-              bodyInputHeightRef.current = nextHeight;
-              setBodyInputHeight(nextHeight);
-              if (bodyInputFocusedRef.current) keepBodyCursorVisible(nextHeight, true);
-            }}
+            onChangeText={onBodyChange}
             placeholder="Share your thoughts, ask questions, or provide details..."
             placeholderTextColor={colors.placeholder}
             multiline
-            scrollEnabled={false}
-            onContentSizeChange={(event) => {
-              const nextHeight = Math.max(240, Math.min(1800, event.nativeEvent.contentSize.height + 26));
-              if (Math.abs(nextHeight - bodyInputHeightRef.current) < 2) return;
-              bodyInputHeightRef.current = nextHeight;
-              setBodyInputHeight(nextHeight);
-              if (bodyInputFocusedRef.current) keepBodyCursorVisible(nextHeight, true);
-            }}
-            onFocus={() => {
-              bodyInputFocusedRef.current = true;
-              keepBodyCursorVisible(bodyInputHeightRef.current, true);
-            }}
-            onBlur={() => {
-              bodyInputFocusedRef.current = false;
-            }}
+            scrollEnabled
             style={{
               ...fieldChrome,
               borderRadius: 14,
@@ -3898,8 +3898,7 @@ function NewPostModal({
               fontSize: 15,
               color: colors.text,
               marginBottom: 20,
-              minHeight: 240,
-              height: bodyInputHeight,
+              height: 240,
               textAlignVertical: 'top',
             }}
           />
@@ -4060,7 +4059,7 @@ function NewPostModal({
           ) : null}
 
           <View style={{ flexDirection: 'row', gap: 12 }}>
-            <TouchableOpacity onPress={onClose} style={{ flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: 'white', borderWidth: 1, borderColor: colors.border }}>
+            <TouchableOpacity onPress={onClose} style={{ flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: colors.bgTertiary, borderWidth: 1, borderColor: colors.border }}>
               <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity

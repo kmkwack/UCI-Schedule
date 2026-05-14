@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -61,8 +61,22 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
   const [reviewEmail, setReviewEmail] = useState('');
   const [reviewPassword, setReviewPassword] = useState('');
   const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
+  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
   const expectedEmailDomain = university.domain.trim().toLowerCase();
   const hd = expectedEmailDomain.replace(/^@/, ''); // e.g. "uci.edu"
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setAndroidKeyboardInset(Platform.OS === 'android' ? Math.max(event.endCoordinates?.height ?? 0, 0) : 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => setAndroidKeyboardInset(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const finalizeSignIn = async (
     userId: string,
@@ -272,7 +286,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Header */}
         <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
           <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 4 }}>
@@ -283,8 +297,8 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
       <ScrollView
         ref={scrollRef}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 28, paddingBottom: Platform.OS === 'ios' ? 96 : 72 }}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 28, paddingBottom: Platform.OS === 'ios' ? 96 : androidKeyboardInset > 0 ? androidKeyboardInset + 72 : 72 }}
       >
         {/* University card */}
         <View style={{

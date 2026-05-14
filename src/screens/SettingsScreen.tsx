@@ -17,6 +17,7 @@ import type {
 } from '../data/userPreferences';
 import { abbreviateMajor } from '../data/userPreferences';
 import { getSchoolConfig, SUPPORTED_UNIVERSITIES } from '../data/schools';
+import { themedIconBackground, themedIconBorder, themedIconColor } from '../utils/themeTint';
 
 type Props = {
   visible: boolean;
@@ -1404,7 +1405,7 @@ function CreateBoardView({
   onBack: () => void;
   onSuccess: (requestId: string) => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
   const [selectedIconIndex, setSelectedIconIndex] = useState(0);
@@ -1462,10 +1463,10 @@ function CreateBoardView({
         }}>
           <View style={{
             width: 48, height: 48, borderRadius: 14,
-            backgroundColor: selectedIcon.iconBg,
+            backgroundColor: themedIconBackground(selectedIcon.color, isDark, selectedIcon.iconBg),
             alignItems: 'center', justifyContent: 'center', marginRight: 14,
           }}>
-            <Ionicons name={selectedIcon.icon} size={22} color={selectedIcon.color} />
+            <Ionicons name={selectedIcon.icon} size={22} color={themedIconColor(selectedIcon.color, isDark)} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
@@ -1528,18 +1529,18 @@ function CreateBoardView({
                   style={{
                     flex: 1, alignItems: 'center', paddingVertical: 12,
                     borderRadius: 14, borderWidth: active ? 2 : 1,
-                    borderColor: active ? opt.color : colors.borderSubtle,
-                    backgroundColor: active ? opt.iconBg : colors.card,
+                    borderColor: active ? themedIconBorder(opt.color, isDark) : colors.borderSubtle,
+                    backgroundColor: active ? themedIconBackground(opt.color, isDark, opt.iconBg) : colors.card,
                   }}
                 >
                   <View style={{
                     width: 36, height: 36, borderRadius: 10,
-                    backgroundColor: opt.iconBg,
+                    backgroundColor: themedIconBackground(opt.color, isDark, opt.iconBg),
                     alignItems: 'center', justifyContent: 'center', marginBottom: 4,
                   }}>
-                    <Ionicons name={opt.icon} size={18} color={opt.color} />
+                    <Ionicons name={opt.icon} size={18} color={themedIconColor(opt.color, isDark)} />
                   </View>
-                  <Text style={{ fontSize: 10, color: active ? opt.color : colors.textTertiary, fontWeight: active ? '700' : '400' }}>
+                  <Text style={{ fontSize: 10, color: active ? themedIconColor(opt.color, isDark) : colors.textTertiary, fontWeight: active ? '700' : '400' }}>
                     {opt.label}
                   </Text>
                 </TouchableOpacity>
@@ -1572,7 +1573,7 @@ function CreateBoardView({
 }
 
 function ManageBoardsView({ school, onBack }: { school: string; onBack: () => void }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [boards, setBoards] = useState<Array<{
     id: string;
     name: string;
@@ -1664,10 +1665,10 @@ function ManageBoardsView({ school, onBack }: { school: string; onBack: () => vo
             >
               <View style={{
                 width: 44, height: 44, borderRadius: 12,
-                backgroundColor: board.iconBg ?? '#eef1fb',
+                backgroundColor: themedIconBackground(board.color, isDark, board.iconBg ?? '#eef1fb'),
                 alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               }}>
-                <Ionicons name={board.icon as React.ComponentProps<typeof Ionicons>['name']} size={20} color={board.color} />
+                <Ionicons name={board.icon as React.ComponentProps<typeof Ionicons>['name']} size={20} color={themedIconColor(board.color, isDark)} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{board.name}</Text>
@@ -1680,14 +1681,14 @@ function ManageBoardsView({ school, onBack }: { school: string; onBack: () => vo
                 onPress={() => confirmDelete(board)}
                 style={{
                   width: 36, height: 36, borderRadius: 10,
-                  backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca',
+                  backgroundColor: colors.destructiveBg, borderWidth: 1, borderColor: isDark ? 'rgba(255,69,58,0.35)' : '#fecaca',
                   alignItems: 'center', justifyContent: 'center',
                   opacity: deletingId === board.id ? 0.5 : 1,
                 }}
               >
                 {deletingId === board.id
-                  ? <ActivityIndicator size="small" color="#ef4444" />
-                  : <Ionicons name="trash-outline" size={16} color="#ef4444" />}
+                  ? <ActivityIndicator size="small" color={colors.destructive} />
+                  : <Ionicons name="trash-outline" size={16} color={colors.destructive} />}
               </TouchableOpacity>
             </View>
           ))
@@ -1698,7 +1699,7 @@ function ManageBoardsView({ school, onBack }: { school: string; onBack: () => vo
 }
 
 function BoardRequestsScreen({ school, onBack }: { school: string; onBack: () => void }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [requests, setRequests] = useState<Array<{
     id: string;
     requesterName: string;
@@ -1956,11 +1957,11 @@ function BoardRequestsScreen({ school, onBack }: { school: string; onBack: () =>
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
                     paddingVertical: 12, borderRadius: 12,
-                    backgroundColor: '#ecfdf5', borderWidth: 1.5, borderColor: '#10B981',
+                    backgroundColor: themedIconBackground('#10B981', isDark, '#ecfdf5'), borderWidth: 1.5, borderColor: themedIconBorder('#10B981', isDark),
                   }}
                 >
-                  <Ionicons name="add-circle-outline" size={16} color="#10B981" />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#10B981' }}>Create Board from this Request</Text>
+                  <Ionicons name="add-circle-outline" size={16} color={themedIconColor('#10B981', isDark)} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: themedIconColor('#10B981', isDark) }}>Create Board from this Request</Text>
                 </TouchableOpacity>
               </View>
             </View>

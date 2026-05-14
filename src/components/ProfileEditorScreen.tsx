@@ -127,17 +127,8 @@ function ProfileDropdownPicker({
   const { height: screenHeight } = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const sheetAnim = useRef(new Animated.Value(500)).current;
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const show = Keyboard.addListener(showEvent, (e) => setKeyboardHeight(e.endCoordinates.height));
-    const hide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
-    return () => { show.remove(); hide.remove(); };
-  }, []);
 
   const filtered = searchable && search
     ? options.filter((option) => option.toLowerCase().includes(search.toLowerCase()))
@@ -202,11 +193,8 @@ function ProfileDropdownPicker({
               backgroundColor: colors.card,
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
-              paddingBottom: keyboardHeight > 0 ? 8 : 32,
-              maxHeight: keyboardHeight > 0
-                ? screenHeight - keyboardHeight - 60
-                : screenHeight * 0.75,
-              marginBottom: keyboardHeight,
+              paddingBottom: 32,
+              maxHeight: screenHeight * 0.75,
               transform: [{ translateY: sheetAnim }],
             }}
           >
@@ -465,7 +453,7 @@ export default function ProfileEditorScreen({
         ) : null}
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           ref={scrollRef}
           contentContainerStyle={{
@@ -548,7 +536,11 @@ export default function ProfileEditorScreen({
 
       <View
         onLayout={(event) => setFooterHeight(event.nativeEvent.layout.height)}
-        style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}
+        style={{
+          padding: 20,
+          borderTopWidth: 1,
+          borderTopColor: colors.borderSubtle,
+        }}
       >
         <TouchableOpacity
           disabled={saving}

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, ScrollView, Modal, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown } from '../data/courses';
+import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown, blockColorKey, colorForCourse, vividColorForCourse } from '../data/courses';
 import { buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
 import { getCampusMapLocation, isUnmappableLocation, type CampusMapLocation } from '../data/campusLocations';
 import { useTheme } from '../context/ThemeContext';
@@ -93,6 +93,64 @@ function displayCourseLocation(value: string | null | undefined, school: string)
   const cleaned = cleanLocationText(value);
   if (!cleaned || isGenericCampusLocation(cleaned, school)) return undefined;
   return cleaned;
+}
+
+function parseHexColor(hex: string) {
+  const cleaned = hex.trim().replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(cleaned)) return null;
+  return {
+    r: parseInt(cleaned.slice(0, 2), 16),
+    g: parseInt(cleaned.slice(2, 4), 16),
+    b: parseInt(cleaned.slice(4, 6), 16),
+  };
+}
+
+function mixTimetableHex(colorA: string, colorB: string, ratio: number) {
+  const a = parseHexColor(colorA);
+  const b = parseHexColor(colorB);
+  if (!a || !b) return colorA;
+  const toHex = (value: number) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0');
+  return `#${toHex(a.r + (b.r - a.r) * ratio)}${toHex(a.g + (b.g - a.g) * ratio)}${toHex(a.b + (b.b - a.b) * ratio)}`;
+}
+
+function alphaTimetableHex(color: string, alpha: number) {
+  const rgb = parseHexColor(color);
+  if (!rgb) return color;
+  return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+}
+
+function getTimetableBlockColors(course: Course, themeInput: TimetableTheme | string, isDark: boolean) {
+  const theme = normalizeTimetableTheme(themeInput);
+  if (!isDark) return getBlockColors(course, theme);
+
+  const accent = course.customColor
+    ?? (theme === 'colorful' ? vividColorForCourse(blockColorKey(course)) : colorForCourse(blockColorKey(course)));
+
+  if (theme === 'minimal') {
+    return { bg: '#1f2937', text: '#e5e7eb', border: '#374151' };
+  }
+
+  if (theme === 'colorful') {
+    return {
+      bg: mixTimetableHex(accent, '#0f172a', 0.24),
+      text: '#ffffff',
+      border: mixTimetableHex(accent, '#000000', 0.18),
+    };
+  }
+
+  if (theme === 'outline') {
+    return {
+      bg: alphaTimetableHex(accent, 0.1),
+      text: mixTimetableHex(accent, '#ffffff', 0.48),
+      border: alphaTimetableHex(accent, 0.58),
+    };
+  }
+
+  return {
+    bg: alphaTimetableHex(accent, theme === 'soft' ? 0.18 : 0.24),
+    text: mixTimetableHex(accent, '#ffffff', 0.55),
+    border: alphaTimetableHex(accent, theme === 'soft' ? 0.36 : 0.46),
+  };
 }
 
 async function openMaps(location: string, school: string, mappedLocation?: CampusMapLocation | null) {
@@ -604,8 +662,12 @@ export default function TimetableScreen({
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    const showSub = Keyboard.addListener(showEvent, () => {
+      setKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+    });
 
     return () => {
       showSub.remove();
@@ -2204,7 +2266,7 @@ export default function TimetableScreen({
                         const endHour = getCourseEndHour(course.time);
                         const top = (startHour - displayStartHour) * hourHeight;
                         const height = (endHour - startHour) * hourHeight;
-                        const { bg, text, border } = getBlockColors(course, blockTheme);
+                        const { bg, text, border } = getTimetableBlockColors(course, blockTheme, isDark);
                         const courseLocation = displayCourseLocation(course.location, school);
 
                         return courseDays.map((day) => {
@@ -2296,7 +2358,7 @@ export default function TimetableScreen({
           }}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {tbaCourses.map((course) => {
-                const { bg, text, border } = getBlockColors(course, blockTheme);
+                const { bg, text, border } = getTimetableBlockColors(course, blockTheme, isDark);
                 const courseLocation = displayCourseLocation(course.location, school);
                 return (
                   <TouchableOpacity
@@ -2546,7 +2608,7 @@ export default function TimetableScreen({
                       const endHour = getCourseEndHour(course.time);
                       const top = (startHour - displayStartHour) * exportHourHeight;
                       const height = (endHour - startHour) * exportHourHeight;
-                      const { bg, text, border } = getBlockColors(course, blockTheme);
+                      const { bg, text, border } = getTimetableBlockColors(course, blockTheme, isDark);
 
                       return courseDays.map((day) => {
                         const dayIndex = visibleDays.indexOf(day);
@@ -2615,7 +2677,7 @@ export default function TimetableScreen({
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {tbaCourses.map((course) => {
-                    const { bg, text, border } = getBlockColors(course, blockTheme);
+                    const { bg, text, border } = getTimetableBlockColors(course, blockTheme, isDark);
                     const courseLocation = displayCourseLocation(course.location, school);
                     return (
                       <View

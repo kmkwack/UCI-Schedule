@@ -784,7 +784,13 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const touchX = Math.max(0, Math.min(w, evt.nativeEvent.locationX));
       const touchIsOnCurrentPill = touchX >= currentX && touchX <= currentX + tabW;
       pillTouchStartX.current = touchX;
-      pillDragTouchOffsetX.current = touchIsOnCurrentPill ? touchX - currentX : tabW / 2;
+      if (touchIsOnCurrentPill) {
+        pillDragTouchOffsetX.current = touchX - currentX;
+      } else {
+        pillDragTouchOffsetX.current = tabW / 2;
+        Animated.spring(pillXAnim, { toValue: Math.max(0, Math.min(w - tabW, touchX - tabW / 2)), useNativeDriver: false, tension: 260, friction: 22 }).start(() => { isDraggingPill.current = true; });
+        isDraggingPill.current = true;
+      }
       Animated.spring(pillScaleAnim, { toValue: 1.15, useNativeDriver: false, tension: 300, friction: 10 }).start();
     },
     onPanResponderMove: (_, gs) => {
@@ -1791,7 +1797,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     };
   }, [activeCourses, assignmentCalendarRevision, currentSchool, effectiveTimeZone, selectedQuarter.quarter, selectedQuarter.year, userId, userSettings]);
 
-  // Load all timetables from Supabase on mount (or when user logs in)
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;

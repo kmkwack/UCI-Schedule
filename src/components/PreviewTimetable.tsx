@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
 import { Course, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatHourLabel12, getBlockColors, professorDisplayName } from '../data/courses';
 import { useTheme } from '../context/ThemeContext';

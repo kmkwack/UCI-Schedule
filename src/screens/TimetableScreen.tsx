@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, ScrollView, Modal, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown, blockColorKey, colorForCourse, vividColorForCourse } from '../data/courses';
@@ -396,7 +396,6 @@ export default function TimetableScreen({
       });
   }, [school, selectedQuarter, timetables]);
 
-  // Keep item anim array in sync with quarter count
   while (quarterItemAnims.current.length < sortedQuarterKeys.length) {
     quarterItemAnims.current.push(new Animated.Value(0));
   }
@@ -545,7 +544,6 @@ export default function TimetableScreen({
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Course detail sheet
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [reviewsCourse, setReviewsCourse] = useState<Course | null>(null);
   const [courseDiscordLinks, setCourseDiscordLinks] = useState<Record<string, CourseDiscordLinkRow | null>>({});
@@ -565,12 +563,10 @@ export default function TimetableScreen({
   const [pendingShowInstructor, setPendingShowInstructor] = useState(true);
   const [pendingShowTime, setPendingShowTime] = useState(true);
 
-  // Destructure applied settings from props
   const { showCode, showClassName, showRoomNumber, showInstructor, showTime } = settings;
   const blockTheme = normalizeTimetableTheme(settings.theme);
 
   const exportCaptureRef = useRef<View>(null);
-  // Drag-to-reorder state for timetable pills
   const [localOrder, setLocalOrder] = useState<string[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const localOrderRef = useRef<string[]>([]);
@@ -825,7 +821,6 @@ export default function TimetableScreen({
     [orderedTimetables, activeTimetableId]
   );
 
-  // Compute the flex x-offset of a pill based on widths of preceding pills + gaps
   function computePillFlexX(id: string, order: string[]): number {
     const GAP = 8;
     let x = 0;
@@ -840,7 +835,6 @@ export default function TimetableScreen({
     const id = dragIdRef.current;
     if (!id) return -1;
     const order = localOrderRef.current;
-    // Absolute x-center of the dragged pill based on original flex position + finger displacement
     const myMidX = dragOriginalFlexX.current + dx + (pillWidthRef.current[id] ?? 0) / 2;
     let newIdx = 0;
     for (const pid of order) {
@@ -859,7 +853,6 @@ export default function TimetableScreen({
         const id = dragIdRef.current;
         if (!id) return;
 
-        // Check if the pill has crossed a neighbour's midpoint → update order live
         const newIdx = getNewIndexFromDx(gs.dx);
         const order = localOrderRef.current;
         const currentIdx = order.indexOf(id);
@@ -943,12 +936,10 @@ export default function TimetableScreen({
     contentHeightAnim.setValue(h);
     yearListHeightRef.current = h;
 
-    // Show most recent first
     setAddableQuarters(seeded.reverse());
   }
 
   function openSettings() {
-    // Sync pending state from currently applied settings
     setPendingTheme(blockTheme);
     setPendingShowCode(settings.showCode);
     setPendingShowClassName(settings.showClassName);

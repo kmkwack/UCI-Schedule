@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -1038,7 +1038,6 @@ export default function CoursePickerScreen({
     };
   }, [localDepartmentOptions, schoolConfig.id, selectedQuarter, school]);
 
-  // Global search: fires when search text >= 2 and no category selected
   useEffect(() => {
     if (hasSelectedCategory || searchText.trim().length < 2) {
       setGlobalCatalog([]);
@@ -1130,7 +1129,6 @@ export default function CoursePickerScreen({
     };
   }, [selectedQuarter, school, shouldLoadSavedCounts, userId]);
 
-  // Fetch courses from Supabase for selected departments, or all departments when no filter is selected.
   useEffect(() => {
     if (selectedGE) {
       return;
@@ -1182,7 +1180,6 @@ export default function CoursePickerScreen({
     };
   }, [catalogReloadKey, departmentOptions, hasSelectedDepartments, selectedDeptKey, selectedGE, selectedQuarter, school, schoolConfig.id]);
 
-  // Fetch GE courses from Supabase when a GE category is selected
   useEffect(() => {
     if (!selectedGE) {
       return;
@@ -1221,7 +1218,6 @@ export default function CoursePickerScreen({
   const fetchEnrollment = async (course: CatalogCourse) => {
     if (schoolConfig.id !== 'uci') return;
     if (enrollmentLoadingIds.has(course.id)) return;
-    // Check if all sections for this course are already cached
     const sections = (isGlobalSearch ? globalSectionsMap : sectionsMap)[course.id] ?? [];
     if (sections.length > 0 && sections.every((s) => s.id in enrollmentCache)) return;
 

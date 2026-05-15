@@ -272,6 +272,9 @@ const QUARTERS = [
 ### Session 76 (Friend timetable header — long name truncation + first/last only in all name displays)
 - `src/screens/FriendsScreen.tsx` — Left section of friend timetable header given `flex: 1` + `minWidth: 0` so it never crowds the quarter pill. Name and email texts get `numberOfLines={1} ellipsizeMode="tail"`. Avatar marked `flexShrink: 0` so it never collapses. Added `firstLastName()` helper; applied to every name display site: Add Friend search results, friends list rows, incoming request rows, sent request rows, and friend timetable header.
 
+### Session 87 (Hero carousel — adjacent card visible during drag)
+- `src/screens/HomeScreen.tsx` — Extracted the hero card IIFE into a `renderHeroCardContent(item)` function inside the component (closes over all state/handlers; each card type returns just its inner `View`, with `raisedCardStyle` removed from inner Views). Added `heroCardWidthRef`, `heroDragAdjacentIndex` state, `heroDragAdjacentIndexRef`, and `heroDragDirectionRef`. Updated outer container: `raisedCardStyle` moved to the outermost `View`; added an `overflow:'hidden'` inner `View` wrapping a single `Animated.View` that carries both `heroSlideAnim` transform and `heroOpacityAnim`; the adjacent card is absolutely positioned at `±heroCardWidth` inside the same `Animated.View` so it slides in while the current card slides out. Updated `heroPanResponder`: `onPanResponderGrant` clears adjacent state; `onPanResponderMove` sets `heroDragAdjacentIndex` on the first 4px of horizontal drag; `onPanResponderRelease` slides exit to `±cardWidth` (from `heroCardWidthRef`) then immediately swaps index, clearing adjacent state (no enter-from animation needed since adjacent card is already in place).
+
 ### Session 86 (Import Assignments modal — animated backdrop + sheet)
 - `src/screens/HomeScreen.tsx` — Added `calendarSetupBackdropAnim` + `calendarSetupSheetAnim`. Added `openCalendarSetup()` / `closeCalendarSetup()` helpers. Replaced all `setShowCalendarSetup(true/false)` call sites. Restructured modal: `KeyboardAvoidingView` moved inside the `Animated.View` backdrop, sheet wrapped in `Animated.View` with translateY. Matches the same animation pattern as all other modals.
 
@@ -295,6 +298,9 @@ const QUARTERS = [
 
 ### Session 79 (Home screen — remove Today header, abbreviate days, drop Quarter label)
 - `src/screens/HomeScreen.tsx` — Removed "Today" `<Text>` from the top header row; changed header row to `justifyContent: 'flex-end'` so the avatar button stays right-aligned. Changed `DAY_LABELS` from full day names to 3-letter abbreviations (`['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']`). Removed `includeSystem=true` from `termLabel` call in `getDateLabel` so the date subtitle no longer appends "Quarter".
+
+### Session 87 (Hero carousel — finger-tracking drag)
+- `src/screens/HomeScreen.tsx` — Added `heroItemsLengthRef` (kept current each render). Rewrote `heroPanResponder` to add `onPanResponderGrant` (stops any running animation, resets position) and `onPanResponderMove` (card follows finger via `heroSlideAnim.setValue(dx)`, with 0.25× rubber-band resistance at start/end bounds). `onPanResponderRelease` now animates the card out (`Animated.timing`, 160ms, ease-out), then sets new index and springs the new card in from the opposite side. Falls back to spring-back-to-0 if threshold not met.
 
 ### Session 61 (RMP moved to ReviewsModal + Reviews button layout)
 - `src/components/ReviewsModal.tsx` — Added `sectionType: string` prop. Added RMP row in course info section (shows prof name as tappable link to RateMyProfessors). `fetchReviews` and `handleSubmit` filter/set `section_type`. Supabase `reviews` table requires `ALTER TABLE reviews ADD COLUMN section_type TEXT;`.

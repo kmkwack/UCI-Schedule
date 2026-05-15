@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Easing, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -1950,6 +1950,12 @@ export default function HomeScreen({
   const heroTransitioningRef = useRef(false);
   const heroSlideAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
   const heroPendingDirectionRef = useRef<1 | -1 | null>(null);
+  const heroItemsLengthRef = useRef(0);
+  heroItemsLengthRef.current = heroItems.length;
+  const heroCardWidthRef = useRef(0);
+  const [heroDragAdjacentIndex, setHeroDragAdjacentIndex] = useState<number | null>(null);
+  const heroDragAdjacentIndexRef = useRef<number | null>(null);
+  const heroDragDirectionRef = useRef<1 | -1>(1);
 
   const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
   const quarterProgress = clamp(
@@ -2007,6 +2013,7 @@ export default function HomeScreen({
   } as const;
 
   const heroCardWidth = Math.max(windowWidth - 36, 0);
+  heroCardWidthRef.current = heroCardWidth;
   const isCompactCampusInfoCard = heroCardWidth > 0 && heroCardWidth < 340;
   const campusInfoHeroIconBoxSize = isCompactCampusInfoCard ? 34 : 36;
   const campusInfoHeroIconSize = isCompactCampusInfoCard ? 17 : 18;
@@ -2646,13 +2653,727 @@ export default function HomeScreen({
     () => PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 7 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.12,
       onMoveShouldSetPanResponderCapture: (_, gesture) => Math.abs(gesture.dx) > 9 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
+      onPanResponderGrant: () => {
+        heroSlideAnimationRef.current?.stop();
+        heroSlideAnimationRef.current = null;
+        heroSlideAnim.stopAnimation();
+        heroSlideAnim.setValue(0);
+        heroTransitioningRef.current = false;
+        heroDragAdjacentIndexRef.current = null;
+        setHeroDragAdjacentIndex(null);
+      },
+      onPanResponderMove: (_, gesture) => {
+        const currentIndex = activeHeroIndexRef.current;
+        const length = heroItemsLengthRef.current;
+        const atStart = currentIndex === 0;
+        const atEnd = currentIndex === length - 1;
+        const dx = (atStart && gesture.dx > 0) || (atEnd && gesture.dx < 0)
+          ? gesture.dx * 0.25
+          : gesture.dx;
+        heroSlideAnim.setValue(dx);
+
+        // Set adjacent index on first meaningful move
+        if (heroDragAdjacentIndexRef.current === null && Math.abs(gesture.dx) > 4) {
+          const goNext = gesture.dx < 0 && currentIndex < length - 1;
+          const goPrev = gesture.dx > 0 && currentIndex > 0;
+          if (goNext) {
+            heroDragDirectionRef.current = 1;
+            heroDragAdjacentIndexRef.current = currentIndex + 1;
+            setHeroDragAdjacentIndex(currentIndex + 1);
+          } else if (goPrev) {
+            heroDragDirectionRef.current = -1;
+            heroDragAdjacentIndexRef.current = currentIndex - 1;
+            setHeroDragAdjacentIndex(currentIndex - 1);
+          }
+        }
+      },
       onPanResponderRelease: (_, gesture) => {
-        if (Math.abs(gesture.dx) < 26 && Math.abs(gesture.vx) < 0.18) return;
-        moveHeroTo(activeHeroIndexRef.current + (gesture.dx < 0 ? 1 : -1));
+        const currentIndex = activeHeroIndexRef.current;
+        const length = heroItemsLengthRef.current;
+        const cardWidth = heroCardWidthRef.current;
+        const goNext = gesture.dx < 0 && currentIndex < length - 1 && (Math.abs(gesture.dx) >= 40 || gesture.vx < -0.2);
+        const goPrev = gesture.dx > 0 && currentIndex > 0 && (Math.abs(gesture.dx) >= 40 || gesture.vx > 0.2);
+
+        if (goNext || goPrev) {
+          const nextIndex = goNext ? currentIndex + 1 : currentIndex - 1;
+          const exitTo = goNext ? -cardWidth : cardWidth;
+
+          const exitAnim = Animated.timing(heroSlideAnim, {
+            toValue: exitTo,
+            duration: 200,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          });
+          heroSlideAnimationRef.current = exitAnim;
+          exitAnim.start(({ finished }) => {
+            if (!finished) return;
+            heroSlideAnimationRef.current = null;
+            heroSlideAnim.setValue(0);
+            activeHeroIndexRef.current = nextIndex;
+            setActiveHeroIndex(nextIndex);
+            heroDragAdjacentIndexRef.current = null;
+            setHeroDragAdjacentIndex(null);
+          });
+        } else {
+          heroDragAdjacentIndexRef.current = null;
+          setHeroDragAdjacentIndex(null);
+          const snapBack = Animated.spring(heroSlideAnim, {
+            toValue: 0,
+            tension: 110,
+            friction: 15,
+            useNativeDriver: true,
+          });
+          heroSlideAnimationRef.current = snapBack;
+          snapBack.start(() => { heroSlideAnimationRef.current = null; });
+        }
       },
     }),
-    [heroItems.length]
+    []
   );
+
+  function renderHeroCardContent(item: HeroCardItem): ReactNode {
+    if (item.type === 'diningMenu') {
+      return (
+        <View style={{
+          backgroundColor: colors.card,
+          padding: 22,
+        }}>
+          <View>
+            <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
+              Today's Dining
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
+              {diningMenus.length > 0
+                ? diningMenusExternalOnly
+                  ? 'Official dining menu link'
+                  : `${diningMenus.length} location${diningMenus.length === 1 ? '' : 's'} · ${diningMenuItemCount} items`
+                : diningLoading
+                  ? 'Loading campus dining menus'
+                  : 'No menu data yet'}
+            </Text>
+          </View>
+
+          {homeDiningMenus.length > 0 ? (
+            <View style={{ marginTop: 16 }}>
+              {homeDiningMenus.map((menu, index, shownMenus) => {
+                const previewItems = previewDiningItems(menu, 3);
+                return (
+                  <TouchableOpacity
+                    key={`hero-dining-${menu.id}`}
+                    onPress={openDiningMenuList}
+                    activeOpacity={0.76}
+                    style={{
+                      paddingTop: index === 0 ? 0 : 11,
+                      paddingBottom: index === shownMenus.length - 1 ? 0 : 11,
+                      borderTopWidth: index === 0 ? 0 : 1,
+                      borderTopColor: colors.borderSubtle,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                      <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: themedIconBackground(diningAccent, isDark, '#fff7ed'), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Ionicons name="restaurant-outline" size={20} color={themedIconColor(diningAccent, isDark)} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
+                          {menu.name}
+                        </Text>
+                        {previewItems.length > 0 ? (
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }}>
+                            {previewItems.join(' · ')}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : diningLoading ? (
+            <View style={{ alignItems: 'center', marginTop: 18, paddingVertical: 16 }}>
+              <ActivityIndicator size="small" color={diningAccent} />
+              <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 9 }}>
+                Loading dining menus
+              </Text>
+            </View>
+          ) : (
+            <View style={{ marginTop: 16, paddingVertical: 8 }}>
+              <Text style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
+                Dining menus unavailable
+              </Text>
+              <Text style={{ fontSize: 13, lineHeight: 19, color: diningError ? '#EF4444' : colors.textSecondary, marginTop: 6 }}>
+                {diningError ?? 'Menus will appear here when the dining feed has food data for today.'}
+              </Text>
+            </View>
+          )}
+
+          {diningMenus.length > 0 ? (
+            <TouchableOpacity
+              onPress={openDiningMenuList}
+              activeOpacity={0.72}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
+                View full menu
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      );
+    }
+
+    if (item.type === 'sportsEvents') {
+      return (
+        <View style={{
+          backgroundColor: colors.card,
+          padding: 22,
+        }}>
+          <View>
+            <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
+              Sports Events
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
+              {visibleCampusEvents.length} upcoming
+            </Text>
+          </View>
+
+          {homeSportsEvents.length > 0 ? (
+            <View style={{ marginTop: 16 }}>
+              {homeSportsEvents.map((event, index, shownEvents) => (
+                <TouchableOpacity
+                  key={`hero-${event.id}`}
+                  onPress={() => openSportsEvent(event)}
+                  activeOpacity={0.76}
+                  style={{
+                    paddingTop: index === 0 ? 0 : 11,
+                    paddingBottom: index === shownEvents.length - 1 ? 0 : 11,
+                    borderTopWidth: index === 0 ? 0 : 1,
+                    borderTopColor: colors.borderSubtle,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                    <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: themedIconBackground(event.color, isDark, event.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Ionicons name={event.icon} size={20} color={themedIconColor(event.color, isDark)} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
+                        {event.title}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                        {formatRelativeEventDayLabel(event.date, now, effectiveTimeZone)} · {formatSportsEventTime(event.date, event.timeLabel, effectiveTimeZone)}
+                      </Text>
+                    </View>
+                    <InfoChip
+                      label={sportsHomeAwayLabel(event)}
+                      tone={event.isHome ? 'brand' : 'neutral'}
+                      compact
+                      color={event.isHome ? colors.brand : colors.textSecondary}
+                      borderColor={event.isHome ? `${colors.brand}44` : colors.borderSubtle}
+                      backgroundColor={event.isHome ? colors.brandBg : colors.bgTertiary}
+                    />
+                  </View>
+                  <InfoChip
+                    icon="people-outline"
+                    label={`${(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going`}
+                    tone="brand"
+                    compact
+                    color={sportsGoingAccent}
+                    backgroundColor={`${sportsGoingAccent}14`}
+                    borderColor={`${sportsGoingAccent}28`}
+                    style={{ marginTop: 7, marginLeft: 48 }}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : sportsLoading ? (
+            <View style={{ alignItems: 'center', marginTop: 18, paddingVertical: 16 }}>
+              <ActivityIndicator size="small" color={sportsGoingAccent} />
+              <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 9 }}>
+                Loading sports events
+              </Text>
+            </View>
+          ) : (
+            <View style={{ marginTop: 16, paddingVertical: 8 }}>
+              <Text style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
+                No upcoming sports events
+              </Text>
+              <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
+                Events will appear here when the athletics calendar has something coming up.
+              </Text>
+            </View>
+          )}
+
+          {visibleCampusEvents.length > 0 ? (
+            <TouchableOpacity
+              onPress={openSportsMoreList}
+              activeOpacity={0.72}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
+                More
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      );
+    }
+
+    if (item.type === 'campusInfo') {
+      return (
+        <View style={{
+          backgroundColor: colors.card,
+          padding: 22,
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
+                Campus Info
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setShowCampusInfo(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                borderRadius: 999,
+                backgroundColor: colors.brandBg,
+                paddingHorizontal: 10,
+                paddingVertical: 7,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '800', color: colors.brand }}>
+                View all
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ marginTop: 16, gap: 8 }}>
+            {campusInfoResources.slice(0, 3).map((resource) => {
+              const resourceCaption = campusInfoResourceCaption(resource);
+              if (resource.children?.length) {
+                return (
+                  <View
+                    key={`hero-campus-info-${resource.id}`}
+                    style={{
+                      borderRadius: 18,
+                      borderWidth: 1,
+                      borderColor: colors.borderSubtle,
+                      backgroundColor: colors.bg,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <View
+                        style={{
+                          width: campusInfoHeroIconBoxSize,
+                          height: campusInfoHeroIconBoxSize,
+                          borderRadius: isCompactCampusInfoCard ? 13 : 14,
+                          backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={themedIconColor(resource.color, isDark)} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroTitleSize, lineHeight: campusInfoHeroTitleLineHeight, fontWeight: '800', color: colors.text }}>
+                          {resource.title}
+                        </Text>
+                        {resourceCaption ? (
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroCaptionSize, lineHeight: campusInfoHeroCaptionLineHeight, color: colors.textSecondary, marginTop: 2 }}>
+                            {resourceCaption}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                      {resource.children.map((child) => (
+                        <TouchableOpacity
+                          key={`hero-campus-info-${resource.id}-${child.id}`}
+                          onPress={() => void openCampusInfoLink(child)}
+                          activeOpacity={0.76}
+                          style={{
+                            flexGrow: 1,
+                            flexBasis: '47%',
+                            minHeight: 34,
+                            borderRadius: 13,
+                            backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            paddingHorizontal: 8,
+                          }}
+                        >
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroChildSize, lineHeight: campusInfoHeroChildLineHeight, fontWeight: '800', color: themedIconColor(resource.color, isDark) }}>
+                            {child.title}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                );
+              }
+
+              return (
+                <TouchableOpacity
+                  key={`hero-campus-info-${resource.id}`}
+                  onPress={() => void openCampusInfoLink(resource)}
+                  activeOpacity={0.76}
+                  style={{
+                    minHeight: 56,
+                    borderRadius: 18,
+                    borderWidth: 1,
+                    borderColor: colors.borderSubtle,
+                    backgroundColor: colors.bg,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: campusInfoHeroIconBoxSize,
+                      height: campusInfoHeroIconBoxSize,
+                      borderRadius: isCompactCampusInfoCard ? 13 : 14,
+                      backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={themedIconColor(resource.color, isDark)} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroTitleSize, lineHeight: campusInfoHeroTitleLineHeight, fontWeight: '800', color: colors.text }}>
+                      {resource.title}
+                    </Text>
+                    {resourceCaption ? (
+                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroCaptionSize, lineHeight: campusInfoHeroCaptionLineHeight, color: colors.textSecondary, marginTop: 2 }}>
+                        {resourceCaption}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={17} color={colors.textTertiary} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      );
+    }
+
+    if (item.type === 'idleSummary') {
+      return (
+        <View style={{
+          backgroundColor: colors.card,
+          paddingHorizontal: 18,
+          paddingVertical: 17,
+        }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
+                {todayCourses.length > 0 ? 'You are clear for the rest of today' : 'No classes on your schedule today'}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'center', alignSelf: 'flex-start' }}>
+              <DualProgressRing
+                outerProgress={quarterProgress}
+                outerColor={colors.brand}
+                outerTrackColor={colors.bgTertiary}
+                innerProgress={heroProgress}
+                innerColor={colors.brand}
+                innerTrackColor={colors.bgTertiary}
+                primaryLabel={heroProgressLabel}
+                secondaryLabel={heroProgressSubLabel}
+                textColor={colors.text}
+                subTextColor={colors.textTertiary}
+                size={76}
+                outerStrokeWidth={4}
+                innerStrokeWidth={5}
+              />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, marginTop: 5 }}>
+                {termLabel(selectedQuarter, school)}
+              </Text>
+              <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 1 }}>
+                {`${Math.round(quarterProgress * 100)}% · ${daysRemaining}d left`}
+              </Text>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    const course = item.type === 'course' ? item.course : null;
+    const summaryCourses = item.type !== 'course' ? item.courses : [];
+    const firstSummaryCourse = summaryCourses[0] ?? null;
+    const lastSummaryCourse = summaryCourses[summaryCourses.length - 1] ?? null;
+    const isCurrent = course ? extractStartHour(course.time) <= nowHour && extractEndHour(course.time) >= nowHour : false;
+    const startDate = course
+      ? dateFromHour(now, extractStartHour(course.time), effectiveTimeZone)
+      : firstSummaryCourse
+        ? dateFromHour(now, extractStartHour(firstSummaryCourse.time), effectiveTimeZone)
+        : now;
+    const endDate = course
+      ? dateFromHour(now, extractEndHour(course.time), effectiveTimeZone)
+      : lastSummaryCourse
+        ? dateFromHour(now, extractEndHour(lastSummaryCourse.time), effectiveTimeZone)
+        : now;
+    const accent = course
+      ? pastelForCourse(blockColorKey(course)).border
+      : item.type === 'completedSummary'
+        ? colors.textTertiary
+        : colors.brand;
+    const courseKey = course ? buildSectionMatchKey(course) : '';
+    const rawCourseClassmates = course
+      ? classmateMatches.flatMap((match) => {
+        const sharedMatch = match.sharedCourseMatches.find((candidate) => candidate.courseKey === courseKey);
+        return sharedMatch ? [{ classmate: match, matchType: sharedMatch.matchType }] : [];
+      })
+      : [];
+    const sameSectionClassmates = rawCourseClassmates.filter((match) => match.matchType === 'same_section');
+    const courseClassmates = sameSectionClassmates.length > 0 ? sameSectionClassmates : rawCourseClassmates;
+    const courseClassmateMatchType: SharedClassMatch | null = sameSectionClassmates.length > 0
+      ? 'same_section'
+      : rawCourseClassmates.length > 0
+        ? 'same_course'
+        : null;
+    const progress = isCurrent
+      ? clamp((now.getTime() - startDate.getTime()) / Math.max(endDate.getTime() - startDate.getTime(), 1), 0, 1)
+        : 0;
+    const label = item.type === 'course' ? 'Ends in' : 'Today';
+    const value = item.type === 'course'
+      ? formatDuration((endDate.getTime() - now.getTime()) / 60000)
+      : `${summaryCourses.length} class${summaryCourses.length === 1 ? '' : 'es'}`;
+    const summaryRangeLabel = item.type === 'course'
+      ? ''
+      : firstSummaryCourse && lastSummaryCourse
+        ? `${formatClock(startDate, effectiveTimeZone)} to ${formatClock(endDate, effectiveTimeZone)} today`
+        : '';
+    const title = course?.title ?? '';
+    const courseHeroLocation = course ? formatHeroTimelineLocation(course.location) : '';
+    const detail = course
+      ? [formatHeroTimeRange(course.time), courseHeroLocation].filter(Boolean).join(' · ')
+      : '';
+
+    return (
+      <View style={{
+        backgroundColor: colors.card,
+        padding: 22,
+      }}>
+        {item.type === 'course' ? (
+          /* Current class: original side-by-side layout */
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: accent }} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary }}>
+                  Current class
+                </Text>
+              </View>
+              <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
+                {label}
+              </Text>
+              <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
+                {value}
+              </Text>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }}>
+                {title}
+              </Text>
+              {courseClassmates.length > 0 ? (
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
+                  {courseClassmates.length === 1
+                    ? `1 friend also has this ${courseClassmateMatchType === 'same_section' ? 'section' : 'course'}`
+                    : `${courseClassmates.length} friends also have this ${courseClassmateMatchType === 'same_section' ? 'section' : 'course'}`}
+                </Text>
+              ) : null}
+              <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 6 }}>
+                {detail}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'center', alignSelf: 'flex-start' }}>
+              <DualProgressRing
+                outerProgress={quarterProgress}
+                outerColor={colors.brand}
+                outerTrackColor={colors.bgTertiary}
+                innerProgress={heroProgress}
+                innerColor={accent}
+                innerTrackColor={colors.bgTertiary}
+                primaryLabel={heroProgressLabel}
+                secondaryLabel={heroProgressSubLabel}
+                textColor={colors.text}
+                subTextColor={colors.textTertiary}
+                size={76}
+              />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, marginTop: 5 }}>
+                {termLabel(selectedQuarter, school)}
+              </Text>
+              <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 1 }}>
+                {`${Math.round(quarterProgress * 100)}% · ${daysRemaining}d left`}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          /* Summary card: headline + dense timeline list */
+          <View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: `${accent}14`, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                  <Ionicons name={item.type === 'completedSummary' ? 'checkmark-done-outline' : 'calendar-outline'} size={22} color={accent} />
+                </View>
+                <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
+                  {label}
+                </Text>
+                <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
+                  {value}
+                </Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
+                  {summaryRangeLabel}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'center', alignSelf: 'flex-start' }}>
+                <DualProgressRing
+                  outerProgress={quarterProgress}
+                  outerColor={colors.brand}
+                  outerTrackColor={colors.bgTertiary}
+                  innerProgress={heroProgress}
+                  innerColor={accent}
+                  innerTrackColor={colors.bgTertiary}
+                  primaryLabel={heroProgressLabel}
+                  secondaryLabel={heroProgressSubLabel}
+                  textColor={colors.text}
+                  subTextColor={colors.textTertiary}
+                  size={76}
+                />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, marginTop: 5 }}>
+                  {termLabel(selectedQuarter, school)}
+                </Text>
+                <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 1 }}>
+                  {`${Math.round(quarterProgress * 100)}% · ${daysRemaining}d left`}
+                </Text>
+              </View>
+            </View>
+            <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 16, marginHorizontal: 2 }} />
+            <View style={{ marginTop: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary }}>
+                  Today's timeline
+                </Text>
+              </View>
+              {summaryCourses.map((summaryCourse, index) => {
+                const rowStartDate = dateFromHour(now, extractStartHour(summaryCourse.time), effectiveTimeZone);
+                const rowEndDate = dateFromHour(now, extractEndHour(summaryCourse.time), effectiveTimeZone);
+                const rowStartClock = formatTimelineClockParts(rowStartDate, effectiveTimeZone);
+                const rowLocationLabel = formatHeroTimelineLocation(summaryCourse.location);
+                const summaryCourseCode = String(summaryCourse.code ?? '').replace(/\s+/g, ' ').trim();
+                const rowIsPast = rowEndDate.getTime() < now.getTime();
+                const rowIsCurrent = rowStartDate.getTime() <= now.getTime() && rowEndDate.getTime() >= now.getTime();
+                const summaryCourseAccent = rowIsPast
+                  ? colors.border
+                  : pastelForCourse(blockColorKey(summaryCourse)).border;
+                const rowPrimaryColor = rowIsPast ? colors.textTertiary : colors.text;
+                const rowSecondaryColor = rowIsPast ? colors.textTertiary : colors.textSecondary;
+                return (
+                  <View
+                    key={buildSectionMatchKey(summaryCourse)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 7,
+                      paddingTop: index === 0 ? 0 : 7,
+                      paddingBottom: index === summaryCourses.length - 1 ? 0 : 7,
+                      opacity: rowIsPast ? 0.46 : 1,
+                    }}
+                  >
+                    <View style={{ width: 64 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'flex-end', gap: 2 }}>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, fontWeight: '800', color: rowPrimaryColor }}>
+                          {rowStartClock.time}
+                        </Text>
+                        {rowStartClock.period ? (
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 11, fontWeight: '800', color: rowPrimaryColor }}>
+                            {rowStartClock.period}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', gap: 10 }}>
+                      <View
+                        style={{
+                          width: 4,
+                          alignSelf: 'stretch',
+                          minHeight: 39,
+                          borderRadius: 999,
+                          backgroundColor: summaryCourseAccent,
+                          opacity: rowIsCurrent ? 1 : 0.82,
+                        }}
+                      />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, lineHeight: 19, fontWeight: '800', color: rowPrimaryColor }}>
+                          {summaryCourseCode}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 17, color: rowSecondaryColor }}>
+                            {summaryCourse.title}
+                          </Text>
+                          {rowLocationLabel ? (
+                            <View
+                              style={{
+                                maxWidth: 118,
+                                flexShrink: 0,
+                                borderRadius: 999,
+                                backgroundColor: colors.bgTertiary,
+                                paddingHorizontal: 7,
+                                paddingVertical: 2,
+                              }}
+                            >
+                              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 10, lineHeight: 13, fontWeight: '800', color: colors.textTertiary }}>
+                                {rowLocationLabel}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {item.type === 'course' ? (
+          <View style={{ marginTop: 20 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={{ fontSize: 12, color: colors.textTertiary }}>
+                {formatClock(startDate, effectiveTimeZone)}
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.textTertiary }}>
+                {formatClock(endDate, effectiveTimeZone)}
+              </Text>
+            </View>
+            <View style={{ position: 'relative', height: 16, justifyContent: 'center' }}>
+              <View style={{ height: isCurrent ? 7 : 4, borderRadius: 999, backgroundColor: colors.bgTertiary }} />
+              {isCurrent ? (
+                <View
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    width: `${progress * 100}%`,
+                    height: 7,
+                    borderRadius: 999,
+                    backgroundColor: accent,
+                  }}
+                />
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <>
@@ -2689,725 +3410,32 @@ export default function HomeScreen({
         </Text>
       </View>
 
-      <View style={{ marginBottom: 14, width: heroCardWidth }}>
+      <View style={{ marginBottom: 14, width: heroCardWidth, ...raisedCardStyle }}>
         {activeHeroItem ? (
           <>
-            {(() => {
-                const item = activeHeroItem;
-                if (item.type === 'diningMenu') {
-                  return (
-                    <Animated.View
-                      key={`dining-menu-${school}-${diningMenus.map((menu) => menu.id).join('|')}`}
-                      style={{
-                        width: heroCardWidth,
-                        opacity: heroOpacityAnim,
-                        transform: [{ translateX: heroSlideAnim }],
-                      }}
-                      {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
-                    >
-                      <View style={{
-                        ...raisedCardStyle,
-                        backgroundColor: colors.card,
-                        padding: 22,
-                        shadowOpacity: 0,
-                        shadowRadius: 0,
-                        elevation: 0,
-                      }}>
-                        <View>
-                          <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
-                            Today's Dining
-                          </Text>
-                          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
-                            {diningMenus.length > 0
-                              ? diningMenusExternalOnly
-                                ? 'Official dining menu link'
-                                : `${diningMenus.length} location${diningMenus.length === 1 ? '' : 's'} · ${diningMenuItemCount} items`
-                              : diningLoading
-                                ? 'Loading campus dining menus'
-                                : 'No menu data yet'}
-                          </Text>
-                        </View>
-
-                        {homeDiningMenus.length > 0 ? (
-                          <View style={{ marginTop: 16 }}>
-                            {homeDiningMenus.map((menu, index, shownMenus) => {
-                              const previewItems = previewDiningItems(menu, 3);
-                              return (
-                                <TouchableOpacity
-                                  key={`hero-dining-${menu.id}`}
-                                  onPress={openDiningMenuList}
-                                  activeOpacity={0.76}
-                                  style={{
-                                    paddingTop: index === 0 ? 0 : 11,
-                                    paddingBottom: index === shownMenus.length - 1 ? 0 : 11,
-                                    borderTopWidth: index === 0 ? 0 : 1,
-                                    borderTopColor: colors.borderSubtle,
-                                  }}
-                                >
-                                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                                    <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: themedIconBackground(diningAccent, isDark, '#fff7ed'), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                      <Ionicons name="restaurant-outline" size={20} color={themedIconColor(diningAccent, isDark)} />
-                                    </View>
-                                    <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
-                                        {menu.name}
-                                      </Text>
-                                      {previewItems.length > 0 ? (
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }}>
-                                          {previewItems.join(' · ')}
-                                        </Text>
-                                      ) : null}
-                                    </View>
-                                  </View>
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        ) : diningLoading ? (
-                          <View style={{ alignItems: 'center', marginTop: 18, paddingVertical: 16 }}>
-                            <ActivityIndicator size="small" color={diningAccent} />
-                            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 9 }}>
-                              Loading dining menus
-                            </Text>
-                          </View>
-                        ) : (
-                          <View style={{ marginTop: 16, paddingVertical: 8 }}>
-                            <Text style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
-                              Dining menus unavailable
-                            </Text>
-                            <Text style={{ fontSize: 13, lineHeight: 19, color: diningError ? '#EF4444' : colors.textSecondary, marginTop: 6 }}>
-                              {diningError ?? 'Menus will appear here when the dining feed has food data for today.'}
-                            </Text>
-                          </View>
-                        )}
-
-                        {diningMenus.length > 0 ? (
-                          <TouchableOpacity
-                            onPress={openDiningMenuList}
-                            activeOpacity={0.72}
-                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
-                          >
-                            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
-                              View full menu
-                            </Text>
-                            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-                    </Animated.View>
-                  );
-                }
-
-                if (item.type === 'sportsEvents') {
-                  return (
-                    <Animated.View
-                      key={`sports-events-${visibleSportsEventIds || school}`}
-                      style={{
-                        width: heroCardWidth,
-                        opacity: heroOpacityAnim,
-                        transform: [{ translateX: heroSlideAnim }],
-                      }}
-                      {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
-                    >
-                      <View style={{
-                        ...raisedCardStyle,
-                        backgroundColor: colors.card,
-                        padding: 22,
-                        shadowOpacity: 0,
-                        shadowRadius: 0,
-                        elevation: 0,
-                      }}>
-                        <View>
-                          <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
-                            Sports Events
-                          </Text>
-                          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
-                            {visibleCampusEvents.length} upcoming
-                          </Text>
-                        </View>
-
-                        {homeSportsEvents.length > 0 ? (
-                          <View style={{ marginTop: 16 }}>
-                            {homeSportsEvents.map((event, index, shownEvents) => (
-                              <TouchableOpacity
-                                key={`hero-${event.id}`}
-                                onPress={() => openSportsEvent(event)}
-                                activeOpacity={0.76}
-                                style={{
-                                  paddingTop: index === 0 ? 0 : 11,
-                                  paddingBottom: index === shownEvents.length - 1 ? 0 : 11,
-                                  borderTopWidth: index === 0 ? 0 : 1,
-                                  borderTopColor: colors.borderSubtle,
-                                }}
-                              >
-                                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                                  <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: themedIconBackground(event.color, isDark, event.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    <Ionicons name={event.icon} size={20} color={themedIconColor(event.color, isDark)} />
-                                  </View>
-                                  <View style={{ flex: 1, minWidth: 0 }}>
-                                    <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
-                                      {event.title}
-                                    </Text>
-                                    <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-                                      {formatRelativeEventDayLabel(event.date, now, effectiveTimeZone)} · {formatSportsEventTime(event.date, event.timeLabel, effectiveTimeZone)}
-                                    </Text>
-                                  </View>
-                                  <InfoChip
-                                    label={sportsHomeAwayLabel(event)}
-                                    tone={event.isHome ? 'brand' : 'neutral'}
-                                    compact
-                                    color={event.isHome ? colors.brand : colors.textSecondary}
-                                    borderColor={event.isHome ? `${colors.brand}44` : colors.borderSubtle}
-                                    backgroundColor={event.isHome ? colors.brandBg : colors.bgTertiary}
-                                  />
-                                </View>
-                                <InfoChip
-                                  icon="people-outline"
-                                  label={`${(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going`}
-                                  tone="brand"
-                                  compact
-                                  color={sportsGoingAccent}
-                                  backgroundColor={`${sportsGoingAccent}14`}
-                                  borderColor={`${sportsGoingAccent}28`}
-                                  style={{ marginTop: 7, marginLeft: 48 }}
-                                />
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                        ) : sportsLoading ? (
-                          <View style={{ alignItems: 'center', marginTop: 18, paddingVertical: 16 }}>
-                            <ActivityIndicator size="small" color={sportsGoingAccent} />
-                            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 9 }}>
-                              Loading sports events
-                            </Text>
-                          </View>
-                        ) : (
-                          <View style={{ marginTop: 16, paddingVertical: 8 }}>
-                            <Text style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
-                              No upcoming sports events
-                            </Text>
-                            <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
-                              Events will appear here when the athletics calendar has something coming up.
-                            </Text>
-                          </View>
-                        )}
-
-                        {visibleCampusEvents.length > 0 ? (
-                          <TouchableOpacity
-                            onPress={openSportsMoreList}
-                            activeOpacity={0.72}
-                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
-                          >
-                            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
-                              More
-                            </Text>
-                            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-                    </Animated.View>
-                  );
-                }
-
-                if (item.type === 'campusInfo') {
-                  return (
-                    <Animated.View
-                      key={`campus-info-${school}`}
-                      style={{
-                        width: heroCardWidth,
-                        opacity: heroOpacityAnim,
-                        transform: [{ translateX: heroSlideAnim }],
-                      }}
-                      {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
-                    >
-                      <View style={{
-                        ...raisedCardStyle,
-                        backgroundColor: colors.card,
-                        padding: 22,
-                        shadowOpacity: 0,
-                        shadowRadius: 0,
-                        elevation: 0,
-                      }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
-                              Campus Info
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => setShowCampusInfo(true)}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            style={{
-                              borderRadius: 999,
-                              backgroundColor: colors.brandBg,
-                              paddingHorizontal: 10,
-                              paddingVertical: 7,
-                            }}
-                          >
-                            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.brand }}>
-                              View all
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-
-                        <View style={{ marginTop: 16, gap: 8 }}>
-                          {campusInfoResources.slice(0, 3).map((resource) => {
-                            const resourceCaption = campusInfoResourceCaption(resource);
-                            if (resource.children?.length) {
-                              return (
-                                <View
-                                  key={`hero-campus-info-${resource.id}`}
-                                  style={{
-                                    borderRadius: 18,
-                                    borderWidth: 1,
-                                    borderColor: colors.borderSubtle,
-                                    backgroundColor: colors.bg,
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 10,
-                                  }}
-                                >
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                                    <View
-                                      style={{
-                                        width: campusInfoHeroIconBoxSize,
-                                        height: campusInfoHeroIconBoxSize,
-                                        borderRadius: isCompactCampusInfoCard ? 13 : 14,
-                                        backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        flexShrink: 0,
-                                      }}
-                                    >
-                                      <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={themedIconColor(resource.color, isDark)} />
-                                    </View>
-                                    <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroTitleSize, lineHeight: campusInfoHeroTitleLineHeight, fontWeight: '800', color: colors.text }}>
-                                        {resource.title}
-                                      </Text>
-                                      {resourceCaption ? (
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroCaptionSize, lineHeight: campusInfoHeroCaptionLineHeight, color: colors.textSecondary, marginTop: 2 }}>
-                                          {resourceCaption}
-                                        </Text>
-                                      ) : null}
-                                    </View>
-                                  </View>
-                                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                                    {resource.children.map((child) => (
-                                      <TouchableOpacity
-                                        key={`hero-campus-info-${resource.id}-${child.id}`}
-                                        onPress={() => void openCampusInfoLink(child)}
-                                        activeOpacity={0.76}
-                                        style={{
-                                          flexGrow: 1,
-                                          flexBasis: '47%',
-                                          minHeight: 34,
-                                          borderRadius: 13,
-                                          backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          paddingHorizontal: 8,
-                                        }}
-                                      >
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroChildSize, lineHeight: campusInfoHeroChildLineHeight, fontWeight: '800', color: themedIconColor(resource.color, isDark) }}>
-                                          {child.title}
-                                        </Text>
-                                      </TouchableOpacity>
-                                    ))}
-                                  </View>
-                                </View>
-                              );
-                            }
-
-                            return (
-                              <TouchableOpacity
-                                key={`hero-campus-info-${resource.id}`}
-                                onPress={() => void openCampusInfoLink(resource)}
-                                activeOpacity={0.76}
-                                style={{
-                                  minHeight: 56,
-                                  borderRadius: 18,
-                                  borderWidth: 1,
-                                  borderColor: colors.borderSubtle,
-                                  backgroundColor: colors.bg,
-                                  paddingHorizontal: 12,
-                                  paddingVertical: 10,
-                                  flexDirection: 'row',
-                                  alignItems: 'center',
-                                  gap: 10,
-                                }}
-                              >
-                                <View
-                                  style={{
-                                    width: campusInfoHeroIconBoxSize,
-                                    height: campusInfoHeroIconBoxSize,
-                                    borderRadius: isCompactCampusInfoCard ? 13 : 14,
-                                    backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={themedIconColor(resource.color, isDark)} />
-                                </View>
-                                <View style={{ flex: 1, minWidth: 0 }}>
-                                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroTitleSize, lineHeight: campusInfoHeroTitleLineHeight, fontWeight: '800', color: colors.text }}>
-                                    {resource.title}
-                                  </Text>
-                                  {resourceCaption ? (
-                                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroCaptionSize, lineHeight: campusInfoHeroCaptionLineHeight, color: colors.textSecondary, marginTop: 2 }}>
-                                      {resourceCaption}
-                                    </Text>
-                                  ) : null}
-                                </View>
-                                <Ionicons name="chevron-forward" size={17} color={colors.textTertiary} />
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      </View>
-                    </Animated.View>
-                  );
-                }
-
-                if (item.type === 'idleSummary') {
-                  return (
-                    <Animated.View
-                      key="idle-summary"
-                      style={{
-                        width: heroCardWidth,
-                        opacity: heroOpacityAnim,
-                        transform: [{ translateX: heroSlideAnim }],
-                      }}
-                      {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
-                    >
-                      <View style={{
-                        ...raisedCardStyle,
-                        backgroundColor: colors.card,
-                        paddingHorizontal: 18,
-                        paddingVertical: 17,
-                      }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
-                              {todayCourses.length > 0 ? 'You are clear for the rest of today' : 'No classes on your schedule today'}
-                            </Text>
-                          </View>
-                          <View style={{ alignItems: 'center', alignSelf: 'flex-start' }}>
-                            <DualProgressRing
-                              outerProgress={quarterProgress}
-                              outerColor={colors.brand}
-                              outerTrackColor={colors.bgTertiary}
-                              innerProgress={heroProgress}
-                              innerColor={colors.brand}
-                              innerTrackColor={colors.bgTertiary}
-                              primaryLabel={heroProgressLabel}
-                              secondaryLabel={heroProgressSubLabel}
-                              textColor={colors.text}
-                              subTextColor={colors.textTertiary}
-                              size={76}
-                              outerStrokeWidth={4}
-                              innerStrokeWidth={5}
-                            />
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, marginTop: 5 }}>
-                              {termLabel(selectedQuarter, school)}
-                            </Text>
-                            <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 1 }}>
-                              {`${Math.round(quarterProgress * 100)}% · ${daysRemaining}d left`}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-                    </Animated.View>
-                  );
-                }
-
-                const course = item.type === 'course' ? item.course : null;
-                const summaryCourses = item.type !== 'course' ? item.courses : [];
-                const firstSummaryCourse = summaryCourses[0] ?? null;
-                const lastSummaryCourse = summaryCourses[summaryCourses.length - 1] ?? null;
-                const isCurrent = course ? extractStartHour(course.time) <= nowHour && extractEndHour(course.time) >= nowHour : false;
-                const startDate = course
-                  ? dateFromHour(now, extractStartHour(course.time), effectiveTimeZone)
-                  : firstSummaryCourse
-                    ? dateFromHour(now, extractStartHour(firstSummaryCourse.time), effectiveTimeZone)
-                    : now;
-                const endDate = course
-                  ? dateFromHour(now, extractEndHour(course.time), effectiveTimeZone)
-                  : lastSummaryCourse
-                    ? dateFromHour(now, extractEndHour(lastSummaryCourse.time), effectiveTimeZone)
-                    : now;
-                const accent = course
-                  ? pastelForCourse(blockColorKey(course)).border
-                  : item.type === 'completedSummary'
-                    ? colors.textTertiary
-                    : colors.brand;
-                const courseKey = course ? buildSectionMatchKey(course) : '';
-                const rawCourseClassmates = course
-                  ? classmateMatches.flatMap((match) => {
-                    const sharedMatch = match.sharedCourseMatches.find((candidate) => candidate.courseKey === courseKey);
-                    return sharedMatch ? [{ classmate: match, matchType: sharedMatch.matchType }] : [];
-                  })
-                  : [];
-                const sameSectionClassmates = rawCourseClassmates.filter((match) => match.matchType === 'same_section');
-                const courseClassmates = sameSectionClassmates.length > 0 ? sameSectionClassmates : rawCourseClassmates;
-                const courseClassmateMatchType: SharedClassMatch | null = sameSectionClassmates.length > 0
-                  ? 'same_section'
-                  : rawCourseClassmates.length > 0
-                    ? 'same_course'
-                    : null;
-                const progress = isCurrent
-                  ? clamp((now.getTime() - startDate.getTime()) / Math.max(endDate.getTime() - startDate.getTime(), 1), 0, 1)
-                    : 0;
-                const label = item.type === 'course' ? 'Ends in' : 'Today';
-                const value = item.type === 'course'
-                  ? formatDuration((endDate.getTime() - now.getTime()) / 60000)
-                  : `${summaryCourses.length} class${summaryCourses.length === 1 ? '' : 'es'}`;
-                const summaryRangeLabel = item.type === 'course'
-                  ? ''
-                  : firstSummaryCourse && lastSummaryCourse
-                    ? `${formatClock(startDate, effectiveTimeZone)} to ${formatClock(endDate, effectiveTimeZone)} today`
-                    : '';
-                const title = course?.title ?? '';
-                const courseHeroLocation = course ? formatHeroTimelineLocation(course.location) : '';
-                const detail = course
-                  ? [formatHeroTimeRange(course.time), courseHeroLocation].filter(Boolean).join(' · ')
-                  : '';
-                const itemKey = item.type === 'course'
-                  ? buildSectionMatchKey(item.course)
-                  : `${item.type}-${summaryCourses.map((summaryCourse) => buildSectionMatchKey(summaryCourse)).join('|')}`;
-
-                return (
-                  <Animated.View
-                    key={itemKey}
+            <View style={{ overflow: 'hidden', borderRadius: 28 }}>
+              <Animated.View
+                style={{ transform: [{ translateX: heroSlideAnim }], opacity: heroOpacityAnim }}
+                {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
+              >
+                {renderHeroCardContent(activeHeroItem)}
+                {heroDragAdjacentIndex !== null && heroItems[heroDragAdjacentIndex] != null && (
+                  <View
+                    pointerEvents="none"
                     style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: heroDragDirectionRef.current === 1 ? heroCardWidth : -heroCardWidth,
                       width: heroCardWidth,
-                      opacity: heroOpacityAnim,
-                      transform: [{ translateX: heroSlideAnim }],
                     }}
-                    {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
                   >
-                    <View style={{
-                      ...raisedCardStyle,
-                      backgroundColor: colors.card,
-                      padding: 22,
-                      shadowOpacity: 0,
-                      shadowRadius: 0,
-                      elevation: 0,
-                    }}>
-                      {item.type === 'course' ? (
-                        /* Current class: original side-by-side layout */
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                          <View style={{ flex: 1 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: accent }} />
-                              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary }}>
-                                Current class
-                              </Text>
-                            </View>
-                            <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
-                              {label}
-                            </Text>
-                            <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
-                              {value}
-                            </Text>
-                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12 }}>
-                              {title}
-                            </Text>
-                            {courseClassmates.length > 0 ? (
-                              <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
-                                {courseClassmates.length === 1
-                                  ? `1 friend also has this ${courseClassmateMatchType === 'same_section' ? 'section' : 'course'}`
-                                  : `${courseClassmates.length} friends also have this ${courseClassmateMatchType === 'same_section' ? 'section' : 'course'}`}
-                              </Text>
-                            ) : null}
-                            <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 6 }}>
-                              {detail}
-                            </Text>
-                          </View>
-                          <View style={{ alignItems: 'center', alignSelf: 'flex-start' }}>
-                            <DualProgressRing
-                              outerProgress={quarterProgress}
-                              outerColor={colors.brand}
-                              outerTrackColor={colors.bgTertiary}
-                              innerProgress={heroProgress}
-                              innerColor={accent}
-                              innerTrackColor={colors.bgTertiary}
-                              primaryLabel={heroProgressLabel}
-                              secondaryLabel={heroProgressSubLabel}
-                              textColor={colors.text}
-                              subTextColor={colors.textTertiary}
-                              size={76}
-                            />
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, marginTop: 5 }}>
-                              {termLabel(selectedQuarter, school)}
-                            </Text>
-                            <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 1 }}>
-                              {`${Math.round(quarterProgress * 100)}% · ${daysRemaining}d left`}
-                            </Text>
-                          </View>
-                        </View>
-                      ) : (
-                        /* Summary card: headline + dense timeline list */
-                        <View>
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                            <View style={{ flex: 1 }}>
-                              <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: `${accent}14`, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                                <Ionicons name={item.type === 'completedSummary' ? 'checkmark-done-outline' : 'calendar-outline'} size={22} color={accent} />
-                              </View>
-                              <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
-                                {label}
-                              </Text>
-                              <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
-                                {value}
-                              </Text>
-                              <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
-                                {summaryRangeLabel}
-                              </Text>
-                            </View>
-                            <View style={{ alignItems: 'center', alignSelf: 'flex-start' }}>
-                              <DualProgressRing
-                                outerProgress={quarterProgress}
-                                outerColor={colors.brand}
-                                outerTrackColor={colors.bgTertiary}
-                                innerProgress={heroProgress}
-                                innerColor={accent}
-                                innerTrackColor={colors.bgTertiary}
-                                primaryLabel={heroProgressLabel}
-                                secondaryLabel={heroProgressSubLabel}
-                                textColor={colors.text}
-                                subTextColor={colors.textTertiary}
-                                size={76}
-                              />
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, marginTop: 5 }}>
-                                {termLabel(selectedQuarter, school)}
-                              </Text>
-                              <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 1 }}>
-                                {`${Math.round(quarterProgress * 100)}% · ${daysRemaining}d left`}
-                              </Text>
-                            </View>
-                          </View>
-                          <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 16, marginHorizontal: 2 }} />
-                          <View style={{ marginTop: 12 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textTertiary }}>
-                                Today's timeline
-                              </Text>
-                            </View>
-                            {summaryCourses.map((summaryCourse, index) => {
-                              const rowStartDate = dateFromHour(now, extractStartHour(summaryCourse.time), effectiveTimeZone);
-                              const rowEndDate = dateFromHour(now, extractEndHour(summaryCourse.time), effectiveTimeZone);
-                              const rowStartClock = formatTimelineClockParts(rowStartDate, effectiveTimeZone);
-                              const rowLocationLabel = formatHeroTimelineLocation(summaryCourse.location);
-                              const summaryCourseCode = String(summaryCourse.code ?? '').replace(/\s+/g, ' ').trim();
-                              const rowIsPast = rowEndDate.getTime() < now.getTime();
-                              const rowIsCurrent = rowStartDate.getTime() <= now.getTime() && rowEndDate.getTime() >= now.getTime();
-                              const summaryCourseAccent = rowIsPast
-                                ? colors.border
-                                : pastelForCourse(blockColorKey(summaryCourse)).border;
-                              const rowPrimaryColor = rowIsPast ? colors.textTertiary : colors.text;
-                              const rowSecondaryColor = rowIsPast ? colors.textTertiary : colors.textSecondary;
-                              return (
-                                <View
-                                  key={buildSectionMatchKey(summaryCourse)}
-                                  style={{
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    gap: 7,
-                                    paddingTop: index === 0 ? 0 : 7,
-                                    paddingBottom: index === summaryCourses.length - 1 ? 0 : 7,
-                                    opacity: rowIsPast ? 0.46 : 1,
-                                  }}
-                                >
-                                  <View style={{ width: 64 }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'flex-end', gap: 2 }}>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, fontWeight: '800', color: rowPrimaryColor }}>
-                                        {rowStartClock.time}
-                                      </Text>
-                                      {rowStartClock.period ? (
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 11, fontWeight: '800', color: rowPrimaryColor }}>
-                                          {rowStartClock.period}
-                                        </Text>
-                                      ) : null}
-                                    </View>
-                                  </View>
-                                  <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', gap: 10 }}>
-                                    <View
-                                      style={{
-                                        width: 4,
-                                        alignSelf: 'stretch',
-                                        minHeight: 39,
-                                        borderRadius: 999,
-                                        backgroundColor: summaryCourseAccent,
-                                        opacity: rowIsCurrent ? 1 : 0.82,
-                                      }}
-                                    />
-                                    <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 15, lineHeight: 19, fontWeight: '800', color: rowPrimaryColor }}>
-                                        {summaryCourseCode}
-                                      </Text>
-                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 17, color: rowSecondaryColor }}>
-                                          {summaryCourse.title}
-                                        </Text>
-                                        {rowLocationLabel ? (
-                                          <View
-                                            style={{
-                                              maxWidth: 118,
-                                              flexShrink: 0,
-                                              borderRadius: 999,
-                                              backgroundColor: colors.bgTertiary,
-                                              paddingHorizontal: 7,
-                                              paddingVertical: 2,
-                                            }}
-                                          >
-                                            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 10, lineHeight: 13, fontWeight: '800', color: colors.textTertiary }}>
-                                              {rowLocationLabel}
-                                            </Text>
-                                          </View>
-                                        ) : null}
-                                      </View>
-                                    </View>
-                                  </View>
-                                </View>
-                              );
-                            })}
-                          </View>
-                        </View>
-                      )}
-
-                      {item.type === 'course' ? (
-                        <View style={{ marginTop: 20 }}>
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                            <Text style={{ fontSize: 12, color: colors.textTertiary }}>
-                              {formatClock(startDate, effectiveTimeZone)}
-                            </Text>
-                            <Text style={{ fontSize: 12, color: colors.textTertiary }}>
-                              {formatClock(endDate, effectiveTimeZone)}
-                            </Text>
-                          </View>
-                          <View style={{ position: 'relative', height: 16, justifyContent: 'center' }}>
-                            <View style={{ height: isCurrent ? 7 : 4, borderRadius: 999, backgroundColor: colors.bgTertiary }} />
-                            {isCurrent ? (
-                              <View
-                                style={{
-                                  position: 'absolute',
-                                  left: 0,
-                                  width: `${progress * 100}%`,
-                                  height: 7,
-                                  borderRadius: 999,
-                                  backgroundColor: accent,
-                                }}
-                              />
-                            ) : null}
-                          </View>
-                        </View>
-                      ) : null}
-                    </View>
-                  </Animated.View>
-                );
-            })()}
+                    {renderHeroCardContent(heroItems[heroDragAdjacentIndex])}
+                  </View>
+                )}
+              </Animated.View>
+            </View>
             {heroItems.length > 1 ? (
-              <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 10 }}>
                 {heroItems.map((item, index) => {
                   const isActive = index === activeHeroIndex;
                   const indicatorAccent = item.type === 'sportsEvents'
@@ -3433,15 +3461,15 @@ export default function HomeScreen({
                       style={{
                         alignItems: 'center',
                         justifyContent: 'center',
-                        minWidth: 24,
-                        height: 18,
+                        minWidth: 32,
+                        height: 24,
                       }}
                     >
                       <View
                         style={{
-                          width: isActive ? 24 : 18,
-                          height: 18,
-                          borderRadius: 9,
+                          width: isActive ? 32 : 24,
+                          height: 24,
+                          borderRadius: 12,
                           backgroundColor: isActive ? `${indicatorAccent}1F` : 'transparent',
                           borderWidth: isActive ? 1 : 0,
                           borderColor: `${indicatorAccent}55`,
@@ -3451,7 +3479,7 @@ export default function HomeScreen({
                       >
                         <Ionicons
                           name={indicatorIcon}
-                          size={12}
+                          size={15}
                           color={isActive ? indicatorAccent : colors.textTertiary}
                         />
                       </View>

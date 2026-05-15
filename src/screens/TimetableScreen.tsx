@@ -1398,7 +1398,6 @@ export default function TimetableScreen({
           <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={() => closeSettings()} />
           <Animated.View
             style={{
-              maxHeight: '82%',
               backgroundColor: colors.card,
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
@@ -1429,13 +1428,13 @@ export default function TimetableScreen({
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
+            <View style={{ paddingBottom: 20 }}>
               {/* Block Style */}
-              <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Block Style
                 </Text>
-                <View style={{ marginTop: 4 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
                   {THEMES.map((t) => {
                     const isSelected = pendingTheme === t.key;
                     return (
@@ -1443,26 +1442,16 @@ export default function TimetableScreen({
                         key={t.key}
                         onPress={() => setPendingTheme(t.key)}
                         style={{
-                          flexDirection: 'row',
+                          flex: 1,
+                          paddingVertical: 8,
+                          borderRadius: 10,
                           alignItems: 'center',
-                          gap: 10,
-                          paddingVertical: 10,
+                          backgroundColor: isSelected ? colors.brand : colors.bgTertiary,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? colors.brand : colors.border,
                         }}
                       >
-                        <View
-                          style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: 10,
-                            borderWidth: 2,
-                            borderColor: isSelected ? colors.brand : colors.textTertiary,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          {isSelected && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.brand }} />}
-                        </View>
-                        <Text style={{ fontSize: 14, color: isSelected ? colors.text : colors.textSecondary, fontWeight: isSelected ? '500' : '400' }}>{t.label}</Text>
+                        <Text style={{ fontSize: 12, color: isSelected ? 'white' : colors.textSecondary, fontWeight: isSelected ? '700' : '400' }}>{t.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -1471,10 +1460,10 @@ export default function TimetableScreen({
 
               {/* Display Information */}
               <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Display Information
                 </Text>
-                <View style={{ marginTop: 4 }}>
+                <View style={{ marginTop: 2 }}>
                   {DISPLAY_OPTIONS.map((opt) => {
                     const isChecked = pendingDisplayMap[opt.key];
                     return (
@@ -1485,7 +1474,7 @@ export default function TimetableScreen({
                           flexDirection: 'row',
                           alignItems: 'center',
                           gap: 10,
-                          paddingVertical: 10,
+                          paddingVertical: 7,
                         }}
                       >
                         <View
@@ -1510,10 +1499,10 @@ export default function TimetableScreen({
               </View>
 
               {/* Divider */}
-              <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 14, marginHorizontal: 20 }} />
+              <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginTop: 12, marginHorizontal: 20 }} />
 
               {/* Apply Settings */}
-              <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>
+              <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
                 <TouchableOpacity
                   onPress={applySettings}
                   style={{
@@ -1585,7 +1574,7 @@ export default function TimetableScreen({
                   </Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </View>
           </Animated.View>
         </Animated.View>
       </Modal>

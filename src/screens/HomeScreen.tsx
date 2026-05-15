@@ -1946,16 +1946,20 @@ export default function HomeScreen({
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
   const activeHeroIndexRef = useRef(0);
   const heroSlideAnim = useRef(new Animated.Value(0)).current;
-  const heroOpacityAnim = useRef(new Animated.Value(1)).current;
   const heroTransitioningRef = useRef(false);
   const heroSlideAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
-  const heroPendingDirectionRef = useRef<1 | -1 | null>(null);
   const heroItemsLengthRef = useRef(0);
   heroItemsLengthRef.current = heroItems.length;
   const heroCardWidthRef = useRef(0);
-  const [heroDragAdjacentIndex, setHeroDragAdjacentIndex] = useState<number | null>(null);
-  const heroDragAdjacentIndexRef = useRef<number | null>(null);
-  const heroDragDirectionRef = useRef<1 | -1>(1);
+  const heroBaseOffsetAnim = useRef(new Animated.Value(0)).current;
+  const heroTranslateX = useRef(Animated.add(heroBaseOffsetAnim, heroSlideAnim)).current;
+  const heroHeightAnim = useRef(new Animated.Value(0)).current;
+  const heroCardHeightsRef = useRef<number[]>([]);
+  const heroHeightInitializedRef = useRef(false);
+  const pillXAnim = useRef(new Animated.Value(0)).current;
+  const pillColorAnim = useRef(new Animated.Value(0)).current;
+  const dotPositionsRef = useRef<number[]>([]);
+  const pillInitializedRef = useRef(false);
 
   const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
   const quarterProgress = clamp(
@@ -2033,6 +2037,13 @@ export default function HomeScreen({
   const activeHeroItem = heroItems[activeHeroIndex] ?? null;
   const sportsGoingAccent = getSchoolConfig(school).accent;
   const diningAccent = '#F97316';
+  const campusInfoAccent = '#8B5CF6';
+  function getIndicatorAccent(item: HeroCardItem): string {
+    if (item.type === 'sportsEvents') return sportsGoingAccent;
+    if (item.type === 'diningMenu') return diningAccent;
+    if (item.type === 'campusInfo') return campusInfoAccent;
+    return colors.brand;
+  }
   const heroAccent = activeHeroItem?.type === 'course'
     ? pastelForCourse(blockColorKey(activeHeroItem.course)).border
     : activeHeroItem?.type === 'sportsEvents'
@@ -2597,74 +2608,98 @@ export default function HomeScreen({
     heroSlideAnimationRef.current?.stop();
     heroSlideAnimationRef.current = null;
     heroTransitioningRef.current = false;
-    heroPendingDirectionRef.current = null;
     heroSlideAnim.setValue(0);
-    heroOpacityAnim.setValue(1);
     setActiveHeroIndex(maxIndex);
     activeHeroIndexRef.current = maxIndex;
   }, [heroItems.length]);
 
+  function springHeroHeightToIndex(index: number) {
+    const h = heroCardHeightsRef.current[index];
+    if (h == null || h === 0) return;
+    Animated.spring(heroHeightAnim, {
+      toValue: h,
+      tension: 100,
+      friction: 18,
+      useNativeDriver: false,
+    }).start();
+  }
+
   useLayoutEffect(() => {
-    const direction = heroPendingDirectionRef.current;
-    if (!direction) return;
-
-    heroPendingDirectionRef.current = null;
-    heroSlideAnimationRef.current?.stop();
-    heroSlideAnim.setValue(direction * 28);
-    heroOpacityAnim.setValue(1);
-
-    const spring = Animated.spring(heroSlideAnim, {
-      toValue: 0,
-      tension: 110,
-      friction: 15,
-      useNativeDriver: true,
-    });
-    heroSlideAnimationRef.current = spring;
-    spring.start(() => {
-      if (heroSlideAnimationRef.current === spring) {
-        heroSlideAnimationRef.current = null;
-      }
-      heroSlideAnim.setValue(0);
-      heroOpacityAnim.setValue(1);
-      heroTransitioningRef.current = false;
-    });
-  }, [activeHeroIndex, heroOpacityAnim, heroSlideAnim]);
+    // Seamless swap: both values update together so the card never jumps.
+    // The height spring and exit animation were already started by the caller
+    // (onPanResponderRelease or moveHeroTo); don't restart them here.
+    const newBase = -activeHeroIndex * (heroCardWidthRef.current + 12);
+    heroBaseOffsetAnim.setValue(newBase);
+    heroSlideAnim.setValue(0);
+  }, [activeHeroIndex]);
 
   function moveHeroTo(nextIndex: number) {
     const boundedNextIndex = clamp(nextIndex, 0, Math.max(heroItems.length - 1, 0));
     const currentIndex = activeHeroIndexRef.current;
     if (boundedNextIndex === currentIndex || heroItems.length <= 1 || heroTransitioningRef.current) return;
 
-    const direction: 1 | -1 = boundedNextIndex > currentIndex ? 1 : -1;
     heroTransitioningRef.current = true;
     heroSlideAnimationRef.current?.stop();
     heroSlideAnimationRef.current = null;
     heroSlideAnim.stopAnimation();
-    heroOpacityAnim.stopAnimation();
-    heroSlideAnim.setValue(0);
-    heroOpacityAnim.setValue(1);
+    heroHeightAnim.stopAnimation();
+    pillColorAnim.stopAnimation();
 
-    heroPendingDirectionRef.current = direction;
-    activeHeroIndexRef.current = boundedNextIndex;
-    setActiveHeroIndex(boundedNextIndex);
+    const goNext = boundedNextIndex > currentIndex;
+    const distance = Math.abs(boundedNextIndex - currentIndex);
+    const cardWidth = heroCardWidthRef.current;
+    const duration = Math.min(220 + (distance - 1) * 100, 480);
+
+    // Fade out pill color, slide pill to target dot, fade color back in on arrival
+    Animated.timing(pillColorAnim, { toValue: 0, duration: 100, useNativeDriver: false }).start();
+    const targetDotX = dotPositionsRef.current[boundedNextIndex] ?? 0;
+    Animated.timing(pillXAnim, { toValue: targetDotX - 4, duration, easing: Easing.out(Easing.quad), useNativeDriver: false }).start(() => {
+      Animated.timing(pillColorAnim, { toValue: 1, duration: 120, useNativeDriver: false }).start();
+    });
+
+    // Start height spring immediately alongside the slide
+    const targetH = heroCardHeightsRef.current[boundedNextIndex];
+    if (targetH) {
+      Animated.spring(heroHeightAnim, { toValue: targetH, tension: 100, friction: 18, useNativeDriver: false }).start();
+    }
+
+    const exitAnim = Animated.timing(heroSlideAnim, {
+      toValue: goNext ? -(distance * (cardWidth + 12)) : (distance * (cardWidth + 12)),
+      duration,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    });
+    heroSlideAnimationRef.current = exitAnim;
+    exitAnim.start(({ finished }) => {
+      if (!finished) return;
+      heroSlideAnimationRef.current = null;
+      heroTransitioningRef.current = false;
+      activeHeroIndexRef.current = boundedNextIndex;
+      setActiveHeroIndex(boundedNextIndex);
+      // useLayoutEffect (pan branch) does the seamless swap:
+      // heroBaseOffsetAnim shifts, heroSlideAnim resets to 0 — no flash
+    });
   }
 
   const heroPanResponder = useMemo(
     () => PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 7 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.12,
-      onMoveShouldSetPanResponderCapture: (_, gesture) => Math.abs(gesture.dx) > 9 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         heroSlideAnimationRef.current?.stop();
         heroSlideAnimationRef.current = null;
         heroSlideAnim.stopAnimation();
         heroSlideAnim.setValue(0);
+        heroHeightAnim.stopAnimation();
+        pillColorAnim.stopAnimation();
         heroTransitioningRef.current = false;
-        heroDragAdjacentIndexRef.current = null;
-        setHeroDragAdjacentIndex(null);
+        // Fade pill color out at drag start
+        Animated.timing(pillColorAnim, { toValue: 0, duration: 150, useNativeDriver: false }).start();
       },
       onPanResponderMove: (_, gesture) => {
         const currentIndex = activeHeroIndexRef.current;
         const length = heroItemsLengthRef.current;
+        const cardWidth = heroCardWidthRef.current;
         const atStart = currentIndex === 0;
         const atEnd = currentIndex === length - 1;
         const dx = (atStart && gesture.dx > 0) || (atEnd && gesture.dx < 0)
@@ -2672,19 +2707,21 @@ export default function HomeScreen({
           : gesture.dx;
         heroSlideAnim.setValue(dx);
 
-        // Set adjacent index on first meaningful move
-        if (heroDragAdjacentIndexRef.current === null && Math.abs(gesture.dx) > 4) {
-          const goNext = gesture.dx < 0 && currentIndex < length - 1;
-          const goPrev = gesture.dx > 0 && currentIndex > 0;
-          if (goNext) {
-            heroDragDirectionRef.current = 1;
-            heroDragAdjacentIndexRef.current = currentIndex + 1;
-            setHeroDragAdjacentIndex(currentIndex + 1);
-          } else if (goPrev) {
-            heroDragDirectionRef.current = -1;
-            heroDragAdjacentIndexRef.current = currentIndex - 1;
-            setHeroDragAdjacentIndex(currentIndex - 1);
-          }
+        // Interpolate height toward the card we're dragging into
+        const adjacentIndex = dx < 0 ? currentIndex + 1 : currentIndex - 1;
+        const currentH = heroCardHeightsRef.current[currentIndex];
+        const adjacentH = heroCardHeightsRef.current[adjacentIndex];
+        if (currentH && adjacentH && cardWidth > 0) {
+          const progress = Math.min(1, Math.abs(dx) / cardWidth);
+          heroHeightAnim.setValue(currentH + (adjacentH - currentH) * progress);
+        }
+
+        // Slide pill proportionally between current and adjacent dot
+        const currentDotX = dotPositionsRef.current[currentIndex];
+        const adjacentDotX = dotPositionsRef.current[adjacentIndex];
+        if (currentDotX != null && adjacentDotX != null && cardWidth > 0) {
+          const progress = Math.min(1, Math.abs(dx) / cardWidth);
+          pillXAnim.setValue((currentDotX - 4) + (adjacentDotX - currentDotX) * progress);
         }
       },
       onPanResponderRelease: (_, gesture) => {
@@ -2696,10 +2733,18 @@ export default function HomeScreen({
 
         if (goNext || goPrev) {
           const nextIndex = goNext ? currentIndex + 1 : currentIndex - 1;
-          const exitTo = goNext ? -cardWidth : cardWidth;
-
+          // Slide pill to target dot and fade color in on arrival
+          const targetDotX = dotPositionsRef.current[nextIndex] ?? 0;
+          Animated.timing(pillXAnim, { toValue: targetDotX - 4, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: false }).start(() => {
+            Animated.timing(pillColorAnim, { toValue: 1, duration: 120, useNativeDriver: false }).start();
+          });
+          // Spring height to target immediately alongside the exit animation
+          const targetH = heroCardHeightsRef.current[nextIndex];
+          if (targetH) {
+            Animated.spring(heroHeightAnim, { toValue: targetH, tension: 100, friction: 18, useNativeDriver: false }).start();
+          }
           const exitAnim = Animated.timing(heroSlideAnim, {
-            toValue: exitTo,
+            toValue: goNext ? -(cardWidth + 12) : (cardWidth + 12),
             duration: 200,
             easing: Easing.out(Easing.quad),
             useNativeDriver: true,
@@ -2708,15 +2753,20 @@ export default function HomeScreen({
           exitAnim.start(({ finished }) => {
             if (!finished) return;
             heroSlideAnimationRef.current = null;
-            heroSlideAnim.setValue(0);
             activeHeroIndexRef.current = nextIndex;
             setActiveHeroIndex(nextIndex);
-            heroDragAdjacentIndexRef.current = null;
-            setHeroDragAdjacentIndex(null);
           });
         } else {
-          heroDragAdjacentIndexRef.current = null;
-          setHeroDragAdjacentIndex(null);
+          // Snap pill back to current dot and restore color
+          const currentDotX = dotPositionsRef.current[currentIndex] ?? 0;
+          Animated.timing(pillXAnim, { toValue: currentDotX - 4, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: false }).start(() => {
+            Animated.timing(pillColorAnim, { toValue: 1, duration: 120, useNativeDriver: false }).start();
+          });
+          // Snap height back to current card
+          const currentH = heroCardHeightsRef.current[currentIndex];
+          if (currentH) {
+            Animated.spring(heroHeightAnim, { toValue: currentH, tension: 110, friction: 15, useNativeDriver: false }).start();
+          }
           const snapBack = Animated.spring(heroSlideAnim, {
             toValue: 0,
             tension: 110,
@@ -2735,6 +2785,7 @@ export default function HomeScreen({
     if (item.type === 'diningMenu') {
       return (
         <View style={{
+          ...raisedCardStyle,
           backgroundColor: colors.card,
           padding: 22,
         }}>
@@ -2825,6 +2876,7 @@ export default function HomeScreen({
     if (item.type === 'sportsEvents') {
       return (
         <View style={{
+          ...raisedCardStyle,
           backgroundColor: colors.card,
           padding: 22,
         }}>
@@ -2922,6 +2974,7 @@ export default function HomeScreen({
     if (item.type === 'campusInfo') {
       return (
         <View style={{
+          ...raisedCardStyle,
           backgroundColor: colors.card,
           padding: 22,
         }}>
@@ -3068,6 +3121,7 @@ export default function HomeScreen({
     if (item.type === 'idleSummary') {
       return (
         <View style={{
+          ...raisedCardStyle,
           backgroundColor: colors.card,
           paddingHorizontal: 18,
           paddingVertical: 17,
@@ -3160,6 +3214,7 @@ export default function HomeScreen({
 
     return (
       <View style={{
+        ...raisedCardStyle,
         backgroundColor: colors.card,
         padding: 22,
       }}>
@@ -3410,39 +3465,60 @@ export default function HomeScreen({
         </Text>
       </View>
 
-      <View style={{ marginBottom: 14, width: heroCardWidth, ...raisedCardStyle }}>
+      <View style={{ marginBottom: 14, width: heroCardWidth }}>
         {activeHeroItem ? (
           <>
-            <View style={{ overflow: 'hidden', borderRadius: 28 }}>
+            <View>
+              <Animated.View style={{ height: heroHeightAnim }} />
               <Animated.View
-                style={{ transform: [{ translateX: heroSlideAnim }], opacity: heroOpacityAnim }}
+                style={{ position: 'absolute', top: 0, left: 0, flexDirection: 'row', alignItems: 'flex-start', transform: [{ translateX: heroTranslateX }] }}
                 {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
               >
-                {renderHeroCardContent(activeHeroItem)}
-                {heroDragAdjacentIndex !== null && heroItems[heroDragAdjacentIndex] != null && (
+                {heroItems.map((item, index) => (
                   <View
-                    pointerEvents="none"
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: heroDragDirectionRef.current === 1 ? heroCardWidth : -heroCardWidth,
-                      width: heroCardWidth,
+                    key={item.type}
+                    pointerEvents={index === activeHeroIndex ? 'auto' : 'none'}
+                    style={{ width: heroCardWidth, marginRight: index < heroItems.length - 1 ? 12 : 0 }}
+                    onLayout={(e) => {
+                      const h = Math.ceil(e.nativeEvent.layout.height);
+                      if (heroCardHeightsRef.current[index] === h) return;
+                      heroCardHeightsRef.current[index] = h;
+                      if (index !== activeHeroIndexRef.current) return;
+                      if (!heroHeightInitializedRef.current) {
+                        heroHeightInitializedRef.current = true;
+                        heroHeightAnim.setValue(h);
+                      } else {
+                        springHeroHeightToIndex(index);
+                      }
                     }}
                   >
-                    {renderHeroCardContent(heroItems[heroDragAdjacentIndex])}
+                    {renderHeroCardContent(item)}
                   </View>
-                )}
+                ))}
               </Animated.View>
             </View>
             {heroItems.length > 1 ? (
               <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 10 }}>
+                {/* Sliding pill — absolutely positioned, slides behind the icons */}
+                <Animated.View
+                  pointerEvents="none"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: 32,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor: `${getIndicatorAccent(heroItems[activeHeroIndex] ?? heroItems[0])}1F`,
+                    borderWidth: 1,
+                    borderColor: `${getIndicatorAccent(heroItems[activeHeroIndex] ?? heroItems[0])}55`,
+                    opacity: pillColorAnim,
+                    transform: [{ translateX: pillXAnim }],
+                  }}
+                />
                 {heroItems.map((item, index) => {
                   const isActive = index === activeHeroIndex;
-                  const indicatorAccent = item.type === 'sportsEvents'
-                    ? sportsGoingAccent
-                    : item.type === 'diningMenu'
-                      ? diningAccent
-                      : colors.brand;
+                  const indicatorAccent = getIndicatorAccent(item);
                   const indicatorIcon = item.type === 'sportsEvents'
                     ? 'trophy-outline'
                     : item.type === 'diningMenu'
@@ -3458,31 +3534,24 @@ export default function HomeScreen({
                       onPress={() => moveHeroTo(index)}
                       hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                       activeOpacity={0.75}
-                      style={{
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        minWidth: 32,
-                        height: 24,
+                      onLayout={(e) => {
+                        const x = e.nativeEvent.layout.x;
+                        dotPositionsRef.current[index] = x;
+                        if (index === activeHeroIndexRef.current) {
+                          pillXAnim.setValue(x - 4);
+                          if (!pillInitializedRef.current) {
+                            pillInitializedRef.current = true;
+                            Animated.timing(pillColorAnim, { toValue: 1, duration: 200, useNativeDriver: false }).start();
+                          }
+                        }
                       }}
+                      style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}
                     >
-                      <View
-                        style={{
-                          width: isActive ? 32 : 24,
-                          height: 24,
-                          borderRadius: 12,
-                          backgroundColor: isActive ? `${indicatorAccent}1F` : 'transparent',
-                          borderWidth: isActive ? 1 : 0,
-                          borderColor: `${indicatorAccent}55`,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Ionicons
-                          name={indicatorIcon}
-                          size={15}
-                          color={isActive ? indicatorAccent : colors.textTertiary}
-                        />
-                      </View>
+                      <Ionicons
+                        name={indicatorIcon}
+                        size={15}
+                        color={isActive ? indicatorAccent : colors.textTertiary}
+                      />
                     </TouchableOpacity>
                   );
                 })}
@@ -3544,26 +3613,24 @@ export default function HomeScreen({
           </View>
           {calendarFeedUrl ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {pastCalendarTaskCount > 0 ? (
-                <TouchableOpacity
-                  onPress={openPastAssignments}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  style={{
-                    minHeight: 34,
-                    borderRadius: 17,
-                    backgroundColor: colors.card,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    paddingHorizontal: 11,
-                  }}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
-                    Completed
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
+              <TouchableOpacity
+                onPress={openCalendarSetup}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{
+                  minHeight: 34,
+                  borderRadius: 17,
+                  backgroundColor: colors.card,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  paddingHorizontal: 11,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
+                  Manage
+                </Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => void syncCalendarTasks(calendarFeedUrl)}
                 disabled={calendarTasksLoading}
@@ -3599,19 +3666,21 @@ export default function HomeScreen({
                 <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
                   {incompleteCalendarTaskCount} to do
                 </Text>
-                <TouchableOpacity
-                  onPress={openCalendarSetup}
-                  style={{
-                    paddingHorizontal: 11,
-                    paddingVertical: 7,
-                    borderRadius: 999,
-                    backgroundColor: colors.bgTertiary,
-                  }}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
-                    Manage
-                  </Text>
-                </TouchableOpacity>
+                {pastCalendarTaskCount > 0 ? (
+                  <TouchableOpacity
+                    onPress={openPastAssignments}
+                    style={{
+                      paddingHorizontal: 11,
+                      paddingVertical: 7,
+                      borderRadius: 999,
+                      backgroundColor: colors.bgTertiary,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
+                      Completed
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
               {calendarTasksError ? (
                 <Text style={{ fontSize: 12, color: '#EF4444' }}>

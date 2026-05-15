@@ -302,6 +302,9 @@ const QUARTERS = [
 ### Session 87 (Hero carousel — finger-tracking drag)
 - `src/screens/HomeScreen.tsx` — Added `heroItemsLengthRef` (kept current each render). Rewrote `heroPanResponder` to add `onPanResponderGrant` (stops any running animation, resets position) and `onPanResponderMove` (card follows finger via `heroSlideAnim.setValue(dx)`, with 0.25× rubber-band resistance at start/end bounds). `onPanResponderRelease` now animates the card out (`Animated.timing`, 160ms, ease-out), then sets new index and springs the new card in from the opposite side. Falls back to spring-back-to-0 if threshold not met.
 
+### Session 88 (Hero carousel — dynamic height fix)
+- `src/screens/HomeScreen.tsx` — Added `alignItems: 'flex-start'` to the horizontal row `Animated.View` that holds all hero cards. Without it, React Native's default `alignItems: 'stretch'` stretched every card to the tallest sibling's height, causing `onLayout` to always report the maximum height so the spacer and dot indicators never moved. With `flex-start`, each card reports its natural height and `heroHeightAnim` correctly springs to the active card's height.
+
 ### Session 61 (RMP moved to ReviewsModal + Reviews button layout)
 - `src/components/ReviewsModal.tsx` — Added `sectionType: string` prop. Added RMP row in course info section (shows prof name as tappable link to RateMyProfessors). `fetchReviews` and `handleSubmit` filter/set `section_type`. Supabase `reviews` table requires `ALTER TABLE reviews ADD COLUMN section_type TEXT;`.
 - `src/screens/CoursePickerScreen.tsx` — Removed RMP button from section rows. Reviews button moved directly beneath Add button. Star rating ("★ X.X · N ratings") moved beneath Reviews button in right column. `fetchReviewSummary(courseCode, sectionType)` cache keyed as `"ECON 100A::Lec"`. Early-return guard: `if (cache[key]?.count)` (not truthy check). `handleExpandCourse` fetches summaries for all unique section types in the course.

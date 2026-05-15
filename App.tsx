@@ -751,6 +751,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [tabBarReady, setTabBarReady] = useState(false);
   const pillXAnim = useRef(new Animated.Value(0)).current;
   const pillScaleAnim = useRef(new Animated.Value(1)).current;
+  const tabIconScaleAnims = useRef(TABS.map(() => new Animated.Value(1))).current;
   const isDraggingPill = useRef(false);
   const pillTouchStartX = useRef(0);
   const pillDragTouchOffsetX = useRef(0);
@@ -2882,6 +2883,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     icon,
     active,
     onPress,
+    scaleAnim,
     badgeCount,
     badgeLabel,
   }: {
@@ -2889,6 +2891,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     icon: keyof typeof Ionicons.glyphMap;
     active: boolean;
     onPress: () => void;
+    scaleAnim: Animated.Value;
     badgeCount?: number;
     badgeLabel?: string;
   }) => (
@@ -2901,9 +2904,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         paddingHorizontal: tabItemHorizontalPadding,
         minWidth: 0,
       }}
+      onPressIn={() => Animated.spring(scaleAnim, { toValue: 1.25, useNativeDriver: true, tension: 300, friction: 10 }).start()}
+      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 300, friction: 10 }).start()}
       onPress={onPress}
     >
-      <View style={{ position: 'relative' }}>
+      <Animated.View style={{ position: 'relative', transform: [{ scale: scaleAnim }] }}>
         <Ionicons name={icon} size={tabIconSize} color={active ? colors.brand : colors.text} />
         {(badgeCount ?? 0) > 0 ? (
           <View
@@ -2927,7 +2932,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             </Text>
           </View>
         ) : null}
-      </View>
+      </Animated.View>
       <Text
         style={{
           marginTop: tabLabelTopMargin,
@@ -2992,20 +2997,19 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
                   bottom: 0,
                   width: tabBarWidthRef.current / 5,
                   borderRadius: tabPillRadius,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.38)',
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.7)',
+                  backgroundColor: isDark ? 'rgba(122,162,255,0.10)' : 'rgba(65,105,225,0.06)',
                   transform: [{ translateX: pillXAnim }, { scale: pillScaleAnim }],
                 }}
               />
             )}
-            <TabItem label="Today" icon="home-outline" active={currentTab === 'home'} onPress={() => handleTabPress('home')} />
-            <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} onPress={() => handleTabPress('timetable')} />
-            <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} onPress={() => handleTabPress('grades')} />
+            <TabItem label="Today" icon="home-outline" active={currentTab === 'home'} scaleAnim={tabIconScaleAnims[0]} onPress={() => handleTabPress('home')} />
+            <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} scaleAnim={tabIconScaleAnims[1]} onPress={() => handleTabPress('timetable')} />
+            <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} scaleAnim={tabIconScaleAnims[2]} onPress={() => handleTabPress('grades')} />
             <TabItem
               label="Board"
               icon="clipboard-outline"
               active={currentTab === 'board'}
+              scaleAnim={tabIconScaleAnims[3]}
               badgeCount={currentTab === 'board' ? 0 : newBoardPostCount}
               badgeLabel="NEW"
               onPress={() => handleTabPress('board')}
@@ -3014,6 +3018,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               label="ClassMates"
               icon="person-add-outline"
               active={currentTab === 'friends'}
+              scaleAnim={tabIconScaleAnims[4]}
               badgeCount={unreadMessageCount}
               onPress={() => handleTabPress('friends')}
             />

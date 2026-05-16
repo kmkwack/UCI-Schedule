@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TouchableOpacity, ScrollView, Modal,
-  Animated, Easing, LayoutAnimation,
+  Animated, Easing, LayoutAnimation, PanResponder,
   Alert, Keyboard, TextInput,
   Platform, UIManager,
   useWindowDimensions,
@@ -340,13 +340,14 @@ function groupedLetterGrades(gradeOptions: string[]) {
 }
 
 function GradePickerModal({
-  visible, current, currentUnits, gradeOptions, onSelect, onSetUnits, onClose,
+  visible, current, currentUnits, gradeOptions, onSelect, onDeselect, onSetUnits, onClose,
 }: {
   visible: boolean;
   current?: string;
   currentUnits: number;
   gradeOptions: string[];
   onSelect: (g: string) => void;
+  onDeselect: () => void;
   onSetUnits: (u: number) => void;
   onClose: () => void;
 }) {
@@ -355,17 +356,65 @@ function GradePickerModal({
   const { rows: letterGradeRows, otherGrades } = useMemo(() => groupedLetterGrades(gradeOptions), [gradeOptions]);
   const sheetMaxHeight = Math.min(screenHeight * 0.72, 580);
 
+  const sheetAnim = useRef(new Animated.Value(600)).current;
+  const backdropAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      sheetAnim.setValue(600);
+      backdropAnim.setValue(0);
+      Animated.parallel([
+        Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+        Animated.timing(backdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [visible]);
+
+  const handleCloseRef = useRef<() => void>(() => {});
+
+  function handleClose() {
+    Animated.parallel([
+      Animated.timing(sheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(backdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start(() => onClose());
+  }
+  handleCloseRef.current = handleClose;
+
+  const dragPan = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderMove: (_, gs) => {
+      if (gs.dy > 0) sheetAnim.setValue(gs.dy);
+    },
+    onPanResponderRelease: (_, gs) => {
+      if (gs.dy > 80 || gs.vy > 0.8) {
+        handleCloseRef.current();
+      } else {
+        Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+      }
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+    },
+  })).current;
+
   return (
-    <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
-      <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}
-        activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
-          <View style={{
-            backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-            paddingHorizontal: 20, paddingTop: 12, paddingBottom: 34,
-            maxHeight: sheetMaxHeight,
-          }}>
-            <View style={{ alignItems: 'center', paddingBottom: 14 }}>
+    <Modal transparent animationType="none" visible={visible} onRequestClose={handleClose}>
+      <Animated.View style={{
+        flex: 1,
+        justifyContent: 'flex-end',
+        backgroundColor: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }),
+      }}>
+        <TouchableOpacity
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          activeOpacity={1} onPress={handleClose}
+        />
+        <Animated.View style={{
+          backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+          paddingHorizontal: 20, paddingTop: 12, paddingBottom: 34,
+          maxHeight: sheetMaxHeight,
+          transform: [{ translateY: sheetAnim }],
+        }}>
+            <View style={{ alignItems: 'center', paddingBottom: 14 }} {...dragPan.panHandlers}>
               <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -403,7 +452,7 @@ function GradePickerModal({
                         return (
                           <TouchableOpacity
                             key={grade}
-                            onPress={() => { onSelect(grade); onClose(); }}
+                            onPress={() => { if (current === grade) { onDeselect(); handleClose(); } else { onSelect(grade); handleClose(); } }}
                             activeOpacity={0.78}
                             style={{
                               flex: row.grades.length === 1 ? 0 : 1,
@@ -439,7 +488,7 @@ function GradePickerModal({
                       return (
                         <TouchableOpacity
                           key={grade}
-                          onPress={() => { onSelect(grade); onClose(); }}
+                          onPress={() => { if (current === grade) { onDeselect(); handleClose(); } else { onSelect(grade); handleClose(); } }}
                           activeOpacity={0.78}
                           style={{
                             minWidth: 62,
@@ -491,9 +540,8 @@ function GradePickerModal({
                 </View>
               </View>
             </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
+        </Animated.View>
+      </Animated.View>
     </Modal>
   );
 }
@@ -831,6 +879,26 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
 
   function handleDeleteTransferEntry(entryId: string) {
     saveTransferEntries(transferEntries.filter((entry) => entry.id !== entryId));
+  }
+
+  async function handleClearGrade(key: string) {
+    const updated = { ...grades };
+    delete updated[key];
+    setGrades(updated);
+    AsyncStorage.setItem(cacheKey, JSON.stringify(updated));
+    const [qk, courseId] = key.split('|');
+    if (gradesSchoolColumnUnavailable) {
+      await supabase.from('grades').delete()
+        .eq('user_id', userId).eq('quarter_key', qk).eq('course_id', courseId);
+    } else {
+      const result = await supabase.from('grades').delete()
+        .eq('user_id', userId).eq('school', school).eq('quarter_key', qk).eq('course_id', courseId);
+      if (result.error && isMissingSchoolColumnError(result.error)) {
+        gradesSchoolColumnUnavailable = true;
+        await supabase.from('grades').delete()
+          .eq('user_id', userId).eq('quarter_key', qk).eq('course_id', courseId);
+      }
+    }
   }
 
   // Past quarters: any timetable whose quarter key is before Spring 2026, derived from timetables directly
@@ -1301,6 +1369,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
           return allCourses.find(c => c.id === courseId)?.units ?? 0;
         })()}
         onSelect={g => { if (pickerCourseId) { handleSetGrade(pickerCourseId, g); } }}
+        onDeselect={() => { if (pickerCourseId) { handleClearGrade(pickerCourseId); } }}
         onSetUnits={u => { if (pickerCourseId) setUnitOverrides(prev => ({ ...prev, [pickerCourseId]: u })); }}
         onClose={() => setPickerCourseId(null)}
       />

@@ -115,6 +115,55 @@ async function openSupportEmail() {
   }
 }
 
+function prefixedUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+function profileLinkUrl(kind: keyof EditableProfile['socialLinks'], value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (kind === 'instagram') {
+    const handle = trimmed.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/.*$/, '');
+    return handle ? `https://instagram.com/${handle}` : null;
+  }
+  if (kind === 'linkedin') {
+    return prefixedUrl(trimmed.includes('linkedin.com') ? trimmed : `linkedin.com/in/${trimmed.replace(/^@/, '')}`);
+  }
+  if (kind === 'website') {
+    return prefixedUrl(trimmed);
+  }
+  if (/^(https?:\/\/)?(www\.)?(discord\.gg\/|discord(?:app)?\.com\/invite\/)/i.test(trimmed)) {
+    return prefixedUrl(trimmed);
+  }
+  return null;
+}
+
+type ProfileLinkItem = {
+  key: keyof EditableProfile['socialLinks'];
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  value: string;
+  url: string | null;
+};
+
+function profileLinkItems(profile: EditableProfile): ProfileLinkItem[] {
+  const links = profile.socialLinks ?? { instagram: '', discord: '', linkedin: '', website: '' };
+  const configs: Array<Omit<ProfileLinkItem, 'value' | 'url'>> = [
+    { key: 'instagram', label: 'Instagram', icon: 'logo-instagram', color: '#E1306C' },
+    { key: 'discord', label: 'Discord', icon: 'logo-discord', color: '#5865F2' },
+    { key: 'linkedin', label: 'LinkedIn', icon: 'logo-linkedin', color: '#0A66C2' },
+    { key: 'website', label: 'Website', icon: 'globe-outline', color: '#10B981' },
+  ];
+
+  return configs.flatMap((config) => {
+    const value = links[config.key]?.trim() ?? '';
+    return value ? [{ ...config, value, url: profileLinkUrl(config.key, value) }] : [];
+  });
+}
+
 // ─── Sub-screen: Back header ────────────────────────────────────────────────
 function SubHeader({ title, onBack }: { title: string; onBack: () => void }) {
   const { colors } = useTheme();
@@ -273,6 +322,7 @@ function PrivacySecurityScreen({
   saving?: boolean;
 }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const aliasName = getSchoolConfig(school).welcomeName || 'Classmate';
   const [visibility, setVisibility] = useState<TimetableVisibility>(initialVisibility);
   const [boardProfileVisible, setBoardProfileVisible] = useState(initialBoardProfileVisible);
@@ -349,7 +399,7 @@ function PrivacySecurityScreen({
           />
         </View>
       </ScrollView>
-      <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: Math.max(insets.bottom + 20, 24), borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
         <TouchableOpacity
           disabled={saving}
           onPress={async () => {
@@ -398,6 +448,7 @@ function NotificationsScreen({
   saving?: boolean;
 }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [s, setS] = useState<NotificationPreferences>(initialSettings);
   const [permissionStatus, setPermissionStatus] = useState<PushPermissionStatus>(initialPermissionStatus);
   const toggleableKeys: Array<
@@ -645,7 +696,7 @@ function NotificationsScreen({
           {row('likes', 'Likes', undefined, true)}
         </>)}
       </ScrollView>
-      <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle, backgroundColor: colors.card }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: Math.max(insets.bottom + 20, 24), borderTopWidth: 1, borderTopColor: colors.borderSubtle, backgroundColor: colors.card }}>
         <TouchableOpacity
           disabled={saving}
           onPress={async () => {
@@ -774,6 +825,7 @@ function LanguageRegionScreen({
   saving?: boolean;
 }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [language, setLanguage] = useState<LanguagePreference>(initialLanguage);
   const [timezone, setTimezone] = useState(initialTimeZone);
   const [dateFormat, setDateFormat] = useState<DateFormatPreference>(initialDateFormat);
@@ -882,7 +934,7 @@ function LanguageRegionScreen({
         </View>
 
       </ScrollView>
-      <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: Math.max(insets.bottom + 20, 24), borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
         <TouchableOpacity
           disabled={saving}
           onPress={async () => {
@@ -2006,7 +2058,7 @@ export default function SettingsScreen({
   savingNotifications,
   savingRegion,
 }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [screen, setScreen] = useState<Screen>('main');
   const { width: screenWidth } = useWindowDimensions();
   const screenWidthRef = useRef(screenWidth);
@@ -2118,6 +2170,7 @@ export default function SettingsScreen({
   };
 
   const insets = useSafeAreaInsets();
+  const socialLinks = profileLinkItems(userProfile);
 
   if (!visible) return null;
 
@@ -2136,7 +2189,7 @@ export default function SettingsScreen({
           </TouchableOpacity>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + 48, 76) }}>
           <View style={{
             backgroundColor: colors.card, paddingHorizontal: 20, paddingVertical: 20,
             flexDirection: 'row', alignItems: 'center', gap: 16,
@@ -2151,6 +2204,38 @@ export default function SettingsScreen({
               <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>
                 {abbreviateMajor(userProfile.major) || 'UNDECL'} · {userProfile.year}
               </Text>
+              {socialLinks.length > 0 ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                  {socialLinks.map((link) => (
+                    <TouchableOpacity
+                      key={link.key}
+                      disabled={!link.url}
+                      onPress={() => {
+                        if (link.url) void Linking.openURL(link.url);
+                      }}
+                      activeOpacity={0.75}
+                      style={{
+                        minHeight: 28,
+                        borderRadius: 999,
+                        paddingHorizontal: 9,
+                        paddingVertical: 5,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        backgroundColor: themedIconBackground(link.color, isDark, `${link.color}14`),
+                        borderWidth: 1,
+                        borderColor: `${link.color}26`,
+                        opacity: link.url ? 1 : 0.78,
+                      }}
+                    >
+                      <Ionicons name={link.icon} size={13} color={link.color} />
+                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ maxWidth: 92, fontSize: 11, fontWeight: '800', color: link.color }}>
+                        {link.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
             </View>
           </View>
 
@@ -2223,7 +2308,7 @@ export default function SettingsScreen({
             </TouchableOpacity>
           </View>
 
-          <Text style={{ textAlign: 'center', color: colors.textTertiary, fontSize: 13, marginTop: 16 }}>ClassMate v1.0.0</Text>
+          <Text style={{ textAlign: 'center', color: colors.textTertiary, fontSize: 13, marginTop: 16, marginBottom: 4 }}>ClassMate v1.0.0</Text>
         </ScrollView>
       </View>
 

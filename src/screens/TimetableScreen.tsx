@@ -1392,6 +1392,8 @@ export default function TimetableScreen({
               backgroundColor: colors.card,
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
+              maxHeight: '88%',
+              overflow: 'hidden',
               transform: [{ translateY: settingsSheetAnim }],
             }}
           >
@@ -1419,7 +1421,10 @@ export default function TimetableScreen({
               </TouchableOpacity>
             </View>
 
-            <View style={{ paddingBottom: 20 }}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: Math.max(bottomInset + 20, 32) }}
+            >
               {/* Block Style */}
               <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -1565,7 +1570,7 @@ export default function TimetableScreen({
                   </Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </ScrollView>
           </Animated.View>
         </Animated.View>
       </Modal>

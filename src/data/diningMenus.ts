@@ -1,3 +1,5 @@
+import { fetchUciDiningSummaries } from './uciDining';
+
 export type DiningMenuItem = {
   id: string;
   name: string;
@@ -24,6 +26,9 @@ export type DiningLocationMenu = {
   meals: DiningMenuMeal[];
   itemCount: number;
   isExternalLinkOnly?: boolean;
+  isOpen?: boolean | null;
+  statusLabel?: string;
+  statusDetail?: string;
 };
 
 type DateParts = {
@@ -320,12 +325,27 @@ async function fetchMyDiningHubLocationMenu(location: { id: string; name: string
 
 async function fetchUciDiningMenus(date: Date) {
   const { iso } = getDateParts(date, 'America/Los_Angeles');
-  const menus = await Promise.all(UCI_DINING_LOCATIONS.map((location) => fetchMyDiningHubLocationMenu(location, iso, {
-    graphQlUrl: UCI_DINING_GRAPHQL_URL,
-    locationUrl: UCI_DINING_LOCATION_URL,
-    headers: UCI_DINING_HEADERS,
-  }).catch(() => null)));
-  return menus.filter((menu): menu is DiningLocationMenu => Boolean(menu));
+  const [menus, summaries] = await Promise.all([
+    Promise.all(UCI_DINING_LOCATIONS.map((location) => fetchMyDiningHubLocationMenu(location, iso, {
+      graphQlUrl: UCI_DINING_GRAPHQL_URL,
+      locationUrl: UCI_DINING_LOCATION_URL,
+      headers: UCI_DINING_HEADERS,
+    }).catch(() => null))),
+    fetchUciDiningSummaries(date).catch(() => []),
+  ]);
+  const summariesByKey = new Map(summaries.map((summary) => [summary.key, summary]));
+  return menus
+    .filter((menu): menu is DiningLocationMenu => Boolean(menu))
+    .map((menu) => {
+      const summary = summariesByKey.get(menu.id as any);
+      if (!summary) return menu;
+      return {
+        ...menu,
+        isOpen: summary.isOpen,
+        statusLabel: summary.statusLabel,
+        statusDetail: summary.statusDetail,
+      };
+    });
 }
 
 function cornellMealFromEvent(event: any): DiningMenuMeal | null {

@@ -159,6 +159,7 @@ const ASSIGNMENT_REMINDER_OFFSETS = [2880, 1440, 720, 60];
 const ASSIGNMENT_REMINDER_MAX_DAYS_AHEAD = 60;
 const REVIEW_ACCOUNT_EMAILS = new Set(['review@classmate.app']);
 const CLASSMATE_REMINDER_NOTIFICATION_PREFIX = 'classmate-reminder';
+const LAST_THEME_PREFERENCE_STORAGE_KEY = 'theme_preference_last';
 
 function scopedPreferenceStorageKey(base: string, school: string, userId: string | null | undefined) {
   return `${base}_${encodeURIComponent(school)}_${userId || 'guest'}`;
@@ -222,6 +223,26 @@ async function readStoredTimetableSettings(key: string) {
   } catch {
     return null;
   }
+}
+
+async function readLastThemePreference() {
+  const storedPreference = normalizeThemePreference(await AsyncStorage.getItem(LAST_THEME_PREFERENCE_STORAGE_KEY));
+  if (storedPreference) return storedPreference;
+
+  const keys = await AsyncStorage.getAllKeys();
+  const scopedThemeKeys = keys.filter(
+    (key) => key.startsWith('theme_preference_') && key !== LAST_THEME_PREFERENCE_STORAGE_KEY
+  );
+  if (scopedThemeKeys.length === 0) return null;
+
+  const scopedPreferences = await AsyncStorage.multiGet(scopedThemeKeys);
+  const scopedPreference = scopedPreferences
+    .map(([, value]) => normalizeThemePreference(value))
+    .find((value): value is ThemePreference => value !== null) ?? null;
+  if (scopedPreference) {
+    void AsyncStorage.setItem(LAST_THEME_PREFERENCE_STORAGE_KEY, scopedPreference);
+  }
+  return scopedPreference;
 }
 
 function isReviewAccountEmail(email: string | null | undefined) {
@@ -1130,6 +1151,17 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const timetableSettingsStorageKey = scopedPreferenceStorageKey('timetable_settings', currentSchool, userId);
 
       try {
+        let cachedThemePreference: ThemePreference | null = null;
+        try {
+          cachedThemePreference = normalizeThemePreference(await AsyncStorage.getItem(themeStorageKey));
+        } catch (error) {
+          console.warn('Failed to load cached theme preference:', error);
+        }
+        if (!active) return;
+        if (cachedThemePreference) {
+          onThemeChange(cachedThemePreference);
+        }
+
         const { data: profileRow, error: profileError } = await withTimeout(
           supabase
             .from('profiles')
@@ -1166,7 +1198,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         profileDetailsRef.current = settingsDetails && typeof settingsDetails === 'object' ? { ...settingsDetails } : {};
         const forceFeatureOnboarding = forceReviewOnboardingOnce && isReviewAccountEmail(userEmail);
         const storedThemePreference = normalizeThemePreference(settingsDetails?.themePreference)
-          ?? normalizeThemePreference(await AsyncStorage.getItem(themeStorageKey));
+          ?? cachedThemePreference;
         if (storedThemePreference) {
           onThemeChange(storedThemePreference);
           void AsyncStorage.setItem(themeStorageKey, storedThemePreference);
@@ -2739,6 +2771,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     return <AuthNavigator stack={authStack} onPop={popAuth} renderScreen={renderAuthScreen} />;
   }
 
+  if (userBootstrapLoading || !userBootstrapSettled) {
+    return (
+      <View style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="small" color={colors.brand} />
+      </View>
+    );
+  }
+
   const renderFeatureOnboarding = () => (
     <FeatureOnboardingScreen
       onFinish={handleCompleteFeatureOnboarding}
@@ -3132,13 +3172,51 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
 export default function App() {
   const [themePreference, setThemePreference] = useState<ThemePreference>('auto');
+  const [themePreferenceBootstrapped, setThemePreferenceBootstrapped] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadLastThemePreference() {
+      try {
+        const storedPreference = await readLastThemePreference();
+        if (active && storedPreference) {
+          setThemePreference(storedPreference);
+        }
+      } catch (error) {
+        console.warn('Failed to load last theme preference:', error);
+      } finally {
+        if (active) {
+          setThemePreferenceBootstrapped(true);
+        }
+      }
+    }
+
+    void loadLastThemePreference();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleThemeChange = useCallback((nextThemePreference: ThemePreference) => {
+    setThemePreference(nextThemePreference);
+    void AsyncStorage.setItem(LAST_THEME_PREFERENCE_STORAGE_KEY, nextThemePreference);
+  }, []);
+
   return (
     <SafeAreaProvider>
-      <ThemeProvider preference={themePreference}>
-        <AppErrorBoundary>
-          <AppContent themePreference={themePreference} onThemeChange={setThemePreference} />
-        </AppErrorBoundary>
-      </ThemeProvider>
+      {themePreferenceBootstrapped ? (
+        <ThemeProvider preference={themePreference}>
+          <AppErrorBoundary>
+            <AppContent themePreference={themePreference} onThemeChange={handleThemeChange} />
+          </AppErrorBoundary>
+        </ThemeProvider>
+      ) : (
+        <View style={{ flex: 1, backgroundColor: '#09111d', alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="small" color="#7aa2ff" />
+        </View>
+      )}
     </SafeAreaProvider>
   );
 }

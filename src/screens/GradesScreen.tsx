@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TouchableOpacity, ScrollView, Modal,
   Animated, Easing, LayoutAnimation,
+  Alert, Keyboard, TextInput,
   Platform, UIManager,
   useWindowDimensions,
 } from 'react-native';
@@ -20,10 +21,24 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 type Props = { timetables: Timetable[]; userId: string; school: string; topInset?: number; bottomInset?: number; scrollToTopTrigger?: number };
 type GradeRow = { school?: string; quarter_key: string; course_id: string; grade: string };
+type TransferGpaEntry = { id: string; institution: string; label: string; gpa: string; units: string };
 
 let gradesSchoolColumnUnavailable = false;
 
 // ── constants ─────────────────────────────────────────────────────────────────
+
+function parsePositiveNumber(value: string) {
+  const parsed = Number(value.replace(/,/g, '').trim());
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function formatGpaValue(value: number) {
+  return Number.isFinite(value) && value > 0 ? value.toFixed(2) : '—';
+}
+
+function createLocalId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 // ── GPA chart ─────────────────────────────────────────────────────────────────
 
@@ -644,11 +659,21 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
   const [grades, setGrades] = useState<Record<string, string>>({});
   const [unitOverrides, setUnitOverrides] = useState<Record<string, number>>({});
   const [pickerCourseId, setPickerCourseId] = useState<string | null>(null);
+  const [whatIfGrade, setWhatIfGrade] = useState<string>('A');
+  const [transferEntries, setTransferEntries] = useState<TransferGpaEntry[]>([]);
+  const [transferInstitution, setTransferInstitution] = useState('');
+  const [transferLabel, setTransferLabel] = useState('');
+  const [transferGpaInput, setTransferGpaInput] = useState('');
+  const [transferUnitsInput, setTransferUnitsInput] = useState('');
+  const [showWhatIfTool, setShowWhatIfTool] = useState(false);
+  const [showTransferTool, setShowTransferTool] = useState(false);
 
   // Compound key: "2026-Spring|36120" — prevents collisions if section codes repeat across years
   const gk = (qk: string, courseId: string) => `${qk}|${courseId}`;
 
   const cacheKey = `grades_${encodeURIComponent(school)}_${userId}`;
+  const transferCacheKey = `transfer_gpa_entries_${encodeURIComponent(school)}_${userId}`;
+  const whatIfOptions = gradeScale.options.filter((grade) => gradePoints[grade] !== undefined);
 
   useEffect(() => {
     async function loadGrades() {
@@ -701,6 +726,38 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
     loadGrades();
   }, [cacheKey, school, userId]);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadTransferEntries() {
+      try {
+        const cached = await AsyncStorage.getItem(transferCacheKey);
+        if (!active || !cached) return;
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          const validEntries = parsed.filter((entry): entry is TransferGpaEntry =>
+            entry &&
+            typeof entry.id === 'string' &&
+            typeof entry.institution === 'string' &&
+            typeof entry.label === 'string' &&
+            typeof entry.gpa === 'string' &&
+            typeof entry.units === 'string'
+          );
+          setTransferEntries(validEntries);
+          if (validEntries.length > 0) setShowTransferTool(true);
+        }
+      } catch (error) {
+        console.warn('Failed to load transfer GPA entries:', error);
+      }
+    }
+
+    void loadTransferEntries();
+
+    return () => {
+      active = false;
+    };
+  }, [transferCacheKey]);
+
   // key is the compound "qk|courseId" string
   async function handleSetGrade(key: string, grade: string) {
     const updated = { ...grades, [key]: grade };
@@ -735,6 +792,45 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
         console.warn('Failed to save grade:', scopedResult.error);
       }
     }
+  }
+
+  function saveTransferEntries(nextEntries: TransferGpaEntry[]) {
+    setTransferEntries(nextEntries);
+    void AsyncStorage.setItem(transferCacheKey, JSON.stringify(nextEntries));
+  }
+
+  function handleAddTransferEntry() {
+    const institution = transferInstitution.trim();
+    const label = transferLabel.trim();
+    const gpaNumber = parsePositiveNumber(transferGpaInput);
+    const unitsNumber = parsePositiveNumber(transferUnitsInput);
+
+    if (!institution || !label || gpaNumber <= 0 || unitsNumber <= 0) {
+      Alert.alert('Transfer GPA entry needed', 'Enter an institution, term label, GPA, and units before adding it.');
+      return;
+    }
+    if (gpaNumber > gradeScale.maxGpa) {
+      Alert.alert('Check GPA', `Use a GPA at or below ${gradeScale.maxGpa.toFixed(2)} for this school.`);
+      return;
+    }
+
+    const nextEntry: TransferGpaEntry = {
+      id: createLocalId('transfer-gpa'),
+      institution,
+      label,
+      gpa: gpaNumber.toFixed(2),
+      units: String(unitsNumber),
+    };
+    saveTransferEntries([...transferEntries, nextEntry]);
+    setTransferInstitution('');
+    setTransferLabel('');
+    setTransferGpaInput('');
+    setTransferUnitsInput('');
+    Keyboard.dismiss();
+  }
+
+  function handleDeleteTransferEntry(entryId: string) {
+    saveTransferEntries(transferEntries.filter((entry) => entry.id !== entryId));
   }
 
   // Past quarters: any timetable whose quarter key is before Spring 2026, derived from timetables directly
@@ -828,6 +924,59 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
     };
   }, [grades, activeCourses, pastQuarterItems, unitOverrides, gradePoints]);
 
+  const whatIfSummary = useMemo(() => {
+    const whatIfPoints = gradePoints[whatIfGrade] ?? 0;
+    const currentCourses = activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0);
+    const simulatedRows = currentCourses
+      .map((course) => {
+        const units = getUnits(CURRENT_QK, course);
+        const savedGrade = grades[gk(CURRENT_QK, course.id)];
+        const grade = savedGrade && gradePoints[savedGrade] !== undefined ? savedGrade : whatIfGrade;
+        return { units, grade };
+      })
+      .filter((row) => gradePoints[row.grade] !== undefined);
+    const simulatedUnits = simulatedRows.reduce((sum, row) => sum + row.units, 0);
+    const simulatedPoints = simulatedRows.reduce((sum, row) => sum + gradePoints[row.grade] * row.units, 0);
+
+    const pastCourses = pastQuarterItems.flatMap(({ qk, courses }) => courses.map(c => ({ ...c, _qk: qk })));
+    const gradedPast = pastCourses.filter(c => {
+      const grade = grades[gk(c._qk, c.id)];
+      return grade && gradePoints[grade] !== undefined;
+    });
+    const pastUnits = gradedPast.reduce((sum, course) => sum + getUnits(course._qk, course), 0);
+    const pastPoints = gradedPast.reduce((sum, course) => {
+      const grade = grades[gk(course._qk, course.id)];
+      return sum + gradePoints[grade] * getUnits(course._qk, course);
+    }, 0);
+
+    return {
+      currentGpa: formatGpaValue(simulatedUnits > 0 ? simulatedPoints / simulatedUnits : 0),
+      cumulativeGpa: formatGpaValue(pastUnits + simulatedUnits > 0 ? (pastPoints + simulatedPoints) / (pastUnits + simulatedUnits) : 0),
+      ungradedCount: currentCourses.filter((course) => {
+        const grade = grades[gk(CURRENT_QK, course.id)];
+        return !grade || gradePoints[grade] === undefined;
+      }).length,
+      whatIfPoints,
+    };
+  }, [CURRENT_QK, activeCourses, grades, gradePoints, pastQuarterItems, unitOverrides, whatIfGrade]);
+
+  const transferSummary = useMemo(() => {
+    const rows = transferEntries
+      .map((entry) => {
+        const gpaValue = parsePositiveNumber(entry.gpa);
+        const unitsValue = parsePositiveNumber(entry.units);
+        return { gpaValue, unitsValue };
+      })
+      .filter((row) => row.gpaValue > 0 && row.unitsValue > 0);
+    const unitsValue = rows.reduce((sum, row) => sum + row.unitsValue, 0);
+    const pointsValue = rows.reduce((sum, row) => sum + row.gpaValue * row.unitsValue, 0);
+    return {
+      gpa: formatGpaValue(unitsValue > 0 ? pointsValue / unitsValue : 0),
+      units: unitsValue,
+      count: rows.length,
+    };
+  }, [transferEntries]);
+
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => {
     if (scrollToTopTrigger > 0) scrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -862,6 +1011,225 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
           </View>
         ))}
       </View>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: showWhatIfTool || showTransferTool ? 12 : 18 }}>
+        <TouchableOpacity
+          onPress={() => setShowWhatIfTool(true)}
+          style={{
+            minHeight: 38,
+            borderRadius: 999,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            backgroundColor: showWhatIfTool ? colors.brandBg : colors.card,
+            borderWidth: 1,
+            borderColor: showWhatIfTool ? colors.brand : colors.border,
+          }}
+        >
+          <Ionicons name="calculator-outline" size={15} color={showWhatIfTool ? colors.brand : colors.textSecondary} />
+          <Text style={{ fontSize: 13, fontWeight: '800', color: showWhatIfTool ? colors.brand : colors.textSecondary }}>What-if GPA</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setShowTransferTool(true)}
+          style={{
+            minHeight: 38,
+            borderRadius: 999,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            backgroundColor: showTransferTool ? colors.brandBg : colors.card,
+            borderWidth: 1,
+            borderColor: showTransferTool ? colors.brand : colors.border,
+          }}
+        >
+          <Ionicons name="document-text-outline" size={15} color={showTransferTool ? colors.brand : colors.textSecondary} />
+          <Text style={{ fontSize: 13, fontWeight: '800', color: showTransferTool ? colors.brand : colors.textSecondary }}>Transfer GPA</Text>
+          {transferEntries.length > 0 ? (
+            <View style={{ minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: showTransferTool ? colors.brand : colors.brandBg }}>
+              <Text style={{ fontSize: 10, fontWeight: '900', color: showTransferTool ? 'white' : colors.brand }}>{transferEntries.length}</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      {showWhatIfTool ? (
+        <View style={{
+          backgroundColor: colors.card,
+          borderRadius: 20,
+          padding: 18,
+          marginBottom: 18,
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.72)',
+          shadowColor: '#0f172a',
+          shadowOffset: { width: 0, height: 12 },
+          shadowOpacity: 0.08,
+          shadowRadius: 20,
+          elevation: 5,
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>What-if GPA</Text>
+              <Text style={{ fontSize: 12, lineHeight: 17, color: colors.textTertiary, marginTop: 3 }}>
+                Fill ungraded current classes with a hypothetical grade.
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.brandBg }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>{whatIfSummary.ungradedCount} open</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowWhatIfTool(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.inputBg }}
+              >
+                <Ionicons name="close" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 2 }}>
+            {whatIfOptions.map((grade) => {
+              const active = whatIfGrade === grade;
+              return (
+                <TouchableOpacity
+                  key={`what-if-${grade}`}
+                  onPress={() => setWhatIfGrade(grade)}
+                  style={{
+                    minWidth: 48,
+                    height: 38,
+                    borderRadius: 14,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: active ? colors.brand : colors.inputBg,
+                    borderWidth: 1,
+                    borderColor: active ? colors.brand : colors.border,
+                  }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: active ? 'white' : colors.textSecondary }}>{grade}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+            {[
+              { label: 'Current term', value: whatIfSummary.currentGpa },
+              { label: 'Cumulative', value: whatIfSummary.cumulativeGpa },
+            ].map((item) => (
+              <View key={item.label} style={{ flex: 1, borderRadius: 14, padding: 12, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.borderSubtle }}>
+                <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: '700' }}>{item.label}</Text>
+                <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 4 }}>{item.value}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {showTransferTool ? (
+        <View style={{
+          backgroundColor: colors.card,
+          borderRadius: 20,
+          padding: 18,
+          marginBottom: 18,
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.72)',
+          shadowColor: '#0f172a',
+          shadowOffset: { width: 0, height: 12 },
+          shadowOpacity: 0.08,
+          shadowRadius: 20,
+          elevation: 5,
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Transfer Transcript GPA</Text>
+              <Text style={{ fontSize: 12, lineHeight: 17, color: colors.textTertiary, marginTop: 3 }}>
+                Track outside transcripts separately. These entries do not change your ClassMate GPA.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setShowTransferTool(false)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.inputBg }}
+            >
+              <Ionicons name="close" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+            {[
+              { label: 'Transcript GPA', value: transferSummary.gpa },
+              { label: 'Units', value: transferSummary.units ? String(transferSummary.units) : '—' },
+              { label: 'Records', value: String(transferSummary.count) },
+            ].map((item) => (
+              <View key={item.label} style={{ flex: 1, borderRadius: 14, paddingVertical: 11, paddingHorizontal: 8, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.borderSubtle, alignItems: 'center' }}>
+                <Text style={{ fontSize: 10.5, color: colors.textTertiary, fontWeight: '700', textAlign: 'center' }}>{item.label}</Text>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginTop: 4 }}>{item.value}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={{ gap: 8, marginTop: 14 }}>
+            <TextInput
+              value={transferInstitution}
+              onChangeText={setTransferInstitution}
+              placeholder="Institution"
+              placeholderTextColor={colors.placeholder}
+              style={{ borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.inputBg, color: colors.text, paddingHorizontal: 13, paddingVertical: 11, fontSize: 14 }}
+            />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput
+                value={transferLabel}
+                onChangeText={setTransferLabel}
+                placeholder="Term"
+                placeholderTextColor={colors.placeholder}
+                style={{ flex: 1.2, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.inputBg, color: colors.text, paddingHorizontal: 13, paddingVertical: 11, fontSize: 14 }}
+              />
+              <TextInput
+                value={transferGpaInput}
+                onChangeText={setTransferGpaInput}
+                placeholder="GPA"
+                keyboardType="decimal-pad"
+                placeholderTextColor={colors.placeholder}
+                style={{ flex: 0.8, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.inputBg, color: colors.text, paddingHorizontal: 13, paddingVertical: 11, fontSize: 14 }}
+              />
+              <TextInput
+                value={transferUnitsInput}
+                onChangeText={setTransferUnitsInput}
+                placeholder="Units"
+                keyboardType="decimal-pad"
+                placeholderTextColor={colors.placeholder}
+                style={{ flex: 0.8, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.inputBg, color: colors.text, paddingHorizontal: 13, paddingVertical: 11, fontSize: 14 }}
+              />
+            </View>
+            <TouchableOpacity
+              onPress={handleAddTransferEntry}
+              style={{ borderRadius: 14, backgroundColor: colors.brand, paddingVertical: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+            >
+              <Ionicons name="add-circle-outline" size={17} color="white" />
+              <Text style={{ fontSize: 14, fontWeight: '800', color: 'white' }}>Add Transcript Record</Text>
+            </TouchableOpacity>
+          </View>
+          {transferEntries.length > 0 ? (
+            <View style={{ marginTop: 14, gap: 8 }}>
+              {transferEntries.map((entry) => (
+                <View key={entry.id} style={{ borderRadius: 14, borderWidth: 1, borderColor: colors.borderSubtle, backgroundColor: colors.bg, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
+                      {entry.institution}
+                    </Text>
+                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
+                      {entry.label} · GPA {entry.gpa} · {entry.units} units
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => handleDeleteTransferEntry(entry.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="trash-outline" size={18} color={colors.destructive} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* GPA Trend card */}
       <View style={{

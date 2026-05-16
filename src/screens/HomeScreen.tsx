@@ -2808,6 +2808,7 @@ export default function HomeScreen({
             <View style={{ marginTop: 16 }}>
               {homeDiningMenus.map((menu, index, shownMenus) => {
                 const previewItems = previewDiningItems(menu, 3);
+                const statusColor = menu.isOpen === true ? '#10B981' : menu.isOpen === false ? '#EF4444' : diningAccent;
                 return (
                   <TouchableOpacity
                     key={`hero-dining-${menu.id}`}
@@ -2825,12 +2826,21 @@ export default function HomeScreen({
                         <Ionicons name="restaurant-outline" size={20} color={themedIconColor(diningAccent, isDark)} />
                       </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
-                          {menu.name}
-                        </Text>
-                        {previewItems.length > 0 ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
+                            {menu.name}
+                          </Text>
+                          {menu.statusLabel ? (
+                            <View style={{ borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: `${statusColor}16`, borderWidth: 1, borderColor: `${statusColor}30` }}>
+                              <Text style={{ fontSize: 10, lineHeight: 13, fontWeight: '900', color: statusColor }}>
+                                {menu.statusLabel}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        {menu.statusDetail || previewItems.length > 0 ? (
                           <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }}>
-                            {previewItems.join(' · ')}
+                            {menu.statusDetail ?? previewItems.join(' · ')}
                           </Text>
                         ) : null}
                       </View>
@@ -4098,7 +4108,9 @@ export default function HomeScreen({
             >
               {diningMenus.length > 0 ? (
                 <View style={{ gap: 12 }}>
-                  {diningMenus.map((menu) => (
+                  {diningMenus.map((menu) => {
+                    const statusColor = menu.isOpen === true ? '#10B981' : menu.isOpen === false ? '#EF4444' : diningAccent;
+                    return (
                     <View
                       key={`dining-sheet-${menu.id}`}
                       style={{
@@ -4121,7 +4133,21 @@ export default function HomeScreen({
                             {menu.isExternalLinkOnly ? 'Official menu link' : `${menu.itemCount} items today`}
                           </Text>
                         </View>
+                        {menu.statusLabel ? (
+                          <View style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: `${statusColor}16`, borderWidth: 1, borderColor: `${statusColor}30` }}>
+                            <Text style={{ fontSize: 10.5, lineHeight: 14, fontWeight: '900', color: statusColor }}>
+                              {menu.statusLabel}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
+                      {menu.statusDetail ? (
+                        <View style={{ borderRadius: 14, backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.borderSubtle, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 }}>
+                          <Text style={{ fontSize: 13, lineHeight: 18, color: colors.textSecondary, fontWeight: '700' }}>
+                            {menu.statusDetail}
+                          </Text>
+                        </View>
+                      ) : null}
 
                       {menu.meals.map((meal, mealIndex) => {
                         return (
@@ -4199,7 +4225,8 @@ export default function HomeScreen({
                         <Ionicons name="open-outline" size={15} color={diningAccent} />
                       </TouchableOpacity>
                     </View>
-                  ))}
+                    );
+                  })}
                 </View>
               ) : (
                 <View style={{ alignItems: 'center', paddingVertical: 40 }}>

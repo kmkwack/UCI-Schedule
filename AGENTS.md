@@ -3205,3 +3205,15 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sid (Disable scheduled section seeding)
 - **`.github/workflows/seed-course-sections.yml`** — Removed the twice-daily cron trigger from the Seed course sections workflow so GitHub no longer sends repeated scheduled-run failure emails; the workflow remains available for manual `workflow_dispatch` runs when seeding is intentionally needed.
+
+### Session 64sie (Align Expo package patch versions)
+- **`package.json`**, **`package-lock.json`**, and the installed **`node_modules/`** Expo package tree — Updated Expo SDK 55 packages (`expo`, `expo-auth-session`, `expo-file-system`, `expo-media-library`, `expo-notifications`, `expo-sharing`, and `expo-web-browser`) to the patch versions expected by Expo so the compatibility check passes cleanly.
+
+### Session 64sif (Prevent dark-mode startup flash)
+- **`App.tsx`** — Added a last-theme preference cache and blocked the signed-in app from rendering until user preference bootstrap settles. Cached theme preference now applies before Supabase settings load, preventing the app from briefly showing light mode before switching to a saved dark profile.
+
+### Session 64sig (Add feedback-requested profile, GPA, dining, and safe-area polish)
+- **`src/data/userPreferences.ts`**, **`src/components/ProfileEditorScreen.tsx`**, and **`src/screens/SettingsScreen.tsx`** — Added editable profile links for Instagram, Discord, LinkedIn, and personal websites, persisted them in profile details, and surfaced saved links as tappable chips in the Settings profile card.
+- **`src/screens/GradesScreen.tsx`** — Added a What-if GPA calculator for ungraded current classes plus transfer transcript GPA records stored locally and kept separate from the calculated ClassMate GPA.
+- **`src/data/diningMenus.ts`** and **`src/screens/HomeScreen.tsx`** — Merged UCI dining status summaries into dining menu rows and displayed open/closed/later status plus meal timing in the Today dining card and full menu sheet.
+- **`src/screens/SettingsScreen.tsx`**, **`src/components/ProfileEditorScreen.tsx`**, and **`src/screens/TimetableScreen.tsx`** — Added bottom safe-area padding to Settings/Profile fixed footers and made the Timetable Settings sheet scrollable with bottom inset padding so lower buttons are not hidden behind system navigation.

@@ -1,5 +1,12 @@
 import { deviceTimeZoneFallback as resolveDeviceTimeZoneFallback, normalizeTimeZone } from './timeZone';
 
+export type ProfileLinks = {
+  instagram: string;
+  discord: string;
+  linkedin: string;
+  website: string;
+};
+
 export type EditableProfile = {
   firstName: string;
   middleName: string;
@@ -10,6 +17,7 @@ export type EditableProfile = {
   major: string;
   gender: string;
   dateOfBirth: string;
+  socialLinks: ProfileLinks;
 };
 
 export type TimetableVisibility = 'friends' | 'private' | 'public';
@@ -227,6 +235,28 @@ export function fallbackProfileFromEmail(email: string): EditableProfile {
     major: 'Undeclared',
     gender: 'Prefer not to say',
     dateOfBirth: '',
+    socialLinks: emptyProfileLinks(),
+  };
+}
+
+export function emptyProfileLinks(): ProfileLinks {
+  return {
+    instagram: '',
+    discord: '',
+    linkedin: '',
+    website: '',
+  };
+}
+
+export function normalizeProfileLinks(value: unknown): ProfileLinks {
+  const fallback = emptyProfileLinks();
+  if (!value || typeof value !== 'object') return fallback;
+  const candidate = value as Partial<Record<keyof ProfileLinks, unknown>>;
+  return {
+    instagram: typeof candidate.instagram === 'string' ? candidate.instagram : '',
+    discord: typeof candidate.discord === 'string' ? candidate.discord : '',
+    linkedin: typeof candidate.linkedin === 'string' ? candidate.linkedin : '',
+    website: typeof candidate.website === 'string' ? candidate.website : '',
   };
 }
 
@@ -260,6 +290,7 @@ export function profileDetailsFromProfile(
     nickname: profile.nickname,
     gender: profile.gender,
     dateOfBirth: profile.dateOfBirth,
+    socialLinks: normalizeProfileLinks(profile.socialLinks),
     boardProfileVisible,
     profileSetupComplete,
     onboardingComplete,
@@ -292,5 +323,6 @@ export function profileFromSources(
     major: typeof row?.major === 'string' && row.major.trim() ? row.major : fallback.major,
     gender: typeof details?.gender === 'string' && details.gender.trim() ? details.gender : fallback.gender,
     dateOfBirth: typeof details?.dateOfBirth === 'string' ? details.dateOfBirth : '',
+    socialLinks: normalizeProfileLinks(details?.socialLinks),
   };
 }

@@ -108,6 +108,8 @@ const MAJOR_OPTIONS = [
   'Urban Studies',
 ];
 
+type ProfileTextFieldKey = Exclude<keyof EditableProfile, 'socialLinks'>;
+
 function ProfileDropdownPicker({
   label,
   required,
@@ -365,7 +367,7 @@ export default function ProfileEditorScreen({
 
   const field = (
     label: string,
-    key: keyof EditableProfile,
+    key: ProfileTextFieldKey,
     disabled = false,
     placeholder?: string,
     inputProps?: Record<string, unknown>,
@@ -400,6 +402,46 @@ export default function ProfileEditorScreen({
         <Text style={{ fontSize: 11, color: colors.textTertiary, marginTop: 4 }}>Email cannot be changed</Text>
       ) : null}
       {error ? <Text style={{ fontSize: 11, color: colors.destructive, marginTop: 4 }}>{error}</Text> : null}
+    </View>
+  );
+
+  const socialField = (
+    label: string,
+    key: keyof EditableProfile['socialLinks'],
+    placeholder: string,
+    inputProps?: Record<string, unknown>
+  ) => (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>
+        {label}
+      </Text>
+      <View
+        style={{
+          backgroundColor: colors.inputBg,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 12,
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+        }}
+      >
+        <TextInput
+          value={form.socialLinks?.[key] ?? ''}
+          onChangeText={(value) => setForm((current) => ({
+            ...current,
+            socialLinks: {
+              ...(current.socialLinks ?? { instagram: '', discord: '', linkedin: '', website: '' }),
+              [key]: value,
+            },
+          }))}
+          placeholder={placeholder}
+          placeholderTextColor={colors.placeholder}
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={{ fontSize: 14, color: colors.text }}
+          {...inputProps}
+        />
+      </View>
     </View>
   );
 
@@ -531,13 +573,32 @@ export default function ProfileEditorScreen({
               )}
             </View>
           </View>
+
+          <View
+            style={{
+              paddingTop: 16,
+              borderTopWidth: 1,
+              borderTopColor: colors.borderSubtle,
+              marginBottom: 4,
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textTertiary, marginBottom: 16 }}>
+              Profile Links
+            </Text>
+            {socialField('Instagram', 'instagram', '@zotmate')}
+            {socialField('Discord', 'discord', 'username or invite link')}
+            {socialField('LinkedIn', 'linkedin', 'linkedin.com/in/your-name', { keyboardType: 'url' })}
+            {socialField('Website', 'website', 'https://your-site.com', { keyboardType: 'url' })}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
       <View
         onLayout={(event) => setFooterHeight(event.nativeEvent.layout.height)}
         style={{
-          padding: 20,
+          paddingHorizontal: 20,
+          paddingTop: 20,
+          paddingBottom: Math.max(insets.bottom + 20, 24),
           borderTopWidth: 1,
           borderTopColor: colors.borderSubtle,
         }}

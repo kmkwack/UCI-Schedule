@@ -130,6 +130,7 @@ type Timetable = { id: string; name: string; quarterKey: string; courses: Course
 - **`boards`** — dynamic board list per school (falls back to `FALLBACK_BOARDS` if empty)
 - **`board_requests`** — user-submitted board requests
 - **`friend_requests`** — `sender_id, receiver_id, status` (pending/accepted/rejected)
+- **`blocks`** — `blocker_id, blocked_id` (PRIMARY KEY on both); RLS allows users to manage only their own rows
 
 ### Multi-School
 Reviews scoped by `school` column. Value comes from `selectedUniversity?.name` (defaults to `'UC Irvine'`). All reads filter `.eq('school', school)`; all inserts include `school`.
@@ -271,6 +272,9 @@ const QUARTERS = [
 
 ### Session 76 (Friend timetable header — long name truncation + first/last only in all name displays)
 - `src/screens/FriendsScreen.tsx` — Left section of friend timetable header given `flex: 1` + `minWidth: 0` so it never crowds the quarter pill. Name and email texts get `numberOfLines={1} ellipsizeMode="tail"`. Avatar marked `flexShrink: 0` so it never collapses. Added `firstLastName()` helper; applied to every name display site: Add Friend search results, friends list rows, incoming request rows, sent request rows, and friend timetable header.
+
+### Session 90 (Block User — posts in BoardScreen)
+- `src/screens/BoardScreen.tsx` — Added `blockedUserIds` state (Set<string>). Added `fetchBlockedUsers()` (loads from Supabase `blocks` table on mount). Added `handleBlockUser(targetUserId, targetName)` (Alert confirmation → upsert to `blocks` → optimistic state update). Block button with `ban-outline` icon added next to Report button on every other user's post. `filteredPosts` useMemo filters out posts from blocked users. Requires a new `blocks` table in Supabase (see SQL in Supabase Tables section).
 
 ### Session 87 (Hero carousel — adjacent card visible during drag)
 - `src/screens/HomeScreen.tsx` — Extracted the hero card IIFE into a `renderHeroCardContent(item)` function inside the component (closes over all state/handlers; each card type returns just its inner `View`, with `raisedCardStyle` removed from inner Views). Added `heroCardWidthRef`, `heroDragAdjacentIndex` state, `heroDragAdjacentIndexRef`, and `heroDragDirectionRef`. Updated outer container: `raisedCardStyle` moved to the outermost `View`; added an `overflow:'hidden'` inner `View` wrapping a single `Animated.View` that carries both `heroSlideAnim` transform and `heroOpacityAnim`; the adjacent card is absolutely positioned at `±heroCardWidth` inside the same `Animated.View` so it slides in while the current card slides out. Updated `heroPanResponder`: `onPanResponderGrant` clears adjacent state; `onPanResponderMove` sets `heroDragAdjacentIndex` on the first 4px of horizontal drag; `onPanResponderRelease` slides exit to `±cardWidth` (from `heroCardWidthRef`) then immediately swaps index, clearing adjacent state (no enter-from animation needed since adjacent card is already in place).

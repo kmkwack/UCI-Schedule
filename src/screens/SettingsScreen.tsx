@@ -27,6 +27,7 @@ type Props = {
   deletingAccount?: boolean;
   userName?: string;
   userEmail?: string;
+  userId?: string;
   school: string;
   userProfile: EditableProfile;
   userSettings: UserSettingsState;
@@ -43,7 +44,7 @@ type Props = {
   savingRegion?: boolean;
 };
 
-type Screen = 'main' | 'profile' | 'privacy' | 'notifications' | 'appearance' | 'language' | 'help' | 'about' | 'moderation' | 'board_requests';
+type Screen = 'main' | 'profile' | 'privacy' | 'notifications' | 'appearance' | 'language' | 'help' | 'about' | 'moderation' | 'board_requests' | 'blocked_users' | 'banned_words';
 
 const SUPPORT_EMAILS = ['heyy.seans@gmail.com', 'hii.seans@gmail.com'];
 const SUPPORT_EMAIL_LABEL = SUPPORT_EMAILS.join(', ');
@@ -2034,6 +2035,245 @@ function BoardRequestsScreen({ school, onBack }: { school: string; onBack: () =>
   );
 }
 
+// ─── Sub-screen: Blocked Users ────────────────────────────────────────────────
+function BlockedUsersScreen({ userId, school, onBack }: { userId: string; school: string; onBack: () => void }) {
+  const { colors } = useTheme();
+  const [anonymousBlocks, setAnonymousBlocks] = useState<Array<{ blocked_id: string }>>([]);
+  const [friendBlocks, setFriendBlocks] = useState<Array<{ blocked_id: string; name: string | null; email: string | null }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [clearingAll, setClearingAll] = useState(false);
+  const [unblockingId, setUnblockingId] = useState<string | null>(null);
+
+  useEffect(() => { void fetchBlocks(); }, []);
+
+  async function fetchBlocks() {
+    setLoading(true);
+    const { data } = await supabase.from('blocks').select('blocked_id, source').eq('blocker_id', userId);
+    if (!data) { setLoading(false); return; }
+
+    const anonBlocks = (data as any[]).filter((r) => r.source === 'board' || !r.source);
+    const fBlocks = (data as any[]).filter((r) => r.source === 'friend');
+    setAnonymousBlocks(anonBlocks);
+
+    if (fBlocks.length > 0) {
+      const friendIds = fBlocks.map((r: any) => r.blocked_id as string);
+      const { data: profiles } = await supabase.from('profiles').select('id, name, email').in('id', friendIds);
+      const profileMap = Object.fromEntries(
+        ((profiles ?? []) as Array<{ id: string; name: string | null; email: string | null }>).map((p) => [p.id, p])
+      );
+      setFriendBlocks(fBlocks.map((r: any) => ({
+        blocked_id: r.blocked_id as string,
+        name: profileMap[r.blocked_id]?.name ?? null,
+        email: profileMap[r.blocked_id]?.email ?? null,
+      })));
+    } else {
+      setFriendBlocks([]);
+    }
+    setLoading(false);
+  }
+
+  function confirmClearAll() {
+    Alert.alert(
+      'Clear All Anonymous Blocks',
+      'This will unblock all anonymous users from Boards and Messages.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: async () => {
+            setClearingAll(true);
+            await supabase.from('blocks').delete().eq('blocker_id', userId).or('source.eq.board,source.is.null');
+            setClearingAll(false);
+            setAnonymousBlocks([]);
+          },
+        },
+      ]
+    );
+  }
+
+  async function handleUnblockFriend(blockedId: string) {
+    setUnblockingId(blockedId);
+    await supabase.from('blocks').delete().eq('blocker_id', userId).eq('blocked_id', blockedId).eq('source', 'friend');
+    setUnblockingId(null);
+    setFriendBlocks((prev) => prev.filter((b) => b.blocked_id !== blockedId));
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.card }}>
+      <SubHeader title="Blocked Users" onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Anonymous
+        </Text>
+        <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, overflow: 'hidden', marginBottom: 28 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 }}>
+            <View>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>Boards &amp; Messages</Text>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
+                {loading ? 'Loading…' : anonymousBlocks.length === 0
+                  ? 'No anonymous users blocked'
+                  : `${anonymousBlocks.length} user${anonymousBlocks.length !== 1 ? 's' : ''} blocked`}
+              </Text>
+            </View>
+            {!loading && anonymousBlocks.length > 0 && (
+              <TouchableOpacity
+                onPress={confirmClearAll}
+                disabled={clearingAll}
+                style={{ backgroundColor: '#fee2e2', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14 }}
+              >
+                {clearingAll
+                  ? <ActivityIndicator size="small" color="#dc2626" />
+                  : <Text style={{ color: '#dc2626', fontWeight: '700', fontSize: 13 }}>Clear All</Text>}
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Blocked Friends
+        </Text>
+        <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, overflow: 'hidden' }}>
+          {loading ? (
+            <ActivityIndicator style={{ padding: 20 }} color={colors.textSecondary} />
+          ) : friendBlocks.length === 0 ? (
+            <Text style={{ padding: 16, color: colors.textSecondary, fontSize: 14 }}>No friends blocked</Text>
+          ) : (
+            friendBlocks.map((block, index) => (
+              <View key={block.blocked_id}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>{block.name ?? 'Unknown User'}</Text>
+                    {block.email ? <Text style={{ fontSize: 13, color: colors.textSecondary }}>{block.email}</Text> : null}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => void handleUnblockFriend(block.blocked_id)}
+                    disabled={unblockingId === block.blocked_id}
+                    style={{ backgroundColor: colors.bgTertiary, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14 }}
+                  >
+                    {unblockingId === block.blocked_id
+                      ? <ActivityIndicator size="small" color={colors.textSecondary} />
+                      : <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>Unblock</Text>}
+                  </TouchableOpacity>
+                </View>
+                {index < friendBlocks.length - 1 && (
+                  <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginLeft: 16 }} />
+                )}
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+// ─── Sub-screen: Banned Words ─────────────────────────────────────────────────
+function BannedWordsScreen({ onBack }: { onBack: () => void }) {
+  const { colors } = useTheme();
+  const [words, setWords] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newWord, setNewWord] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [deletingWord, setDeletingWord] = useState<string | null>(null);
+
+  useEffect(() => { void fetchWords(); }, []);
+
+  async function fetchWords() {
+    setLoading(true);
+    const { data } = await supabase.from('banned_words').select('word').order('word', { ascending: true });
+    setLoading(false);
+    if (data) setWords((data as Array<{ word: string }>).map((r) => r.word));
+  }
+
+  async function handleAdd() {
+    const word = newWord.trim().toLowerCase();
+    if (!word || adding) return;
+    setAdding(true);
+    const { error } = await supabase.from('banned_words').upsert({ word }, { onConflict: 'word' });
+    setAdding(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    setNewWord('');
+    setWords((prev) => [...prev.filter((w) => w !== word), word].sort());
+  }
+
+  async function handleDelete(word: string) {
+    setDeletingWord(word);
+    await supabase.from('banned_words').delete().eq('word', word);
+    setDeletingWord(null);
+    setWords((prev) => prev.filter((w) => w !== word));
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.card }}>
+      <SubHeader title="Banned Words" onBack={onBack} />
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16, lineHeight: 19 }}>
+          Posts containing any of these words will be blocked before submission.
+        </Text>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
+          <TextInput
+            value={newWord}
+            onChangeText={setNewWord}
+            placeholder="Add a word..."
+            placeholderTextColor={colors.placeholder}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="done"
+            onSubmitEditing={() => void handleAdd()}
+            style={{
+              flex: 1, backgroundColor: colors.inputBg, borderRadius: 12,
+              paddingHorizontal: 14, paddingVertical: 11,
+              fontSize: 14, color: colors.text,
+              borderWidth: 1, borderColor: colors.border,
+            }}
+          />
+          <TouchableOpacity
+            onPress={() => void handleAdd()}
+            disabled={!newWord.trim() || adding}
+            style={{
+              backgroundColor: colors.brand, borderRadius: 12,
+              paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center',
+              opacity: !newWord.trim() || adding ? 0.5 : 1,
+            }}
+          >
+            {adding
+              ? <ActivityIndicator size="small" color="white" />
+              : <Ionicons name="add" size={22} color="white" />}
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, overflow: 'hidden' }}>
+          {loading ? (
+            <ActivityIndicator style={{ padding: 20 }} color={colors.textSecondary} />
+          ) : words.length === 0 ? (
+            <Text style={{ padding: 16, color: colors.textSecondary, fontSize: 14 }}>No banned words yet.</Text>
+          ) : (
+            words.map((word, index) => (
+              <View key={word}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+                  <Text style={{ flex: 1, fontSize: 14, color: colors.text, fontFamily: 'monospace' }}>{word}</Text>
+                  <TouchableOpacity
+                    onPress={() => void handleDelete(word)}
+                    disabled={deletingWord === word}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    {deletingWord === word
+                      ? <ActivityIndicator size="small" color={colors.textSecondary} />
+                      : <Ionicons name="trash-outline" size={18} color={colors.destructive} />}
+                  </TouchableOpacity>
+                </View>
+                {index < words.length - 1 && <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginLeft: 16 }} />}
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
 // ─── Main Settings screen ─────────────────────────────────────────────────────
 export default function SettingsScreen({
   visible,
@@ -2043,6 +2283,7 @@ export default function SettingsScreen({
   deletingAccount = false,
   userName = 'John Doe',
   userEmail = 'john.doe@university.edu',
+  userId = '',
   school,
   userProfile,
   userSettings,
@@ -2165,6 +2406,8 @@ export default function SettingsScreen({
       case 'about': return <AboutScreen onBack={goBack} />;
       case 'moderation': return <ModerationScreen school={school} onBack={goBack} />;
       case 'board_requests': return <BoardRequestsScreen school={school} onBack={goBack} />;
+      case 'blocked_users': return <BlockedUsersScreen userId={userId} school={school} onBack={goBack} />;
+      case 'banned_words': return <BannedWordsScreen onBack={goBack} />;
       default: return null;
     }
   };
@@ -2244,6 +2487,7 @@ export default function SettingsScreen({
             items={[
               { label: 'Edit Profile', icon: 'person-outline', onPress: () => navigateTo('profile') },
               { label: 'Privacy & Security', icon: 'shield-outline', onPress: () => navigateTo('privacy') },
+              { label: 'Blocked Users', icon: 'ban-outline', onPress: () => navigateTo('blocked_users') },
             ]}
           />
           <SectionGroup
@@ -2267,6 +2511,7 @@ export default function SettingsScreen({
               items={[
                 { label: 'Reports Inbox', icon: 'shield-checkmark-outline', onPress: () => navigateTo('moderation') },
                 { label: 'Board Requests', icon: 'albums-outline', onPress: () => navigateTo('board_requests') },
+                { label: 'Banned Words', icon: 'text-outline', onPress: () => navigateTo('banned_words') },
               ]}
             />
           )}

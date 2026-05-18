@@ -1121,7 +1121,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
               <Text style={{ fontSize: 10, fontWeight: '900', color: showTransferTool ? 'white' : colors.brand }}>{transferEntries.length}</Text>
             </View>
           ) : null}
-        </View>
+        </TouchableOpacity>
       </View>
 
       {showWhatIfTool ? (

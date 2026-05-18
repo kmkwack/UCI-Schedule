@@ -1,7 +1,7 @@
 # App Store Review Guidelines — Compliance Audit
 
 **App:** ClassMate  
-**Audited:** 2026-05-16  
+**Audited:** 2026-05-18  
 **Reference:** https://developer.apple.com/app-store/review/guidelines/
 
 ---
@@ -12,9 +12,9 @@
 |---|---|---|---|
 | **1.1.1** | No defamatory/discriminatory content | ✅ | No such content in the app itself |
 | **1.1.6** | No false information or prank functionality | ✅ | Data sourced from Anteater API and Supabase |
-| **1.2** | UGC: mechanism to **filter** objectionable material | ⚠️ | Posts go live instantly with no automated keyword/content filtering |
-| **1.2** | UGC: mechanism to **report** offensive content | ✅ | Full `ReportModal` with reasons + Supabase `reports` table in `BoardScreen.tsx` |
-| **1.2** | UGC: ability to **block abusive users** | ❌ | No block/mute user feature exists anywhere in the app — required by guideline |
+| **1.2** | UGC: mechanism to **filter** objectionable material | ✅ | `banned_words` Supabase table; `containsBannedContent()` checks post title+body before submission; `BannedWordsScreen` in Settings → Admin for moderators to manage the list |
+| **1.2** | UGC: mechanism to **report** offensive content | ✅ | Report modal with 6 reasons + Supabase `reports` table; covers posts (BoardScreen), comments (BoardScreen action sheet), and direct messages (MessagesScreen `···` menu) |
+| **1.2** | UGC: ability to **block abusive users** | ✅ | Block button on posts + comment action sheet (BoardScreen); ban icon in ClassMates edit mode (FriendsScreen); `···` → Block in Messages; Settings → Blocked Users sub-screen (clear all anonymous / individual friend unblock) |
 | **1.2** | UGC: published **contact information** | ✅ | Help screen has "Contact Support" that opens email |
 | **1.5** | Developer contact info accessible | ✅ | Support email in Settings → Help |
 | **1.6** | Data security for user information | ✅ | Supabase handles auth + RLS; no raw credential storage |
@@ -25,7 +25,7 @@
 
 | # | Requirement | Status | Notes / Action Required |
 |---|---|---|---|
-| **2.1** | App must be **complete** — no placeholder/empty screens | ❌ | `MessagesScreen` is explicitly unfinished ("empty until Supabase wired"). Apple will reject an app with a non-functional tab |
+| **2.1** | App must be **complete** — no placeholder/empty screens | ✅ | `MessagesScreen` is fully implemented (1563 lines) with real Supabase DMs, conversation list, message bubbles, and read receipts |
 | **2.1** | Backend services live during review | ✅ | Supabase and Anteater API are live |
 | **2.1** | Provide demo account for reviewers | ⚠️ | If Google OAuth is the only login, reviewers may be unable to create accounts. Need a demo email/password account |
 | **2.3.3** | Screenshots show app in use | ⚠️ | No screenshots produced yet — needed for App Store Connect submission |
@@ -84,17 +84,15 @@
 
 ## Priority Action Table
 
-| Priority | Issue | Guideline | What To Do |
-|---|---|---|---|
-| 🔴 **Blocker** | No **Sign in with Apple** | 4.8 | Add Apple OAuth via `expo-apple-authentication` alongside Google Sign-in |
-| 🔴 **Blocker** | **MessagesScreen** is empty/unfinished | 2.1 | Either implement real DMs, or hide the tab entirely until the feature is ready |
-| 🔴 **Blocker** | No **Block User** feature in UGC sections | 1.2 | Add block/mute user option on posts, comments, and in FriendsScreen |
-| 🟠 **Required** | **Privacy Policy public URL** needed for App Store Connect | 5.1.1(i) | Host the privacy policy at a public URL (e.g. GitHub Pages) and paste it into App Store Connect |
-| 🟠 **Required** | **Content filtering** for UGC posts | 1.2 | Basic profanity filter or server-side moderation queue before posts go live |
-| 🟠 **Required** | **Demo account** credentials for App Review | 2.1 | Create a static email/password test account and include credentials in App Review Notes |
-| 🟡 **Important** | Age rating likely **12+** due to community UGC | 2.3.6 | Select 12+ in App Store Connect; answer "Yes" to infrequent/mild mature content for UGC |
-| 🟡 **Important** | UCI/UC Irvine **trademark authorization** | 5.2.1 | Obtain written permission or add "Not affiliated with UC Irvine" disclaimer |
-| 🟡 **Important** | **iPad layout** not tested | 2.4.1 | Test on iPad simulator; fix horizontal layout issues |
-| 🟡 **Important** | Sports data **web scraping ToS** | 5.2.2 | Check `ucirvinesports.com` ToS or switch to an authorized data source |
-| 🟢 **Low** | Forced sign-in for all features | 5.1.1(v) | Consider allowing read-only course browsing without an account |
-| 🟢 **Low** | App Store screenshots not yet created | 2.3.3 | Create at least 3 screenshots per required device size (6.7" and 6.1" iPhone) |
+| Priority | Issue | Guideline | Status | What To Do |
+|---|---|---|---|---|
+| 🔴 **Blocker** | No **Sign in with Apple** | 4.8 | ❌ Open | Add Apple OAuth via `expo-apple-authentication` alongside Google Sign-in |
+| 🟠 **Required** | **Privacy Policy public URL** needed for App Store Connect | 5.1.1(i) | ❌ Open | Host the privacy policy at a public URL (e.g. GitHub Pages) and paste it into App Store Connect |
+| 🟠 **Required** | **Content filtering** for UGC posts | 1.2 | ✅ Done | `banned_words` Supabase table + `containsBannedContent()` in BoardScreen; admin UI in Settings |
+| 🟠 **Required** | **Demo account** credentials for App Review | 2.1 | ❌ Open | Create a static email/password test account and include credentials in App Review Notes |
+| 🟡 **Important** | Age rating likely **12+** due to community UGC | 2.3.6 | ❌ Open | Select 12+ in App Store Connect; answer "Yes" to infrequent/mild mature content for UGC |
+| 🟡 **Important** | UCI/UC Irvine **trademark authorization** | 5.2.1 | ❌ Open | Obtain written permission or add "Not affiliated with UC Irvine" disclaimer |
+| 🟡 **Important** | **iPad layout** not tested | 2.4.1 | ❌ Open | Test on iPad simulator; fix horizontal layout issues |
+| 🟡 **Important** | Sports data **web scraping ToS** | 5.2.2 | ❌ Open | Check `ucirvinesports.com` ToS or switch to an authorized data source |
+| 🟢 **Low** | Forced sign-in for all features | 5.1.1(v) | ❌ Open | Consider allowing read-only course browsing without an account |
+| 🟢 **Low** | App Store screenshots not yet created | 2.3.3 | ❌ Open | Create at least 3 screenshots per required device size (6.7" and 6.1" iPhone) |

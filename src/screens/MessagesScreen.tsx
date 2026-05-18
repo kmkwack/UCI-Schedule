@@ -3,11 +3,14 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   FlatList,
   Image,
   InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Text,
   TextInput,
@@ -218,6 +221,15 @@ function SourcePostPreviewImage({
   );
 }
 
+const REPORT_REASONS = [
+  'Spam',
+  'Harassment or hate',
+  'Inappropriate content',
+  'False information',
+  'Scam or unsafe transaction',
+  'Other',
+];
+
 export default function MessagesScreen({ onClose, openChatWith, userId, school, onOpenSourcePost }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -232,6 +244,14 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
   const [openingConversation, setOpeningConversation] = useState(false);
   const [sending, setSending] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [blockingUser, setBlockingUser] = useState(false);
+  const blockedPartnerIdsRef = useRef<Set<string>>(new Set());
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState(REPORT_REASONS[0]);
+  const [reportDetails, setReportDetails] = useState('');
+  const [submittingReport, setSubmittingReport] = useState(false);
+  const reportBackdropAnim = useRef(new Animated.Value(0)).current;
+  const reportSheetAnim = useRef(new Animated.Value(600)).current;
   const selectedChatRef = useRef<ConversationPreview | null>(null);
   const messageListRef = useRef<FlatList<MessageBubble>>(null);
   const messageInputRef = useRef<TextInput>(null);
@@ -512,7 +532,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
           sourcePostsById
         );
       })
-      .filter((preview): preview is ConversationPreview => !!preview)
+      .filter((preview): preview is ConversationPreview => !!preview && !blockedPartnerIdsRef.current.has(preview.partnerId))
       .sort((a, b) => b.sortStamp - a.sortStamp);
 
     setConversations(previews);
@@ -759,6 +779,13 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
   }, [fetchConversations, fetchMessages, findExistingConversationId, hasValidUserId, loadSourcePostsById, school, selectChat]);
 
   useEffect(() => {
+    if (!hasValidUserId) return;
+    supabase.from('blocks').select('blocked_id').eq('blocker_id', userId).then(({ data }) => {
+      if (data) blockedPartnerIdsRef.current = new Set(data.map((r: any) => r.blocked_id as string));
+    });
+  }, [hasValidUserId, userId]);
+
+  useEffect(() => {
     void fetchConversations();
   }, [fetchConversations]);
 
@@ -969,6 +996,106 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
       ]
     );
   }, [beginEditMessage, handleDeleteMessage, retryFailedMessage]);
+
+  function openConversationMenu() {
+    if (!selectedChat) return;
+    const isAnonymous = selectedChat.kind === 'board_anonymous';
+    const name = selectedChat.name;
+    const blockMessage = isAnonymous
+      ? "Block this anonymous user? You won't see their messages."
+      : `Block ${name}? They will be removed from your ClassMates and won't be able to contact you.`;
+
+    const doBlock = async () => {
+      if (!selectedChat) return;
+      const partnerId = selectedChat.partnerId;
+      const source = isAnonymous ? 'board' : 'friend';
+      setBlockingUser(true);
+      await supabase.from('blocks').upsert(
+        { blocker_id: userId, blocked_id: partnerId, source },
+        { onConflict: 'blocker_id,blocked_id' }
+      );
+      if (!isAnonymous) {
+        await Promise.all([
+          supabase.from('friend_requests').delete().eq('sender_id', userId).eq('receiver_id', partnerId),
+          supabase.from('friend_requests').delete().eq('sender_id', partnerId).eq('receiver_id', userId),
+        ]);
+      }
+      blockedPartnerIdsRef.current = new Set([...blockedPartnerIdsRef.current, partnerId]);
+      setBlockingUser(false);
+      selectChat(null);
+      setMessages([]);
+      setMessageInput('');
+      setEditingMessage(null);
+      setConversations((prev) => prev.filter((c) => c.partnerId !== partnerId));
+    };
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Cancel', 'Report', 'Block'], cancelButtonIndex: 0, destructiveButtonIndex: 2 },
+        (index) => {
+          if (index === 1) {
+            setTimeout(() => openReportModal(), 350);
+          } else if (index === 2) {
+            Alert.alert('Block User', blockMessage, [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Block', style: 'destructive', onPress: () => void doBlock() },
+            ]);
+          }
+        }
+      );
+    } else {
+      Alert.alert('Options', undefined, [
+        { text: 'Report', onPress: () => openReportModal() },
+        { text: 'Block', style: 'destructive', onPress: () => Alert.alert('Block User', blockMessage, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Block', style: 'destructive', onPress: () => void doBlock() },
+        ]) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }
+
+  function openReportModal() {
+    setReportReason(REPORT_REASONS[0]);
+    setReportDetails('');
+    reportBackdropAnim.setValue(0);
+    reportSheetAnim.setValue(600);
+    setShowReportModal(true);
+    Animated.parallel([
+      Animated.spring(reportSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
+      Animated.timing(reportBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }
+
+  function closeReportModal() {
+    Animated.parallel([
+      Animated.timing(reportSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(reportBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start(() => setShowReportModal(false));
+  }
+
+  async function submitMessageReport() {
+    if (!selectedChat || submittingReport) return;
+    Keyboard.dismiss();
+    setSubmittingReport(true);
+    const { error } = await supabase.from('reports').insert({
+      reporter_id: userId,
+      school,
+      target_type: 'message',
+      target_id: selectedChat.conversationId,
+      reason: reportReason,
+      details: reportDetails.trim() || null,
+      status: 'pending',
+    });
+    setSubmittingReport(false);
+    if (error) {
+      Alert.alert('Could not send report', error.message);
+      return;
+    }
+    closeReportModal();
+    setReportDetails('');
+    Alert.alert('Report sent', 'Thanks. We will review this report soon.');
+  }
 
   const handleSend = async () => {
     if (!messageInput.trim() || !selectedChat || sending || !hasValidUserId) return;
@@ -1193,6 +1320,15 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
                 {selectedChat.label}
               </Text>
             </View>
+            <TouchableOpacity
+              onPress={openConversationMenu}
+              disabled={blockingUser}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              {blockingUser
+                ? <ActivityIndicator size="small" color={colors.textSecondary} />
+                : <Ionicons name="ellipsis-horizontal" size={22} color={colors.textSecondary} />}
+            </TouchableOpacity>
           </View>
 
           {selectedSourcePost ? (
@@ -1445,6 +1581,84 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+
+        <Modal visible={showReportModal} transparent animationType="none" onRequestClose={closeReportModal}>
+          <Animated.View style={{
+            flex: 1, justifyContent: 'flex-end',
+            backgroundColor: reportBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }),
+          }}>
+            <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={closeReportModal} />
+            <Animated.View style={{
+              backgroundColor: colors.card,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              paddingHorizontal: 20,
+              paddingTop: 18,
+              paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+              transform: [{ translateY: reportSheetAnim }],
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Report</Text>
+                <TouchableOpacity onPress={closeReportModal}>
+                  <Ionicons name="close" size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={{ fontSize: 13, lineHeight: 20, color: colors.textSecondary, marginBottom: 16 }}>
+                Tell us what is wrong with this conversation and we will review it.
+              </Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Reason</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                {REPORT_REASONS.map((option) => {
+                  const active = reportReason === option;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      onPress={() => setReportReason(option)}
+                      style={{
+                        paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, borderWidth: 1,
+                        borderColor: active ? colors.brand : colors.border,
+                        backgroundColor: active ? colors.brandBg : colors.bgTertiary,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, color: active ? colors.brand : colors.textSecondary, fontWeight: '600' }}>{option}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Details</Text>
+              <TextInput
+                value={reportDetails}
+                onChangeText={setReportDetails}
+                placeholder="Optional: add more context"
+                placeholderTextColor={colors.placeholder}
+                multiline
+                style={{
+                  backgroundColor: colors.inputBg, borderRadius: 14,
+                  paddingHorizontal: 14, paddingVertical: 12,
+                  minHeight: 110, textAlignVertical: 'top',
+                  fontSize: 14, color: colors.text, marginBottom: 18,
+                }}
+              />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  onPress={closeReportModal}
+                  style={{ flex: 1, backgroundColor: colors.bgTertiary, borderRadius: 14, paddingVertical: 15, alignItems: 'center' }}
+                >
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void submitMessageReport()}
+                  disabled={submittingReport}
+                  style={{ flex: 1, backgroundColor: '#ef4444', borderRadius: 14, paddingVertical: 15, alignItems: 'center', opacity: submittingReport ? 0.72 : 1 }}
+                >
+                  {submittingReport
+                    ? <ActivityIndicator color="white" />
+                    : <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>Send Report</Text>}
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          </Animated.View>
+        </Modal>
       </View>
     );
   }
@@ -1558,6 +1772,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
           )}
         />
       )}
+
     </View>
   );
 }

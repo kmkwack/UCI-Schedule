@@ -860,6 +860,27 @@ export default function FriendsScreen({
     setSentRequestIds((prev) => prev.filter((id) => id !== friendId));
   };
 
+  const handleBlockFriend = (friendId: string, friendName: string) => {
+    Alert.alert(
+      'Block ClassMate',
+      `Block ${friendName}? They will be removed from your ClassMates and won't be able to send you messages.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            await supabase.from('blocks').upsert(
+              { blocker_id: userId, blocked_id: friendId, source: 'friend' },
+              { onConflict: 'blocker_id,blocked_id' }
+            );
+            await handleDeleteFriend(friendId);
+          },
+        },
+      ]
+    );
+  };
+
   const visibleDays = useMemo(() => {
     const used = new Set<string>();
     activeCourses.forEach((c) => parseDays(c.days).forEach((d) => used.add(d)));
@@ -1410,20 +1431,31 @@ export default function FriendsScreen({
                     )}
 
                     {editMode ? (
-                      <TouchableOpacity
-                        onPress={() =>
-                          Alert.alert('Remove ClassMate', `Remove ${f.name} from your ClassMates?`, [
-                            { text: 'Cancel', style: 'cancel' },
-                            { text: 'Remove', style: 'destructive', onPress: () => handleDeleteFriend(f.id) },
-                          ])
-                        }
-                        style={{
-                          width: 36, height: 36, borderRadius: 18,
-                          backgroundColor: colors.destructive, alignItems: 'center', justifyContent: 'center',
-                        }}
-                      >
-                        <Ionicons name="remove-outline" size={20} color="white" />
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          onPress={() => handleBlockFriend(f.id, f.name)}
+                          style={{
+                            width: 36, height: 36, borderRadius: 18,
+                            backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          <Ionicons name="ban-outline" size={18} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() =>
+                            Alert.alert('Remove ClassMate', `Remove ${f.name} from your ClassMates?`, [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Remove', style: 'destructive', onPress: () => handleDeleteFriend(f.id) },
+                            ])
+                          }
+                          style={{
+                            width: 36, height: 36, borderRadius: 18,
+                            backgroundColor: colors.destructive, alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          <Ionicons name="remove-outline" size={20} color="white" />
+                        </TouchableOpacity>
+                      </View>
                     ) : null}
                   </View>
 

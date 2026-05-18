@@ -776,6 +776,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const isDraggingPill = useRef(false);
   const pillTouchStartX = useRef(0);
   const pillDragTouchOffsetX = useRef(0);
+  const pillTapTargetIdxRef = useRef(0);
   const currentTabRef = useRef(currentTab);
   currentTabRef.current = currentTab;
 
@@ -803,15 +804,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const tabW = w / 5;
       const currentX = (pillXAnim as any)._value ?? TABS.indexOf(currentTabRef.current) * tabW;
       const touchX = Math.max(0, Math.min(w, evt.nativeEvent.locationX));
-      const touchIsOnCurrentPill = touchX >= currentX && touchX <= currentX + tabW;
       pillTouchStartX.current = touchX;
-      if (touchIsOnCurrentPill) {
-        pillDragTouchOffsetX.current = touchX - currentX;
-      } else {
-        pillDragTouchOffsetX.current = tabW / 2;
-        Animated.spring(pillXAnim, { toValue: Math.max(0, Math.min(w - tabW, touchX - tabW / 2)), useNativeDriver: false, tension: 260, friction: 22 }).start(() => { isDraggingPill.current = true; });
-        isDraggingPill.current = true;
-      }
+      // Snap pill to the tapped tab immediately on press-down
+      const tappedIdx = Math.max(0, Math.min(4, Math.floor(touchX / tabW)));
+      pillTapTargetIdxRef.current = tappedIdx;
+      Animated.spring(pillXAnim, { toValue: tappedIdx * tabW, useNativeDriver: false, tension: 260, friction: 22 }).start();
+      // Drag offset: natural offset if pressing on current pill, centered otherwise
+      const touchIsOnCurrentPill = touchX >= currentX && touchX <= currentX + tabW;
+      pillDragTouchOffsetX.current = touchIsOnCurrentPill ? touchX - currentX : tabW / 2;
       Animated.spring(pillScaleAnim, { toValue: 1.15, useNativeDriver: false, tension: 300, friction: 10 }).start();
     },
     onPanResponderMove: (_, gs) => {
@@ -835,8 +835,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           else (setCurrentTab as (t: typeof TABS[number]) => void)(newTab);
         }
       } else {
+        // Tap: pill already animated to tappedIdx in grant — just switch the tab
+        const tappedIdx = pillTapTargetIdxRef.current;
         const tabW = tabBarWidthRef.current / 5;
-        const tappedIdx = Math.max(0, Math.min(4, Math.floor(pillTouchStartX.current / tabW)));
+        Animated.spring(pillXAnim, { toValue: tappedIdx * tabW, useNativeDriver: false, tension: 260, friction: 22 }).start();
         const tappedTab = TABS[tappedIdx];
         triggerTabReset(tappedTab);
         if (tappedTab === 'friends') handleOpenFriendsTabRef.current?.();
@@ -3101,6 +3103,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               deletingAccount={deletingAccount}
               userName={displayUserName}
               userEmail={userEmail}
+              userId={userId ?? ''}
               school={currentSchool}
               userProfile={userProfile}
               userSettings={userSettings}

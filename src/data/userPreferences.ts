@@ -1,10 +1,14 @@
 import { deviceTimeZoneFallback as resolveDeviceTimeZoneFallback, normalizeTimeZone } from './timeZone';
 
+export type ProfileLinkVisibility = 'hidden' | 'friends' | 'school';
+
 export type ProfileLinks = {
   instagram: string;
   discord: string;
   linkedin: string;
+  github: string;
   website: string;
+  visibility: ProfileLinkVisibility;
 };
 
 export type EditableProfile = {
@@ -244,7 +248,9 @@ export function emptyProfileLinks(): ProfileLinks {
     instagram: '',
     discord: '',
     linkedin: '',
+    github: '',
     website: '',
+    visibility: 'friends',
   };
 }
 
@@ -256,7 +262,11 @@ export function normalizeProfileLinks(value: unknown): ProfileLinks {
     instagram: typeof candidate.instagram === 'string' ? candidate.instagram : '',
     discord: typeof candidate.discord === 'string' ? candidate.discord : '',
     linkedin: typeof candidate.linkedin === 'string' ? candidate.linkedin : '',
+    github: typeof candidate.github === 'string' ? candidate.github : '',
     website: typeof candidate.website === 'string' ? candidate.website : '',
+    visibility: candidate.visibility === 'hidden' || candidate.visibility === 'school' || candidate.visibility === 'friends'
+      ? candidate.visibility
+      : 'friends',
   };
 }
 

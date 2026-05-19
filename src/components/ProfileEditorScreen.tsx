@@ -20,7 +20,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-import type { EditableProfile } from '../data/userPreferences';
+import { supabase } from '../lib/supabase';
+import { emptyProfileLinks, normalizeProfileLinks } from '../data/userPreferences';
+import type { EditableProfile, ProfileLinkVisibility } from '../data/userPreferences';
 
 const MAJOR_OPTIONS = [
   'Aerospace Engineering',
@@ -109,6 +111,12 @@ const MAJOR_OPTIONS = [
 ];
 
 type ProfileTextFieldKey = Exclude<keyof EditableProfile, 'socialLinks'>;
+
+const PROFILE_LINK_VISIBILITY_OPTIONS: Array<{ value: ProfileLinkVisibility; label: string }> = [
+  { value: 'friends', label: 'Friends' },
+  { value: 'school', label: 'School' },
+  { value: 'hidden', label: 'Hidden' },
+];
 
 function ProfileDropdownPicker({
   label,
@@ -320,6 +328,7 @@ export default function ProfileEditorScreen({
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [kbHeight, setKbHeight] = useState(0);
   const [footerHeight, setFooterHeight] = useState(0);
+  const [profileSocialSchool, setProfileSocialSchool] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const dobRef = useRef<View>(null);
   const dobFocused = useRef(false);
@@ -341,6 +350,50 @@ export default function ProfileEditorScreen({
   useEffect(() => {
     setForm(initialProfile);
   }, [initialProfile]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadProfileSocialLinks() {
+      const { data: userData } = await supabase.auth.getUser();
+      const currentUserId = userData.user?.id;
+      if (!currentUserId) return;
+
+      const { data: profileRow, error: profileError } = await supabase
+        .from('profiles')
+        .select('school')
+        .eq('id', currentUserId)
+        .maybeSingle();
+      if (!active) return;
+      if (profileError) {
+        console.warn('Failed to resolve profile link school:', profileError);
+      }
+      const resolvedSchool = typeof profileRow?.school === 'string' && profileRow.school.trim()
+        ? profileRow.school
+        : null;
+      setProfileSocialSchool(resolvedSchool);
+
+      const { data, error } = await supabase
+        .from('profile_social_links')
+        .select('instagram, discord, linkedin, github, website, visibility')
+        .eq('user_id', currentUserId)
+        .maybeSingle();
+      if (!active) return;
+      if (error) {
+        console.warn('Failed to load profile social links:', error);
+        return;
+      }
+      if (data) {
+        setForm((current) => ({ ...current, socialLinks: normalizeProfileLinks(data) }));
+      }
+    }
+
+    void loadProfileSocialLinks();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -430,7 +483,7 @@ export default function ProfileEditorScreen({
           onChangeText={(value) => setForm((current) => ({
             ...current,
             socialLinks: {
-              ...(current.socialLinks ?? { instagram: '', discord: '', linkedin: '', website: '' }),
+              ...(current.socialLinks ?? emptyProfileLinks()),
               [key]: value,
             },
           }))}
@@ -445,6 +498,84 @@ export default function ProfileEditorScreen({
     </View>
   );
 
+  const socialVisibilitySelector = (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>
+        Visibility
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {PROFILE_LINK_VISIBILITY_OPTIONS.map((option) => {
+          const active = (form.socialLinks?.visibility ?? 'friends') === option.value;
+          return (
+            <TouchableOpacity
+              key={option.value}
+              onPress={() => setForm((current) => ({
+                ...current,
+                socialLinks: {
+                  ...(current.socialLinks ?? emptyProfileLinks()),
+                  visibility: option.value,
+                },
+              }))}
+              style={{
+                flex: 1,
+                minHeight: 38,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: active ? colors.brand : colors.border,
+                backgroundColor: active ? colors.brandBg : colors.inputBg,
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingHorizontal: 8,
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '800', color: active ? colors.brand : colors.textSecondary }}>
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+
+  async function saveProfileSocialLinks(profile: EditableProfile) {
+    const { data: userData } = await supabase.auth.getUser();
+    const currentUserId = userData.user?.id;
+    if (!currentUserId) return;
+
+    let school = profileSocialSchool;
+    if (!school) {
+      const { data: profileRow, error: profileError } = await supabase
+        .from('profiles')
+        .select('school')
+        .eq('id', currentUserId)
+        .maybeSingle();
+      if (profileError) {
+        console.warn('Failed to resolve profile link school:', profileError);
+        return;
+      }
+      school = typeof profileRow?.school === 'string' && profileRow.school.trim() ? profileRow.school : null;
+    }
+    if (!school) return;
+
+    const links = normalizeProfileLinks(profile.socialLinks);
+    const { error } = await supabase
+      .from('profile_social_links')
+      .upsert({
+        user_id: currentUserId,
+        school,
+        instagram: links.instagram.trim() || null,
+        discord: links.discord.trim() || null,
+        linkedin: links.linkedin.trim() || null,
+        github: links.github.trim() || null,
+        website: links.website.trim() || null,
+        visibility: links.visibility,
+      }, { onConflict: 'user_id' });
+    if (error) {
+      console.warn('Failed to save profile social links:', error);
+    }
+  }
+
   const handleSubmit = async () => {
     const requiredMissing = !form.firstName.trim() || !form.lastName.trim() || !form.nickname.trim();
     if (requiredMissing) {
@@ -458,8 +589,10 @@ export default function ProfileEditorScreen({
     }
 
     Keyboard.dismiss();
-    const saved = await onSave({ ...form, email: userEmail ?? form.email });
+    const nextProfile = { ...form, email: userEmail ?? form.email };
+    const saved = await onSave(nextProfile);
     if (saved) {
+      await saveProfileSocialLinks(nextProfile);
       onSaveSuccess?.();
     }
   };
@@ -585,10 +718,12 @@ export default function ProfileEditorScreen({
             <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textTertiary, marginBottom: 16 }}>
               Profile Links
             </Text>
+            {socialVisibilitySelector}
             {socialField('Instagram', 'instagram', '@zotmate')}
             {socialField('Discord', 'discord', 'username or invite link')}
             {socialField('LinkedIn', 'linkedin', 'linkedin.com/in/your-name', { keyboardType: 'url' })}
-            {socialField('Website', 'website', 'https://your-site.com', { keyboardType: 'url' })}
+            {socialField('GitHub', 'github', 'github.com/your-name', { keyboardType: 'url' })}
+            {socialField('Website / Portfolio', 'website', 'https://your-site.com', { keyboardType: 'url' })}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

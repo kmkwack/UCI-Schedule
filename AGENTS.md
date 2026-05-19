@@ -3226,3 +3226,9 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sij (Restore bottom tab taps)
 - **`App.tsx`** — Removed the transparent full-row tab drag overlay and moved the pill `PanResponder` onto the tab row so it only captures horizontal drags. Added row-position tracking for drag math. This lets each bottom-tab `TouchableOpacity` receive normal taps again while preserving smooth drag-to-switch behavior.
+
+### Session 64sik (Profile links, prior history, and what-if MVP)
+- **`src/data/userPreferences.ts`** — Added GitHub and profile-link visibility fields with friends visibility as the default so profile links can be stored compactly without changing Board identity behavior.
+- **`src/components/ProfileEditorScreen.tsx`** — Added GitHub plus hidden/friends/school visibility controls to the existing Profile Links section, and added separate best-effort load/save to the new `profile_social_links` table while preserving the existing profile save path.
+- **`src/screens/GradesScreen.tsx`** — Added Supabase-backed Prior Academic History records with add/edit/delete modal and personal-tracking labels, and expanded What-if GPA into per-course local simulations with projected term/ClassMate GPA and a target GPA helper without changing saved grades.
+- **`supabase/sql/profile_links_prior_history.sql`** — Added an idempotent migration for `profile_social_links` and `prior_academic_records` with owner-only prior-history RLS and profile-link visibility policies for owners, accepted friends, and same-school readers.

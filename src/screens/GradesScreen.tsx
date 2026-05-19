@@ -1014,7 +1014,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: showWhatIfTool || showTransferTool ? 12 : 18 }}>
         <TouchableOpacity
-          onPress={() => setShowWhatIfTool(true)}
+          onPress={() => setShowWhatIfTool((visible) => !visible)}
           style={{
             minHeight: 38,
             borderRadius: 999,
@@ -1032,7 +1032,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
           <Text style={{ fontSize: 13, fontWeight: '800', color: showWhatIfTool ? colors.brand : colors.textSecondary }}>What-if GPA</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => setShowTransferTool(true)}
+          onPress={() => setShowTransferTool((visible) => !visible)}
           style={{
             minHeight: 38,
             borderRadius: 999,
@@ -1053,7 +1053,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
               <Text style={{ fontSize: 10, fontWeight: '900', color: showTransferTool ? 'white' : colors.brand }}>{transferEntries.length}</Text>
             </View>
           ) : null}
-        </View>
+        </TouchableOpacity>
       </View>
 
       {showWhatIfTool ? (

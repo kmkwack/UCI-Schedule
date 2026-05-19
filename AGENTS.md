@@ -3217,3 +3217,9 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/screens/GradesScreen.tsx`** — Added a What-if GPA calculator for ungraded current classes plus transfer transcript GPA records stored locally and kept separate from the calculated ClassMate GPA.
 - **`src/data/diningMenus.ts`** and **`src/screens/HomeScreen.tsx`** — Merged UCI dining status summaries into dining menu rows and displayed open/closed/later status plus meal timing in the Today dining card and full menu sheet.
 - **`src/screens/SettingsScreen.tsx`**, **`src/components/ProfileEditorScreen.tsx`**, and **`src/screens/TimetableScreen.tsx`** — Added bottom safe-area padding to Settings/Profile fixed footers and made the Timetable Settings sheet scrollable with bottom inset padding so lower buttons are not hidden behind system navigation.
+
+### Session 64sih (Make Grades tools opt-in)
+- **`src/screens/GradesScreen.tsx`** — Replaced the always-visible What-if GPA and Transfer Transcript GPA cards with compact add-tool buttons so the Grades screen stays focused. Selecting a button opens the matching tool, each tool can be dismissed without deleting saved data, and saved transfer records automatically reopen the transfer tool when loaded.
+
+### Session 64sii (Toggle Grades tools from buttons)
+- **`src/screens/GradesScreen.tsx`** — Changed the compact What-if GPA and Transfer GPA buttons to toggle their tools open or closed when tapped again, matching the expected button behavior.

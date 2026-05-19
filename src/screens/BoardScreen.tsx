@@ -682,6 +682,8 @@ export default function BoardScreen({
   const [reportReason, setReportReason] = useState(REPORT_REASONS[0]);
   const [reportDetails, setReportDetails] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
+  const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
+  const bannedWordsRef = useRef<string[]>([]);
   const [showRequestBoard, setShowRequestBoard] = useState(false);
   const [requestBoardName, setRequestBoardName] = useState('');
   const [requestBoardDesc, setRequestBoardDesc] = useState('');
@@ -774,6 +776,8 @@ export default function BoardScreen({
     void fetchBoards();
     void fetchDepartmentBoards();
     void fetchPosts();
+    void fetchBlockedUsers();
+    void fetchBannedWords();
   }, [localDepartmentOptions, school, userId]);
 
   useEffect(() => {
@@ -1663,6 +1667,10 @@ export default function BoardScreen({
 
   async function handleCreatePost() {
     if (!newPostTitle.trim() || submittingPost) return;
+    if (containsBannedContent(newPostTitle + ' ' + newPostBody)) {
+      Alert.alert('Post not allowed', 'Your post contains content that violates community guidelines. Please review and edit before posting.');
+      return;
+    }
     Keyboard.dismiss();
     setSubmittingPost(true);
     setUploadingAttachments(true);
@@ -1941,6 +1949,52 @@ export default function BoardScreen({
     setReportDetails('');
   }
 
+  async function fetchBlockedUsers() {
+    if (!userId) return;
+    const { data } = await supabase.from('blocks').select('blocked_id').eq('blocker_id', userId).eq('source', 'board');
+    if (data) setBlockedUserIds(new Set(data.map((row: any) => row.blocked_id as string)));
+  }
+
+  async function fetchBannedWords() {
+    const { data } = await supabase.from('banned_words').select('word');
+    if (data) bannedWordsRef.current = (data as Array<{ word: string }>).map((r) => r.word.toLowerCase());
+  }
+
+  function containsBannedContent(text: string): boolean {
+    const lower = text.toLowerCase();
+    return bannedWordsRef.current.some((word) => lower.includes(word));
+  }
+
+  function handleBlockUser(targetUserId: string, targetName: string) {
+    Alert.alert(
+      'Block User',
+      `Block ${targetName}? You won't see their posts or comments.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.from('blocks').upsert(
+              { blocker_id: userId, blocked_id: targetUserId, source: 'board' },
+              { onConflict: 'blocker_id,blocked_id' }
+            );
+            if (error) {
+              Alert.alert('Error', 'Could not block user. Please try again.');
+              return;
+            }
+            setBlockedUserIds((prev) => new Set([...prev, targetUserId]));
+            setSelectedPost(null);
+            setComments([]);
+            setReplyingToComment(null);
+            setCommentInput('');
+            setCommentComposerOpen(false);
+          },
+        },
+      ]
+    );
+  }
+
   async function submitBoardRequest() {
     const name = requestBoardName.trim();
     if (!name) {
@@ -1994,6 +2048,7 @@ export default function BoardScreen({
 
   const filteredPosts = useMemo(() => {
     let result = boardPosts.filter((post) => {
+      if (blockedUserIds.has(post.user_id)) return false;
       const query = search.toLowerCase();
       return (
         search === '' ||
@@ -2005,7 +2060,7 @@ export default function BoardScreen({
 
     if (sort === 'popular') result = [...result].sort((a, b) => b.likes - a.likes);
     return result;
-  }, [boardPosts, search, sort]);
+  }, [boardPosts, blockedUserIds, search, sort]);
 
   const selectedPostCommentCount = useMemo(() => countComments(comments), [comments]);
 
@@ -2036,6 +2091,11 @@ export default function BoardScreen({
               type: 'comment',
               label: `Comment by ${comment.author_name}`,
             }),
+          },
+          {
+            label: 'Block User',
+            destructive: true,
+            action: () => handleBlockUser(comment.user_id, comment.author_name),
           },
         ];
 
@@ -2069,6 +2129,7 @@ export default function BoardScreen({
   }
 
   const renderComment = (comment: CommentNode, depth = 0): React.ReactNode => {
+    if (blockedUserIds.has(comment.user_id)) return null;
     const indent = Math.min(depth, 2) * 18;
     return (
       <View key={comment.id} style={{ marginLeft: indent, marginBottom: 16 }}>
@@ -2869,6 +2930,15 @@ export default function BoardScreen({
                           >
                             <Ionicons name="flag-outline" size={16} color={colors.textTertiary} />
                             <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '600' }}>Report</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {post.user_id !== userId ? (
+                          <TouchableOpacity
+                            onPress={() => handleBlockUser(post.user_id, post.author_name)}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                          >
+                            <Ionicons name="ban-outline" size={16} color={colors.textTertiary} />
+                            <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '600' }}>Block</Text>
                           </TouchableOpacity>
                         ) : null}
                       </View>

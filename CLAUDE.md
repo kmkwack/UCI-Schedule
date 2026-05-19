@@ -130,6 +130,7 @@ type Timetable = { id: string; name: string; quarterKey: string; courses: Course
 - **`boards`** — dynamic board list per school (falls back to `FALLBACK_BOARDS` if empty)
 - **`board_requests`** — user-submitted board requests
 - **`friend_requests`** — `sender_id, receiver_id, status` (pending/accepted/rejected)
+- **`blocks`** — `blocker_id, blocked_id` (PRIMARY KEY on both); RLS allows users to manage only their own rows
 
 ### Multi-School
 Reviews scoped by `school` column. Value comes from `selectedUniversity?.name` (defaults to `'UC Irvine'`). All reads filter `.eq('school', school)`; all inserts include `school`.
@@ -272,6 +273,9 @@ const QUARTERS = [
 ### Session 76 (Friend timetable header — long name truncation + first/last only in all name displays)
 - `src/screens/FriendsScreen.tsx` — Left section of friend timetable header given `flex: 1` + `minWidth: 0` so it never crowds the quarter pill. Name and email texts get `numberOfLines={1} ellipsizeMode="tail"`. Avatar marked `flexShrink: 0` so it never collapses. Added `firstLastName()` helper; applied to every name display site: Add Friend search results, friends list rows, incoming request rows, sent request rows, and friend timetable header.
 
+### Session 90 (Block User — posts in BoardScreen)
+- `src/screens/BoardScreen.tsx` — Added `blockedUserIds` state (Set<string>). Added `fetchBlockedUsers()` (loads from Supabase `blocks` table on mount). Added `handleBlockUser(targetUserId, targetName)` (Alert confirmation → upsert to `blocks` → optimistic state update). Block button with `ban-outline` icon added next to Report button on every other user's post. `filteredPosts` useMemo filters out posts from blocked users. Requires a new `blocks` table in Supabase (see SQL in Supabase Tables section).
+
 ### Session 87 (Hero carousel — adjacent card visible during drag)
 - `src/screens/HomeScreen.tsx` — Extracted the hero card IIFE into a `renderHeroCardContent(item)` function inside the component (closes over all state/handlers; each card type returns just its inner `View`, with `raisedCardStyle` removed from inner Views). Added `heroCardWidthRef`, `heroDragAdjacentIndex` state, `heroDragAdjacentIndexRef`, and `heroDragDirectionRef`. Updated outer container: `raisedCardStyle` moved to the outermost `View`; added an `overflow:'hidden'` inner `View` wrapping a single `Animated.View` that carries both `heroSlideAnim` transform and `heroOpacityAnim`; the adjacent card is absolutely positioned at `±heroCardWidth` inside the same `Animated.View` so it slides in while the current card slides out. Updated `heroPanResponder`: `onPanResponderGrant` clears adjacent state; `onPanResponderMove` sets `heroDragAdjacentIndex` on the first 4px of horizontal drag; `onPanResponderRelease` slides exit to `±cardWidth` (from `heroCardWidthRef`) then immediately swaps index, clearing adjacent state (no enter-from animation needed since adjacent card is already in place).
 
@@ -304,6 +308,9 @@ const QUARTERS = [
 
 ### Session 88 (Hero carousel — dynamic height fix)
 - `src/screens/HomeScreen.tsx` — Added `alignItems: 'flex-start'` to the horizontal row `Animated.View` that holds all hero cards. Without it, React Native's default `alignItems: 'stretch'` stretched every card to the tallest sibling's height, causing `onLayout` to always report the maximum height so the spacer and dot indicators never moved. With `flex-start`, each card reports its natural height and `heroHeightAnim` correctly springs to the active card's height.
+
+### Session 89 (Grade picker modal — animated slide-up + scroll fix)
+- `src/screens/GradesScreen.tsx` — `GradePickerModal`: replaced nested `TouchableOpacity` wrapper with `pointerEvents="box-none"` sibling-backdrop pattern (fixes scroll interception). Added `sheetAnim` + `backdropAnim` refs; `useEffect` on `visible` springs sheet in and fades backdrop to 0.4 opacity; `handleClose()` times both out then calls `onClose`. Changed `animationType="fade"` → `animationType="none"`; outer wrapper is now `Animated.View` with interpolated `backgroundColor`; sheet is `Animated.View` with `translateY`. All internal close triggers (backdrop press, grade selection, `onRequestClose`) use `handleClose`. Added `PanResponder` drag-to-close on the handle bar: follows finger downward (`setValue(dy)`), closes if `dy > 80` or `vy > 0.8`, springs back otherwise — matches Add Term modal pattern exactly. Added `onDeselect` prop; tapping an already-selected grade calls `onDeselect` + `handleClose` instead of re-selecting. Added `handleClearGrade(key)` in `GradesScreen`: removes from local state, AsyncStorage cache, and Supabase (school-scoped with legacy fallback).
 
 ### Session 61 (RMP moved to ReviewsModal + Reviews button layout)
 - `src/components/ReviewsModal.tsx` — Added `sectionType: string` prop. Added RMP row in course info section (shows prof name as tappable link to RateMyProfessors). `fetchReviews` and `handleSubmit` filter/set `section_type`. Supabase `reviews` table requires `ALTER TABLE reviews ADD COLUMN section_type TEXT;`.

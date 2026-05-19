@@ -4,7 +4,7 @@ import {
   View, Text, TouchableOpacity, ScrollView, Modal,
   Animated, Easing, LayoutAnimation, PanResponder,
   Alert, Keyboard, TextInput,
-  Platform, UIManager,
+  KeyboardAvoidingView, Platform, UIManager,
   useWindowDimensions,
 } from 'react-native';
 import Svg, { Path, Circle, Line, Defs, ClipPath, G, LinearGradient, Stop } from 'react-native-svg';
@@ -14,6 +14,7 @@ import { gradeScaleForSchool } from '../data/schools';
 import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import { useTheme } from '../context/ThemeContext';
+import { useKeyboardInset } from '../utils/useKeyboardInset';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -32,6 +33,7 @@ type PriorAcademicRecord = {
 type PriorAcademicDraft = Omit<PriorAcademicRecord, 'id'>;
 
 let gradesSchoolColumnUnavailable = false;
+let priorAcademicRecordsTableUnavailable = false;
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -69,6 +71,15 @@ function normalizePriorAcademicRecord(row: any): PriorAcademicRecord | null {
     credits: row.credits == null ? '' : String(row.credits),
     note: typeof row.note === 'string' ? row.note : '',
   };
+}
+
+function isMissingPriorAcademicRecordsTableError(error: unknown) {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  const code = typeof candidate.code === 'string' ? candidate.code : '';
+  const message = typeof candidate.message === 'string' ? candidate.message : '';
+  return code === 'PGRST205'
+    || (message.includes('prior_academic_records') && message.toLowerCase().includes('schema cache'));
 }
 
 // ── GPA chart ─────────────────────────────────────────────────────────────────
@@ -596,11 +607,15 @@ function PriorAcademicRecordModal({
 }) {
   const { colors } = useTheme();
   const { height: screenHeight } = useWindowDimensions();
+  const keyboardInset = useKeyboardInset({ enabled: visible });
+  const sheetMaxHeight = Math.min(screenHeight * 0.82, 620);
+  const keyboardAwareSheetMaxHeight = keyboardInset.bottomSheetMaxHeight(sheetMaxHeight, screenHeight, 24, 280);
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
         <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={onClose} />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View
           style={{
             backgroundColor: colors.card,
@@ -609,7 +624,8 @@ function PriorAcademicRecordModal({
             paddingHorizontal: 20,
             paddingTop: 18,
             paddingBottom: 34,
-            maxHeight: Math.min(screenHeight * 0.82, 620),
+            maxHeight: keyboardAwareSheetMaxHeight,
+            marginBottom: keyboardInset.androidBottomSheetMarginBottom(8),
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -680,6 +696,7 @@ function PriorAcademicRecordModal({
             </View>
           </ScrollView>
         </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -846,15 +863,11 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
   const [grades, setGrades] = useState<Record<string, string>>({});
   const [unitOverrides, setUnitOverrides] = useState<Record<string, number>>({});
   const [pickerCourseId, setPickerCourseId] = useState<string | null>(null);
-  const [whatIfGrade, setWhatIfGrade] = useState<string>('A');
-  const [whatIfGrades, setWhatIfGrades] = useState<Record<string, string>>({});
-  const [targetGpaInput, setTargetGpaInput] = useState('');
   const [priorRecords, setPriorRecords] = useState<PriorAcademicRecord[]>([]);
   const [priorRecordsLoading, setPriorRecordsLoading] = useState(false);
   const [priorRecordModalVisible, setPriorRecordModalVisible] = useState(false);
   const [editingPriorRecordId, setEditingPriorRecordId] = useState<string | null>(null);
   const [priorRecordDraft, setPriorRecordDraft] = useState<PriorAcademicDraft>(emptyPriorAcademicDraft());
-  const [showWhatIfTool, setShowWhatIfTool] = useState(false);
   const [showTransferTool, setShowTransferTool] = useState(false);
 
   // Compound key: "2026-Spring|36120" — prevents collisions if section codes repeat across years
@@ -863,7 +876,6 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
   const cacheKey = `grades_${encodeURIComponent(school)}_${userId}`;
   const priorHistoryCacheKey = `prior_academic_records_${encodeURIComponent(school)}_${userId}`;
   const legacyTransferCacheKey = `transfer_gpa_entries_${encodeURIComponent(school)}_${userId}`;
-  const whatIfOptions = gradeScale.options.filter((grade) => gradePoints[grade] !== undefined);
 
   useEffect(() => {
     async function loadGrades() {
@@ -941,6 +953,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
           }
         }
 
+        if (priorAcademicRecordsTableUnavailable) return;
         setPriorRecordsLoading(true);
         const { data, error } = await supabase
           .from('prior_academic_records')
@@ -951,6 +964,11 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
 
         if (!active) return;
         if (error) {
+          if (isMissingPriorAcademicRecordsTableError(error)) {
+            priorAcademicRecordsTableUnavailable = true;
+            console.warn('prior_academic_records table is unavailable; using local prior academic records cache.');
+            return;
+          }
           console.warn('Failed to load prior academic records:', error);
           return;
         }
@@ -1016,6 +1034,28 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
     void AsyncStorage.setItem(priorHistoryCacheKey, JSON.stringify(nextRecords));
   }
 
+  function localPriorRecordFromDraft(recordId?: string): PriorAcademicRecord {
+    const gpaNumber = parseOptionalPositiveNumber(priorRecordDraft.gpa);
+    const creditsNumber = parseOptionalPositiveNumber(priorRecordDraft.credits);
+    return {
+      id: recordId ?? createLocalId('prior-academic'),
+      institution: priorRecordDraft.institution.trim(),
+      termLabel: priorRecordDraft.termLabel.trim(),
+      gpa: gpaNumber == null ? '' : gpaNumber.toFixed(2),
+      credits: creditsNumber == null ? '' : String(creditsNumber),
+      note: priorRecordDraft.note.trim(),
+    };
+  }
+
+  function savePriorRecordLocally(record: PriorAcademicRecord) {
+    if (editingPriorRecordId) {
+      cachePriorRecords(priorRecords.map((existing) => existing.id === record.id ? record : existing));
+    } else {
+      cachePriorRecords([record, ...priorRecords]);
+    }
+    closePriorRecordModal();
+  }
+
   function openPriorRecordModal(record?: PriorAcademicRecord) {
     setEditingPriorRecordId(record?.id ?? null);
     setPriorRecordDraft(record ? {
@@ -1069,6 +1109,11 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
       note: note || null,
     };
 
+    if (priorAcademicRecordsTableUnavailable) {
+      savePriorRecordLocally(localPriorRecordFromDraft(editingPriorRecordId ?? undefined));
+      return;
+    }
+
     if (editingPriorRecordId) {
       const { data, error } = await supabase
         .from('prior_academic_records')
@@ -1079,6 +1124,11 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
         .select('id, institution, term_label, gpa, credits, note')
         .single();
       if (error) {
+        if (isMissingPriorAcademicRecordsTableError(error)) {
+          priorAcademicRecordsTableUnavailable = true;
+          savePriorRecordLocally(localPriorRecordFromDraft(editingPriorRecordId));
+          return;
+        }
         Alert.alert('Could not save record', error.message);
         return;
       }
@@ -1091,6 +1141,11 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
         .select('id, institution, term_label, gpa, credits, note')
         .single();
       if (error) {
+        if (isMissingPriorAcademicRecordsTableError(error)) {
+          priorAcademicRecordsTableUnavailable = true;
+          savePriorRecordLocally(localPriorRecordFromDraft());
+          return;
+        }
         Alert.alert('Could not add record', error.message);
         return;
       }
@@ -1108,6 +1163,11 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
   }
 
   async function handleDeletePriorRecord(recordId: string) {
+    if (priorAcademicRecordsTableUnavailable) {
+      cachePriorRecords(priorRecords.filter((record) => record.id !== recordId));
+      return;
+    }
+
     const { error } = await supabase
       .from('prior_academic_records')
       .delete()
@@ -1115,6 +1175,11 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
       .eq('user_id', userId)
       .eq('school', school);
     if (error) {
+      if (isMissingPriorAcademicRecordsTableError(error)) {
+        priorAcademicRecordsTableUnavailable = true;
+        cachePriorRecords(priorRecords.filter((record) => record.id !== recordId));
+        return;
+      }
       Alert.alert('Could not delete record', error.message);
       return;
     }
@@ -1203,7 +1268,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
     ].filter(p => p.gpa > 0);
   }, [pastQuarterItems, grades, activeCourses, unitOverrides, gradePoints]);
 
-  const { gpa, credits, courseCount } = useMemo(() => {
+  const { gpa, credits, courseCount, gpaCredits, gpaPoints } = useMemo(() => {
     const gradedActive = activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0).filter(c => {
       const g = grades[gk(CURRENT_QK, c.id)];
       return g && gradePoints[g] !== undefined;
@@ -1229,59 +1294,15 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
       credits: pastQuarterItems.flatMap(({ qk, courses }) => courses.map(c => ({ c, qk }))).reduce((s, { c, qk }) => s + getUnits(qk, c), 0)
              + activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0).reduce((s, c) => s + getUnits(CURRENT_QK, c), 0),
       courseCount: pastQuarterItems.flatMap(q => q.courses).length + activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0).length,
+      gpaCredits: totalCredits,
+      gpaPoints: pastPoints + activePoints,
     };
   }, [grades, activeCourses, pastQuarterItems, unitOverrides, gradePoints]);
 
-  const whatIfSummary = useMemo(() => {
-    const currentCourses = activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0);
-    const courseRows = currentCourses.map((course) => {
-      const key = gk(CURRENT_QK, course.id);
-      const units = getUnits(CURRENT_QK, course);
-      const savedGrade = grades[key];
-      const simulatedGrade = whatIfGrades[key] ?? (savedGrade && gradePoints[savedGrade] !== undefined ? savedGrade : '');
-      return { key, course, units, savedGrade, simulatedGrade };
-    });
-    const simulatedRows = courseRows.filter((row) => row.simulatedGrade && gradePoints[row.simulatedGrade] !== undefined);
-    const simulatedUnits = simulatedRows.reduce((sum, row) => sum + row.units, 0);
-    const simulatedPoints = simulatedRows.reduce((sum, row) => sum + gradePoints[row.simulatedGrade] * row.units, 0);
-
-    const pastCourses = pastQuarterItems.flatMap(({ qk, courses }) => courses.map(c => ({ ...c, _qk: qk })));
-    const gradedPast = pastCourses.filter(c => {
-      const grade = grades[gk(c._qk, c.id)];
-      return grade && gradePoints[grade] !== undefined;
-    });
-    const pastUnits = gradedPast.reduce((sum, course) => sum + getUnits(course._qk, course), 0);
-    const pastPoints = gradedPast.reduce((sum, course) => {
-      const grade = grades[gk(course._qk, course.id)];
-      return sum + gradePoints[grade] * getUnits(course._qk, course);
-    }, 0);
-    const target = parseOptionalPositiveNumber(targetGpaInput);
-    const currentUnits = currentCourses.reduce((sum, course) => sum + getUnits(CURRENT_QK, course), 0);
-    const neededTermAverage = target != null && currentUnits > 0
-      ? (target * (pastUnits + currentUnits) - pastPoints) / currentUnits
-      : null;
-    const targetMessage = targetGpaInput.trim() && target == null
-      ? 'Enter a positive target GPA.'
-      : target != null && target > gradeScale.maxGpa
-        ? `Target is above this school's ${gradeScale.maxGpa.toFixed(2)} scale.`
-        : neededTermAverage == null
-          ? 'Add current classes to estimate a target term average.'
-          : neededTermAverage > gradeScale.maxGpa
-            ? `You would need about ${neededTermAverage.toFixed(2)} this term, which is above the ${gradeScale.maxGpa.toFixed(2)} scale.`
-            : neededTermAverage <= 0
-              ? 'Your current saved history is already above that target.'
-              : `Needed term average: about ${neededTermAverage.toFixed(2)}.`;
-
-    return {
-      termGpa: formatGpaValue(simulatedUnits > 0 ? simulatedPoints / simulatedUnits : 0),
-      classMateGpa: formatGpaValue(pastUnits + simulatedUnits > 0 ? (pastPoints + simulatedPoints) / (pastUnits + simulatedUnits) : 0),
-      simulatedCredits: simulatedUnits,
-      courseRows,
-      targetMessage,
-    };
-  }, [CURRENT_QK, activeCourses, grades, gradePoints, gradeScale.maxGpa, pastQuarterItems, targetGpaInput, unitOverrides, whatIfGrades]);
-
   const priorSummary = useMemo(() => {
+    const creditRows = priorRecords
+      .map((record) => parsePositiveNumber(record.credits))
+      .filter((unitsValue) => unitsValue > 0);
     const rows = priorRecords
       .map((record) => {
         const gpaValue = parsePositiveNumber(record.gpa);
@@ -1289,19 +1310,26 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
         return { gpaValue, unitsValue };
       })
       .filter((row) => row.gpaValue > 0 && row.unitsValue > 0);
+    const allUnitsValue = creditRows.reduce((sum, unitsValue) => sum + unitsValue, 0);
     const unitsValue = rows.reduce((sum, row) => sum + row.unitsValue, 0);
     const pointsValue = rows.reduce((sum, row) => sum + row.gpaValue * row.unitsValue, 0);
     return {
       gpa: formatGpaValue(unitsValue > 0 ? pointsValue / unitsValue : 0),
-      units: unitsValue,
+      units: allUnitsValue,
+      gpaUnits: unitsValue,
       count: rows.length,
+      combinedGpa: formatGpaValue(gpaCredits + unitsValue > 0 ? (gpaPoints + pointsValue) / (gpaCredits + unitsValue) : 0),
+      combinedCredits: credits + allUnitsValue,
     };
-  }, [priorRecords]);
+  }, [credits, gpaCredits, gpaPoints, priorRecords]);
 
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => {
     if (scrollToTopTrigger > 0) scrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [scrollToTopTrigger]);
+
+  const displayedGpa = priorSummary.gpaUnits > 0 ? priorSummary.combinedGpa : gpa;
+  const displayedCredits = priorSummary.units > 0 ? priorSummary.combinedCredits : credits;
 
   return (
     <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.bgSecondary }} contentContainerStyle={{ paddingTop: topInset + 14, paddingHorizontal: 18, paddingBottom: bottomInset + 70 }} showsVerticalScrollIndicator={false}>
@@ -1310,8 +1338,8 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
       {/* Stats row */}
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
         {[
-          { label: 'GPA',     value: gpa },
-          { label: 'Credits', value: String(credits) },
+          { label: 'GPA',     value: displayedGpa },
+          { label: 'Credits', value: String(displayedCredits) },
           { label: 'Courses', value: String(courseCount) },
         ].map(stat => (
           <View key={stat.label} style={{
@@ -1333,25 +1361,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
         ))}
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: showWhatIfTool || showTransferTool ? 12 : 18 }}>
-        <TouchableOpacity
-          onPress={() => setShowWhatIfTool((visible) => !visible)}
-          style={{
-            minHeight: 38,
-            borderRadius: 999,
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            backgroundColor: showWhatIfTool ? colors.brandBg : colors.card,
-            borderWidth: 1,
-            borderColor: showWhatIfTool ? colors.brand : colors.border,
-          }}
-        >
-          <Ionicons name="calculator-outline" size={15} color={showWhatIfTool ? colors.brand : colors.textSecondary} />
-          <Text style={{ fontSize: 13, fontWeight: '800', color: showWhatIfTool ? colors.brand : colors.textSecondary }}>What-if GPA</Text>
-        </TouchableOpacity>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: showTransferTool ? 12 : 18 }}>
         <TouchableOpacity
           onPress={() => setShowTransferTool((visible) => !visible)}
           style={{
@@ -1377,154 +1387,6 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
         </TouchableOpacity>
       </View>
 
-      {showWhatIfTool ? (
-        <View style={{
-          backgroundColor: colors.card,
-          borderRadius: 20,
-          padding: 18,
-          marginBottom: 18,
-          borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.72)',
-          shadowColor: '#0f172a',
-          shadowOffset: { width: 0, height: 12 },
-          shadowOpacity: 0.08,
-          shadowRadius: 20,
-          elevation: 5,
-        }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>What-if GPA</Text>
-              <Text style={{ fontSize: 12, lineHeight: 17, color: colors.textTertiary, marginTop: 3 }}>
-                Local simulation only. These grades do not overwrite saved grades.
-              </Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <TouchableOpacity
-                onPress={() => setShowWhatIfTool(false)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.inputBg }}
-              >
-                <Ionicons name="close" size={16} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-          </View>
-          <View style={{ borderRadius: 14, padding: 12, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.borderSubtle }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
-              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>Quick fill</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  const next = { ...whatIfGrades };
-                  whatIfSummary.courseRows.forEach((row) => {
-                    if (!row.simulatedGrade) next[row.key] = whatIfGrade;
-                  });
-                  setWhatIfGrades(next);
-                }}
-                style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.brandBg }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.brand }}>Apply {whatIfGrade}</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 2 }}>
-              {whatIfOptions.map((grade) => {
-                const active = whatIfGrade === grade;
-                return (
-                  <TouchableOpacity
-                    key={`what-if-${grade}`}
-                    onPress={() => setWhatIfGrade(grade)}
-                    style={{
-                      minWidth: 48,
-                      height: 38,
-                      borderRadius: 14,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: active ? colors.brand : colors.inputBg,
-                      borderWidth: 1,
-                      borderColor: active ? colors.brand : colors.border,
-                    }}
-                  >
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: active ? 'white' : colors.textSecondary }}>{grade}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-          <View style={{ gap: 10, marginTop: 12 }}>
-            {whatIfSummary.courseRows.length === 0 ? (
-              <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textTertiary }}>No current classes with units to simulate.</Text>
-            ) : whatIfSummary.courseRows.map((row) => (
-              <View key={row.key} style={{ borderRadius: 14, borderWidth: 1, borderColor: colors.borderSubtle, backgroundColor: colors.bg, padding: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 9 }}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>{row.course.code}</Text>
-                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>{row.course.title}</Text>
-                  </View>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>{row.units} units</Text>
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                  {whatIfOptions.map((grade) => {
-                    const active = row.simulatedGrade === grade;
-                    return (
-                      <TouchableOpacity
-                        key={`${row.key}-${grade}`}
-                        onPress={() => setWhatIfGrades((current) => ({ ...current, [row.key]: grade }))}
-                        style={{
-                          minWidth: 44,
-                          height: 34,
-                          borderRadius: 12,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          backgroundColor: active ? colors.brand : colors.inputBg,
-                          borderWidth: 1,
-                          borderColor: active ? colors.brand : colors.border,
-                        }}
-                      >
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: active ? 'white' : colors.textSecondary }}>{grade}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                  {whatIfGrades[row.key] ? (
-                    <TouchableOpacity
-                      onPress={() => setWhatIfGrades((current) => {
-                        const next = { ...current };
-                        delete next[row.key];
-                        return next;
-                      })}
-                      style={{ minWidth: 54, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgTertiary, borderWidth: 1, borderColor: colors.border }}
-                    >
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>Clear</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </ScrollView>
-              </View>
-            ))}
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-            {[
-              { label: 'Projected Term GPA', value: whatIfSummary.termGpa },
-              { label: 'Projected ClassMate GPA', value: whatIfSummary.classMateGpa },
-              { label: 'Credits Simulated', value: whatIfSummary.simulatedCredits ? String(whatIfSummary.simulatedCredits) : '—' },
-            ].map((item) => (
-              <View key={item.label} style={{ flex: 1, borderRadius: 14, padding: 12, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.borderSubtle }}>
-                <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: '700' }}>{item.label}</Text>
-                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 4 }}>{item.value}</Text>
-              </View>
-            ))}
-          </View>
-          <View style={{ marginTop: 12, borderRadius: 14, padding: 12, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.borderSubtle }}>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary, marginBottom: 8 }}>Target GPA helper</Text>
-            <TextInput
-              value={targetGpaInput}
-              onChangeText={setTargetGpaInput}
-              placeholder="Target ClassMate GPA"
-              keyboardType="decimal-pad"
-              placeholderTextColor={colors.placeholder}
-              style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.inputBg, color: colors.text, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 }}
-            />
-            <Text style={{ fontSize: 12, lineHeight: 17, color: colors.textTertiary, marginTop: 8 }}>{whatIfSummary.targetMessage}</Text>
-          </View>
-        </View>
-      ) : null}
-
       {showTransferTool ? (
         <View style={{
           backgroundColor: colors.card,
@@ -1543,7 +1405,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Prior Academic History</Text>
               <Text style={{ fontSize: 12, lineHeight: 17, color: colors.textTertiary, marginTop: 3 }}>
-                For personal tracking only. These records do not change your ClassMate GPA or count as official GPA.
+                For personal tracking only. These records are included in the top GPA/Credits cards, but they are not official GPA.
               </Text>
             </View>
             <TouchableOpacity

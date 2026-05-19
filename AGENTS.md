@@ -3232,3 +3232,24 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 - **`src/components/ProfileEditorScreen.tsx`** — Added GitHub plus hidden/friends/school visibility controls to the existing Profile Links section, and added separate best-effort load/save to the new `profile_social_links` table while preserving the existing profile save path.
 - **`src/screens/GradesScreen.tsx`** — Added Supabase-backed Prior Academic History records with add/edit/delete modal and personal-tracking labels, and expanded What-if GPA into per-course local simulations with projected term/ClassMate GPA and a target GPA helper without changing saved grades.
 - **`supabase/sql/profile_links_prior_history.sql`** — Added an idempotent migration for `profile_social_links` and `prior_academic_records` with owner-only prior-history RLS and profile-link visibility policies for owners, accepted friends, and same-school readers.
+
+### Session 64sil (Scenario-style What-if GPA)
+- **`src/screens/GradesScreen.tsx`** — Reworked the What-if GPA tool into local scenarios. Users can switch between scenarios, create/reset/delete a scenario, quick-fill blank simulated grades, and keep each scenario's target GPA separate without saving over real grades.
+
+### Session 64sim (Keep prior-record sheet above keyboard)
+- **`src/screens/GradesScreen.tsx`** — Added keyboard-aware max-height and bottom offset handling to the Add/Edit Prior Record sheet so the keyboard no longer covers the form fields or submit button.
+
+### Session 64sin (Local fallback for missing prior-history table)
+- **`src/screens/GradesScreen.tsx`** — Added a local-cache fallback when Supabase reports that `prior_academic_records` is missing from the schema cache. Prior records can now be added, edited, and deleted locally until the new migration is applied.
+
+### Session 64sio (Make profile links migration work without friend-request school column)
+- **`supabase/sql/profile_links_prior_history.sql`** — Updated the accepted-friends helper to verify same-school friendship through `profiles` joins instead of requiring `friend_requests.school`, so the migration works on databases that have not run social school partitioning yet.
+
+### Session 64sip (Show combined prior and ClassMate estimate)
+- **`src/screens/GradesScreen.tsx`** — Added a clearly labeled personal combined estimate inside Prior Academic History that combines prior academic records with the current ClassMate GPA/credits without changing the existing top-level GPA cards.
+
+### Session 64siq (Include prior history in top Grades cards)
+- **`src/screens/GradesScreen.tsx`** — Changed the top GPA and Credits cards to include Prior Academic History records when present, removed the separate combined-estimate box, and updated the Prior Academic History helper copy to clarify that the top cards include personal prior records but are not official GPA.
+
+### Session 64sir (Remove What-if GPA tool)
+- **`src/screens/GradesScreen.tsx`** — Removed the What-if GPA button, scenario state, local simulation calculations, and panel UI so Grades only shows saved grades plus Prior Academic History.

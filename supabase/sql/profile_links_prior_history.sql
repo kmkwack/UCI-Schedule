@@ -59,8 +59,13 @@ as $$
     and exists (
       select 1
       from public.friend_requests fr
-      where fr.school = target_school
-        and fr.status = 'accepted'
+      join public.profiles requester
+        on requester.id = auth.uid()
+       and requester.school = target_school
+      join public.profiles target
+        on target.id = target_user_id
+       and target.school = target_school
+      where fr.status = 'accepted'
         and (
           (fr.sender_id = auth.uid() and fr.receiver_id = target_user_id)
           or (fr.receiver_id = auth.uid() and fr.sender_id = target_user_id)

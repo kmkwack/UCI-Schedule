@@ -3223,3 +3223,6 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sii (Toggle Grades tools from buttons)
 - **`src/screens/GradesScreen.tsx`** — Changed the compact What-if GPA and Transfer GPA buttons to toggle their tools open or closed when tapped again, matching the expected button behavior.
+
+### Session 64sij (Restore bottom tab taps)
+- **`App.tsx`** — Removed the transparent full-row tab drag overlay and moved the pill `PanResponder` onto the tab row so it only captures horizontal drags. Added row-position tracking for drag math. This lets each bottom-tab `TouchableOpacity` receive normal taps again while preserving smooth drag-to-switch behavior.

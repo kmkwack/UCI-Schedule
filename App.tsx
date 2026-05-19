@@ -41,6 +41,7 @@ import { addZonedDays, getZonedDateParts, normalizeTimeZone, zonedDateFromParts,
 import { supabase } from './src/lib/supabase';
 import { isMissingSchoolColumnError } from './src/lib/supabaseErrors';
 import type { ChatTarget } from './src/data/messages';
+import type { PanResponderGestureState } from 'react-native';
 import type { DateFormatPreference, EditableProfile, LanguagePreference, NotificationPreferences, PushPermissionStatus, TimetableVisibility, UserSettingsState } from './src/data/userPreferences';
 
 type ConversationMessageNotificationRow = {
@@ -768,7 +769,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [latestBoardPostCreatedAt, setLatestBoardPostCreatedAt] = useState<string | null>(null);
 
   const TABS = ['home', 'timetable', 'grades', 'board', 'friends'] as const;
+  const tabBarRowRef = useRef<View>(null);
   const tabBarWidthRef = useRef(0);
+  const tabBarPageXRef = useRef<number | null>(null);
   const [tabBarReady, setTabBarReady] = useState(false);
   const pillXAnim = useRef(new Animated.Value(0)).current;
   const pillScaleAnim = useRef(new Animated.Value(1)).current;
@@ -776,7 +779,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const isDraggingPill = useRef(false);
   const pillTouchStartX = useRef(0);
   const pillDragTouchOffsetX = useRef(0);
-  const pillTapTargetIdxRef = useRef(0);
   const currentTabRef = useRef(currentTab);
   currentTabRef.current = currentTab;
 
@@ -796,26 +798,33 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setMessageTarget(null);
   }
 
+  function shouldStartPillDrag(gs: PanResponderGestureState) {
+    const horizontal = Math.abs(gs.dx);
+    const vertical = Math.abs(gs.dy);
+    return tabBarWidthRef.current > 0 && horizontal > 8 && horizontal > vertical * 1.2;
+  }
+
   const pillPanResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: (evt) => {
-      isDraggingPill.current = false;
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, gs) => shouldStartPillDrag(gs),
+    onMoveShouldSetPanResponderCapture: (_, gs) => shouldStartPillDrag(gs),
+    onPanResponderGrant: (evt, gs) => {
       const w = tabBarWidthRef.current;
+      if (w <= 0) return;
       const tabW = w / 5;
       const currentX = (pillXAnim as any)._value ?? TABS.indexOf(currentTabRef.current) * tabW;
-      const touchX = Math.max(0, Math.min(w, evt.nativeEvent.locationX));
+      const rawTouchX = tabBarPageXRef.current == null
+        ? evt.nativeEvent.locationX - gs.dx
+        : evt.nativeEvent.pageX - tabBarPageXRef.current - gs.dx;
+      const touchX = Math.max(0, Math.min(w, rawTouchX));
       pillTouchStartX.current = touchX;
-      // Snap pill to the tapped tab immediately on press-down
-      const tappedIdx = Math.max(0, Math.min(4, Math.floor(touchX / tabW)));
-      pillTapTargetIdxRef.current = tappedIdx;
-      Animated.spring(pillXAnim, { toValue: tappedIdx * tabW, useNativeDriver: false, tension: 260, friction: 22 }).start();
       // Drag offset: natural offset if pressing on current pill, centered otherwise
       const touchIsOnCurrentPill = touchX >= currentX && touchX <= currentX + tabW;
       pillDragTouchOffsetX.current = touchIsOnCurrentPill ? touchX - currentX : tabW / 2;
+      isDraggingPill.current = true;
       Animated.spring(pillScaleAnim, { toValue: 1.15, useNativeDriver: false, tension: 300, friction: 10 }).start();
     },
     onPanResponderMove: (_, gs) => {
-      if (Math.abs(gs.dx) > 5) isDraggingPill.current = true;
       if (!isDraggingPill.current) return;
       const w = tabBarWidthRef.current;
       const tabW = w / 5;
@@ -835,14 +844,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           else (setCurrentTab as (t: typeof TABS[number]) => void)(newTab);
         }
       } else {
-        // Tap: pill already animated to tappedIdx in grant — just switch the tab
-        const tappedIdx = pillTapTargetIdxRef.current;
         const tabW = tabBarWidthRef.current / 5;
-        Animated.spring(pillXAnim, { toValue: tappedIdx * tabW, useNativeDriver: false, tension: 260, friction: 22 }).start();
-        const tappedTab = TABS[tappedIdx];
-        triggerTabReset(tappedTab);
-        if (tappedTab === 'friends') handleOpenFriendsTabRef.current?.();
-        else (setCurrentTab as (t: typeof TABS[number]) => void)(tappedTab);
+        Animated.spring(pillXAnim, { toValue: TABS.indexOf(currentTabRef.current) * tabW, useNativeDriver: false, tension: 160, friction: 18 }).start();
       }
       isDraggingPill.current = false;
     },
@@ -3023,10 +3026,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           }}
         >
           <View
+            ref={tabBarRowRef}
             style={{ flexDirection: 'row' }}
+            {...pillPanResponder.panHandlers}
             onLayout={(e) => {
               const w = e.nativeEvent.layout.width;
               if (w <= 0) return;
+              tabBarRowRef.current?.measureInWindow((x) => {
+                tabBarPageXRef.current = x;
+              });
               tabBarWidthRef.current = w;
               if (!tabBarReady) {
                 pillXAnim.setValue(TABS.indexOf(currentTab) * (w / 5));
@@ -3069,19 +3077,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               badgeCount={unreadMessageCount}
               onPress={() => handleTabPress('friends')}
             />
-            {/* Full-row drag surface for swiping between tabs. */}
-            {tabBarReady && (
-              <View
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                }}
-                {...pillPanResponder.panHandlers}
-              />
-            )}
           </View>
         </View>
       </View>

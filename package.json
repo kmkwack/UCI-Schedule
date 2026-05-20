@@ -12,7 +12,8 @@
     "reconcile:school-terms": "node scripts/reconcile-school-terms.js",
     "report:unmapped-classrooms": "node scripts/report-unmapped-classrooms.js",
     "audit:android-text": "node scripts/audit-android-text.js",
-    "audit:text-autoshrink": "node scripts/audit-text-autoshrink.js"
+    "audit:text-autoshrink": "node scripts/audit-text-autoshrink.js",
+    "audit:moderation-policy": "node scripts/audit-moderation-policy.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -25,6 +26,7 @@
     "expo-document-picker": "~55.0.13",
     "expo-file-system": "~55.0.20",
     "expo-font": "~55.0.7",
+    "expo-haptics": "~55.0.14",
     "expo-image": "~55.0.10",
     "expo-image-manipulator": "~55.0.16",
     "expo-image-picker": "~55.0.20",

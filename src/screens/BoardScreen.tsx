@@ -33,8 +33,18 @@ import { departmentsForSchoolId } from '../data/schoolDepartments';
 import { getSchoolConfig } from '../data/schools';
 import type { ChatTarget } from '../data/messages';
 import { abbreviateMajor } from '../data/userPreferences';
+import {
+  COMMUNITY_GUIDELINES_MESSAGE,
+  evaluateModerationText,
+  moderationRulesFromCustomBlocklist,
+  moderationUserMessage,
+  shouldBlockModerationResult,
+  type ModerationPolicyRule,
+} from '../data/moderationPolicy';
 import { themedIconBackground, themedIconBorder, themedIconColor } from '../utils/themeTint';
 import { useKeyboardInset } from '../utils/useKeyboardInset';
+import { triggerSuccessHaptic } from '../utils/haptics';
+import { EmptyState } from '../components/Polish';
 
 type CommentRow = {
   id: string;
@@ -187,6 +197,10 @@ function boardContextLabel(category: string) {
 
 function boardCategory(board: Board) {
   return board.category ?? 'General';
+}
+
+function isServerModerationError(error: { message?: string } | null | undefined) {
+  return typeof error?.message === 'string' && error.message.includes('ClassMate moderation policy');
 }
 
 function supportedMimeTypeForAttachmentName(name: string, mimeType?: string | null) {
@@ -683,7 +697,7 @@ export default function BoardScreen({
   const [reportDetails, setReportDetails] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
-  const bannedWordsRef = useRef<string[]>([]);
+  const customModerationRulesRef = useRef<ModerationPolicyRule[]>([]);
   const [showRequestBoard, setShowRequestBoard] = useState(false);
   const [requestBoardName, setRequestBoardName] = useState('');
   const [requestBoardDesc, setRequestBoardDesc] = useState('');
@@ -1589,11 +1603,12 @@ export default function BoardScreen({
 
   async function handleAddComment() {
     if (!commentInput.trim() || !selectedPost) return;
+    const content = commentInput.trim();
+    if (!(await ensurePublicTextAllowed(content, 'Comment not allowed'))) return;
 
     commentInputRef.current?.focus();
     if (editingComment) {
       const editedAt = new Date().toISOString();
-      const content = commentInput.trim();
       let { error } = await supabase
         .from('post_comments')
         .update({ content, edited_at: editedAt })
@@ -1612,7 +1627,7 @@ export default function BoardScreen({
       }
 
       if (error) {
-        Alert.alert('Comment update failed', error.message);
+        Alert.alert('Comment update failed', isServerModerationError(error) ? COMMUNITY_GUIDELINES_MESSAGE : error.message);
         return;
       }
 
@@ -1628,6 +1643,7 @@ export default function BoardScreen({
       setCommentComposerOpen(false);
       Keyboard.dismiss();
       settleSelectedPostComposer(true);
+      triggerSuccessHaptic();
       return;
     }
 
@@ -1644,7 +1660,9 @@ export default function BoardScreen({
     if (error) {
       Alert.alert(
         'Comment failed',
-        error.code === 'PGRST204' || error.code === '42703'
+        isServerModerationError(error)
+          ? COMMUNITY_GUIDELINES_MESSAGE
+          : error.code === 'PGRST204' || error.code === '42703'
           ? 'The post_comments table is missing the parent_comment_id column. Run the SQL update first.'
           : error.message
       );
@@ -1663,14 +1681,12 @@ export default function BoardScreen({
     settleSelectedPostComposer(true);
     await loadCommentsForPost(selectedPost.id);
     settleSelectedPostComposer(true);
+    triggerSuccessHaptic();
   }
 
   async function handleCreatePost() {
     if (!newPostTitle.trim() || submittingPost) return;
-    if (containsBannedContent(newPostTitle + ' ' + newPostBody)) {
-      Alert.alert('Post not allowed', 'Your post contains content that violates community guidelines. Please review and edit before posting.');
-      return;
-    }
+    if (!(await ensurePublicTextAllowed(`${newPostTitle.trim()} ${newPostBody.trim()}`, 'Post not allowed'))) return;
     Keyboard.dismiss();
     setSubmittingPost(true);
     setUploadingAttachments(true);
@@ -1725,7 +1741,9 @@ export default function BoardScreen({
         if (error || !data) {
           Alert.alert(
             'Update failed',
-            error?.code === 'PGRST204' || error?.code === '42703'
+            isServerModerationError(error)
+              ? COMMUNITY_GUIDELINES_MESSAGE
+              : error?.code === 'PGRST204' || error?.code === '42703'
               ? 'The posts table is missing the attachments or is_locked columns. Run the SQL update first.'
               : error?.message ?? 'Unknown error'
           );
@@ -1758,7 +1776,9 @@ export default function BoardScreen({
         if (error || !data) {
           Alert.alert(
             'Post failed',
-            error?.code === 'PGRST204' || error?.code === '42703'
+            isServerModerationError(error)
+              ? COMMUNITY_GUIDELINES_MESSAGE
+              : error?.code === 'PGRST204' || error?.code === '42703'
               ? 'The posts table is missing the attachments or is_locked columns. Run the SQL update first.'
               : error?.message ?? 'Unknown error'
           );
@@ -1786,6 +1806,7 @@ export default function BoardScreen({
       }
 
       closeComposer();
+      triggerSuccessHaptic();
     } catch (error: any) {
       Alert.alert(
         'Attachment upload failed',
@@ -1957,12 +1978,19 @@ export default function BoardScreen({
 
   async function fetchBannedWords() {
     const { data } = await supabase.from('banned_words').select('word');
-    if (data) bannedWordsRef.current = (data as Array<{ word: string }>).map((r) => r.word.toLowerCase());
+    if (data) {
+      const words = (data as Array<{ word: string }>).map((r) => r.word);
+      customModerationRulesRef.current = moderationRulesFromCustomBlocklist(words);
+    }
   }
 
-  function containsBannedContent(text: string): boolean {
-    const lower = text.toLowerCase();
-    return bannedWordsRef.current.some((word) => lower.includes(word));
+  async function ensurePublicTextAllowed(text: string, title: string): Promise<boolean> {
+    const result = evaluateModerationText(text, { extraRules: customModerationRulesRef.current });
+    if (shouldBlockModerationResult(result)) {
+      Alert.alert(title, moderationUserMessage(result));
+      return false;
+    }
+    return true;
   }
 
   function handleBlockUser(targetUserId: string, targetName: string) {
@@ -2001,6 +2029,7 @@ export default function BoardScreen({
       Alert.alert('Board name required', 'Please enter a name for the board you are requesting.');
       return;
     }
+    if (!(await ensurePublicTextAllowed(`${name} ${requestBoardDesc.trim()}`, 'Board request not allowed'))) return;
     Keyboard.dismiss();
     setSubmittingBoardRequest(true);
     const { error } = await supabase.from('board_requests').insert({
@@ -2011,7 +2040,7 @@ export default function BoardScreen({
     });
     setSubmittingBoardRequest(false);
     if (error) {
-      Alert.alert('Could not send request', error.message);
+      Alert.alert('Could not send request', isServerModerationError(error) ? COMMUNITY_GUIDELINES_MESSAGE : error.message);
       return;
     }
     Alert.alert('Request sent', 'Thanks! We will review your board request soon.');
@@ -3220,15 +3249,11 @@ export default function BoardScreen({
               </View>
 
               {filteredPosts.length === 0 ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <Ionicons name={isHotBoard(selectedBoard) ? 'flame-outline' : 'clipboard-outline'} size={40} color={colors.border} />
-                  <Text style={{ fontSize: 16, color: colors.textTertiary }}>
-                    {isHotBoard(selectedBoard) ? 'No hot posts yet' : 'No posts yet'}
-                  </Text>
-                  <Text style={{ fontSize: 14, color: colors.border }}>
-                    {isHotBoard(selectedBoard) ? 'Posts with more than 10 likes will appear here.' : 'Be the first to post!'}
-                  </Text>
-                </View>
+                <EmptyState
+                  icon={isHotBoard(selectedBoard) ? 'flame-outline' : 'clipboard-outline'}
+                  title={isHotBoard(selectedBoard) ? 'No hot posts yet' : 'No posts yet'}
+                  body={isHotBoard(selectedBoard) ? 'Posts with more than 10 likes will appear here.' : 'Be the first to post when you have something useful to share.'}
+                />
               ) : (
                 <ScrollView
                   style={{ flex: 1 }}

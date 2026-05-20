@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Easing, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,11 +12,20 @@ import { fetchDiningMenusForSchool, schoolDiningMenusSupported, type DiningLocat
 import { academicSystemNoun, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { formatDateInTimeZone, getZonedDateParts, normalizeTimeZone, zonedDateFromParts, zonedDateKey, zonedWeekdayIndex } from '../data/timeZone';
+import {
+  COMMUNITY_GUIDELINES_MESSAGE,
+  evaluateModerationText,
+  moderationUserMessage,
+  shouldBlockModerationResult,
+} from '../data/moderationPolicy';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import InfoChip from '../components/InfoChip';
+import { EmptyState, SkeletonBlock } from '../components/Polish';
 import { themedIconBackground, themedIconColor } from '../utils/themeTint';
+import { triggerSelectionHaptic, triggerSuccessHaptic } from '../utils/haptics';
+import { MOTION } from '../utils/motion';
 import { useKeyboardInset } from '../utils/useKeyboardInset';
 
 type Props = {
@@ -91,6 +100,10 @@ type SportsEventRsvpRow = {
   status: StoredSportsEventRsvpStatus;
 };
 
+function isServerModerationError(error: { message?: string } | null | undefined) {
+  return typeof error?.message === 'string' && error.message.includes('ClassMate moderation policy');
+}
+
 type CalendarTask = {
   id: string;
   title: string;
@@ -129,6 +142,18 @@ type HeroCardItem =
   | { type: 'diningMenu' }
   | { type: 'sportsEvents' }
   | { type: 'campusInfo' };
+
+type HeroTransitionState = {
+  fromIndex: number;
+  toIndex: number;
+  direction: 1 | -1;
+};
+
+function getHeroItemKey(item: HeroCardItem) {
+  if (item.type === 'course') return `course-${item.course.id}`;
+  if (item.type === 'completedSummary' || item.type === 'upcomingSummary') return `${item.type}-today`;
+  return item.type;
+}
 
 type CampusInfoResource = {
   id: string;
@@ -170,6 +195,9 @@ type SchoolTermDateRange = { start: Date; end: Date };
 
 const HOME_SPORTS_FETCH_DELAY_MS = 250;
 const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
+const HERO_INDICATOR_TOP_SPACING = 10;
+const HERO_INDICATOR_ROW_HEIGHT = 24;
+const HERO_FALLBACK_CARD_HEIGHT = 220;
 
 const STUDENT_DEALS_RESOURCE: CampusInfoResource = {
   id: 'student-deals',
@@ -1943,23 +1971,31 @@ export default function HomeScreen({
     ...(shouldShowSportsHeroPage ? [{ type: 'sportsEvents' as const }] : []),
     { type: 'campusInfo' as const },
   ];
+  const heroItemKeySignature = heroItems.map(getHeroItemKey).join('|');
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
+  const [heroTransition, setHeroTransition] = useState<HeroTransitionState | null>(null);
   const activeHeroIndexRef = useRef(0);
-  const heroSlideAnim = useRef(new Animated.Value(0)).current;
+  const heroTransitionRef = useRef<HeroTransitionState | null>(null);
   const heroTransitioningRef = useRef(false);
-  const heroSlideAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const heroAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
   const heroItemsLengthRef = useRef(0);
   heroItemsLengthRef.current = heroItems.length;
   const heroCardWidthRef = useRef(0);
-  const heroBaseOffsetAnim = useRef(new Animated.Value(0)).current;
-  const heroTranslateX = useRef(Animated.add(heroBaseOffsetAnim, heroSlideAnim)).current;
-  const heroHeightAnim = useRef(new Animated.Value(0)).current;
-  const heroCardHeightsRef = useRef<number[]>([]);
+  const initialHeroIndicatorFlowHeight = heroItems.length > 1 ? HERO_INDICATOR_TOP_SPACING + HERO_INDICATOR_ROW_HEIGHT : 0;
+  const heroHeightAnim = useRef(new Animated.Value(HERO_FALLBACK_CARD_HEIGHT)).current;
+  const heroAreaHeightAnim = useRef(new Animated.Value(HERO_FALLBACK_CARD_HEIGHT + initialHeroIndicatorFlowHeight)).current;
+  const heroOutgoingTranslateXAnim = useRef(new Animated.Value(0)).current;
+  const heroOutgoingOpacityAnim = useRef(new Animated.Value(1)).current;
+  const heroIncomingTranslateXAnim = useRef(new Animated.Value(0)).current;
+  const heroIncomingTranslateYAnim = useRef(new Animated.Value(0)).current;
+  const heroIncomingOpacityAnim = useRef(new Animated.Value(1)).current;
+  const heroCardHeightsRef = useRef<Record<string, number>>({});
   const heroHeightInitializedRef = useRef(false);
   const pillXAnim = useRef(new Animated.Value(0)).current;
   const pillColorAnim = useRef(new Animated.Value(0)).current;
   const dotPositionsRef = useRef<number[]>([]);
   const pillInitializedRef = useRef(false);
+  const heroIndicatorFlowHeightRef = useRef(0);
 
   const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
   const quarterProgress = clamp(
@@ -2018,6 +2054,8 @@ export default function HomeScreen({
 
   const heroCardWidth = Math.max(windowWidth - 36, 0);
   heroCardWidthRef.current = heroCardWidth;
+  const heroIndicatorFlowHeight = heroItems.length > 1 ? HERO_INDICATOR_TOP_SPACING + HERO_INDICATOR_ROW_HEIGHT : 0;
+  heroIndicatorFlowHeightRef.current = heroIndicatorFlowHeight;
   const isCompactCampusInfoCard = heroCardWidth > 0 && heroCardWidth < 340;
   const campusInfoHeroIconBoxSize = isCompactCampusInfoCard ? 34 : 36;
   const campusInfoHeroIconSize = isCompactCampusInfoCard ? 17 : 18;
@@ -2035,6 +2073,7 @@ export default function HomeScreen({
   const campusInfoSheetCaptionSize = isCompactCampusInfoSheet ? 11 : 12;
   const campusInfoSheetCaptionLineHeight = isCompactCampusInfoSheet ? 14 : 15;
   const activeHeroItem = heroItems[activeHeroIndex] ?? null;
+  const indicatorActiveHeroIndex = heroTransition?.toIndex ?? activeHeroIndex;
   const sportsGoingAccent = getSchoolConfig(school).accent;
   const diningAccent = '#F97316';
   const campusInfoAccent = '#8B5CF6';
@@ -2441,6 +2480,11 @@ export default function HomeScreen({
     }
     const event = selectedSportsEvent;
     const content = sportsEventCommentInput.trim();
+    const moderationResult = evaluateModerationText(content);
+    if (shouldBlockModerationResult(moderationResult)) {
+      Alert.alert('Comment not allowed', moderationUserMessage(moderationResult));
+      return;
+    }
     const optimisticId = `local-${Date.now()}`;
     setSubmittingSportsEventComment(true);
     setSportsEventCommentInput('');
@@ -2490,7 +2534,9 @@ export default function HomeScreen({
       setSubmittingSportsEventComment(false);
       Alert.alert(
         'Comment failed',
-        error.code === 'PGRST205'
+        isServerModerationError(error)
+          ? COMMUNITY_GUIDELINES_MESSAGE
+          : error.code === 'PGRST205'
           ? 'Sports event comments are not set up yet. Run the sports_event_social.sql migration.'
           : error.message
       );
@@ -2514,6 +2560,7 @@ export default function HomeScreen({
     requestAnimationFrame(() => sportsEventCommentInputRef.current?.focus());
     settleSportsEventComposer(true);
     setSubmittingSportsEventComment(false);
+    triggerSuccessHaptic();
   }
 
   function openSportsEventCommentActions(comment: SportsEventComment) {
@@ -2602,99 +2649,218 @@ export default function HomeScreen({
     setDeletingSportsEventCommentId(null);
   }
 
-  useEffect(() => {
-    const maxIndex = Math.max(heroItems.length - 1, 0);
-    if (activeHeroIndexRef.current <= maxIndex) return;
-    heroSlideAnimationRef.current?.stop();
-    heroSlideAnimationRef.current = null;
-    heroTransitioningRef.current = false;
-    heroSlideAnim.setValue(0);
-    setActiveHeroIndex(maxIndex);
-    activeHeroIndexRef.current = maxIndex;
-  }, [heroItems.length]);
-
-  function springHeroHeightToIndex(index: number) {
-    const h = heroCardHeightsRef.current[index];
-    if (h == null || h === 0) return;
-    Animated.spring(heroHeightAnim, {
-      toValue: h,
-      tension: 100,
-      friction: 18,
-      useNativeDriver: false,
-    }).start();
+  function getHeroMeasuredHeight(index: number) {
+    const item = heroItems[index];
+    if (!item) return undefined;
+    return heroCardHeightsRef.current[getHeroItemKey(item)];
   }
 
-  useLayoutEffect(() => {
-    // Seamless swap: both values update together so the card never jumps.
-    // The height spring and exit animation were already started by the caller
-    // (onPanResponderRelease or moveHeroTo); don't restart them here.
-    const newBase = -activeHeroIndex * (heroCardWidthRef.current + 12);
-    heroBaseOffsetAnim.setValue(newBase);
-    heroSlideAnim.setValue(0);
-  }, [activeHeroIndex]);
+  function heroAreaHeightForCardHeight(cardHeight: number) {
+    return cardHeight + heroIndicatorFlowHeightRef.current;
+  }
 
-  function moveHeroTo(nextIndex: number) {
+  function setHeroHeights(cardHeight: number) {
+    heroHeightAnim.setValue(cardHeight);
+    heroAreaHeightAnim.setValue(heroAreaHeightForCardHeight(cardHeight));
+  }
+
+  function animateHeroHeightToIndex(index: number, duration: number = MOTION.duration.hero) {
+    const nextHeight = getHeroMeasuredHeight(index);
+    if (!nextHeight) return null;
+    return Animated.parallel([
+      Animated.timing(heroHeightAnim, {
+        toValue: nextHeight,
+        duration,
+        easing: MOTION.easing.standard,
+        useNativeDriver: false,
+      }),
+      Animated.timing(heroAreaHeightAnim, {
+        toValue: heroAreaHeightForCardHeight(nextHeight),
+        duration,
+        easing: MOTION.easing.standard,
+        useNativeDriver: false,
+      }),
+    ]);
+  }
+
+  function resetHeroMotionValues() {
+    heroOutgoingTranslateXAnim.setValue(0);
+    heroOutgoingOpacityAnim.setValue(1);
+    heroIncomingTranslateXAnim.setValue(0);
+    heroIncomingTranslateYAnim.setValue(0);
+    heroIncomingOpacityAnim.setValue(1);
+  }
+
+  function animateHeroPillToIndex(index: number, duration: number = MOTION.duration.hero) {
+    const targetDotX = dotPositionsRef.current[index];
+    if (targetDotX == null) return null;
+    return Animated.parallel([
+      Animated.timing(pillXAnim, {
+        toValue: targetDotX - 4,
+        duration,
+        easing: MOTION.easing.standard,
+        useNativeDriver: false,
+      }),
+      Animated.timing(pillColorAnim, {
+        toValue: 1,
+        duration: Math.min(180, duration),
+        easing: MOTION.easing.soft,
+        useNativeDriver: false,
+      }),
+    ]);
+  }
+
+  function handleHeroCardMeasured(item: HeroCardItem, index: number, rawHeight: number) {
+    const height = Math.ceil(rawHeight);
+    if (!height) return;
+    const key = getHeroItemKey(item);
+    if (heroCardHeightsRef.current[key] === height) return;
+    heroCardHeightsRef.current[key] = height;
+
+    const activeItem = heroItems[activeHeroIndexRef.current];
+    const activeKey = activeItem ? getHeroItemKey(activeItem) : null;
+    if (key !== activeKey || heroTransitionRef.current) return;
+
+    if (!heroHeightInitializedRef.current) {
+      heroHeightInitializedRef.current = true;
+      setHeroHeights(height);
+      return;
+    }
+
+    animateHeroHeightToIndex(activeHeroIndexRef.current, 220)?.start();
+  }
+
+  useEffect(() => {
+    const maxIndex = Math.max(heroItems.length - 1, 0);
+    if (activeHeroIndexRef.current <= maxIndex) {
+      const currentHeight = getHeroMeasuredHeight(activeHeroIndexRef.current);
+      if (currentHeight && heroHeightInitializedRef.current && !heroTransitionRef.current) {
+        Animated.timing(heroAreaHeightAnim, {
+          toValue: heroAreaHeightForCardHeight(currentHeight),
+          duration: 180,
+          easing: MOTION.easing.standard,
+          useNativeDriver: false,
+        }).start();
+      }
+      return;
+    }
+
+    heroAnimationRef.current?.stop();
+    heroAnimationRef.current = null;
+    heroTransitioningRef.current = false;
+    heroTransitionRef.current = null;
+    setHeroTransition(null);
+    resetHeroMotionValues();
+    const nextIndex = maxIndex;
+    activeHeroIndexRef.current = nextIndex;
+    setActiveHeroIndex(nextIndex);
+    const nextHeight = getHeroMeasuredHeight(nextIndex);
+    if (nextHeight) setHeroHeights(nextHeight);
+  }, [heroItems.length, heroItemKeySignature, heroIndicatorFlowHeight]);
+
+  function startHeroTransition(nextIndex: number, directionOverride?: 1 | -1) {
     const boundedNextIndex = clamp(nextIndex, 0, Math.max(heroItems.length - 1, 0));
     const currentIndex = activeHeroIndexRef.current;
     if (boundedNextIndex === currentIndex || heroItems.length <= 1 || heroTransitioningRef.current) return;
 
-    heroTransitioningRef.current = true;
-    heroSlideAnimationRef.current?.stop();
-    heroSlideAnimationRef.current = null;
-    heroSlideAnim.stopAnimation();
+    const direction = directionOverride ?? (boundedNextIndex > currentIndex ? 1 : -1);
+    const transition: HeroTransitionState = { fromIndex: currentIndex, toIndex: boundedNextIndex, direction };
+
+    heroAnimationRef.current?.stop();
+    heroAnimationRef.current = null;
     heroHeightAnim.stopAnimation();
+    heroAreaHeightAnim.stopAnimation();
+    heroOutgoingTranslateXAnim.stopAnimation();
+    heroOutgoingOpacityAnim.stopAnimation();
+    heroIncomingTranslateXAnim.stopAnimation();
+    heroIncomingTranslateYAnim.stopAnimation();
+    heroIncomingOpacityAnim.stopAnimation();
+    pillXAnim.stopAnimation();
     pillColorAnim.stopAnimation();
 
-    const goNext = boundedNextIndex > currentIndex;
-    const distance = Math.abs(boundedNextIndex - currentIndex);
-    const cardWidth = heroCardWidthRef.current;
-    const duration = Math.min(220 + (distance - 1) * 100, 480);
+    heroTransitioningRef.current = true;
+    heroTransitionRef.current = transition;
+    heroOutgoingTranslateXAnim.setValue(0);
+    heroOutgoingOpacityAnim.setValue(1);
+    heroIncomingTranslateXAnim.setValue(direction * 42);
+    heroIncomingTranslateYAnim.setValue(10);
+    heroIncomingOpacityAnim.setValue(0);
+    setHeroTransition(transition);
 
-    // Fade out pill color, slide pill to target dot, fade color back in on arrival
-    Animated.timing(pillColorAnim, { toValue: 0, duration: 100, useNativeDriver: false }).start();
-    const targetDotX = dotPositionsRef.current[boundedNextIndex] ?? 0;
-    Animated.timing(pillXAnim, { toValue: targetDotX - 4, duration, easing: Easing.out(Easing.quad), useNativeDriver: false }).start(() => {
-      Animated.timing(pillColorAnim, { toValue: 1, duration: 120, useNativeDriver: false }).start();
-    });
+    const animations: Animated.CompositeAnimation[] = [
+      Animated.timing(heroOutgoingTranslateXAnim, {
+        toValue: -direction * 36,
+        duration: MOTION.duration.hero,
+        easing: MOTION.easing.standard,
+        useNativeDriver: true,
+      }),
+      Animated.timing(heroOutgoingOpacityAnim, {
+        toValue: 0,
+        duration: MOTION.duration.hero,
+        easing: MOTION.easing.soft,
+        useNativeDriver: true,
+      }),
+      Animated.timing(heroIncomingTranslateXAnim, {
+        toValue: 0,
+        duration: MOTION.duration.hero,
+        easing: MOTION.easing.standard,
+        useNativeDriver: true,
+      }),
+      Animated.timing(heroIncomingTranslateYAnim, {
+        toValue: 0,
+        duration: MOTION.duration.hero,
+        easing: MOTION.easing.standard,
+        useNativeDriver: true,
+      }),
+      Animated.timing(heroIncomingOpacityAnim, {
+        toValue: 1,
+        duration: MOTION.duration.hero,
+        easing: MOTION.easing.soft,
+        useNativeDriver: true,
+      }),
+    ];
 
-    // Start height spring immediately alongside the slide
-    const targetH = heroCardHeightsRef.current[boundedNextIndex];
-    if (targetH) {
-      Animated.spring(heroHeightAnim, { toValue: targetH, tension: 100, friction: 18, useNativeDriver: false }).start();
-    }
+    const heightAnimation = animateHeroHeightToIndex(boundedNextIndex, MOTION.duration.hero);
+    if (heightAnimation) animations.push(heightAnimation);
+    const pillAnimation = animateHeroPillToIndex(boundedNextIndex, MOTION.duration.hero);
+    if (pillAnimation) animations.push(pillAnimation);
 
-    const exitAnim = Animated.timing(heroSlideAnim, {
-      toValue: goNext ? -(distance * (cardWidth + 12)) : (distance * (cardWidth + 12)),
-      duration,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
-    });
-    heroSlideAnimationRef.current = exitAnim;
-    exitAnim.start(({ finished }) => {
+    const transitionAnimation = Animated.parallel(animations);
+    heroAnimationRef.current = transitionAnimation;
+    transitionAnimation.start(({ finished }) => {
       if (!finished) return;
-      heroSlideAnimationRef.current = null;
+      heroAnimationRef.current = null;
       heroTransitioningRef.current = false;
+      heroTransitionRef.current = null;
       activeHeroIndexRef.current = boundedNextIndex;
       setActiveHeroIndex(boundedNextIndex);
-      // useLayoutEffect (pan branch) does the seamless swap:
-      // heroBaseOffsetAnim shifts, heroSlideAnim resets to 0 — no flash
+      setHeroTransition(null);
+      resetHeroMotionValues();
+      const settledHeight = getHeroMeasuredHeight(boundedNextIndex);
+      if (settledHeight) setHeroHeights(settledHeight);
+      triggerSelectionHaptic();
     });
+  }
+
+  function moveHeroTo(nextIndex: number) {
+    startHeroTransition(nextIndex);
   }
 
   const heroPanResponder = useMemo(
     () => PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 7 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.12,
+      onMoveShouldSetPanResponder: (_, gesture) => !heroTransitioningRef.current && Math.abs(gesture.dx) > 7 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.12,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
-        heroSlideAnimationRef.current?.stop();
-        heroSlideAnimationRef.current = null;
-        heroSlideAnim.stopAnimation();
-        heroSlideAnim.setValue(0);
+        heroAnimationRef.current?.stop();
+        heroAnimationRef.current = null;
         heroHeightAnim.stopAnimation();
+        heroAreaHeightAnim.stopAnimation();
+        heroOutgoingTranslateXAnim.stopAnimation();
+        heroOutgoingOpacityAnim.stopAnimation();
+        heroOutgoingTranslateXAnim.setValue(0);
+        heroOutgoingOpacityAnim.setValue(1);
         pillColorAnim.stopAnimation();
         heroTransitioningRef.current = false;
-        // Fade pill color out at drag start
-        Animated.timing(pillColorAnim, { toValue: 0, duration: 150, useNativeDriver: false }).start();
       },
       onPanResponderMove: (_, gesture) => {
         const currentIndex = activeHeroIndexRef.current;
@@ -2705,18 +2871,20 @@ export default function HomeScreen({
         const dx = (atStart && gesture.dx > 0) || (atEnd && gesture.dx < 0)
           ? gesture.dx * 0.25
           : gesture.dx;
-        heroSlideAnim.setValue(dx);
+        const visualDx = clamp(dx * 0.35, -42, 42);
+        heroOutgoingTranslateXAnim.setValue(visualDx);
+        heroOutgoingOpacityAnim.setValue(1 - Math.min(0.28, Math.abs(dx) / Math.max(cardWidth, 1) * 0.28));
 
-        // Interpolate height toward the card we're dragging into
         const adjacentIndex = dx < 0 ? currentIndex + 1 : currentIndex - 1;
-        const currentH = heroCardHeightsRef.current[currentIndex];
-        const adjacentH = heroCardHeightsRef.current[adjacentIndex];
+        const currentH = getHeroMeasuredHeight(currentIndex);
+        const adjacentH = getHeroMeasuredHeight(adjacentIndex);
         if (currentH && adjacentH && cardWidth > 0) {
           const progress = Math.min(1, Math.abs(dx) / cardWidth);
-          heroHeightAnim.setValue(currentH + (adjacentH - currentH) * progress);
+          const interpolatedHeight = currentH + (adjacentH - currentH) * progress;
+          heroHeightAnim.setValue(interpolatedHeight);
+          heroAreaHeightAnim.setValue(heroAreaHeightForCardHeight(interpolatedHeight));
         }
 
-        // Slide pill proportionally between current and adjacent dot
         const currentDotX = dotPositionsRef.current[currentIndex];
         const adjacentDotX = dotPositionsRef.current[adjacentIndex];
         if (currentDotX != null && adjacentDotX != null && cardWidth > 0) {
@@ -2733,52 +2901,33 @@ export default function HomeScreen({
 
         if (goNext || goPrev) {
           const nextIndex = goNext ? currentIndex + 1 : currentIndex - 1;
-          // Slide pill to target dot and fade color in on arrival
-          const targetDotX = dotPositionsRef.current[nextIndex] ?? 0;
-          Animated.timing(pillXAnim, { toValue: targetDotX - 4, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: false }).start(() => {
-            Animated.timing(pillColorAnim, { toValue: 1, duration: 120, useNativeDriver: false }).start();
-          });
-          // Spring height to target immediately alongside the exit animation
-          const targetH = heroCardHeightsRef.current[nextIndex];
-          if (targetH) {
-            Animated.spring(heroHeightAnim, { toValue: targetH, tension: 100, friction: 18, useNativeDriver: false }).start();
-          }
-          const exitAnim = Animated.timing(heroSlideAnim, {
-            toValue: goNext ? -(cardWidth + 12) : (cardWidth + 12),
-            duration: 200,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          });
-          heroSlideAnimationRef.current = exitAnim;
-          exitAnim.start(({ finished }) => {
-            if (!finished) return;
-            heroSlideAnimationRef.current = null;
-            activeHeroIndexRef.current = nextIndex;
-            setActiveHeroIndex(nextIndex);
-          });
+          startHeroTransition(nextIndex, goNext ? 1 : -1);
         } else {
-          // Snap pill back to current dot and restore color
-          const currentDotX = dotPositionsRef.current[currentIndex] ?? 0;
-          Animated.timing(pillXAnim, { toValue: currentDotX - 4, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: false }).start(() => {
-            Animated.timing(pillColorAnim, { toValue: 1, duration: 120, useNativeDriver: false }).start();
-          });
-          // Snap height back to current card
-          const currentH = heroCardHeightsRef.current[currentIndex];
-          if (currentH) {
-            Animated.spring(heroHeightAnim, { toValue: currentH, tension: 110, friction: 15, useNativeDriver: false }).start();
-          }
-          const snapBack = Animated.spring(heroSlideAnim, {
-            toValue: 0,
-            tension: 110,
-            friction: 15,
-            useNativeDriver: true,
-          });
-          heroSlideAnimationRef.current = snapBack;
-          snapBack.start(() => { heroSlideAnimationRef.current = null; });
+          const animations: Animated.CompositeAnimation[] = [
+            Animated.timing(heroOutgoingTranslateXAnim, {
+              toValue: 0,
+              duration: 180,
+              easing: MOTION.easing.standard,
+              useNativeDriver: true,
+            }),
+            Animated.timing(heroOutgoingOpacityAnim, {
+              toValue: 1,
+              duration: 180,
+              easing: MOTION.easing.soft,
+              useNativeDriver: true,
+            }),
+          ];
+          const heightAnimation = animateHeroHeightToIndex(currentIndex, 180);
+          if (heightAnimation) animations.push(heightAnimation);
+          const pillAnimation = animateHeroPillToIndex(currentIndex, 180);
+          if (pillAnimation) animations.push(pillAnimation);
+          const snapBack = Animated.parallel(animations);
+          heroAnimationRef.current = snapBack;
+          snapBack.start(() => { heroAnimationRef.current = null; });
         }
       },
     }),
-    []
+    [heroItems.length, heroItemKeySignature]
   );
 
   function renderHeroCardContent(item: HeroCardItem): ReactNode {
@@ -2850,21 +2999,17 @@ export default function HomeScreen({
               })}
             </View>
           ) : diningLoading ? (
-            <View style={{ alignItems: 'center', marginTop: 18, paddingVertical: 16 }}>
-              <ActivityIndicator size="small" color={diningAccent} />
-              <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 9 }}>
-                Loading dining menus
-              </Text>
+            <View style={{ marginTop: 16, gap: 10 }}>
+              <SkeletonBlock height={48} radius={16} />
+              <SkeletonBlock height={48} radius={16} width="88%" />
             </View>
           ) : (
-            <View style={{ marginTop: 16, paddingVertical: 8 }}>
-              <Text style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
-                Dining menus unavailable
-              </Text>
-              <Text style={{ fontSize: 13, lineHeight: 19, color: diningError ? '#EF4444' : colors.textSecondary, marginTop: 6 }}>
-                {diningError ?? 'Menus will appear here when the dining feed has food data for today.'}
-              </Text>
-            </View>
+            <EmptyState
+              compact
+              icon="restaurant-outline"
+              title="Dining menus unavailable"
+              body={diningError ?? 'Menus will appear here when the dining feed has food data for today.'}
+            />
           )}
 
           {diningMenus.length > 0 ? (
@@ -2948,21 +3093,17 @@ export default function HomeScreen({
               ))}
             </View>
           ) : sportsLoading ? (
-            <View style={{ alignItems: 'center', marginTop: 18, paddingVertical: 16 }}>
-              <ActivityIndicator size="small" color={sportsGoingAccent} />
-              <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 9 }}>
-                Loading sports events
-              </Text>
+            <View style={{ marginTop: 16, gap: 10 }}>
+              <SkeletonBlock height={50} radius={16} />
+              <SkeletonBlock height={50} radius={16} width="90%" />
             </View>
           ) : (
-            <View style={{ marginTop: 16, paddingVertical: 8 }}>
-              <Text style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
-                No upcoming sports events
-              </Text>
-              <Text style={{ fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }}>
-                Events will appear here when the athletics calendar has something coming up.
-              </Text>
-            </View>
+            <EmptyState
+              compact
+              icon="trophy-outline"
+              title="No upcoming sports events"
+              body="Events will appear here when the athletics calendar has something coming up."
+            />
           )}
 
           {visibleCampusEvents.length > 0 ? (
@@ -3477,97 +3618,141 @@ export default function HomeScreen({
 
       <View style={{ marginBottom: 14, width: heroCardWidth }}>
         {activeHeroItem ? (
-          <>
-            <View>
-              <Animated.View style={{ height: heroHeightAnim }} />
-              <Animated.View
-                style={{ position: 'absolute', top: 0, left: 0, flexDirection: 'row', alignItems: 'flex-start', transform: [{ translateX: heroTranslateX }] }}
-                {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
+          <Animated.View
+            style={{ height: heroAreaHeightAnim, width: heroCardWidth, overflow: 'visible' }}
+            {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
+          >
+            <Animated.View style={{ height: heroHeightAnim, width: heroCardWidth, overflow: 'visible' }}>
+              <View
+                pointerEvents="none"
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={{ position: 'absolute', top: 0, left: 0, width: heroCardWidth, opacity: 0 }}
               >
                 {heroItems.map((item, index) => (
                   <View
-                    key={item.type}
-                    pointerEvents={index === activeHeroIndex ? 'auto' : 'none'}
-                    style={{ width: heroCardWidth, marginRight: index < heroItems.length - 1 ? 12 : 0 }}
-                    onLayout={(e) => {
-                      const h = Math.ceil(e.nativeEvent.layout.height);
-                      if (heroCardHeightsRef.current[index] === h) return;
-                      heroCardHeightsRef.current[index] = h;
-                      if (index !== activeHeroIndexRef.current) return;
-                      if (!heroHeightInitializedRef.current) {
-                        heroHeightInitializedRef.current = true;
-                        heroHeightAnim.setValue(h);
-                      } else {
-                        springHeroHeightToIndex(index);
-                      }
-                    }}
+                    key={`measure-${getHeroItemKey(item)}`}
+                    style={{ position: 'absolute', top: 0, left: 0, width: heroCardWidth }}
+                    onLayout={(e) => handleHeroCardMeasured(item, index, e.nativeEvent.layout.height)}
                   >
                     {renderHeroCardContent(item)}
                   </View>
                 ))}
-              </Animated.View>
-            </View>
-            {heroItems.length > 1 ? (
-              <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 10 }}>
-                {/* Sliding pill — absolutely positioned, slides behind the icons */}
-                <Animated.View
-                  pointerEvents="none"
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: 32,
-                    height: 24,
-                    borderRadius: 12,
-                    backgroundColor: `${getIndicatorAccent(heroItems[activeHeroIndex] ?? heroItems[0])}1F`,
-                    borderWidth: 1,
-                    borderColor: `${getIndicatorAccent(heroItems[activeHeroIndex] ?? heroItems[0])}55`,
-                    opacity: pillColorAnim,
-                    transform: [{ translateX: pillXAnim }],
-                  }}
-                />
-                {heroItems.map((item, index) => {
-                  const isActive = index === activeHeroIndex;
-                  const indicatorAccent = getIndicatorAccent(item);
-                  const indicatorIcon = item.type === 'sportsEvents'
-                    ? 'trophy-outline'
-                    : item.type === 'diningMenu'
-                      ? 'restaurant-outline'
-                      : item.type === 'campusInfo'
-                        ? 'grid-outline'
-                        : item.type === 'completedSummary'
-                          ? 'checkmark-done-outline'
-                          : 'calendar-outline';
-                  return (
-                    <TouchableOpacity
-                      key={`${item.type}-${index}-dot`}
-                      onPress={() => moveHeroTo(index)}
-                      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                      activeOpacity={0.75}
-                      onLayout={(e) => {
-                        const x = e.nativeEvent.layout.x;
-                        dotPositionsRef.current[index] = x;
-                        if (index === activeHeroIndexRef.current) {
-                          pillXAnim.setValue(x - 4);
-                          if (!pillInitializedRef.current) {
-                            pillInitializedRef.current = true;
-                            Animated.timing(pillColorAnim, { toValue: 1, duration: 200, useNativeDriver: false }).start();
-                          }
-                        }
+              </View>
+              {heroTransition ? (
+                <>
+                  {heroItems[heroTransition.fromIndex] ? (
+                    <Animated.View
+                      key={`outgoing-${getHeroItemKey(heroItems[heroTransition.fromIndex])}`}
+                      pointerEvents="none"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: heroCardWidth,
+                        opacity: heroOutgoingOpacityAnim,
+                        transform: [{ translateX: heroOutgoingTranslateXAnim }],
                       }}
-                      style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}
                     >
-                      <Ionicons
-                        name={indicatorIcon}
-                        size={15}
-                        color={isActive ? indicatorAccent : colors.textTertiary}
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
+                      {renderHeroCardContent(heroItems[heroTransition.fromIndex])}
+                    </Animated.View>
+                  ) : null}
+                  {heroItems[heroTransition.toIndex] ? (
+                    <Animated.View
+                      key={`incoming-${getHeroItemKey(heroItems[heroTransition.toIndex])}`}
+                      pointerEvents="none"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: heroCardWidth,
+                        opacity: heroIncomingOpacityAnim,
+                        transform: [
+                          { translateX: heroIncomingTranslateXAnim },
+                          { translateY: heroIncomingTranslateYAnim },
+                        ],
+                      }}
+                    >
+                      {renderHeroCardContent(heroItems[heroTransition.toIndex])}
+                    </Animated.View>
+                  ) : null}
+                </>
+              ) : (
+                <Animated.View
+                  key={`active-${getHeroItemKey(activeHeroItem)}`}
+                  pointerEvents="auto"
+                  style={{
+                    width: heroCardWidth,
+                    opacity: heroOutgoingOpacityAnim,
+                    transform: [{ translateX: heroOutgoingTranslateXAnim }],
+                  }}
+                >
+                  {renderHeroCardContent(activeHeroItem)}
+                </Animated.View>
+              )}
+            </Animated.View>
+            {heroItems.length > 1 ? (
+              <View style={{ height: heroIndicatorFlowHeight, paddingTop: HERO_INDICATOR_TOP_SPACING, alignItems: 'center' }}>
+                <View style={{ height: HERO_INDICATOR_ROW_HEIGHT, flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: 32,
+                      height: HERO_INDICATOR_ROW_HEIGHT,
+                      borderRadius: 12,
+                      backgroundColor: `${getIndicatorAccent(heroItems[indicatorActiveHeroIndex] ?? heroItems[0])}1F`,
+                      borderWidth: 1,
+                      borderColor: `${getIndicatorAccent(heroItems[indicatorActiveHeroIndex] ?? heroItems[0])}55`,
+                      opacity: pillColorAnim,
+                      transform: [{ translateX: pillXAnim }],
+                    }}
+                  />
+                  {heroItems.map((item, index) => {
+                    const isActive = index === indicatorActiveHeroIndex;
+                    const indicatorAccent = getIndicatorAccent(item);
+                    const indicatorIcon = item.type === 'sportsEvents'
+                      ? 'trophy-outline'
+                      : item.type === 'diningMenu'
+                        ? 'restaurant-outline'
+                        : item.type === 'campusInfo'
+                          ? 'grid-outline'
+                          : item.type === 'completedSummary'
+                            ? 'checkmark-done-outline'
+                            : 'calendar-outline';
+                    return (
+                      <TouchableOpacity
+                        key={`${getHeroItemKey(item)}-${index}-dot`}
+                        onPress={() => moveHeroTo(index)}
+                        hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                        activeOpacity={0.75}
+                        onLayout={(e) => {
+                          const x = e.nativeEvent.layout.x;
+                          dotPositionsRef.current[index] = x;
+                          if (index === indicatorActiveHeroIndex) {
+                            pillXAnim.setValue(x - 4);
+                            if (!pillInitializedRef.current) {
+                              pillInitializedRef.current = true;
+                              Animated.timing(pillColorAnim, { toValue: 1, duration: 200, useNativeDriver: false }).start();
+                            }
+                          }
+                        }}
+                        style={{ width: 24, height: HERO_INDICATOR_ROW_HEIGHT, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Ionicons
+                          name={indicatorIcon}
+                          size={15}
+                          color={isActive ? indicatorAccent : colors.textTertiary}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
             ) : null}
-          </>
+          </Animated.View>
         ) : (
           <View>
             <View style={{

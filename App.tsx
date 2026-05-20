@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, Alert, Animated, BackHandler, Easing, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, BackHandler, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -41,6 +41,8 @@ import { addZonedDays, getZonedDateParts, normalizeTimeZone, zonedDateFromParts,
 import { supabase } from './src/lib/supabase';
 import { isMissingSchoolColumnError } from './src/lib/supabaseErrors';
 import type { ChatTarget } from './src/data/messages';
+import { triggerLightHaptic, triggerSelectionHaptic, triggerSuccessHaptic } from './src/utils/haptics';
+import { MOTION } from './src/utils/motion';
 import type { PanResponderGestureState } from 'react-native';
 import type { DateFormatPreference, EditableProfile, LanguagePreference, NotificationPreferences, PushPermissionStatus, TimetableVisibility, UserSettingsState } from './src/data/userPreferences';
 
@@ -518,12 +520,12 @@ function AuthNavigator({
   useEffect(() => {
     if (wasPushRef.current) {
       wasPushRef.current = false;
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: false, tension: 100, friction: 16 }).start();
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: false, ...MOTION.spring.screen }).start();
     }
   }, [stack.length]);
 
   const goBack = () => {
-    Animated.timing(slideAnim, { toValue: W, duration: 260, useNativeDriver: false }).start(() => {
+    Animated.timing(slideAnim, { toValue: W, duration: MOTION.duration.screen, easing: MOTION.easing.standard, useNativeDriver: false }).start(() => {
       slideAnim.setValue(0);
       onPop();
     });
@@ -536,11 +538,11 @@ function AuthNavigator({
       if (gs.dx > W * 0.35 || gs.vx > 0.6) {
         goBack();
       } else {
-        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: false, tension: 100, friction: 16 }).start();
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: false, ...MOTION.spring.screen }).start();
       }
     },
     onPanResponderTerminate: () => {
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: false, tension: 100, friction: 16 }).start();
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: false, ...MOTION.spring.screen }).start();
     },
   })).current;
 
@@ -610,7 +612,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   const hydrateUserFromSession = (sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> }) => {
     const email = sessionUser.email ?? '';
-    setForceReviewOnboardingOnce(isReviewAccountEmail(email));
     requestUserBootstrap();
     setUserId(sessionUser.id);
     setUserEmail(email);
@@ -822,7 +823,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const touchIsOnCurrentPill = touchX >= currentX && touchX <= currentX + tabW;
       pillDragTouchOffsetX.current = touchIsOnCurrentPill ? touchX - currentX : tabW / 2;
       isDraggingPill.current = true;
-      Animated.spring(pillScaleAnim, { toValue: 1.15, useNativeDriver: false, tension: 300, friction: 10 }).start();
+      triggerLightHaptic();
+      Animated.spring(pillScaleAnim, { toValue: 1.12, useNativeDriver: false, ...MOTION.spring.press }).start();
     },
     onPanResponderMove: (_, gs) => {
       if (!isDraggingPill.current) return;
@@ -832,35 +834,36 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       pillXAnim.setValue(Math.max(0, Math.min(w - tabW, touchX - pillDragTouchOffsetX.current)));
     },
     onPanResponderRelease: (_, gs) => {
-      Animated.spring(pillScaleAnim, { toValue: 1, useNativeDriver: false, tension: 300, friction: 10 }).start();
+      Animated.spring(pillScaleAnim, { toValue: 1, useNativeDriver: false, ...MOTION.spring.press }).start();
       if (isDraggingPill.current) {
         const tabW = tabBarWidthRef.current / 5;
         const nearestIdx = Math.max(0, Math.min(4, Math.round((pillXAnim as any)._value / tabW)));
-        Animated.spring(pillXAnim, { toValue: nearestIdx * tabW, useNativeDriver: false, tension: 160, friction: 18 }).start();
+        Animated.spring(pillXAnim, { toValue: nearestIdx * tabW, useNativeDriver: false, ...MOTION.spring.snap }).start();
         const newTab = TABS[nearestIdx];
         if (newTab !== currentTabRef.current) {
           triggerTabReset(newTab);
+          triggerSelectionHaptic();
           if (newTab === 'friends') handleOpenFriendsTabRef.current?.();
           else (setCurrentTab as (t: typeof TABS[number]) => void)(newTab);
         }
       } else {
         const tabW = tabBarWidthRef.current / 5;
-        Animated.spring(pillXAnim, { toValue: TABS.indexOf(currentTabRef.current) * tabW, useNativeDriver: false, tension: 160, friction: 18 }).start();
+        Animated.spring(pillXAnim, { toValue: TABS.indexOf(currentTabRef.current) * tabW, useNativeDriver: false, ...MOTION.spring.snap }).start();
       }
       isDraggingPill.current = false;
     },
     onPanResponderTerminate: () => {
       isDraggingPill.current = false;
       const tabW = tabBarWidthRef.current / 5;
-      Animated.spring(pillXAnim, { toValue: TABS.indexOf(currentTabRef.current) * tabW, useNativeDriver: false, tension: 160, friction: 18 }).start();
-      Animated.spring(pillScaleAnim, { toValue: 1, useNativeDriver: false, tension: 300, friction: 10 }).start();
+      Animated.spring(pillXAnim, { toValue: TABS.indexOf(currentTabRef.current) * tabW, useNativeDriver: false, ...MOTION.spring.snap }).start();
+      Animated.spring(pillScaleAnim, { toValue: 1, useNativeDriver: false, ...MOTION.spring.press }).start();
     },
   })).current;
 
   useEffect(() => {
     if (!tabBarReady || isDraggingPill.current) return;
     const tabW = tabBarWidthRef.current / 5;
-    Animated.spring(pillXAnim, { toValue: TABS.indexOf(currentTab) * tabW, useNativeDriver: false, tension: 160, friction: 18 }).start();
+    Animated.spring(pillXAnim, { toValue: TABS.indexOf(currentTab) * tabW, useNativeDriver: false, ...MOTION.spring.snap }).start();
   }, [currentTab, tabBarReady]);
   const [showCoursePicker, setShowCoursePicker] = useState(false);
   const [renderCoursePicker, setRenderCoursePicker] = useState(false);
@@ -1976,6 +1979,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     const updated = { ...target, courses: newCourses };
     setTimetables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
     await saveTimetable(updated);
+    triggerSuccessHaptic();
   };
 
   const handleReplaceCourse = async (oldId: string, newCourse: Course) => {
@@ -1985,6 +1989,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     const updated = { ...target, courses: newCourses };
     setTimetables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
     await saveTimetable(updated);
+    triggerSuccessHaptic();
   };
 
   const handleResolveCourseConflicts = async (oldIds: string[], newCourse: Course) => {
@@ -2019,6 +2024,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     const updated = { ...target, courses: newCourses };
     setTimetables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
     await saveTimetable(updated);
+    triggerSuccessHaptic();
   };
 
   const openSettingsSheet = () => {
@@ -2026,15 +2032,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     settingsSheetAnim.setValue(windowHeight);
     setShowSettings(true);
     Animated.parallel([
-      Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.timing(settingsBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheet }),
+      Animated.timing(settingsBackdropAnim, { toValue: 1, duration: MOTION.duration.sheetIn, easing: MOTION.easing.standard, useNativeDriver: true }),
     ]).start();
   };
 
   const closeSettingsSheet = () => {
     Animated.parallel([
-      Animated.timing(settingsSheetAnim, { toValue: windowHeight, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-      Animated.timing(settingsBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(settingsSheetAnim, { toValue: windowHeight, duration: MOTION.duration.sheetOut, easing: MOTION.easing.exit, useNativeDriver: true }),
+      Animated.timing(settingsBackdropAnim, { toValue: 0, duration: MOTION.duration.sheetOut, easing: MOTION.easing.exit, useNativeDriver: true }),
     ]).start(() => setShowSettings(false));
   };
 
@@ -2144,8 +2150,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       pickerTranslateY.setValue(screenHeight);
       Animated.timing(pickerTranslateY, {
         toValue: 0,
-        duration: 280,
-        easing: Easing.out(Easing.cubic),
+        duration: MOTION.duration.sheetIn,
+        easing: MOTION.easing.standard,
         useNativeDriver: true,
       }).start();
       return;
@@ -2153,8 +2159,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
     Animated.timing(pickerTranslateY, {
       toValue: screenHeight,
-      duration: 220,
-      easing: Easing.in(Easing.cubic),
+      duration: MOTION.duration.sheetOut,
+      easing: MOTION.easing.exit,
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) setRenderCoursePicker(false);
@@ -2330,6 +2336,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 	    if (userId) {
 	      void saveUserSettingsRow(userSettings).catch(() => {});
 	    }
+	    triggerSuccessHaptic();
 	  };
 
 	  const handleTimetableSettingsApply = (nextSettings: TimetableSettings) => {
@@ -2493,7 +2500,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       await saveUserSettingsRow(nextSettings, userProfile, nextToken, true, true);
       setUserSettings(nextSettings);
       setShowNotificationPermissionPrompt(false);
-      setShowBrandIntro(true);
+      setShowBrandIntro(!isReviewAccountEmail(userEmail));
       setNeedsFeatureOnboarding(false);
       setForceReviewOnboardingOnce(false);
     } catch {
@@ -2641,6 +2648,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   handleOpenFriendsTabRef.current = handleOpenFriendsTab;
 
   const handleTabPress = (tab: MainTab) => {
+    triggerSelectionHaptic();
     triggerTabReset(tab);
     if (tab === 'friends') {
       handleOpenFriendsTab();

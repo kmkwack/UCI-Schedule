@@ -1021,7 +1021,6 @@ function HelpCenterScreen({ onBack }: { onBack: () => void }) {
     <View style={{ flex: 1, backgroundColor: colors.card }}>
       <SubHeader title="Help Center" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-
         <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12 }}>
           Frequently Asked Questions
         </Text>

@@ -43,6 +43,7 @@ import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import type { ChatTarget } from '../data/messages';
+import { EmptyState, SkeletonBlock } from '../components/Polish';
 
 function plainTermLabel(term: Quarter) {
   return `${term.quarter} ${term.year}`;
@@ -1339,16 +1340,23 @@ export default function FriendsScreen({
           </View>
 
           {friendsLoading ? (
-            <View style={{ minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-              <ActivityIndicator size="small" color={colors.brand} />
-              <Text style={{ fontSize: 15, color: colors.textTertiary }}>Loading classmates...</Text>
+            <View style={{ minHeight: 260, paddingHorizontal: 16, paddingTop: 18, gap: 12 }}>
+              {[0, 1, 2].map((index) => (
+                <View key={`friend-skeleton-${index}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <SkeletonBlock width={50} height={50} radius={25} />
+                  <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
+                    <SkeletonBlock height={14} radius={7} width={index === 1 ? '58%' : '74%'} />
+                    <SkeletonBlock height={12} radius={6} width={index === 1 ? '76%' : '88%'} />
+                  </View>
+                </View>
+              ))}
             </View>
           ) : filteredFriends.length === 0 ? (
-            <View style={{ minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 18 }}>
-              <Ionicons name="people-outline" size={60} color={colors.border} />
-              <Text style={{ fontSize: 16, color: colors.textTertiary, fontWeight: '500' }}>No friends yet</Text>
-              <Text style={{ fontSize: 13, color: colors.border }}>Tap the icon above to search by name or email</Text>
-            </View>
+            <EmptyState
+              icon="people-outline"
+              title="No friends yet"
+              body="Tap the add button to search by school email and start comparing schedules."
+            />
           ) : (
             <>
               {filteredFriends.map((f, index) => (
@@ -1468,15 +1476,16 @@ export default function FriendsScreen({
           )}
           </ScrollView>
         ) : friendsLoading ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-            <ActivityIndicator size="small" color={colors.brand} />
-            <Text style={{ fontSize: 15, color: colors.textTertiary }}>Loading requests...</Text>
+          <View style={{ paddingHorizontal: 16, paddingTop: 22, gap: 12 }}>
+            <SkeletonBlock height={64} radius={18} />
+            <SkeletonBlock height={64} radius={18} width="92%" />
           </View>
         ) : pendingRequests.length === 0 && sentRequests.length === 0 ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-            <Ionicons name="person-add-outline" size={60} color={colors.border} />
-            <Text style={{ fontSize: 16, color: colors.textTertiary, fontWeight: '500' }}>No pending requests</Text>
-          </View>
+          <EmptyState
+            icon="person-add-outline"
+            title="No pending requests"
+            body="Friend requests will appear here when classmates connect with you."
+          />
         ) : (
           <ScrollView ref={requestsScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: bottomInset + 70 }}>
             {pendingRequests.length > 0 && (

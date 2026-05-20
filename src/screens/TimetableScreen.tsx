@@ -14,6 +14,8 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import * as Linking from 'expo-linking';
 import MapView, { Marker } from 'react-native-maps';
+import { triggerSuccessHaptic } from '../utils/haptics';
+import { MOTION } from '../utils/motion';
 
 function rmpUrl(professor: string, school: string) {
   const sid = getSchoolConfig(school).rmpSchoolId;
@@ -905,8 +907,8 @@ export default function TimetableScreen({
     addSheetSlideAnim.setValue(600);
     addBackdropAnim.setValue(0);
     Animated.parallel([
-      Animated.spring(addSheetSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.timing(addBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(addSheetSlideAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheet }),
+      Animated.timing(addBackdropAnim, { toValue: 1, duration: MOTION.duration.sheetIn, easing: MOTION.easing.standard, useNativeDriver: true }),
     ]).start();
   }
 
@@ -950,15 +952,15 @@ export default function TimetableScreen({
     settingsSheetAnim.setValue(600);
     setShowSettings(true);
     Animated.parallel([
-      Animated.timing(settingsBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
-      Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }),
+      Animated.timing(settingsBackdropAnim, { toValue: 1, duration: MOTION.duration.sheetIn, easing: MOTION.easing.standard, useNativeDriver: true }),
+      Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheet }),
     ]).start();
   }
 
   function closeSettings(callback?: () => void) {
     Animated.parallel([
-      Animated.timing(settingsBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
-      Animated.timing(settingsSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(settingsBackdropAnim, { toValue: 0, duration: MOTION.duration.sheetOut, easing: MOTION.easing.exit, useNativeDriver: true }),
+      Animated.timing(settingsSheetAnim, { toValue: 600, duration: MOTION.duration.sheetOut, easing: MOTION.easing.exit, useNativeDriver: true }),
     ]).start(() => {
       setShowSettings(false);
       callback?.();
@@ -1063,6 +1065,7 @@ export default function TimetableScreen({
       }
       const uri = await createScheduleExportImage('clean');
       await MediaLibrary.saveToLibraryAsync(uri);
+      triggerSuccessHaptic();
       Alert.alert('Saved!', 'Your schedule has been saved to your photo library.');
     } catch {
       Alert.alert('Error', 'Could not save the schedule. Please try again.');
@@ -1081,11 +1084,13 @@ export default function TimetableScreen({
       const uri = await createScheduleExportImage(format);
 
       if (format === 'story' || format === 'square') {
-        await shareScheduleToInstagram(uri, format);
-        return;
-      }
+      await shareScheduleToInstagram(uri, format);
+      triggerSuccessHaptic();
+      return;
+    }
 
-      await shareScheduleWithSystemSheet(uri, format);
+    await shareScheduleWithSystemSheet(uri, format);
+    triggerSuccessHaptic();
     } catch (error) {
       console.warn('Schedule share failed:', error);
       Alert.alert('Error', 'Could not share the schedule. Please try again.');

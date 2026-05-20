@@ -3253,3 +3253,50 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sir (Remove What-if GPA tool)
 - **`src/screens/GradesScreen.tsx`** — Removed the What-if GPA button, scenario state, local simulation calculations, and panel UI so Grades only shows saved grades plus Prior Academic History.
+
+### Session 64sis (Define public text moderation policy)
+- **`src/data/moderationPolicy.ts`** — Added the central ClassMate moderation policy with category/severity metadata, English/Korean normalization, leetspeak and punctuation handling, false-positive safeguards, and neutral user-facing moderation messages.
+- **`src/screens/BoardScreen.tsx`** — Applied the shared moderation evaluator to Board post titles/bodies, comments, nested replies, edits, and public board requests while preserving the existing custom `banned_words` table as an extra hard-block source.
+- **`src/screens/HomeScreen.tsx`** — Applied the same shared moderation evaluator to sports event comments without touching the Home hero carousel behavior.
+- **`supabase/sql/moderation_terms_seed.sql`** — Added a backend seed table for the structured moderation policy terms, categories, severities, and notes without exposing the raw policy terms through client UI.
+- **`scripts/audit-moderation-policy.js`** and **`package.json`** — Added `npm run audit:moderation-policy` to verify severity behavior, normalization variants, Korean profanity variants, and false-positive academic phrases.
+
+### Session 64sit (Add backend AI moderation layer)
+- **`supabase/functions/ai-moderation/index.ts`** and **`supabase/functions/ai-moderation/README.md`** — Added a Supabase Edge Function that performs second-layer AI moderation with server-side OpenAI credentials, structured allow/warn/hold/hard-block output, safe fallback behavior, and moderation log writes.
+- **`supabase/sql/ai_moderation_backend.sql`** — Added the `moderation_logs` table for result, category, severity, confidence, model, summary, rule metadata, and provider-error metadata, with RLS enabled and no client read access.
+- **`src/screens/BoardScreen.tsx`** — Updated Board posts, edits, comments, replies, and board requests to hard-block deterministic high-risk content immediately, then call the Edge Function for clean or ambiguous text before saving.
+- **`src/screens/HomeScreen.tsx`** — Updated sports event comments to use the same deterministic-first and Edge-Function-second moderation flow before optimistic posting.
+- **`src/data/moderationPolicy.ts`** — Standardized the user-facing moderation copy to the neutral community-guidelines message so blocked terms or AI reasoning are not shown back to users.
+
+### Session 64siu (Add scoped Help AI chat)
+- **`src/screens/SettingsScreen.tsx`** — Added an `Ask ClassMate Help` card inside Help Center plus a compact chat modal with loading, retry, and failure states that calls only the Supabase `help-ai-chat` Edge Function.
+- **`supabase/functions/help-ai-chat/index.ts`** and **`supabase/functions/help-ai-chat/README.md`** — Added a server-side Help AI function with authentication, per-user rate limiting, deterministic FAQ matching before AI, app-support scope guarding, and short ClassMate-specific answers.
+- **`supabase/sql/help_ai_chat_backend.sql`** — Added `help_ai_logs` for non-sensitive chatbot metadata only: user, school, category, timestamp, and success/error/rate-limit/out-of-scope status.
+
+### Session 64siv (Fix Help AI keyboard and fallback)
+- **`src/screens/SettingsScreen.tsx`** — Made the Help AI sheet keyboard-aware, added local FAQ answers before calling the Edge Function for common app-support questions, and replaced raw Edge Function errors with a friendly retryable support message.
+
+### Session 64siw (Scope moderation policy to English)
+- **`src/data/moderationPolicy.ts`**, **`supabase/sql/moderation_terms_seed.sql`**, and **`scripts/audit-moderation-policy.js`** — Removed Korean-specific moderation terms, normalization, and tests so the policy matches ClassMate's English-first student community target and avoids unnecessary non-target-language false positives.
+
+### Session 64six (Add Korean and Spanish moderation coverage)
+- **`src/data/moderationPolicy.ts`**, **`supabase/sql/moderation_terms_seed.sql`**, and **`scripts/audit-moderation-policy.js`** — Added targeted Korean and Spanish moderation coverage for high-confidence identity abuse, threats, self-harm encouragement, sexual harassment, doxxing, targeted harassment, scams, illegal transactions, academic-integrity risk, and general profanity escalation while preserving false-positive safeguards for ordinary academic phrases.
+
+### Session 64siy (Remove AI moderation and Help AI)
+- **`src/screens/BoardScreen.tsx`** and **`src/screens/HomeScreen.tsx`** — Removed Supabase Edge Function AI moderation calls so public text now uses the deterministic moderation policy first and relies on the existing report flow for moderator review.
+- **`src/screens/SettingsScreen.tsx`** — Removed the Ask ClassMate Help AI card and chat sheet from Help Center so the app no longer requires AI support secrets or a help-chat Edge Function.
+- **`supabase/functions/ai-moderation/`**, **`supabase/functions/help-ai-chat/`**, **`supabase/sql/ai_moderation_backend.sql`**, and **`supabase/sql/help_ai_chat_backend.sql`** — Removed AI-specific backend artifacts to keep the moderation stack simple and report-driven.
+- **`src/screens/HomeScreen.tsx`** — Restored the missing hero carousel animation refs required for TypeScript after the existing hero code had mixed transition references, keeping the Home hero buildable without redesigning it.
+
+### Session 64siz (Polish Home hero carousel transitions)
+- **`src/screens/HomeScreen.tsx`** — Reworked only the Home hero carousel animation layer so outgoing cards slide/fade out, incoming cards slide in with a slight upward entrance, measured card heights animate smoothly, and the indicator row lives inside the same animated height wrapper to prevent overlap during height changes.
+
+### Session 64sja (Global UX polish pass)
+- **`src/utils/motion.ts`** — Added shared motion durations, easing curves, spring presets, and subtle content timing constants so screens can converge on one animation language.
+- **`src/utils/haptics.ts`**, **`package.json`**, **`package-lock.json`**, and the installed **`node_modules/`** Expo package tree — Added Expo Haptics and safe wrapper helpers for subtle selection/success feedback without throwing on unsupported devices.
+- **`src/components/Polish.tsx`** — Added reusable lightweight skeleton blocks and compact empty-state UI for calmer loading and empty states.
+- **`App.tsx`** and **`src/screens/TimetableScreen.tsx`** — Routed key sheet, tab, course, timetable, save, and share interactions through the shared motion/haptic helpers for smoother, more consistent interaction feedback.
+- **`src/screens/HomeScreen.tsx`**, **`src/screens/MessagesScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, **`src/screens/BoardScreen.tsx`**, and **`src/components/ReviewsModal.tsx`** — Replaced selected plain spinners/text-only empty states with lightweight skeletons or icon-led empty states, added subtle success haptics for messaging/posts/reviews/comments, and tightened review/course-detail grouping without changing backend flows.
+
+### Session 64sjb (Prevent duplicate review-account onboarding)
+- **`App.tsx`** — Stopped session restore/token refresh hydration from re-enabling the review-account forced onboarding flag, and skipped the secondary brand intro after review-account feature onboarding completes. This keeps the App Review account from seeing what feels like onboarding twice.

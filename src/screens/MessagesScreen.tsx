@@ -30,6 +30,8 @@ import type {
 } from '../data/messages';
 import { formatMessageTime } from '../data/messages';
 import { campusAliasForId } from '../data/anonymousAliases';
+import { EmptyState, SkeletonBlock } from '../components/Polish';
+import { triggerSuccessHaptic } from '../utils/haptics';
 
 const BOARD_ATTACHMENTS_BUCKET = 'board-attachments';
 
@@ -1134,6 +1136,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
           item.id === row.id ? mapMessageRow(row) : item
         )));
       }
+      triggerSuccessHaptic();
       void fetchConversations({ silent: true });
       settleMessagesAtEnd(true);
       return;
@@ -1238,6 +1241,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
         message.id === optimisticId ? mapMessageRow(row) : message
       )));
     }
+    triggerSuccessHaptic();
     settleMessagesAtEnd(true);
     await fetchConversations({ silent: true });
   };
@@ -1701,9 +1705,16 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
       </View>
 
       {loadingChats ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-          <ActivityIndicator size="small" color={colors.brand} />
-          <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading messages...</Text>
+        <View style={{ paddingHorizontal: 16, paddingTop: 18, gap: 12 }}>
+          {[0, 1, 2, 3].map((index) => (
+            <View key={`message-skeleton-${index}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <SkeletonBlock width={48} height={48} radius={24} />
+              <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
+                <SkeletonBlock height={14} radius={7} width={index % 2 === 0 ? '72%' : '58%'} />
+                <SkeletonBlock height={12} radius={6} width={index % 2 === 0 ? '90%' : '76%'} />
+              </View>
+            </View>
+          ))}
         </View>
       ) : (
         <FlatList
@@ -1711,13 +1722,11 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
           keyExtractor={(c) => c.conversationId ?? `draft-${c.kind}-${c.partnerId}`}
           contentContainerStyle={{ paddingBottom: 24 }}
           ListEmptyComponent={() => (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingHorizontal: 24 }}>
-              <Ionicons name="chatbubble-ellipses-outline" size={42} color={colors.border} />
-              <Text style={{ marginTop: 12, fontSize: 15, fontWeight: '700', color: colors.text }}>No messages yet</Text>
-              <Text style={{ marginTop: 6, fontSize: 13, lineHeight: 19, color: colors.textTertiary, textAlign: 'center' }}>
-                Friend chats use real names. Board chats stay anonymous.
-              </Text>
-            </View>
+            <EmptyState
+              icon="chatbubble-ellipses-outline"
+              title="No messages yet"
+              body="Friend chats use real names. Board chats stay anonymous."
+            />
           )}
           renderItem={({ item: chat }) => (
             <TouchableOpacity

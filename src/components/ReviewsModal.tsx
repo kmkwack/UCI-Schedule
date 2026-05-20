@@ -7,6 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import { getSchoolConfig, buildTermCandidates, termLabel } from '../data/schools';
+import { EmptyState, SkeletonBlock } from './Polish';
+import { triggerSuccessHaptic } from '../utils/haptics';
 
 type FinalExam = {
   day?: number; month?: number; bldg?: string;
@@ -459,6 +461,7 @@ export default function ReviewsModal({
     setRating(5); setDifficulty(3); setWorkload(3); setContent(''); setQuarterTaken(semesterLabel);
     setEditingReviewId(null);
     setShowWriteReview(false);
+    triggerSuccessHaptic();
     await fetchReviews();
   }
 
@@ -476,6 +479,7 @@ export default function ReviewsModal({
     const { error } = await supabase.from('reviews').delete().eq('id', reviewId).eq('school', school).eq('user_id', userId);
     if (error) { Alert.alert('Could not delete review', error.message); return; }
     setReviews(prev => prev.filter(r => r.id !== reviewId));
+    triggerSuccessHaptic();
   }
 
   const cacheKey = `${department}${courseNumber}${instructor}`;
@@ -720,9 +724,11 @@ export default function ReviewsModal({
                             </Text>
                           </View>
                         ) : gradeLoading ? (
-                          <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-                            <ActivityIndicator size="small" color={colors.brand} />
-                            <Text style={{ marginTop: 8, fontSize: 12, color: colors.textSecondary }}>Loading grade distribution</Text>
+                          <View style={{ gap: 10 }}>
+                            <SkeletonBlock height={58} radius={16} />
+                            <SkeletonBlock height={10} radius={999} />
+                            <SkeletonBlock height={10} radius={999} width="82%" />
+                            <SkeletonBlock height={10} radius={999} width="70%" />
                           </View>
                         ) : hasGradeDistribution ? (
                           <View style={{ gap: 12 }}>
@@ -775,8 +781,10 @@ export default function ReviewsModal({
                   {/* Student reviews */}
                   <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
                     {reviewsLoading ? (
-                      <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-                        <ActivityIndicator size="small" color={colors.brand} />
+                      <View style={{ gap: 10, paddingVertical: 6 }}>
+                        <SkeletonBlock height={112} radius={18} />
+                        <SkeletonBlock height={82} radius={16} />
+                        <SkeletonBlock height={82} radius={16} width="94%" />
                       </View>
                     ) : (
                       <>
@@ -812,6 +820,15 @@ export default function ReviewsModal({
                             ))}
                           </View>
                         </View>
+
+                        {reviews.length === 0 ? (
+                          <EmptyState
+                            compact
+                            icon="chatbubbles-outline"
+                            title="No reviews yet"
+                            body="Be the first classmate to leave a practical note about workload, pacing, and grading."
+                          />
+                        ) : null}
 
                         {reviews.map((review) => (
                           <View key={review.id} style={{ backgroundColor: colors.bgSecondary, borderRadius: 16, borderWidth: 1, borderColor: colors.borderSubtle, padding: 14, marginBottom: 10 }}>

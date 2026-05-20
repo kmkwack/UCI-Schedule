@@ -14,7 +14,6 @@ import {
   Alert,
   ActionSheetIOS,
   Animated,
-  Easing,
   LayoutAnimation,
   PanResponder,
   Linking,
@@ -44,6 +43,20 @@ import {
 import { themedIconBackground, themedIconBorder, themedIconColor } from '../utils/themeTint';
 import { useKeyboardInset } from '../utils/useKeyboardInset';
 import { triggerSuccessHaptic } from '../utils/haptics';
+import {
+  BACKDROP_DURATION,
+  BACKDROP_EXIT_DURATION,
+  HORIZONTAL_SWIPE_ACTIVATION_DX,
+  HORIZONTAL_SWIPE_DOMINANCE_RATIO,
+  MOTION,
+  SHEET_CORNER_RADIUS,
+  SHEET_DRAG_DISMISS_DISTANCE,
+  SHEET_DRAG_DISMISS_VELOCITY,
+  SHEET_INITIAL_TRANSLATE_Y,
+  SHEET_OUT_DURATION,
+  SHEET_RESET_SPRING,
+  SHEET_SPRING,
+} from '../utils/motion';
 import { EmptyState } from '../components/Polish';
 
 type CommentRow = {
@@ -768,7 +781,7 @@ export default function BoardScreen({
 
   const swipeBoardPan = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) => gs.dx > 6 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+      onMoveShouldSetPanResponder: (_, gs) => gs.dx > HORIZONTAL_SWIPE_ACTIVATION_DX && Math.abs(gs.dx) > Math.abs(gs.dy) * HORIZONTAL_SWIPE_DOMINANCE_RATIO,
       onPanResponderMove: (_, gs) => {
         if (gs.dx > 0) boardSlideAnim.setValue(gs.dx);
       },
@@ -3523,8 +3536,8 @@ function ReportModal({
         <View
           style={{
             backgroundColor: colors.card,
-            borderTopLeftRadius: 28,
-            borderTopRightRadius: 28,
+            borderTopLeftRadius: SHEET_CORNER_RADIUS,
+            borderTopRightRadius: SHEET_CORNER_RADIUS,
             paddingHorizontal: 20,
             paddingTop: 18,
             paddingBottom: Platform.OS === 'ios' ? 34 : 20,
@@ -3661,7 +3674,7 @@ function RequestBoardModal({
   const boardNameInputRef = useRef<TextInput>(null);
   const boardDescriptionInputRef = useRef<TextInput>(null);
   const keyboardInset = useKeyboardInset({ enabled: visible });
-  const sheetAnim = useRef(new Animated.Value(600)).current;
+  const sheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const sheetMaxHeight = Math.min(
     Math.round(windowHeight * 0.72),
@@ -3674,27 +3687,27 @@ function RequestBoardModal({
     onStartShouldSetPanResponder: () => true,
     onPanResponderMove: (_, gs) => { if (gs.dy > 0) sheetAnim.setValue(gs.dy); },
     onPanResponderRelease: (_, gs) => {
-      if (gs.dy > 80 || gs.vy > 0.8) closeRef.current?.();
-      else Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+      if (gs.dy > SHEET_DRAG_DISMISS_DISTANCE || gs.vy > SHEET_DRAG_DISMISS_VELOCITY) closeRef.current?.();
+      else Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_RESET_SPRING }).start();
     },
     onPanResponderTerminate: () => {
-      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_RESET_SPRING }).start();
     },
   })).current;
 
   function openSheet() {
-    sheetAnim.setValue(600);
+    sheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     backdropAnim.setValue(0);
     Animated.parallel([
-      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.timing(backdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
+      Animated.timing(backdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
     ]).start();
   }
 
   function closeSheet() {
     Animated.parallel([
-      Animated.timing(sheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-      Animated.timing(backdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(sheetAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: SHEET_OUT_DURATION, easing: MOTION.easing.exit, useNativeDriver: true }),
+      Animated.timing(backdropAnim, { toValue: 0, duration: BACKDROP_EXIT_DURATION, useNativeDriver: true }),
     ]).start(() => onClose());
   }
   closeRef.current = closeSheet;
@@ -3714,8 +3727,8 @@ function RequestBoardModal({
             style={{
               maxHeight: keyboardAwareSheetMaxHeight,
               backgroundColor: colors.card,
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
+              borderTopLeftRadius: SHEET_CORNER_RADIUS,
+              borderTopRightRadius: SHEET_CORNER_RADIUS,
               overflow: 'hidden',
               zIndex: 1,
               elevation: 1,

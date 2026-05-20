@@ -23,6 +23,15 @@ import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { emptyProfileLinks, normalizeProfileLinks } from '../data/userPreferences';
 import type { EditableProfile, ProfileLinkVisibility } from '../data/userPreferences';
+import {
+  BACKDROP_DURATION,
+  BACKDROP_EXIT_DURATION,
+  MOTION,
+  SHEET_CORNER_RADIUS,
+  SHEET_INITIAL_TRANSLATE_Y,
+  SHEET_OUT_DURATION,
+  SHEET_SPRING,
+} from '../utils/motion';
 
 const MAJOR_OPTIONS = [
   'Aerospace Engineering',
@@ -138,7 +147,7 @@ function ProfileDropdownPicker({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const backdropAnim = useRef(new Animated.Value(0)).current;
-  const sheetAnim = useRef(new Animated.Value(500)).current;
+  const sheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
 
   const filtered = searchable && search
     ? options.filter((option) => option.toLowerCase().includes(search.toLowerCase()))
@@ -147,18 +156,18 @@ function ProfileDropdownPicker({
   const openPicker = () => {
     setOpen(true);
     setSearch('');
-    sheetAnim.setValue(500);
+    sheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     backdropAnim.setValue(0);
     Animated.parallel([
-      Animated.timing(backdropAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
-      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }),
+      Animated.timing(backdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
+      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
     ]).start();
   };
 
   const closePicker = () => {
     Animated.parallel([
-      Animated.timing(backdropAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-      Animated.timing(sheetAnim, { toValue: 500, duration: 220, useNativeDriver: true }),
+      Animated.timing(backdropAnim, { toValue: 0, duration: BACKDROP_EXIT_DURATION, useNativeDriver: true }),
+      Animated.timing(sheetAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: SHEET_OUT_DURATION, easing: MOTION.easing.exit, useNativeDriver: true }),
     ]).start(() => setOpen(false));
   };
 
@@ -201,8 +210,8 @@ function ProfileDropdownPicker({
           <Animated.View
             style={{
               backgroundColor: colors.card,
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
+              borderTopLeftRadius: SHEET_CORNER_RADIUS,
+              borderTopRightRadius: SHEET_CORNER_RADIUS,
               paddingBottom: 32,
               maxHeight: screenHeight * 0.75,
               transform: [{ translateY: sheetAnim }],

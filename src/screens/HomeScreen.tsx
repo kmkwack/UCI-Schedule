@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Easing, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
@@ -25,7 +25,17 @@ import InfoChip from '../components/InfoChip';
 import { EmptyState, SkeletonBlock } from '../components/Polish';
 import { themedIconBackground, themedIconColor } from '../utils/themeTint';
 import { triggerSelectionHaptic, triggerSuccessHaptic } from '../utils/haptics';
-import { MOTION } from '../utils/motion';
+import {
+  BACKDROP_DURATION,
+  BACKDROP_EXIT_DURATION,
+  HORIZONTAL_SWIPE_ACTIVATION_DX,
+  HORIZONTAL_SWIPE_DOMINANCE_RATIO,
+  MOTION,
+  SHEET_CORNER_RADIUS,
+  SHEET_INITIAL_TRANSLATE_Y,
+  SHEET_OUT_DURATION,
+  SHEET_SPRING,
+} from '../utils/motion';
 import { useKeyboardInset } from '../utils/useKeyboardInset';
 
 type Props = {
@@ -143,12 +153,6 @@ type HeroCardItem =
   | { type: 'sportsEvents' }
   | { type: 'campusInfo' };
 
-type HeroTransitionState = {
-  fromIndex: number;
-  toIndex: number;
-  direction: 1 | -1;
-};
-
 function getHeroItemKey(item: HeroCardItem) {
   if (item.type === 'course') return `course-${item.course.id}`;
   if (item.type === 'completedSummary' || item.type === 'upcomingSummary') return `${item.type}-today`;
@@ -197,7 +201,6 @@ const HOME_SPORTS_FETCH_DELAY_MS = 250;
 const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
 const HERO_INDICATOR_TOP_SPACING = 10;
 const HERO_INDICATOR_ROW_HEIGHT = 24;
-const HERO_FALLBACK_CARD_HEIGHT = 220;
 
 const STUDENT_DEALS_RESOURCE: CampusInfoResource = {
   id: 'student-deals',
@@ -1329,15 +1332,15 @@ export default function HomeScreen({
   const [showSportsEventsList, setShowSportsEventsList] = useState(false);
   const [showDiningMenuList, setShowDiningMenuList] = useState(false);
   const sportsListBackdropAnim = useRef(new Animated.Value(0)).current;
-  const sportsListSheetAnim = useRef(new Animated.Value(600)).current;
+  const sportsListSheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const diningListBackdropAnim = useRef(new Animated.Value(0)).current;
-  const diningListSheetAnim = useRef(new Animated.Value(600)).current;
+  const diningListSheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const sportsEventBackdropAnim = useRef(new Animated.Value(0)).current;
-  const sportsEventSheetAnim = useRef(new Animated.Value(600)).current;
+  const sportsEventSheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const pastAssignmentsBackdropAnim = useRef(new Animated.Value(0)).current;
-  const pastAssignmentsSheetAnim = useRef(new Animated.Value(600)).current;
+  const pastAssignmentsSheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const calendarSetupBackdropAnim = useRef(new Animated.Value(0)).current;
-  const calendarSetupSheetAnim = useRef(new Animated.Value(600)).current;
+  const calendarSetupSheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const selectedSportsEventRef = useRef<SportsEvent | null>(null);
   const [sportsEventRsvp, setSportsEventRsvp] = useState<SportsEventRsvpStatus | null>(null);
   const [sportsEventGoingCount, setSportsEventGoingCount] = useState(0);
@@ -1973,29 +1976,18 @@ export default function HomeScreen({
   ];
   const heroItemKeySignature = heroItems.map(getHeroItemKey).join('|');
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
-  const [heroTransition, setHeroTransition] = useState<HeroTransitionState | null>(null);
   const activeHeroIndexRef = useRef(0);
-  const heroTransitionRef = useRef<HeroTransitionState | null>(null);
   const heroTransitioningRef = useRef(false);
   const heroAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
   const heroItemsLengthRef = useRef(0);
   heroItemsLengthRef.current = heroItems.length;
   const heroCardWidthRef = useRef(0);
-  const initialHeroIndicatorFlowHeight = heroItems.length > 1 ? HERO_INDICATOR_TOP_SPACING + HERO_INDICATOR_ROW_HEIGHT : 0;
-  const heroHeightAnim = useRef(new Animated.Value(HERO_FALLBACK_CARD_HEIGHT)).current;
-  const heroAreaHeightAnim = useRef(new Animated.Value(HERO_FALLBACK_CARD_HEIGHT + initialHeroIndicatorFlowHeight)).current;
-  const heroOutgoingTranslateXAnim = useRef(new Animated.Value(0)).current;
-  const heroOutgoingOpacityAnim = useRef(new Animated.Value(1)).current;
-  const heroIncomingTranslateXAnim = useRef(new Animated.Value(0)).current;
-  const heroIncomingTranslateYAnim = useRef(new Animated.Value(0)).current;
-  const heroIncomingOpacityAnim = useRef(new Animated.Value(1)).current;
-  const heroCardHeightsRef = useRef<Record<string, number>>({});
-  const heroHeightInitializedRef = useRef(false);
+  const heroCardTranslateXAnim = useRef(new Animated.Value(0)).current;
+  const heroCardOpacityAnim = useRef(new Animated.Value(1)).current;
   const pillXAnim = useRef(new Animated.Value(0)).current;
   const pillColorAnim = useRef(new Animated.Value(0)).current;
   const dotPositionsRef = useRef<number[]>([]);
   const pillInitializedRef = useRef(false);
-  const heroIndicatorFlowHeightRef = useRef(0);
 
   const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
   const quarterProgress = clamp(
@@ -2014,7 +2006,7 @@ export default function HomeScreen({
   const homeDiningMenus = diningMenus.slice(0, 2);
   const diningMenuItemCount = diningMenus.reduce((total, menu) => total + menu.itemCount, 0);
   const diningMenusExternalOnly = diningMenus.length > 0 && diningMenus.every((menu) => menu.isExternalLinkOnly);
-  const homeSportsEvents = visibleCampusEvents.slice(0, 2);
+  const homeSportsEvents = visibleCampusEvents.slice(0, 1);
   const remainingHomeSportsEventCount = Math.max(visibleCampusEvents.length - homeSportsEvents.length, 0);
   const visibleSportsEventIds = useMemo(
     () => visibleCampusEvents.map((event) => event.id).join('|'),
@@ -2055,7 +2047,6 @@ export default function HomeScreen({
   const heroCardWidth = Math.max(windowWidth - 36, 0);
   heroCardWidthRef.current = heroCardWidth;
   const heroIndicatorFlowHeight = heroItems.length > 1 ? HERO_INDICATOR_TOP_SPACING + HERO_INDICATOR_ROW_HEIGHT : 0;
-  heroIndicatorFlowHeightRef.current = heroIndicatorFlowHeight;
   const isCompactCampusInfoCard = heroCardWidth > 0 && heroCardWidth < 340;
   const campusInfoHeroIconBoxSize = isCompactCampusInfoCard ? 34 : 36;
   const campusInfoHeroIconSize = isCompactCampusInfoCard ? 17 : 18;
@@ -2073,7 +2064,7 @@ export default function HomeScreen({
   const campusInfoSheetCaptionSize = isCompactCampusInfoSheet ? 11 : 12;
   const campusInfoSheetCaptionLineHeight = isCompactCampusInfoSheet ? 14 : 15;
   const activeHeroItem = heroItems[activeHeroIndex] ?? null;
-  const indicatorActiveHeroIndex = heroTransition?.toIndex ?? activeHeroIndex;
+  const indicatorActiveHeroIndex = activeHeroIndex;
   const sportsGoingAccent = getSchoolConfig(school).accent;
   const diningAccent = '#F97316';
   const campusInfoAccent = '#8B5CF6';
@@ -2083,15 +2074,6 @@ export default function HomeScreen({
     if (item.type === 'campusInfo') return campusInfoAccent;
     return colors.brand;
   }
-  const heroAccent = activeHeroItem?.type === 'course'
-    ? pastelForCourse(blockColorKey(activeHeroItem.course)).border
-    : activeHeroItem?.type === 'sportsEvents'
-      ? sportsGoingAccent
-    : activeHeroItem?.type === 'diningMenu'
-      ? diningAccent
-    : activeHeroItem?.type === 'upcomingSummary'
-      ? colors.brand
-    : colors.brand;
   const selectedSportsVenue = selectedSportsEvent ? getSportsVenueForEvent(school, selectedSportsEvent) : null;
   const selectedSportsEventLocationLabel = selectedSportsEvent?.location === 'Venue TBA'
     ? 'Venue TBA'
@@ -2260,52 +2242,52 @@ export default function HomeScreen({
 
   function openCalendarSetup() {
     calendarSetupBackdropAnim.setValue(0);
-    calendarSetupSheetAnim.setValue(600);
+    calendarSetupSheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     setShowCalendarSetup(true);
     Animated.parallel([
-      Animated.spring(calendarSetupSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.timing(calendarSetupBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(calendarSetupSheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
+      Animated.timing(calendarSetupBackdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
     ]).start();
   }
 
   function closeCalendarSetup() {
     Animated.parallel([
-      Animated.timing(calendarSetupBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
-      Animated.timing(calendarSetupSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(calendarSetupBackdropAnim, { toValue: 0, duration: BACKDROP_EXIT_DURATION, useNativeDriver: true }),
+      Animated.timing(calendarSetupSheetAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: SHEET_OUT_DURATION, easing: MOTION.easing.exit, useNativeDriver: true }),
     ]).start(() => setShowCalendarSetup(false));
   }
 
   function openPastAssignments() {
     pastAssignmentsBackdropAnim.setValue(0);
-    pastAssignmentsSheetAnim.setValue(600);
+    pastAssignmentsSheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     setShowPastAssignments(true);
     Animated.parallel([
-      Animated.spring(pastAssignmentsSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.timing(pastAssignmentsBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(pastAssignmentsSheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
+      Animated.timing(pastAssignmentsBackdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
     ]).start();
   }
 
   function closePastAssignments() {
     Animated.parallel([
-      Animated.timing(pastAssignmentsBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
-      Animated.timing(pastAssignmentsSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(pastAssignmentsBackdropAnim, { toValue: 0, duration: BACKDROP_EXIT_DURATION, useNativeDriver: true }),
+      Animated.timing(pastAssignmentsSheetAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: SHEET_OUT_DURATION, easing: MOTION.easing.exit, useNativeDriver: true }),
     ]).start(() => setShowPastAssignments(false));
   }
 
   function openDiningMenuList() {
     diningListBackdropAnim.setValue(0);
-    diningListSheetAnim.setValue(600);
+    diningListSheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     setShowDiningMenuList(true);
     Animated.parallel([
-      Animated.spring(diningListSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.timing(diningListBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(diningListSheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
+      Animated.timing(diningListBackdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
     ]).start();
   }
 
   function closeDiningMenuList() {
     Animated.parallel([
-      Animated.timing(diningListBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
-      Animated.timing(diningListSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(diningListBackdropAnim, { toValue: 0, duration: BACKDROP_EXIT_DURATION, useNativeDriver: true }),
+      Animated.timing(diningListSheetAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: SHEET_OUT_DURATION, easing: MOTION.easing.exit, useNativeDriver: true }),
     ]).start(() => setShowDiningMenuList(false));
   }
 
@@ -2315,25 +2297,25 @@ export default function HomeScreen({
 
   function openSportsMoreList() {
     sportsListBackdropAnim.setValue(0);
-    sportsListSheetAnim.setValue(600);
+    sportsListSheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     setShowSportsEventsList(true);
     Animated.parallel([
-      Animated.spring(sportsListSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.timing(sportsListBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(sportsListSheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
+      Animated.timing(sportsListBackdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
     ]).start();
   }
 
   function closeSportsMoreList(then?: () => void) {
     Animated.parallel([
-      Animated.timing(sportsListBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
-      Animated.timing(sportsListSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(sportsListBackdropAnim, { toValue: 0, duration: BACKDROP_EXIT_DURATION, useNativeDriver: true }),
+      Animated.timing(sportsListSheetAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: SHEET_OUT_DURATION, easing: MOTION.easing.exit, useNativeDriver: true }),
     ]).start(() => { setShowSportsEventsList(false); then?.(); });
   }
 
   function openSportsEvent(event: SportsEvent) {
     closeSportsMoreList();
     sportsEventBackdropAnim.setValue(0);
-    sportsEventSheetAnim.setValue(600);
+    sportsEventSheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     selectedSportsEventRef.current = event;
     setSelectedSportsEvent(event);
     setSportsEventCommentInput('');
@@ -2343,8 +2325,8 @@ export default function HomeScreen({
     setSavingSportsEventRsvp(false);
     resetSportsEventDetailScroll();
     Animated.parallel([
-      Animated.spring(sportsEventSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.timing(sportsEventBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(sportsEventSheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
+      Animated.timing(sportsEventBackdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
     ]).start();
     void loadSportsEventSocial(event);
   }
@@ -2352,8 +2334,8 @@ export default function HomeScreen({
   function closeSportsEvent() {
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.timing(sportsEventBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
-      Animated.timing(sportsEventSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(sportsEventBackdropAnim, { toValue: 0, duration: BACKDROP_EXIT_DURATION, useNativeDriver: true }),
+      Animated.timing(sportsEventSheetAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: SHEET_OUT_DURATION, easing: MOTION.easing.exit, useNativeDriver: true }),
     ]).start(() => {
       selectedSportsEventRef.current = null;
       setSelectedSportsEvent(null);
@@ -2649,217 +2631,156 @@ export default function HomeScreen({
     setDeletingSportsEventCommentId(null);
   }
 
-  function getHeroMeasuredHeight(index: number) {
-    const item = heroItems[index];
-    if (!item) return undefined;
-    return heroCardHeightsRef.current[getHeroItemKey(item)];
-  }
-
-  function heroAreaHeightForCardHeight(cardHeight: number) {
-    return cardHeight + heroIndicatorFlowHeightRef.current;
-  }
-
-  function setHeroHeights(cardHeight: number) {
-    heroHeightAnim.setValue(cardHeight);
-    heroAreaHeightAnim.setValue(heroAreaHeightForCardHeight(cardHeight));
-  }
-
-  function animateHeroHeightToIndex(index: number, duration: number = MOTION.duration.hero) {
-    const nextHeight = getHeroMeasuredHeight(index);
-    if (!nextHeight) return null;
-    return Animated.parallel([
-      Animated.timing(heroHeightAnim, {
-        toValue: nextHeight,
+  function resetHeroCardMotion(duration = MOTION.duration.contentFast) {
+    heroAnimationRef.current?.stop();
+    heroAnimationRef.current = null;
+    const animation = Animated.parallel([
+      Animated.timing(heroCardTranslateXAnim, {
+        toValue: 0,
         duration,
         easing: MOTION.easing.standard,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }),
-      Animated.timing(heroAreaHeightAnim, {
-        toValue: heroAreaHeightForCardHeight(nextHeight),
-        duration,
-        easing: MOTION.easing.standard,
-        useNativeDriver: false,
-      }),
-    ]);
-  }
-
-  function resetHeroMotionValues() {
-    heroOutgoingTranslateXAnim.setValue(0);
-    heroOutgoingOpacityAnim.setValue(1);
-    heroIncomingTranslateXAnim.setValue(0);
-    heroIncomingTranslateYAnim.setValue(0);
-    heroIncomingOpacityAnim.setValue(1);
-  }
-
-  function animateHeroPillToIndex(index: number, duration: number = MOTION.duration.hero) {
-    const targetDotX = dotPositionsRef.current[index];
-    if (targetDotX == null) return null;
-    return Animated.parallel([
-      Animated.timing(pillXAnim, {
-        toValue: targetDotX - 4,
-        duration,
-        easing: MOTION.easing.standard,
-        useNativeDriver: false,
-      }),
-      Animated.timing(pillColorAnim, {
+      Animated.timing(heroCardOpacityAnim, {
         toValue: 1,
-        duration: Math.min(180, duration),
+        duration,
         easing: MOTION.easing.soft,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }),
     ]);
+    heroAnimationRef.current = animation;
+    animation.start(({ finished }) => {
+      if (finished) heroTransitioningRef.current = false;
+      heroAnimationRef.current = null;
+    });
   }
 
-  function handleHeroCardMeasured(item: HeroCardItem, index: number, rawHeight: number) {
-    const height = Math.ceil(rawHeight);
-    if (!height) return;
-    const key = getHeroItemKey(item);
-    if (heroCardHeightsRef.current[key] === height) return;
-    heroCardHeightsRef.current[key] = height;
-
-    const activeItem = heroItems[activeHeroIndexRef.current];
-    const activeKey = activeItem ? getHeroItemKey(activeItem) : null;
-    if (key !== activeKey || heroTransitionRef.current) return;
-
-    if (!heroHeightInitializedRef.current) {
-      heroHeightInitializedRef.current = true;
-      setHeroHeights(height);
+  function animateHeroCardToIndex(index: number, haptic = true) {
+    const boundedNextIndex = clamp(index, 0, Math.max(heroItemsLengthRef.current - 1, 0));
+    const currentIndex = activeHeroIndexRef.current;
+    if (boundedNextIndex === currentIndex || heroItemsLengthRef.current <= 1) {
+      resetHeroCardMotion();
       return;
     }
 
-    animateHeroHeightToIndex(activeHeroIndexRef.current, 220)?.start();
+    heroAnimationRef.current?.stop();
+    heroAnimationRef.current = null;
+    heroCardTranslateXAnim.stopAnimation();
+    heroCardOpacityAnim.stopAnimation();
+    pillXAnim.stopAnimation();
+    pillColorAnim.stopAnimation();
+
+    const direction = boundedNextIndex > currentIndex ? 1 : -1;
+    const incomingOffset = direction * Math.min(34, Math.max(heroCardWidthRef.current * 0.08, 22));
+    const targetDotX = dotPositionsRef.current[boundedNextIndex];
+    heroTransitioningRef.current = true;
+    activeHeroIndexRef.current = boundedNextIndex;
+    setActiveHeroIndex(boundedNextIndex);
+    heroCardTranslateXAnim.setValue(incomingOffset);
+    heroCardOpacityAnim.setValue(0.92);
+
+    const animations: Animated.CompositeAnimation[] = [
+      Animated.timing(heroCardTranslateXAnim, {
+        toValue: 0,
+        duration: MOTION.duration.hero,
+        easing: MOTION.easing.standard,
+        useNativeDriver: true,
+      }),
+      Animated.timing(heroCardOpacityAnim, {
+        toValue: 1,
+        duration: MOTION.duration.content,
+        easing: MOTION.easing.soft,
+        useNativeDriver: true,
+      }),
+      Animated.timing(pillColorAnim, {
+        toValue: 1,
+        duration: MOTION.duration.contentFast,
+        easing: MOTION.easing.soft,
+        useNativeDriver: false,
+      }),
+    ];
+    if (targetDotX != null) {
+      animations.push(Animated.timing(pillXAnim, {
+        toValue: targetDotX - 4,
+        duration: MOTION.duration.hero,
+        easing: MOTION.easing.standard,
+        useNativeDriver: false,
+      }));
+    }
+
+    const animation = Animated.parallel(animations);
+    heroAnimationRef.current = animation;
+    animation.start(({ finished }) => {
+      heroAnimationRef.current = null;
+      heroTransitioningRef.current = false;
+      if (finished && haptic) triggerSelectionHaptic();
+    });
   }
 
   useEffect(() => {
     const maxIndex = Math.max(heroItems.length - 1, 0);
-    if (activeHeroIndexRef.current <= maxIndex) {
-      const currentHeight = getHeroMeasuredHeight(activeHeroIndexRef.current);
-      if (currentHeight && heroHeightInitializedRef.current && !heroTransitionRef.current) {
-        Animated.timing(heroAreaHeightAnim, {
-          toValue: heroAreaHeightForCardHeight(currentHeight),
-          duration: 180,
-          easing: MOTION.easing.standard,
-          useNativeDriver: false,
-        }).start();
-      }
-      return;
-    }
-
-    heroAnimationRef.current?.stop();
-    heroAnimationRef.current = null;
+    if (activeHeroIndexRef.current <= maxIndex) return;
+    activeHeroIndexRef.current = maxIndex;
+    setActiveHeroIndex(maxIndex);
+    heroCardTranslateXAnim.setValue(0);
+    heroCardOpacityAnim.setValue(1);
     heroTransitioningRef.current = false;
-    heroTransitionRef.current = null;
-    setHeroTransition(null);
-    resetHeroMotionValues();
-    const nextIndex = maxIndex;
-    activeHeroIndexRef.current = nextIndex;
-    setActiveHeroIndex(nextIndex);
-    const nextHeight = getHeroMeasuredHeight(nextIndex);
-    if (nextHeight) setHeroHeights(nextHeight);
-  }, [heroItems.length, heroItemKeySignature, heroIndicatorFlowHeight]);
+  }, [heroItems.length, heroItemKeySignature]);
 
-  function startHeroTransition(nextIndex: number, directionOverride?: 1 | -1) {
-    const boundedNextIndex = clamp(nextIndex, 0, Math.max(heroItems.length - 1, 0));
-    const currentIndex = activeHeroIndexRef.current;
-    if (boundedNextIndex === currentIndex || heroItems.length <= 1 || heroTransitioningRef.current) return;
-
-    const direction = directionOverride ?? (boundedNextIndex > currentIndex ? 1 : -1);
-    const transition: HeroTransitionState = { fromIndex: currentIndex, toIndex: boundedNextIndex, direction };
-
-    heroAnimationRef.current?.stop();
-    heroAnimationRef.current = null;
-    heroHeightAnim.stopAnimation();
-    heroAreaHeightAnim.stopAnimation();
-    heroOutgoingTranslateXAnim.stopAnimation();
-    heroOutgoingOpacityAnim.stopAnimation();
-    heroIncomingTranslateXAnim.stopAnimation();
-    heroIncomingTranslateYAnim.stopAnimation();
-    heroIncomingOpacityAnim.stopAnimation();
-    pillXAnim.stopAnimation();
-    pillColorAnim.stopAnimation();
-
-    heroTransitioningRef.current = true;
-    heroTransitionRef.current = transition;
-    heroOutgoingTranslateXAnim.setValue(0);
-    heroOutgoingOpacityAnim.setValue(1);
-    heroIncomingTranslateXAnim.setValue(direction * 42);
-    heroIncomingTranslateYAnim.setValue(10);
-    heroIncomingOpacityAnim.setValue(0);
-    setHeroTransition(transition);
-
-    const animations: Animated.CompositeAnimation[] = [
-      Animated.timing(heroOutgoingTranslateXAnim, {
-        toValue: -direction * 36,
-        duration: MOTION.duration.hero,
+  useEffect(() => {
+    const targetDotX = dotPositionsRef.current[activeHeroIndex];
+    if (targetDotX != null) {
+      Animated.timing(pillXAnim, {
+        toValue: targetDotX - 4,
+        duration: MOTION.duration.content,
         easing: MOTION.easing.standard,
-        useNativeDriver: true,
-      }),
-      Animated.timing(heroOutgoingOpacityAnim, {
-        toValue: 0,
-        duration: MOTION.duration.hero,
-        easing: MOTION.easing.soft,
-        useNativeDriver: true,
-      }),
-      Animated.timing(heroIncomingTranslateXAnim, {
-        toValue: 0,
-        duration: MOTION.duration.hero,
-        easing: MOTION.easing.standard,
-        useNativeDriver: true,
-      }),
-      Animated.timing(heroIncomingTranslateYAnim, {
-        toValue: 0,
-        duration: MOTION.duration.hero,
-        easing: MOTION.easing.standard,
-        useNativeDriver: true,
-      }),
-      Animated.timing(heroIncomingOpacityAnim, {
-        toValue: 1,
-        duration: MOTION.duration.hero,
-        easing: MOTION.easing.soft,
-        useNativeDriver: true,
-      }),
-    ];
-
-    const heightAnimation = animateHeroHeightToIndex(boundedNextIndex, MOTION.duration.hero);
-    if (heightAnimation) animations.push(heightAnimation);
-    const pillAnimation = animateHeroPillToIndex(boundedNextIndex, MOTION.duration.hero);
-    if (pillAnimation) animations.push(pillAnimation);
-
-    const transitionAnimation = Animated.parallel(animations);
-    heroAnimationRef.current = transitionAnimation;
-    transitionAnimation.start(({ finished }) => {
-      if (!finished) return;
-      heroAnimationRef.current = null;
-      heroTransitioningRef.current = false;
-      heroTransitionRef.current = null;
-      activeHeroIndexRef.current = boundedNextIndex;
-      setActiveHeroIndex(boundedNextIndex);
-      setHeroTransition(null);
-      resetHeroMotionValues();
-      const settledHeight = getHeroMeasuredHeight(boundedNextIndex);
-      if (settledHeight) setHeroHeights(settledHeight);
-      triggerSelectionHaptic();
-    });
-  }
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [activeHeroIndex, heroItems.length]);
 
   function moveHeroTo(nextIndex: number) {
-    startHeroTransition(nextIndex);
+    if (heroTransitioningRef.current) return;
+    animateHeroCardToIndex(nextIndex);
+  }
+
+  function settleHeroPan(gestureDx: number, gestureVx: number) {
+    const currentIndex = activeHeroIndexRef.current;
+    const length = heroItemsLengthRef.current;
+    const cardWidth = Math.max(heroCardWidthRef.current, 1);
+    const thresholdTarget = Math.abs(gestureDx) > cardWidth * 0.22
+      ? currentIndex + (gestureDx < 0 ? 1 : -1)
+      : currentIndex;
+    const targetIndex = gestureVx < -0.35
+      ? currentIndex + 1
+      : gestureVx > 0.35
+        ? currentIndex - 1
+        : thresholdTarget;
+    const boundedTargetIndex = clamp(targetIndex, 0, Math.max(length - 1, 0));
+    if (boundedTargetIndex === currentIndex) {
+      resetHeroCardMotion();
+      return;
+    }
+    animateHeroCardToIndex(boundedTargetIndex);
   }
 
   const heroPanResponder = useMemo(
     () => PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => !heroTransitioningRef.current && Math.abs(gesture.dx) > 7 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.12,
+      onMoveShouldSetPanResponder: (_, gesture) => (
+        !heroTransitioningRef.current &&
+        Math.abs(gesture.dx) > HORIZONTAL_SWIPE_ACTIVATION_DX &&
+        Math.abs(gesture.dx) > Math.abs(gesture.dy) * HORIZONTAL_SWIPE_DOMINANCE_RATIO
+      ),
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         heroAnimationRef.current?.stop();
         heroAnimationRef.current = null;
-        heroHeightAnim.stopAnimation();
-        heroAreaHeightAnim.stopAnimation();
-        heroOutgoingTranslateXAnim.stopAnimation();
-        heroOutgoingOpacityAnim.stopAnimation();
-        heroOutgoingTranslateXAnim.setValue(0);
-        heroOutgoingOpacityAnim.setValue(1);
+        heroCardTranslateXAnim.stopAnimation();
+        heroCardOpacityAnim.stopAnimation();
+        pillXAnim.stopAnimation();
         pillColorAnim.stopAnimation();
+        heroCardTranslateXAnim.setValue(0);
+        heroCardOpacityAnim.setValue(1);
         heroTransitioningRef.current = false;
       },
       onPanResponderMove: (_, gesture) => {
@@ -2869,62 +2790,18 @@ export default function HomeScreen({
         const atStart = currentIndex === 0;
         const atEnd = currentIndex === length - 1;
         const dx = (atStart && gesture.dx > 0) || (atEnd && gesture.dx < 0)
-          ? gesture.dx * 0.25
-          : gesture.dx;
-        const visualDx = clamp(dx * 0.35, -42, 42);
-        heroOutgoingTranslateXAnim.setValue(visualDx);
-        heroOutgoingOpacityAnim.setValue(1 - Math.min(0.28, Math.abs(dx) / Math.max(cardWidth, 1) * 0.28));
-
-        const adjacentIndex = dx < 0 ? currentIndex + 1 : currentIndex - 1;
-        const currentH = getHeroMeasuredHeight(currentIndex);
-        const adjacentH = getHeroMeasuredHeight(adjacentIndex);
-        if (currentH && adjacentH && cardWidth > 0) {
-          const progress = Math.min(1, Math.abs(dx) / cardWidth);
-          const interpolatedHeight = currentH + (adjacentH - currentH) * progress;
-          heroHeightAnim.setValue(interpolatedHeight);
-          heroAreaHeightAnim.setValue(heroAreaHeightForCardHeight(interpolatedHeight));
-        }
-
-        const currentDotX = dotPositionsRef.current[currentIndex];
-        const adjacentDotX = dotPositionsRef.current[adjacentIndex];
-        if (currentDotX != null && adjacentDotX != null && cardWidth > 0) {
-          const progress = Math.min(1, Math.abs(dx) / cardWidth);
-          pillXAnim.setValue((currentDotX - 4) + (adjacentDotX - currentDotX) * progress);
-        }
+          ? gesture.dx * 0.12
+          : gesture.dx * 0.22;
+        const maxOffset = Math.min(34, Math.max(cardWidth * 0.1, 20));
+        const clampedDx = clamp(dx, -maxOffset, maxOffset);
+        heroCardTranslateXAnim.setValue(clampedDx);
+        heroCardOpacityAnim.setValue(1 - Math.min(0.12, Math.abs(clampedDx) / Math.max(cardWidth * 1.8, 1)));
       },
       onPanResponderRelease: (_, gesture) => {
-        const currentIndex = activeHeroIndexRef.current;
-        const length = heroItemsLengthRef.current;
-        const cardWidth = heroCardWidthRef.current;
-        const goNext = gesture.dx < 0 && currentIndex < length - 1 && (Math.abs(gesture.dx) >= 40 || gesture.vx < -0.2);
-        const goPrev = gesture.dx > 0 && currentIndex > 0 && (Math.abs(gesture.dx) >= 40 || gesture.vx > 0.2);
-
-        if (goNext || goPrev) {
-          const nextIndex = goNext ? currentIndex + 1 : currentIndex - 1;
-          startHeroTransition(nextIndex, goNext ? 1 : -1);
-        } else {
-          const animations: Animated.CompositeAnimation[] = [
-            Animated.timing(heroOutgoingTranslateXAnim, {
-              toValue: 0,
-              duration: 180,
-              easing: MOTION.easing.standard,
-              useNativeDriver: true,
-            }),
-            Animated.timing(heroOutgoingOpacityAnim, {
-              toValue: 1,
-              duration: 180,
-              easing: MOTION.easing.soft,
-              useNativeDriver: true,
-            }),
-          ];
-          const heightAnimation = animateHeroHeightToIndex(currentIndex, 180);
-          if (heightAnimation) animations.push(heightAnimation);
-          const pillAnimation = animateHeroPillToIndex(currentIndex, 180);
-          if (pillAnimation) animations.push(pillAnimation);
-          const snapBack = Animated.parallel(animations);
-          heroAnimationRef.current = snapBack;
-          snapBack.start(() => { heroAnimationRef.current = null; });
-        }
+        settleHeroPan(gesture.dx, gesture.vx);
+      },
+      onPanResponderTerminate: (_, gesture) => {
+        settleHeroPan(gesture.dx, gesture.vx);
       },
     }),
     [heroItems.length, heroItemKeySignature]
@@ -3113,7 +2990,7 @@ export default function HomeScreen({
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
             >
               <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
-                More
+                {remainingHomeSportsEventCount > 0 ? `More (${remainingHomeSportsEventCount})` : 'More'}
               </Text>
               <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
             </TouchableOpacity>
@@ -3618,81 +3495,27 @@ export default function HomeScreen({
 
       <View style={{ marginBottom: 14, width: heroCardWidth }}>
         {activeHeroItem ? (
-          <Animated.View
-            style={{ height: heroAreaHeightAnim, width: heroCardWidth, overflow: 'visible' }}
+          <View
+            style={{ width: heroCardWidth }}
             {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
           >
-            <Animated.View style={{ height: heroHeightAnim, width: heroCardWidth, overflow: 'visible' }}>
-              <View
-                pointerEvents="none"
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-                style={{ position: 'absolute', top: 0, left: 0, width: heroCardWidth, opacity: 0 }}
-              >
-                {heroItems.map((item, index) => (
-                  <View
-                    key={`measure-${getHeroItemKey(item)}`}
-                    style={{ position: 'absolute', top: 0, left: 0, width: heroCardWidth }}
-                    onLayout={(e) => handleHeroCardMeasured(item, index, e.nativeEvent.layout.height)}
-                  >
-                    {renderHeroCardContent(item)}
-                  </View>
-                ))}
-              </View>
-              {heroTransition ? (
-                <>
-                  {heroItems[heroTransition.fromIndex] ? (
-                    <Animated.View
-                      key={`outgoing-${getHeroItemKey(heroItems[heroTransition.fromIndex])}`}
-                      pointerEvents="none"
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: heroCardWidth,
-                        opacity: heroOutgoingOpacityAnim,
-                        transform: [{ translateX: heroOutgoingTranslateXAnim }],
-                      }}
-                    >
-                      {renderHeroCardContent(heroItems[heroTransition.fromIndex])}
-                    </Animated.View>
-                  ) : null}
-                  {heroItems[heroTransition.toIndex] ? (
-                    <Animated.View
-                      key={`incoming-${getHeroItemKey(heroItems[heroTransition.toIndex])}`}
-                      pointerEvents="none"
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: heroCardWidth,
-                        opacity: heroIncomingOpacityAnim,
-                        transform: [
-                          { translateX: heroIncomingTranslateXAnim },
-                          { translateY: heroIncomingTranslateYAnim },
-                        ],
-                      }}
-                    >
-                      {renderHeroCardContent(heroItems[heroTransition.toIndex])}
-                    </Animated.View>
-                  ) : null}
-                </>
-              ) : (
-                <Animated.View
-                  key={`active-${getHeroItemKey(activeHeroItem)}`}
-                  pointerEvents="auto"
-                  style={{
-                    width: heroCardWidth,
-                    opacity: heroOutgoingOpacityAnim,
-                    transform: [{ translateX: heroOutgoingTranslateXAnim }],
-                  }}
-                >
-                  {renderHeroCardContent(activeHeroItem)}
-                </Animated.View>
-              )}
+            <Animated.View
+              style={{
+                width: heroCardWidth,
+                opacity: heroCardOpacityAnim,
+                transform: [{ translateX: heroCardTranslateXAnim }],
+              }}
+            >
+              {renderHeroCardContent(activeHeroItem)}
             </Animated.View>
             {heroItems.length > 1 ? (
-              <View style={{ height: heroIndicatorFlowHeight, paddingTop: HERO_INDICATOR_TOP_SPACING, alignItems: 'center' }}>
+              <View
+                style={{
+                  height: heroIndicatorFlowHeight,
+                  paddingTop: HERO_INDICATOR_TOP_SPACING,
+                  alignItems: 'center',
+                }}
+              >
                 <View style={{ height: HERO_INDICATOR_ROW_HEIGHT, flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
                   <Animated.View
                     pointerEvents="none"
@@ -3752,7 +3575,7 @@ export default function HomeScreen({
                 </View>
               </View>
             ) : null}
-          </Animated.View>
+          </View>
         ) : (
           <View>
             <View style={{
@@ -4067,8 +3890,8 @@ export default function HomeScreen({
           <View
             style={{
               maxHeight: Math.round(windowHeight * 0.72),
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
+              borderTopLeftRadius: SHEET_CORNER_RADIUS,
+              borderTopRightRadius: SHEET_CORNER_RADIUS,
               backgroundColor: colors.bg,
               paddingTop: 10,
               overflow: 'hidden',
@@ -4247,8 +4070,8 @@ export default function HomeScreen({
             style={{
               maxHeight: '90%',
               height: diningListSheetHeight,
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
+              borderTopLeftRadius: SHEET_CORNER_RADIUS,
+              borderTopRightRadius: SHEET_CORNER_RADIUS,
               backgroundColor: colors.bg,
               paddingTop: 10,
               paddingBottom: Math.max(bottomInset, 18) + 8,
@@ -4445,8 +4268,8 @@ export default function HomeScreen({
             style={{
               maxHeight: '78%',
               height: sportsListSheetHeight,
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
+              borderTopLeftRadius: SHEET_CORNER_RADIUS,
+              borderTopRightRadius: SHEET_CORNER_RADIUS,
               backgroundColor: colors.bg,
               paddingTop: 10,
               paddingBottom: Math.max(bottomInset, 18) + 8,
@@ -4565,8 +4388,8 @@ export default function HomeScreen({
             style={{
               maxHeight: '80%',
               height: pastAssignmentsSheetHeight,
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
+              borderTopLeftRadius: SHEET_CORNER_RADIUS,
+              borderTopRightRadius: SHEET_CORNER_RADIUS,
               backgroundColor: colors.bg,
               paddingTop: 10,
               paddingBottom: Math.max(bottomInset, 18) + 8,
@@ -4711,8 +4534,8 @@ export default function HomeScreen({
             <Animated.View
               style={{
                 height: calendarSetupSheetHeight,
-                borderTopLeftRadius: 28,
-                borderTopRightRadius: 28,
+                borderTopLeftRadius: SHEET_CORNER_RADIUS,
+                borderTopRightRadius: SHEET_CORNER_RADIUS,
                 backgroundColor: colors.bg,
                 overflow: 'hidden',
                 zIndex: 2,
@@ -4944,8 +4767,8 @@ export default function HomeScreen({
                 elevation: 1,
                 maxHeight: '88%',
                 height: sportsEventSheetHeight,
-                borderTopLeftRadius: 28,
-                borderTopRightRadius: 28,
+                borderTopLeftRadius: SHEET_CORNER_RADIUS,
+                borderTopRightRadius: SHEET_CORNER_RADIUS,
                 backgroundColor: colors.bg,
                 paddingTop: 10,
                 paddingBottom: 0,

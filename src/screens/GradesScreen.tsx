@@ -15,6 +15,18 @@ import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import { useTheme } from '../context/ThemeContext';
 import { useKeyboardInset } from '../utils/useKeyboardInset';
+import {
+  BACKDROP_DURATION,
+  BACKDROP_EXIT_DURATION,
+  MOTION,
+  SHEET_CORNER_RADIUS,
+  SHEET_DRAG_DISMISS_DISTANCE,
+  SHEET_DRAG_DISMISS_VELOCITY,
+  SHEET_INITIAL_TRANSLATE_Y,
+  SHEET_OUT_DURATION,
+  SHEET_RESET_SPRING,
+  SHEET_SPRING,
+} from '../utils/motion';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -398,16 +410,16 @@ function GradePickerModal({
   const { rows: letterGradeRows, otherGrades } = useMemo(() => groupedLetterGrades(gradeOptions), [gradeOptions]);
   const sheetMaxHeight = Math.min(screenHeight * 0.72, 580);
 
-  const sheetAnim = useRef(new Animated.Value(600)).current;
+  const sheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
-      sheetAnim.setValue(600);
+      sheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
       backdropAnim.setValue(0);
       Animated.parallel([
-        Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-        Animated.timing(backdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+        Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
+        Animated.timing(backdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
       ]).start();
     }
   }, [visible]);
@@ -416,8 +428,8 @@ function GradePickerModal({
 
   function handleClose() {
     Animated.parallel([
-      Animated.timing(sheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-      Animated.timing(backdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(sheetAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: SHEET_OUT_DURATION, easing: MOTION.easing.exit, useNativeDriver: true }),
+      Animated.timing(backdropAnim, { toValue: 0, duration: BACKDROP_EXIT_DURATION, useNativeDriver: true }),
     ]).start(() => onClose());
   }
   handleCloseRef.current = handleClose;
@@ -428,14 +440,14 @@ function GradePickerModal({
       if (gs.dy > 0) sheetAnim.setValue(gs.dy);
     },
     onPanResponderRelease: (_, gs) => {
-      if (gs.dy > 80 || gs.vy > 0.8) {
+      if (gs.dy > SHEET_DRAG_DISMISS_DISTANCE || gs.vy > SHEET_DRAG_DISMISS_VELOCITY) {
         handleCloseRef.current();
       } else {
-        Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+        Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_RESET_SPRING }).start();
       }
     },
     onPanResponderTerminate: () => {
-      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_RESET_SPRING }).start();
     },
   })).current;
 
@@ -451,7 +463,7 @@ function GradePickerModal({
           activeOpacity={1} onPress={handleClose}
         />
         <Animated.View style={{
-          backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+          backgroundColor: colors.card, borderTopLeftRadius: SHEET_CORNER_RADIUS, borderTopRightRadius: SHEET_CORNER_RADIUS,
           paddingHorizontal: 20, paddingTop: 12, paddingBottom: 34,
           maxHeight: sheetMaxHeight,
           transform: [{ translateY: sheetAnim }],
@@ -619,8 +631,8 @@ function PriorAcademicRecordModal({
         <View
           style={{
             backgroundColor: colors.card,
-            borderTopLeftRadius: 20,
-            borderTopRightRadius: 20,
+            borderTopLeftRadius: SHEET_CORNER_RADIUS,
+            borderTopRightRadius: SHEET_CORNER_RADIUS,
             paddingHorizontal: 20,
             paddingTop: 18,
             paddingBottom: 34,

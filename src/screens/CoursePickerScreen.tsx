@@ -9,7 +9,6 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
-  Easing,
   LayoutAnimation,
   UIManager,
   Platform,
@@ -30,6 +29,18 @@ import InfoChip from '../components/InfoChip';
 import { supabase } from '../lib/supabase';
 import ReviewsModal from '../components/ReviewsModal';
 import { useTheme } from '../context/ThemeContext';
+import {
+  BACKDROP_DURATION,
+  BACKDROP_EXIT_DURATION,
+  MOTION,
+  SHEET_CORNER_RADIUS,
+  SHEET_DRAG_DISMISS_DISTANCE,
+  SHEET_DRAG_DISMISS_VELOCITY,
+  SHEET_INITIAL_TRANSLATE_Y,
+  SHEET_OUT_DURATION,
+  SHEET_RESET_SPRING,
+  SHEET_SPRING,
+} from '../utils/motion';
 
 // GE category codes match what Anteater API stores in geCategories[]
 const GE_CATEGORIES = [
@@ -749,10 +760,10 @@ export default function CoursePickerScreen({
   const [selectedGE, setSelectedGE] = useState('');
   const [selectedDayFilters, setSelectedDayFilters] = useState<string[]>([]);
   const [deptDropdownOpen, setDeptDropdownOpen] = useState(false);
-  const deptSheetSlideAnim = useRef(new Animated.Value(600)).current;
+  const deptSheetSlideAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const deptBackdropAnim = useRef(new Animated.Value(0)).current;
   const customizeBackdropAnim = useRef(new Animated.Value(0)).current;
-  const customizeSheetAnim = useRef(new Animated.Value(600)).current;
+  const customizeSheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const customizeKeyboardAnim = useRef(new Animated.Value(0)).current;
   const closeDeptModalRef = useRef<(() => void) | null>(null);
   const deptDragPan = useRef(PanResponder.create({
@@ -761,14 +772,14 @@ export default function CoursePickerScreen({
       if (gs.dy > 0) deptSheetSlideAnim.setValue(gs.dy);
     },
     onPanResponderRelease: (_, gs) => {
-      if (gs.dy > 80 || gs.vy > 0.8) {
+      if (gs.dy > SHEET_DRAG_DISMISS_DISTANCE || gs.vy > SHEET_DRAG_DISMISS_VELOCITY) {
         closeDeptModalRef.current?.();
       } else {
-        Animated.spring(deptSheetSlideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+        Animated.spring(deptSheetSlideAnim, { toValue: 0, useNativeDriver: true, ...SHEET_RESET_SPRING }).start();
       }
     },
     onPanResponderTerminate: () => {
-      Animated.spring(deptSheetSlideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+      Animated.spring(deptSheetSlideAnim, { toValue: 0, useNativeDriver: true, ...SHEET_RESET_SPRING }).start();
     },
   })).current;
   const [deptSearch, setDeptSearch] = useState('');
@@ -795,29 +806,29 @@ export default function CoursePickerScreen({
     editingCourseIdRef.current = editingCustomCourse.id;
     setCustomCourseDraft(courseToCustomDraft(editingCustomCourse));
     customizeBackdropAnim.setValue(0);
-    customizeSheetAnim.setValue(600);
+    customizeSheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     setShowCustomizeModal(true);
     Animated.parallel([
-      Animated.spring(customizeSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.timing(customizeBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(customizeSheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
+      Animated.timing(customizeBackdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
     ]).start();
   }, [editingCustomCourse]);
 
   function openDeptModal() {
     setDeptSearch('');
-    deptSheetSlideAnim.setValue(600);
+    deptSheetSlideAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     deptBackdropAnim.setValue(0);
     setDeptDropdownOpen(true);
     Animated.parallel([
-      Animated.spring(deptSheetSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.timing(deptBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(deptSheetSlideAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
+      Animated.timing(deptBackdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
     ]).start();
   }
 
   function closeDeptModal(callback?: () => void) {
     Animated.parallel([
-      Animated.timing(deptSheetSlideAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-      Animated.timing(deptBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(deptSheetSlideAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: SHEET_OUT_DURATION, easing: MOTION.easing.exit, useNativeDriver: true }),
+      Animated.timing(deptBackdropAnim, { toValue: 0, duration: BACKDROP_EXIT_DURATION, useNativeDriver: true }),
     ]).start(() => {
       setDeptDropdownOpen(false);
       setShowGESublist(false);
@@ -1395,19 +1406,19 @@ export default function CoursePickerScreen({
   const openCustomizeModal = () => {
     resetCustomCourseDraft();
     customizeBackdropAnim.setValue(0);
-    customizeSheetAnim.setValue(600);
+    customizeSheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     customizeKeyboardAnim.setValue(0);
     setShowCustomizeModal(true);
     Animated.parallel([
-      Animated.spring(customizeSheetAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.timing(customizeBackdropAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.spring(customizeSheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
+      Animated.timing(customizeBackdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
     ]).start();
   };
 
   const closeCustomizeModal = () => {
     Animated.parallel([
-      Animated.timing(customizeSheetAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-      Animated.timing(customizeBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(customizeSheetAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: SHEET_OUT_DURATION, easing: MOTION.easing.exit, useNativeDriver: true }),
+      Animated.timing(customizeBackdropAnim, { toValue: 0, duration: BACKDROP_EXIT_DURATION, useNativeDriver: true }),
     ]).start(() => {
       setShowCustomizeModal(false);
       if (editingCourseIdRef.current) {
@@ -1860,7 +1871,7 @@ export default function CoursePickerScreen({
                 style={{ flex: 1, justifyContent: 'flex-end' }}
               >
                 <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => closeDeptModal()} />
-                <Animated.View style={{ backgroundColor: coursePickerSheetBg, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 16, maxHeight: '72%', transform: [{ translateY: deptSheetSlideAnim }] }}>
+                <Animated.View style={{ backgroundColor: coursePickerSheetBg, borderTopLeftRadius: SHEET_CORNER_RADIUS, borderTopRightRadius: SHEET_CORNER_RADIUS, paddingTop: 16, maxHeight: '72%', transform: [{ translateY: deptSheetSlideAnim }] }}>
 
                 {/* Drag handle */}
                 <View style={{ alignItems: 'center', paddingBottom: 8, marginTop: -4 }} {...deptDragPan.panHandlers}>
@@ -2250,8 +2261,8 @@ export default function CoursePickerScreen({
           <Animated.View
             style={{
               backgroundColor: coursePickerSheetBg,
-              borderTopLeftRadius: 26,
-              borderTopRightRadius: 26,
+              borderTopLeftRadius: SHEET_CORNER_RADIUS,
+              borderTopRightRadius: SHEET_CORNER_RADIUS,
               paddingHorizontal: 16,
               paddingTop: 14,
               paddingBottom: Math.max(insets.bottom + 8, 18),

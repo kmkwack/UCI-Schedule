@@ -3300,3 +3300,22 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sjb (Prevent duplicate review-account onboarding)
 - **`App.tsx`** — Stopped session restore/token refresh hydration from re-enabling the review-account forced onboarding flag, and skipped the secondary brand intro after review-account feature onboarding completes. This keeps the App Review account from seeing what feels like onboarding twice.
+
+### Session 64sjc (Fix notification onboarding footer spacing)
+- **`src/components/FeatureOnboardingScreen.tsx`** — Added breathing room around the notification slide footer, separated the Back action from the Not now button, and avoided extra bottom inset on that slide so the controls no longer look attached or unusually high.
+
+### Session 64sjd (Make Home hero a real carousel track)
+- **`src/screens/HomeScreen.tsx`** — Replaced the Home hero outgoing/incoming re-render animation with a real horizontal `Animated` track that renders every hero card side by side, moves the track during drag/snap, updates the active hero index only after snap completion, keeps indicators below the card, and preserves existing Today/Dining/Sports/Campus card designs.
+
+### Session 64sje (Standardize shared motion tokens)
+- **`src/utils/motion.ts`** — Added named shared constants for fast/content/hero timing, backdrop durations, sheet spring presets, drag-dismiss thresholds, sheet radius, and horizontal swipe activation so motion decisions live in one place.
+- **`src/screens/HomeScreen.tsx`**, **`src/screens/GradesScreen.tsx`**, **`src/screens/BoardScreen.tsx`**, **`src/screens/CoursePickerScreen.tsx`**, **`src/screens/TimetableScreen.tsx`**, **`src/screens/FriendsScreen.tsx`**, and **`src/components/ProfileEditorScreen.tsx`** — Replaced repeated hard-coded sheet timing, spring, corner radius, and swipe-threshold values with the shared motion constants while preserving existing screen layouts and product flows.
+
+### Session 64sjf (Fix Home hero carousel height regression)
+- **`src/screens/HomeScreen.tsx`** — Changed the hero carousel viewport to clip horizontally, measure each page from a non-stretched inner wrapper, clamp dynamic card heights with smaller min/max bounds, reset measurements on width changes, and keep indicators below the measured card so adjacent hero pages are not visible at rest and the Assignments section is not pushed down by a stale fixed height.
+
+### Session 64sjg (Rollback Home hero deck carousel)
+- **`src/screens/HomeScreen.tsx`** — Removed the side-by-side hero track, fixed-height animated viewport, per-page height measurement, and deck-style wrapper. Restored the single active hero card render with natural card height, kept indicators below the card, and retained only a small one-card translate/fade response for swipe release so the hero no longer exposes adjacent cards or pushes Assignments down.
+
+### Session 64sjh (Shorten Sports hero preview)
+- **`src/screens/HomeScreen.tsx`** — Limited the Sports Events hero card to one preview event and changed the More row to show the remaining count, so long sports titles no longer make the Home hero look like it has a fixed oversized height while the full sports list remains available in the sheet.

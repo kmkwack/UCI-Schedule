@@ -4,7 +4,6 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
-  Easing,
   PanResponder,
   View,
   Text,
@@ -44,6 +43,11 @@ import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import type { ChatTarget } from '../data/messages';
 import { EmptyState, SkeletonBlock } from '../components/Polish';
+import {
+  HORIZONTAL_SWIPE_ACTIVATION_DX,
+  HORIZONTAL_SWIPE_DOMINANCE_RATIO,
+  MOTION,
+} from '../utils/motion';
 
 function plainTermLabel(term: Quarter) {
   return `${term.quarter} ${term.year}`;
@@ -269,7 +273,7 @@ export default function FriendsScreen({
   const friendSlideAnim = useRef(new Animated.Value(screenWidth)).current;
   const swipeFriendPan = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) => gs.dx > 6 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+      onMoveShouldSetPanResponder: (_, gs) => gs.dx > HORIZONTAL_SWIPE_ACTIVATION_DX && Math.abs(gs.dx) > Math.abs(gs.dy) * HORIZONTAL_SWIPE_DOMINANCE_RATIO,
       onPanResponderMove: (_, gs) => {
         if (gs.dx > 0) friendSlideAnim.setValue(gs.dx);
       },
@@ -277,11 +281,11 @@ export default function FriendsScreen({
         if (gs.dx > screenWidthRef.current * 0.35 || gs.vx > 0.6) {
           closeFriendTimetable();
         } else {
-          Animated.spring(friendSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+          Animated.spring(friendSlideAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheet }).start();
         }
       },
       onPanResponderTerminate: () => {
-        Animated.spring(friendSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+        Animated.spring(friendSlideAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheet }).start();
       },
     })
   ).current;
@@ -634,11 +638,11 @@ export default function FriendsScreen({
   function openFriendTimetable(friendId: string) {
     friendSlideAnim.setValue(screenWidthRef.current);
     setSelectedFriendId(friendId);
-    Animated.spring(friendSlideAnim, { toValue: 0, useNativeDriver: true, tension: 120, friction: 18 }).start();
+    Animated.spring(friendSlideAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheet }).start();
   }
 
   function closeFriendTimetable() {
-    Animated.timing(friendSlideAnim, { toValue: screenWidthRef.current, duration: 220, useNativeDriver: true }).start(() => {
+    Animated.timing(friendSlideAnim, { toValue: screenWidthRef.current, duration: MOTION.duration.sheetOut, easing: MOTION.easing.exit, useNativeDriver: true }).start(() => {
       setSelectedFriendId(null);
       friendSlideAnim.setValue(screenWidthRef.current);
     });
@@ -650,7 +654,7 @@ export default function FriendsScreen({
   }
 
   function closeQuarterDropdown() {
-    Animated.timing(quarterDropdownAnim, { toValue: 0, duration: 150, easing: Easing.in(Easing.ease), useNativeDriver: true })
+    Animated.timing(quarterDropdownAnim, { toValue: 0, duration: MOTION.duration.contentFast, easing: MOTION.easing.exit, useNativeDriver: true })
       .start(() => setShowQuarterDropdown(false));
   }
 

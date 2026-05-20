@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Easing, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, ScrollView, Modal, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, ScrollView, Modal, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown, blockColorKey, colorForCourse, vividColorForCourse } from '../data/courses';
 import { buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
@@ -15,7 +15,15 @@ import * as Sharing from 'expo-sharing';
 import * as Linking from 'expo-linking';
 import MapView, { Marker } from 'react-native-maps';
 import { triggerSuccessHaptic } from '../utils/haptics';
-import { MOTION } from '../utils/motion';
+import {
+  HORIZONTAL_SWIPE_ACTIVATION_DX,
+  HORIZONTAL_SWIPE_DOMINANCE_RATIO,
+  MOTION,
+  SHEET_DRAG_DISMISS_DISTANCE,
+  SHEET_DRAG_DISMISS_VELOCITY,
+  SHEET_CORNER_RADIUS,
+  SHEET_INITIAL_TRANSLATE_Y,
+} from '../utils/motion';
 
 function rmpUrl(professor: string, school: string) {
   const sid = getSchoolConfig(school).rmpSchoolId;
@@ -412,7 +420,7 @@ export default function TimetableScreen({
   }
 
   function closeQuarterDropdown() {
-    Animated.timing(quarterDropdownAnim, { toValue: 0, duration: 150, easing: Easing.in(Easing.ease), useNativeDriver: true }).start(() => {
+    Animated.timing(quarterDropdownAnim, { toValue: 0, duration: MOTION.duration.contentFast, easing: MOTION.easing.exit, useNativeDriver: true }).start(() => {
       setShowQuarterDropdown(false);
     });
   }
@@ -431,7 +439,7 @@ export default function TimetableScreen({
   }
 
   function closeAddMenu() {
-    Animated.timing(addMenuAnim, { toValue: 0, duration: 150, easing: Easing.in(Easing.ease), useNativeDriver: true })
+    Animated.timing(addMenuAnim, { toValue: 0, duration: MOTION.duration.contentFast, easing: MOTION.easing.exit, useNativeDriver: true })
       .start(() => setShowAddMenu(false));
   }
 
@@ -440,10 +448,10 @@ export default function TimetableScreen({
   const [selectedAddYear, setSelectedAddYear] = useState<string | null>(null); // drives header
   const [mountedYear, setMountedYear] = useState<string | null>(null); // keeps quarter list alive during slide-out
   const addYearSlideAnim = useRef(new Animated.Value(screenWidth)).current;
-  const addSheetSlideAnim = useRef(new Animated.Value(600)).current;
+  const addSheetSlideAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const addBackdropAnim = useRef(new Animated.Value(0)).current;
   const settingsBackdropAnim = useRef(new Animated.Value(0)).current;
-  const settingsSheetAnim = useRef(new Animated.Value(600)).current;
+  const settingsSheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const closeAddQuarterModalRef = useRef<(() => void) | null>(null);
   const addQuarterDragPan = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -451,14 +459,14 @@ export default function TimetableScreen({
       if (gs.dy > 0) addSheetSlideAnim.setValue(gs.dy);
     },
     onPanResponderRelease: (_, gs) => {
-      if (gs.dy > 80 || gs.vy > 0.8) {
+      if (gs.dy > SHEET_DRAG_DISMISS_DISTANCE || gs.vy > SHEET_DRAG_DISMISS_VELOCITY) {
         closeAddQuarterModalRef.current?.();
       } else {
-        Animated.spring(addSheetSlideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+        Animated.spring(addSheetSlideAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheetReset }).start();
       }
     },
     onPanResponderTerminate: () => {
-      Animated.spring(addSheetSlideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+      Animated.spring(addSheetSlideAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheetReset }).start();
     },
   })).current;
   const closeSettingsRef = useRef<(() => void) | null>(null);
@@ -468,14 +476,14 @@ export default function TimetableScreen({
       if (gs.dy > 0) settingsSheetAnim.setValue(gs.dy);
     },
     onPanResponderRelease: (_, gs) => {
-      if (gs.dy > 80 || gs.vy > 0.8) {
+      if (gs.dy > SHEET_DRAG_DISMISS_DISTANCE || gs.vy > SHEET_DRAG_DISMISS_VELOCITY) {
         closeSettingsRef.current?.();
       } else {
-        Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+        Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheetReset }).start();
       }
     },
     onPanResponderTerminate: () => {
-      Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 18 }).start();
+      Animated.spring(settingsSheetAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheetReset }).start();
     },
   })).current;
   const contentHeightAnim = useRef(new Animated.Value(260)).current;
@@ -488,8 +496,8 @@ export default function TimetableScreen({
 
   function closeAddQuarterModal() {
     Animated.parallel([
-      Animated.timing(addSheetSlideAnim, { toValue: 600, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-      Animated.timing(addBackdropAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(addSheetSlideAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: MOTION.duration.sheetOut, easing: MOTION.easing.exit, useNativeDriver: true }),
+      Animated.timing(addBackdropAnim, { toValue: 0, duration: MOTION.duration.sheetOut, easing: MOTION.easing.exit, useNativeDriver: true }),
     ]).start(() => {
       setSelectedAddYear(null);
       addYearSlideAnim.setValue(screenWidthRef.current);
@@ -506,16 +514,16 @@ export default function TimetableScreen({
     setMountedYear(year);
     addYearSlideAnim.setValue(screenWidthRef.current);
     Animated.parallel([
-      Animated.spring(addYearSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }),
-      Animated.spring(contentHeightAnim, { toValue: targetH, useNativeDriver: false, tension: 100, friction: 16 }),
+      Animated.spring(addYearSlideAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheet }),
+      Animated.spring(contentHeightAnim, { toValue: targetH, useNativeDriver: false, ...MOTION.spring.sheet }),
     ]).start();
   }
 
   function drillBackToYears() {
     setSelectedAddYear(null); // header switches to "Select Year" immediately
     Animated.parallel([
-      Animated.timing(addYearSlideAnim, { toValue: screenWidthRef.current, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-      Animated.spring(contentHeightAnim, { toValue: yearListHeightRef.current, useNativeDriver: false, tension: 100, friction: 16 }),
+      Animated.timing(addYearSlideAnim, { toValue: screenWidthRef.current, duration: MOTION.duration.sheetOut, easing: MOTION.easing.exit, useNativeDriver: true }),
+      Animated.spring(contentHeightAnim, { toValue: yearListHeightRef.current, useNativeDriver: false, ...MOTION.spring.sheet }),
     ]).start(() => setMountedYear(null)); // quarter list unmounts only after slide-out finishes
   }
 
@@ -523,7 +531,7 @@ export default function TimetableScreen({
   drillBackRef.current = drillBackToYears;
 
   const addQuarterSwipePan = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: (_, gs) => gs.dx > 6 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+    onMoveShouldSetPanResponder: (_, gs) => gs.dx > HORIZONTAL_SWIPE_ACTIVATION_DX && Math.abs(gs.dx) > Math.abs(gs.dy) * HORIZONTAL_SWIPE_DOMINANCE_RATIO,
     onPanResponderMove: (_, gs) => {
       if (gs.dx > 0) addYearSlideAnim.setValue(gs.dx);
     },
@@ -531,11 +539,11 @@ export default function TimetableScreen({
       if (gs.dx > screenWidthRef.current * 0.35 || gs.vx > 0.6) {
         drillBackRef.current();
       } else {
-        Animated.spring(addYearSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+        Animated.spring(addYearSlideAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheet }).start();
       }
     },
     onPanResponderTerminate: () => {
-      Animated.spring(addYearSlideAnim, { toValue: 0, useNativeDriver: true, tension: 100, friction: 16 }).start();
+      Animated.spring(addYearSlideAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheet }).start();
     },
   })).current;
 
@@ -904,7 +912,7 @@ export default function TimetableScreen({
   }
 
   function triggerAddSheetAnim() {
-    addSheetSlideAnim.setValue(600);
+    addSheetSlideAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     addBackdropAnim.setValue(0);
     Animated.parallel([
       Animated.spring(addSheetSlideAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheet }),
@@ -949,7 +957,7 @@ export default function TimetableScreen({
     setPendingShowInstructor(settings.showInstructor);
     setPendingShowTime(settings.showTime);
     settingsBackdropAnim.setValue(0);
-    settingsSheetAnim.setValue(600);
+    settingsSheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
     setShowSettings(true);
     Animated.parallel([
       Animated.timing(settingsBackdropAnim, { toValue: 1, duration: MOTION.duration.sheetIn, easing: MOTION.easing.standard, useNativeDriver: true }),
@@ -960,7 +968,7 @@ export default function TimetableScreen({
   function closeSettings(callback?: () => void) {
     Animated.parallel([
       Animated.timing(settingsBackdropAnim, { toValue: 0, duration: MOTION.duration.sheetOut, easing: MOTION.easing.exit, useNativeDriver: true }),
-      Animated.timing(settingsSheetAnim, { toValue: 600, duration: MOTION.duration.sheetOut, easing: MOTION.easing.exit, useNativeDriver: true }),
+      Animated.timing(settingsSheetAnim, { toValue: SHEET_INITIAL_TRANSLATE_Y, duration: MOTION.duration.sheetOut, easing: MOTION.easing.exit, useNativeDriver: true }),
     ]).start(() => {
       setShowSettings(false);
       callback?.();
@@ -1300,7 +1308,7 @@ export default function TimetableScreen({
         <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: addBackdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }) }}>
         <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={closeAddQuarterModal} />
         <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
-            <Animated.View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40, overflow: 'hidden', transform: [{ translateY: addSheetSlideAnim }] }}>
+            <Animated.View style={{ backgroundColor: colors.card, borderTopLeftRadius: SHEET_CORNER_RADIUS, borderTopRightRadius: SHEET_CORNER_RADIUS, paddingBottom: 40, overflow: 'hidden', transform: [{ translateY: addSheetSlideAnim }] }}>
               {/* Drag handle */}
               <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 8 }} {...addQuarterDragPan.panHandlers}>
                 <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
@@ -1395,8 +1403,8 @@ export default function TimetableScreen({
           <Animated.View
             style={{
               backgroundColor: colors.card,
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
+              borderTopLeftRadius: SHEET_CORNER_RADIUS,
+              borderTopRightRadius: SHEET_CORNER_RADIUS,
               maxHeight: '88%',
               overflow: 'hidden',
               transform: [{ translateY: settingsSheetAnim }],
@@ -1596,8 +1604,8 @@ export default function TimetableScreen({
           <View
             style={{
               backgroundColor: colors.card,
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
+              borderTopLeftRadius: SHEET_CORNER_RADIUS,
+              borderTopRightRadius: SHEET_CORNER_RADIUS,
               paddingTop: 12,
               paddingHorizontal: 20,
               paddingBottom: Math.max(bottomInset + 18, 28),
@@ -1936,8 +1944,8 @@ export default function TimetableScreen({
               onStartShouldSetResponder={() => true}
               style={{
                 backgroundColor: colors.card,
-                borderTopLeftRadius: 26,
-                borderTopRightRadius: 26,
+                borderTopLeftRadius: SHEET_CORNER_RADIUS,
+                borderTopRightRadius: SHEET_CORNER_RADIUS,
                 paddingHorizontal: 20,
                 paddingTop: 16,
                 paddingBottom: keyboardVisible ? 12 : Math.max(bottomInset + 12, 16),

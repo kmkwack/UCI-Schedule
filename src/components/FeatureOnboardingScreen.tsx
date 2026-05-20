@@ -1089,11 +1089,11 @@ export default function FeatureOnboardingScreen({
         <View
           style={{
             paddingHorizontal: 24,
-            paddingTop: slide.kind === 'notifications' ? 6 : 12,
-            paddingBottom: slide.kind === 'notifications' ? Math.max(insets.bottom, 10) : Math.max(insets.bottom, 16),
+            paddingTop: slide.kind === 'notifications' ? 8 : 12,
+            paddingBottom: slide.kind === 'notifications' ? 12 : Math.max(insets.bottom, 16),
           }}
         >
-          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 7, marginBottom: slide.kind === 'notifications' ? 8 : 18 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 7, marginBottom: slide.kind === 'notifications' ? 14 : 18 }}>
             {SLIDES.map((item, dotIndex) => {
               const active = dotIndex === index;
               const disabled = dotIndex > index && (
@@ -1119,8 +1119,8 @@ export default function FeatureOnboardingScreen({
           </View>
 
           {slide.kind === 'notifications' ? (
-            <>
-              <View style={{ gap: 10 }}>
+            <View style={{ gap: 12 }}>
+              <View style={{ gap: 11 }}>
                 <PrimaryButton
                   onPress={() => { void goNext(); }}
                   accent={slideAccent}
@@ -1150,11 +1150,18 @@ export default function FeatureOnboardingScreen({
               <TouchableOpacity
                 disabled={finishing || savingProfile}
                 onPress={() => setIndex((current) => Math.max(0, current - 1))}
-                style={{ alignItems: 'center', paddingTop: 6, paddingBottom: 2, opacity: finishing || savingProfile ? 0.5 : 1 }}
+                hitSlop={{ top: 6, bottom: 6, left: 12, right: 12 }}
+                style={{
+                  minHeight: 42,
+                  borderRadius: 14,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: finishing || savingProfile ? 0.5 : 1,
+                }}
               >
-                <Text style={{ color: colors.textTertiary, fontSize: 13, fontWeight: '700' }}>Back</Text>
+                <Text style={{ color: colors.textTertiary, fontSize: 14, fontWeight: '800' }}>Back</Text>
               </TouchableOpacity>
-            </>
+            </View>
           ) : (
             <View style={{ flexDirection: 'row', gap: 12 }}>
               {index > 0 ? (

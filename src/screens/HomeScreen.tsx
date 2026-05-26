@@ -28,8 +28,6 @@ import { triggerSelectionHaptic, triggerSuccessHaptic } from '../utils/haptics';
 import {
   BACKDROP_DURATION,
   BACKDROP_EXIT_DURATION,
-  HORIZONTAL_SWIPE_ACTIVATION_DX,
-  HORIZONTAL_SWIPE_DOMINANCE_RATIO,
   MOTION,
   SHEET_CORNER_RADIUS,
   SHEET_INITIAL_TRANSLATE_Y,
@@ -153,6 +151,15 @@ type HeroCardItem =
   | { type: 'sportsEvents' }
   | { type: 'campusInfo' };
 
+type HeroVerticalTransition = {
+  fromItem: HeroCardItem;
+  toIndex: number;
+  toItem: HeroCardItem;
+  direction: 1 | -1;
+  fromHeight: number;
+  toHeight: number;
+};
+
 function getHeroItemKey(item: HeroCardItem) {
   if (item.type === 'course') return `course-${item.course.id}`;
   if (item.type === 'completedSummary' || item.type === 'upcomingSummary') return `${item.type}-today`;
@@ -199,8 +206,10 @@ type SchoolTermDateRange = { start: Date; end: Date };
 
 const HOME_SPORTS_FETCH_DELAY_MS = 250;
 const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
-const HERO_INDICATOR_TOP_SPACING = 10;
-const HERO_INDICATOR_ROW_HEIGHT = 24;
+const HERO_VERTICAL_SWIPE_CAPTURE_DY = 7;
+const HERO_VERTICAL_SWIPE_ACTIVATION_DY = 18;
+const HERO_VERTICAL_SWIPE_DOMINANCE_RATIO = 1.18;
+const HERO_WIDGET_STACK_ANIMATION_VERSION = 2;
 
 const STUDENT_DEALS_RESOURCE: CampusInfoResource = {
   id: 'student-deals',
@@ -1976,18 +1985,16 @@ export default function HomeScreen({
   ];
   const heroItemKeySignature = heroItems.map(getHeroItemKey).join('|');
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
+  const [heroGestureActive, setHeroGestureActive] = useState(false);
+  const [heroTransition, setHeroTransition] = useState<HeroVerticalTransition | null>(null);
   const activeHeroIndexRef = useRef(0);
   const heroTransitioningRef = useRef(false);
   const heroAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
   const heroItemsLengthRef = useRef(0);
   heroItemsLengthRef.current = heroItems.length;
-  const heroCardWidthRef = useRef(0);
-  const heroCardTranslateXAnim = useRef(new Animated.Value(0)).current;
-  const heroCardOpacityAnim = useRef(new Animated.Value(1)).current;
-  const pillXAnim = useRef(new Animated.Value(0)).current;
-  const pillColorAnim = useRef(new Animated.Value(0)).current;
-  const dotPositionsRef = useRef<number[]>([]);
-  const pillInitializedRef = useRef(false);
+  const heroStackProgressAnim = useMemo(() => new Animated.Value(0), [HERO_WIDGET_STACK_ANIMATION_VERSION]);
+  const heroContainerHeightAnim = useMemo(() => new Animated.Value(0), [HERO_WIDGET_STACK_ANIMATION_VERSION]);
+  const heroCardHeightsRef = useRef<Record<string, number>>({});
 
   const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
   const quarterProgress = clamp(
@@ -2045,8 +2052,6 @@ export default function HomeScreen({
   } as const;
 
   const heroCardWidth = Math.max(windowWidth - 36, 0);
-  heroCardWidthRef.current = heroCardWidth;
-  const heroIndicatorFlowHeight = heroItems.length > 1 ? HERO_INDICATOR_TOP_SPACING + HERO_INDICATOR_ROW_HEIGHT : 0;
   const isCompactCampusInfoCard = heroCardWidth > 0 && heroCardWidth < 340;
   const campusInfoHeroIconBoxSize = isCompactCampusInfoCard ? 34 : 36;
   const campusInfoHeroIconSize = isCompactCampusInfoCard ? 17 : 18;
@@ -2064,16 +2069,36 @@ export default function HomeScreen({
   const campusInfoSheetCaptionSize = isCompactCampusInfoSheet ? 11 : 12;
   const campusInfoSheetCaptionLineHeight = isCompactCampusInfoSheet ? 14 : 15;
   const activeHeroItem = heroItems[activeHeroIndex] ?? null;
-  const indicatorActiveHeroIndex = activeHeroIndex;
+  const adjacentHeroMeasureItems = heroTransition
+    ? []
+    : heroItems.filter((_, index) => index !== activeHeroIndex && Math.abs(index - activeHeroIndex) === 1);
+  const heroStackDistance = heroTransition ? Math.max(heroTransition.fromHeight, heroTransition.toHeight) + 12 : 0;
+  const heroOutgoingStackTranslateY = heroTransition
+    ? heroStackProgressAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -heroTransition.direction * heroStackDistance],
+      })
+    : 0;
+  const heroIncomingStackTranslateY = heroTransition
+    ? heroStackProgressAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [heroTransition.direction * heroStackDistance, 0],
+      })
+    : 0;
+  const heroOutgoingStackOpacity = heroTransition
+    ? heroStackProgressAnim.interpolate({
+        inputRange: [0, 0.82, 1],
+        outputRange: [1, 1, 0.96],
+      })
+    : 1;
+  const heroIncomingStackOpacity = heroTransition
+    ? heroStackProgressAnim.interpolate({
+        inputRange: [0, 0.18, 1],
+        outputRange: [0.96, 1, 1],
+      })
+    : 1;
   const sportsGoingAccent = getSchoolConfig(school).accent;
   const diningAccent = '#F97316';
-  const campusInfoAccent = '#8B5CF6';
-  function getIndicatorAccent(item: HeroCardItem): string {
-    if (item.type === 'sportsEvents') return sportsGoingAccent;
-    if (item.type === 'diningMenu') return diningAccent;
-    if (item.type === 'campusInfo') return campusInfoAccent;
-    return colors.brand;
-  }
   const selectedSportsVenue = selectedSportsEvent ? getSportsVenueForEvent(school, selectedSportsEvent) : null;
   const selectedSportsEventLocationLabel = selectedSportsEvent?.location === 'Venue TBA'
     ? 'Venue TBA'
@@ -2631,21 +2656,27 @@ export default function HomeScreen({
     setDeletingSportsEventCommentId(null);
   }
 
+  function heroCardMeasuredHeight(item: HeroCardItem | null | undefined) {
+    return item ? heroCardHeightsRef.current[getHeroItemKey(item)] ?? 0 : 0;
+  }
+
+  function handleHeroCardMeasured(item: HeroCardItem, rawHeight: number) {
+    const height = Math.ceil(rawHeight);
+    if (!height) return;
+    const key = getHeroItemKey(item);
+    if (heroCardHeightsRef.current[key] === height) return;
+    heroCardHeightsRef.current[key] = height;
+  }
+
   function resetHeroCardMotion(duration = MOTION.duration.contentFast) {
     heroAnimationRef.current?.stop();
     heroAnimationRef.current = null;
     const animation = Animated.parallel([
-      Animated.timing(heroCardTranslateXAnim, {
+      Animated.timing(heroStackProgressAnim, {
         toValue: 0,
         duration,
         easing: MOTION.easing.standard,
-        useNativeDriver: true,
-      }),
-      Animated.timing(heroCardOpacityAnim, {
-        toValue: 1,
-        duration,
-        easing: MOTION.easing.soft,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]);
     heroAnimationRef.current = animation;
@@ -2663,57 +2694,55 @@ export default function HomeScreen({
       return;
     }
 
+    const fromItem = heroItems[currentIndex];
+    const toItem = heroItems[boundedNextIndex];
+    if (!fromItem || !toItem) return;
+
     heroAnimationRef.current?.stop();
     heroAnimationRef.current = null;
-    heroCardTranslateXAnim.stopAnimation();
-    heroCardOpacityAnim.stopAnimation();
-    pillXAnim.stopAnimation();
-    pillColorAnim.stopAnimation();
+    heroStackProgressAnim.stopAnimation();
+    heroContainerHeightAnim.stopAnimation();
 
     const direction = boundedNextIndex > currentIndex ? 1 : -1;
-    const incomingOffset = direction * Math.min(34, Math.max(heroCardWidthRef.current * 0.08, 22));
-    const targetDotX = dotPositionsRef.current[boundedNextIndex];
+    const measuredFromHeight = heroCardMeasuredHeight(fromItem);
+    const measuredToHeight = heroCardMeasuredHeight(toItem);
+    const fromHeight = Math.max(measuredFromHeight, 180);
+    const toHeight = measuredToHeight > 0 ? Math.max(measuredToHeight, 180) : fromHeight;
     heroTransitioningRef.current = true;
+    setHeroTransition({ fromItem, toIndex: boundedNextIndex, toItem, direction, fromHeight, toHeight });
     activeHeroIndexRef.current = boundedNextIndex;
     setActiveHeroIndex(boundedNextIndex);
-    heroCardTranslateXAnim.setValue(incomingOffset);
-    heroCardOpacityAnim.setValue(0.92);
+    heroStackProgressAnim.setValue(0);
+    heroContainerHeightAnim.setValue(fromHeight);
 
     const animations: Animated.CompositeAnimation[] = [
-      Animated.timing(heroCardTranslateXAnim, {
-        toValue: 0,
+      Animated.timing(heroStackProgressAnim, {
+        toValue: 1,
         duration: MOTION.duration.hero,
         easing: MOTION.easing.standard,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
-      Animated.timing(heroCardOpacityAnim, {
-        toValue: 1,
-        duration: MOTION.duration.content,
-        easing: MOTION.easing.soft,
-        useNativeDriver: true,
-      }),
-      Animated.timing(pillColorAnim, {
-        toValue: 1,
-        duration: MOTION.duration.contentFast,
-        easing: MOTION.easing.soft,
+      Animated.timing(heroContainerHeightAnim, {
+        toValue: toHeight,
+        duration: MOTION.duration.hero,
+        easing: MOTION.easing.standard,
         useNativeDriver: false,
       }),
     ];
-    if (targetDotX != null) {
-      animations.push(Animated.timing(pillXAnim, {
-        toValue: targetDotX - 4,
-        duration: MOTION.duration.hero,
-        easing: MOTION.easing.standard,
-        useNativeDriver: false,
-      }));
-    }
 
     const animation = Animated.parallel(animations);
     heroAnimationRef.current = animation;
     animation.start(({ finished }) => {
       heroAnimationRef.current = null;
+      if (finished) {
+        if (haptic) triggerSelectionHaptic();
+        setHeroTransition(null);
+        heroTransitioningRef.current = false;
+        return;
+      }
+
+      setHeroTransition(null);
       heroTransitioningRef.current = false;
-      if (finished && haptic) triggerSelectionHaptic();
     });
   }
 
@@ -2722,38 +2751,28 @@ export default function HomeScreen({
     if (activeHeroIndexRef.current <= maxIndex) return;
     activeHeroIndexRef.current = maxIndex;
     setActiveHeroIndex(maxIndex);
-    heroCardTranslateXAnim.setValue(0);
-    heroCardOpacityAnim.setValue(1);
+    setHeroTransition(null);
+    heroStackProgressAnim.setValue(0);
     heroTransitioningRef.current = false;
   }, [heroItems.length, heroItemKeySignature]);
 
-  useEffect(() => {
-    const targetDotX = dotPositionsRef.current[activeHeroIndex];
-    if (targetDotX != null) {
-      Animated.timing(pillXAnim, {
-        toValue: targetDotX - 4,
-        duration: MOTION.duration.content,
-        easing: MOTION.easing.standard,
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [activeHeroIndex, heroItems.length]);
-
-  function moveHeroTo(nextIndex: number) {
-    if (heroTransitioningRef.current) return;
-    animateHeroCardToIndex(nextIndex);
+  function beginHeroTouch() {
+    if (heroItemsLengthRef.current > 1) setHeroGestureActive(true);
   }
 
-  function settleHeroPan(gestureDx: number, gestureVx: number) {
+  function endHeroTouch() {
+    setHeroGestureActive(false);
+  }
+
+  function settleHeroPan(gestureDy: number, gestureVy: number) {
     const currentIndex = activeHeroIndexRef.current;
     const length = heroItemsLengthRef.current;
-    const cardWidth = Math.max(heroCardWidthRef.current, 1);
-    const thresholdTarget = Math.abs(gestureDx) > cardWidth * 0.22
-      ? currentIndex + (gestureDx < 0 ? 1 : -1)
+    const thresholdTarget = Math.abs(gestureDy) > 58
+      ? currentIndex + (gestureDy < 0 ? 1 : -1)
       : currentIndex;
-    const targetIndex = gestureVx < -0.35
+    const targetIndex = gestureVy < -0.55
       ? currentIndex + 1
-      : gestureVx > 0.35
+      : gestureVy > 0.55
         ? currentIndex - 1
         : thresholdTarget;
     const boundedTargetIndex = clamp(targetIndex, 0, Math.max(length - 1, 0));
@@ -2765,45 +2784,39 @@ export default function HomeScreen({
   }
 
   const heroPanResponder = useMemo(
-    () => PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => (
+    () => {
+      const shouldCaptureHeroSwipe = (gesture: { dx: number; dy: number }, threshold: number) => (
+        heroItemsLengthRef.current > 1 &&
         !heroTransitioningRef.current &&
-        Math.abs(gesture.dx) > HORIZONTAL_SWIPE_ACTIVATION_DX &&
-        Math.abs(gesture.dx) > Math.abs(gesture.dy) * HORIZONTAL_SWIPE_DOMINANCE_RATIO
-      ),
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: () => {
-        heroAnimationRef.current?.stop();
-        heroAnimationRef.current = null;
-        heroCardTranslateXAnim.stopAnimation();
-        heroCardOpacityAnim.stopAnimation();
-        pillXAnim.stopAnimation();
-        pillColorAnim.stopAnimation();
-        heroCardTranslateXAnim.setValue(0);
-        heroCardOpacityAnim.setValue(1);
-        heroTransitioningRef.current = false;
-      },
-      onPanResponderMove: (_, gesture) => {
-        const currentIndex = activeHeroIndexRef.current;
-        const length = heroItemsLengthRef.current;
-        const cardWidth = heroCardWidthRef.current;
-        const atStart = currentIndex === 0;
-        const atEnd = currentIndex === length - 1;
-        const dx = (atStart && gesture.dx > 0) || (atEnd && gesture.dx < 0)
-          ? gesture.dx * 0.12
-          : gesture.dx * 0.22;
-        const maxOffset = Math.min(34, Math.max(cardWidth * 0.1, 20));
-        const clampedDx = clamp(dx, -maxOffset, maxOffset);
-        heroCardTranslateXAnim.setValue(clampedDx);
-        heroCardOpacityAnim.setValue(1 - Math.min(0.12, Math.abs(clampedDx) / Math.max(cardWidth * 1.8, 1)));
-      },
-      onPanResponderRelease: (_, gesture) => {
-        settleHeroPan(gesture.dx, gesture.vx);
-      },
-      onPanResponderTerminate: (_, gesture) => {
-        settleHeroPan(gesture.dx, gesture.vx);
-      },
-    }),
+        Math.abs(gesture.dy) > threshold &&
+        Math.abs(gesture.dy) > Math.abs(gesture.dx) * HERO_VERTICAL_SWIPE_DOMINANCE_RATIO
+      );
+
+      return PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gesture) => shouldCaptureHeroSwipe(gesture, HERO_VERTICAL_SWIPE_CAPTURE_DY),
+        onMoveShouldSetPanResponder: (_, gesture) => shouldCaptureHeroSwipe(gesture, HERO_VERTICAL_SWIPE_ACTIVATION_DY),
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          setHeroGestureActive(true);
+          heroAnimationRef.current?.stop();
+          heroAnimationRef.current = null;
+          heroStackProgressAnim.stopAnimation();
+          heroContainerHeightAnim.stopAnimation();
+          heroStackProgressAnim.setValue(0);
+          setHeroTransition(null);
+          heroTransitioningRef.current = false;
+        },
+        onPanResponderMove: () => {},
+        onPanResponderRelease: (_, gesture) => {
+          setHeroGestureActive(false);
+          settleHeroPan(gesture.dy, gesture.vy);
+        },
+        onPanResponderTerminate: (_, gesture) => {
+          setHeroGestureActive(false);
+          settleHeroPan(gesture.dy, gesture.vy);
+        },
+      });
+    },
     [heroItems.length, heroItemKeySignature]
   );
 
@@ -3464,6 +3477,7 @@ export default function HomeScreen({
         ref={scrollRef}
         style={{ flex: 1, backgroundColor: colors.bg }}
         contentContainerStyle={{ paddingTop: topInset + 9, paddingHorizontal: 18, paddingBottom: bottomInset + 84 }}
+        scrollEnabled={!heroGestureActive}
         showsVerticalScrollIndicator={false}
       >
       <View style={{ marginBottom: 10 }}>
@@ -3497,84 +3511,78 @@ export default function HomeScreen({
         {activeHeroItem ? (
           <View
             style={{ width: heroCardWidth }}
+            onTouchStart={beginHeroTouch}
+            onTouchEnd={endHeroTouch}
+            onTouchCancel={endHeroTouch}
             {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
           >
             <Animated.View
               style={{
                 width: heroCardWidth,
-                opacity: heroCardOpacityAnim,
-                transform: [{ translateX: heroCardTranslateXAnim }],
+                height: heroTransition ? heroContainerHeightAnim : undefined,
+                overflow: heroTransition ? 'hidden' : 'visible',
+                borderRadius: heroTransition ? 28 : 0,
               }}
             >
-              {renderHeroCardContent(activeHeroItem)}
-            </Animated.View>
-            {heroItems.length > 1 ? (
-              <View
-                style={{
-                  height: heroIndicatorFlowHeight,
-                  paddingTop: HERO_INDICATOR_TOP_SPACING,
-                  alignItems: 'center',
-                }}
-              >
-                <View style={{ height: HERO_INDICATOR_ROW_HEIGHT, flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+              {heroTransition ? (
+                <>
                   <Animated.View
                     pointerEvents="none"
                     style={{
                       position: 'absolute',
                       top: 0,
                       left: 0,
-                      width: 32,
-                      height: HERO_INDICATOR_ROW_HEIGHT,
-                      borderRadius: 12,
-                      backgroundColor: `${getIndicatorAccent(heroItems[indicatorActiveHeroIndex] ?? heroItems[0])}1F`,
-                      borderWidth: 1,
-                      borderColor: `${getIndicatorAccent(heroItems[indicatorActiveHeroIndex] ?? heroItems[0])}55`,
-                      opacity: pillColorAnim,
-                      transform: [{ translateX: pillXAnim }],
+                      width: heroCardWidth,
+                      opacity: heroOutgoingStackOpacity,
+                      transform: [{ translateY: heroOutgoingStackTranslateY }],
                     }}
-                  />
-                  {heroItems.map((item, index) => {
-                    const isActive = index === indicatorActiveHeroIndex;
-                    const indicatorAccent = getIndicatorAccent(item);
-                    const indicatorIcon = item.type === 'sportsEvents'
-                      ? 'trophy-outline'
-                      : item.type === 'diningMenu'
-                        ? 'restaurant-outline'
-                        : item.type === 'campusInfo'
-                          ? 'grid-outline'
-                          : item.type === 'completedSummary'
-                            ? 'checkmark-done-outline'
-                            : 'calendar-outline';
-                    return (
-                      <TouchableOpacity
-                        key={`${getHeroItemKey(item)}-${index}-dot`}
-                        onPress={() => moveHeroTo(index)}
-                        hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                        activeOpacity={0.75}
-                        onLayout={(e) => {
-                          const x = e.nativeEvent.layout.x;
-                          dotPositionsRef.current[index] = x;
-                          if (index === indicatorActiveHeroIndex) {
-                            pillXAnim.setValue(x - 4);
-                            if (!pillInitializedRef.current) {
-                              pillInitializedRef.current = true;
-                              Animated.timing(pillColorAnim, { toValue: 1, duration: 200, useNativeDriver: false }).start();
-                            }
-                          }
-                        }}
-                        style={{ width: 24, height: HERO_INDICATOR_ROW_HEIGHT, alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <Ionicons
-                          name={indicatorIcon}
-                          size={15}
-                          color={isActive ? indicatorAccent : colors.textTertiary}
-                        />
-                      </TouchableOpacity>
-                    );
-                  })}
+                    onLayout={(e) => handleHeroCardMeasured(heroTransition.fromItem, e.nativeEvent.layout.height)}
+                  >
+                    {renderHeroCardContent(heroTransition.fromItem)}
+                  </Animated.View>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: heroCardWidth,
+                      opacity: heroIncomingStackOpacity,
+                      transform: [{ translateY: heroIncomingStackTranslateY }],
+                    }}
+                    onLayout={(e) => handleHeroCardMeasured(heroTransition.toItem, e.nativeEvent.layout.height)}
+                  >
+                    {renderHeroCardContent(heroTransition.toItem)}
+                  </Animated.View>
+                </>
+              ) : (
+                <View
+                  style={{
+                    width: heroCardWidth,
+                  }}
+                  onLayout={(e) => handleHeroCardMeasured(activeHeroItem, e.nativeEvent.layout.height)}
+                >
+                  {renderHeroCardContent(activeHeroItem)}
                 </View>
+              )}
+            </Animated.View>
+            {adjacentHeroMeasureItems.map((item) => (
+              <View
+                key={`${getHeroItemKey(item)}-hero-measure`}
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: heroCardWidth,
+                  opacity: 0,
+                  zIndex: -1,
+                }}
+                onLayout={(e) => handleHeroCardMeasured(item, e.nativeEvent.layout.height)}
+              >
+                {renderHeroCardContent(item)}
               </View>
-            ) : null}
+            ))}
           </View>
         ) : (
           <View>

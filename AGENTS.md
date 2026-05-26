@@ -3319,3 +3319,24 @@ The quarter picker is a horizontal scroll at the top of the Timetable screen.
 
 ### Session 64sjh (Shorten Sports hero preview)
 - **`src/screens/HomeScreen.tsx`** — Limited the Sports Events hero card to one preview event and changed the More row to show the remaining count, so long sports titles no longer make the Home hero look like it has a fixed oversized height while the full sports list remains available in the sheet.
+
+### Session 64sji (Switch Home hero to vertical stack)
+- **`src/screens/HomeScreen.tsx`** — Replaced the Home hero horizontal swipe with vertical stacked-card navigation: swipe up advances, swipe down returns, active/outgoing cards slide and fade vertically, and the indicator row remains below the naturally sized active card so Assignments is not pushed down by a carousel viewport.
+
+### Session 64sjj (Capture Home hero vertical gestures)
+- **`src/screens/HomeScreen.tsx`** — Made the Home hero card capture intentional vertical drags before the parent `ScrollView` can scroll, and temporarily disabled page scrolling while the hero is touched so swiping on the card changes hero widgets instead of moving the whole Home screen.
+
+### Session 64sjk (Animate Home hero inside one widget slot)
+- **`src/screens/HomeScreen.tsx`** — Changed the vertical hero transition so the current and target hero cards render together inside one clipped widget slot, slide past each other vertically, pre-measure adjacent card heights, and only commit the active hero index after the pass-through animation finishes.
+
+### Session 64sjl (Fix Home hero animation driver crash)
+- **`src/screens/HomeScreen.tsx`** — Kept the Home hero stack animation values on the JS driver because the same transition animates layout height and card movement together, avoiding the native/JS driver conflict that caused the simulator redbox during vertical hero swipes.
+
+### Session 64sjm (Remove Home hero old-card flash)
+- **`src/screens/HomeScreen.tsx`** — Changed the Home hero transition completion order so the active card index commits before the temporary transition layer is removed, preventing the previous hero card from flashing for one frame after a vertical widget-stack swipe.
+
+### Session 64sjn (Remove Home hero progress reset flash)
+- **`src/screens/HomeScreen.tsx`** — Committed the target hero index at transition start and stopped resetting the stack progress value while the temporary transition layer is still mounted, eliminating the previous-card flash at the end of widget-stack swipes.
+
+### Session 64sjo (Remove misleading Home hero paging cues)
+- **`src/screens/HomeScreen.tsx`** — Removed the Home hero drag-follow movement and the horizontal icon indicator row so the hero reads as a vertical widget stack instead of a side-swipe carousel.

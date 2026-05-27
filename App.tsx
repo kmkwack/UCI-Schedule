@@ -568,6 +568,96 @@ function AuthNavigator({
   );
 }
 
+// ─── Schedule Loader ──────────────────────────────────────────────────────────
+// Cells: [col 0-4, row 0-5, hex color]
+const SCHEDULE_LOADER_CELLS: [number, number, string][] = [
+  [0, 0, '#60a5fa'], [0, 1, '#60a5fa'], [0, 2, '#60a5fa'],
+  [1, 2, '#86efac'], [1, 3, '#86efac'],
+  [2, 0, '#fca5a5'], [2, 1, '#fca5a5'], [2, 4, '#fca5a5'], [2, 5, '#fca5a5'],
+  [3, 1, '#c4b5fd'], [3, 2, '#c4b5fd'], [3, 3, '#c4b5fd'],
+  [4, 0, '#fcd34d'], [4, 3, '#fcd34d'], [4, 4, '#fcd34d'],
+];
+const SCHEDULE_LOADER_DAYS = ['M', 'T', 'W', 'Th', 'F'];
+const CELL_W = 42;
+const CELL_H = 24;
+const CELL_GAP = 5;
+
+function ScheduleLoader({ isDark }: { isDark: boolean }) {
+  const anims = useRef(
+    SCHEDULE_LOADER_CELLS.map(() => new Animated.Value(0))
+  ).current;
+  const textAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.stagger(
+      50,
+      anims.map((a) =>
+        Animated.spring(a, { toValue: 1, useNativeDriver: true, tension: 220, friction: 11 })
+      )
+    ).start();
+    // text fades in, then pulses
+    Animated.sequence([
+      Animated.timing(textAnim, { toValue: 1, duration: 350, delay: 300, useNativeDriver: true }),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(textAnim, { toValue: 0.35, duration: 700, useNativeDriver: true }),
+          Animated.timing(textAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+        ])
+      ),
+    ]).start();
+  }, []);
+
+  const gridW = 5 * (CELL_W + CELL_GAP) - CELL_GAP;
+  const gridH = 6 * (CELL_H + CELL_GAP) - CELL_GAP;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Day labels */}
+      <View style={{ flexDirection: 'row', gap: CELL_GAP, marginBottom: 8 }}>
+        {SCHEDULE_LOADER_DAYS.map((d) => (
+          <Text
+            key={d}
+            style={{ width: CELL_W, fontSize: 11, fontWeight: '800', textAlign: 'center', color: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)' }}
+          >
+            {d}
+          </Text>
+        ))}
+      </View>
+      {/* Grid */}
+      <View style={{ width: gridW, height: gridH }}>
+        {SCHEDULE_LOADER_CELLS.map(([col, row, color], idx) => (
+          <Animated.View
+            key={idx}
+            style={{
+              position: 'absolute',
+              left: col * (CELL_W + CELL_GAP),
+              top: row * (CELL_H + CELL_GAP),
+              width: CELL_W,
+              height: CELL_H,
+              borderRadius: 8,
+              backgroundColor: color,
+              opacity: anims[idx],
+              transform: [{ scale: anims[idx].interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
+            }}
+          />
+        ))}
+      </View>
+      {/* Loading text */}
+      <Animated.Text
+        style={{
+          marginTop: 28,
+          fontSize: 14,
+          fontWeight: '600',
+          color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.38)',
+          opacity: textAnim,
+        }}
+      >
+        Loading your schedule...
+      </Animated.Text>
+    </View>
+  );
+}
+
 function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -2794,11 +2884,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   }
 
   if (userBootstrapLoading || !userBootstrapSettled) {
-    return (
-      <View style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="small" color={colors.brand} />
-      </View>
-    );
+    return <ScheduleLoader isDark={isDark} />;
   }
 
   const renderFeatureOnboarding = () => (

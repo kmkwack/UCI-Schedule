@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, Linking, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, Linking, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
@@ -151,15 +151,6 @@ type HeroCardItem =
   | { type: 'sportsEvents' }
   | { type: 'campusInfo' };
 
-type HeroVerticalTransition = {
-  fromItem: HeroCardItem;
-  toIndex: number;
-  toItem: HeroCardItem;
-  direction: 1 | -1;
-  fromHeight: number;
-  toHeight: number;
-};
-
 function getHeroItemKey(item: HeroCardItem) {
   if (item.type === 'course') return `course-${item.course.id}`;
   if (item.type === 'completedSummary' || item.type === 'upcomingSummary') return `${item.type}-today`;
@@ -206,10 +197,6 @@ type SchoolTermDateRange = { start: Date; end: Date };
 
 const HOME_SPORTS_FETCH_DELAY_MS = 250;
 const HOME_CLASSMATES_FETCH_DELAY_MS = 1000;
-const HERO_VERTICAL_SWIPE_CAPTURE_DY = 7;
-const HERO_VERTICAL_SWIPE_ACTIVATION_DY = 18;
-const HERO_VERTICAL_SWIPE_DOMINANCE_RATIO = 1.18;
-const HERO_WIDGET_STACK_ANIMATION_VERSION = 2;
 
 const STUDENT_DEALS_RESOURCE: CampusInfoResource = {
   id: 'student-deals',
@@ -1346,6 +1333,7 @@ export default function HomeScreen({
   const diningListSheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const sportsEventBackdropAnim = useRef(new Animated.Value(0)).current;
   const sportsEventSheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
+  const sportsEventKeyboardOffsetAnim = useRef(new Animated.Value(0)).current;
   const pastAssignmentsBackdropAnim = useRef(new Animated.Value(0)).current;
   const pastAssignmentsSheetAnim = useRef(new Animated.Value(SHEET_INITIAL_TRANSLATE_Y)).current;
   const calendarSetupBackdropAnim = useRef(new Animated.Value(0)).current;
@@ -1685,6 +1673,27 @@ export default function HomeScreen({
     if (keyboardInset.visible && selectedSportsEventRef.current) settleSportsEventComposer(true);
   }, [keyboardInset.visible, settleSportsEventComposer]);
 
+  // Shift the sports-event sheet up when keyboard appears so the input bar is never covered
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      Animated.timing(sportsEventKeyboardOffsetAnim, {
+        toValue: -(e.endCoordinates?.height ?? 0),
+        duration: (e as any).duration ?? 250,
+        useNativeDriver: true,
+      }).start();
+    });
+    const hideSub = Keyboard.addListener(hideEvent, (e) => {
+      Animated.timing(sportsEventKeyboardOffsetAnim, {
+        toValue: 0,
+        duration: (e as any).duration ?? 200,
+        useNativeDriver: true,
+      }).start();
+    });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, [sportsEventKeyboardOffsetAnim]);
+
   useEffect(() => {
     let cancelled = false;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1975,50 +1984,25 @@ export default function HomeScreen({
   const completedClasses = todayCourses.filter((course) => extractEndHour(course.time) <= nowHour).length;
   const shouldShowDiningHeroPage = schoolDiningMenusSupported(school);
   const shouldShowSportsHeroPage = schoolFeatureEnabled(school, 'sports');
-  const heroItems: HeroCardItem[] = [
-    todayCourses.length > 0
-      ? { type: 'upcomingSummary' as const, courses: todayCourses }
-      : { type: 'idleSummary' as const },
-    ...(shouldShowDiningHeroPage ? [{ type: 'diningMenu' as const }] : []),
-    ...(shouldShowSportsHeroPage ? [{ type: 'sportsEvents' as const }] : []),
-    { type: 'campusInfo' as const },
-  ];
-  const heroItemKeySignature = heroItems.map(getHeroItemKey).join('|');
-  const [activeHeroIndex, setActiveHeroIndex] = useState(0);
-  const [heroGestureActive, setHeroGestureActive] = useState(false);
-  const [heroTransition, setHeroTransition] = useState<HeroVerticalTransition | null>(null);
-  const activeHeroIndexRef = useRef(0);
-  const heroTransitioningRef = useRef(false);
-  const heroAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
-  const heroItemsLengthRef = useRef(0);
-  heroItemsLengthRef.current = heroItems.length;
-  const heroStackProgressAnim = useMemo(() => new Animated.Value(0), [HERO_WIDGET_STACK_ANIMATION_VERSION]);
-  const heroContainerHeightAnim = useMemo(() => new Animated.Value(0), [HERO_WIDGET_STACK_ANIMATION_VERSION]);
-  const heroCardHeightsRef = useRef<Record<string, number>>({});
-  const heroNudgeAnim = useMemo(() => new Animated.Value(0), []);
-  const heroNudgeHintFiredRef = useRef(false);
-
-  useEffect(() => {
-    if (heroItems.length <= 1 || heroNudgeHintFiredRef.current) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    void AsyncStorage.getItem('hero_swipe_hint_shown').then((shown) => {
-      if (shown || cancelled) return;
-      heroNudgeHintFiredRef.current = true;
-      timer = setTimeout(() => {
-        if (cancelled) return;
-        Animated.sequence([
-          Animated.timing(heroNudgeAnim, { toValue: -14, duration: 200, useNativeDriver: true }),
-          Animated.spring(heroNudgeAnim, { toValue: 0, useNativeDriver: true, friction: 4, tension: 80 }),
-        ]).start();
-        void AsyncStorage.setItem('hero_swipe_hint_shown', '1');
-      }, 1200);
+  const mainHeroItem: HeroCardItem = todayCourses.length > 0
+    ? { type: 'upcomingSummary', courses: todayCourses }
+    : { type: 'idleSummary' };
+  const [openHeroSheet, setOpenHeroSheet] = useState<'dining' | 'sports' | 'campus' | null>(null);
+  const [heroSheetVisible, setHeroSheetVisible] = useState(false);
+  const heroSheetSlideAnim = useRef(new Animated.Value(700)).current;
+  const openHeroSheetFor = useCallback((type: 'dining' | 'sports' | 'campus') => {
+    setOpenHeroSheet(type);
+    setHeroSheetVisible(true);
+    heroSheetSlideAnim.setValue(700);
+    Animated.spring(heroSheetSlideAnim, { toValue: 0, useNativeDriver: true, damping: 28, stiffness: 320, mass: 0.85 }).start();
+    triggerSelectionHaptic();
+  }, [heroSheetSlideAnim]);
+  const closeHeroSheet = useCallback(() => {
+    Animated.timing(heroSheetSlideAnim, { toValue: 700, duration: 250, useNativeDriver: true }).start(() => {
+      setHeroSheetVisible(false);
+      setOpenHeroSheet(null);
     });
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [heroItems.length]);
+  }, [heroSheetSlideAnim]);
 
   const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
   const quarterProgress = clamp(
@@ -2092,35 +2076,6 @@ export default function HomeScreen({
   const campusInfoSheetChildTitleLineHeight = isCompactCampusInfoSheet ? 16 : 17;
   const campusInfoSheetCaptionSize = isCompactCampusInfoSheet ? 11 : 12;
   const campusInfoSheetCaptionLineHeight = isCompactCampusInfoSheet ? 14 : 15;
-  const activeHeroItem = heroItems[activeHeroIndex] ?? null;
-  const adjacentHeroMeasureItems = heroTransition
-    ? []
-    : heroItems.filter((_, index) => index !== activeHeroIndex && Math.abs(index - activeHeroIndex) === 1);
-  const heroStackDistance = heroTransition ? Math.max(heroTransition.fromHeight, heroTransition.toHeight) + 12 : 0;
-  const heroOutgoingStackTranslateY = heroTransition
-    ? heroStackProgressAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0, -heroTransition.direction * heroStackDistance],
-      })
-    : 0;
-  const heroIncomingStackTranslateY = heroTransition
-    ? heroStackProgressAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [heroTransition.direction * heroStackDistance, 0],
-      })
-    : 0;
-  const heroOutgoingStackOpacity = heroTransition
-    ? heroStackProgressAnim.interpolate({
-        inputRange: [0, 0.82, 1],
-        outputRange: [1, 1, 0.96],
-      })
-    : 1;
-  const heroIncomingStackOpacity = heroTransition
-    ? heroStackProgressAnim.interpolate({
-        inputRange: [0, 0.18, 1],
-        outputRange: [0.96, 1, 1],
-      })
-    : 1;
   const sportsGoingAccent = getSchoolConfig(school).accent;
   const diningAccent = '#F97316';
   const selectedSportsVenue = selectedSportsEvent ? getSportsVenueForEvent(school, selectedSportsEvent) : null;
@@ -2686,170 +2641,6 @@ export default function HomeScreen({
 
     setDeletingSportsEventCommentId(null);
   }
-
-  function heroCardMeasuredHeight(item: HeroCardItem | null | undefined) {
-    return item ? heroCardHeightsRef.current[getHeroItemKey(item)] ?? 0 : 0;
-  }
-
-  function handleHeroCardMeasured(item: HeroCardItem, rawHeight: number) {
-    const height = Math.ceil(rawHeight);
-    if (!height) return;
-    const key = getHeroItemKey(item);
-    if (heroCardHeightsRef.current[key] === height) return;
-    heroCardHeightsRef.current[key] = height;
-  }
-
-  function resetHeroCardMotion(duration = MOTION.duration.contentFast) {
-    heroAnimationRef.current?.stop();
-    heroAnimationRef.current = null;
-    const animation = Animated.parallel([
-      Animated.timing(heroStackProgressAnim, {
-        toValue: 0,
-        duration,
-        easing: MOTION.easing.standard,
-        useNativeDriver: false,
-      }),
-    ]);
-    heroAnimationRef.current = animation;
-    animation.start(({ finished }) => {
-      if (finished) heroTransitioningRef.current = false;
-      heroAnimationRef.current = null;
-    });
-  }
-
-  function animateHeroCardToIndex(index: number, haptic = true) {
-    const boundedNextIndex = clamp(index, 0, Math.max(heroItemsLengthRef.current - 1, 0));
-    const currentIndex = activeHeroIndexRef.current;
-    if (boundedNextIndex === currentIndex || heroItemsLengthRef.current <= 1) {
-      resetHeroCardMotion();
-      return;
-    }
-
-    const fromItem = heroItems[currentIndex];
-    const toItem = heroItems[boundedNextIndex];
-    if (!fromItem || !toItem) return;
-
-    heroAnimationRef.current?.stop();
-    heroAnimationRef.current = null;
-    heroStackProgressAnim.stopAnimation();
-    heroContainerHeightAnim.stopAnimation();
-
-    const direction = boundedNextIndex > currentIndex ? 1 : -1;
-    const measuredFromHeight = heroCardMeasuredHeight(fromItem);
-    const measuredToHeight = heroCardMeasuredHeight(toItem);
-    const fromHeight = Math.max(measuredFromHeight, 180);
-    const toHeight = measuredToHeight > 0 ? Math.max(measuredToHeight, 180) : fromHeight;
-    heroTransitioningRef.current = true;
-    setHeroTransition({ fromItem, toIndex: boundedNextIndex, toItem, direction, fromHeight, toHeight });
-    activeHeroIndexRef.current = boundedNextIndex;
-    setActiveHeroIndex(boundedNextIndex);
-    heroStackProgressAnim.setValue(0);
-    heroContainerHeightAnim.setValue(fromHeight);
-
-    const animations: Animated.CompositeAnimation[] = [
-      Animated.timing(heroStackProgressAnim, {
-        toValue: 1,
-        duration: MOTION.duration.hero,
-        easing: MOTION.easing.standard,
-        useNativeDriver: false,
-      }),
-      Animated.timing(heroContainerHeightAnim, {
-        toValue: toHeight,
-        duration: MOTION.duration.hero,
-        easing: MOTION.easing.standard,
-        useNativeDriver: false,
-      }),
-    ];
-
-    const animation = Animated.parallel(animations);
-    heroAnimationRef.current = animation;
-    animation.start(({ finished }) => {
-      heroAnimationRef.current = null;
-      if (finished) {
-        if (haptic) triggerSelectionHaptic();
-        setHeroTransition(null);
-        heroTransitioningRef.current = false;
-        return;
-      }
-
-      setHeroTransition(null);
-      heroTransitioningRef.current = false;
-    });
-  }
-
-  useEffect(() => {
-    const maxIndex = Math.max(heroItems.length - 1, 0);
-    if (activeHeroIndexRef.current <= maxIndex) return;
-    activeHeroIndexRef.current = maxIndex;
-    setActiveHeroIndex(maxIndex);
-    setHeroTransition(null);
-    heroStackProgressAnim.setValue(0);
-    heroTransitioningRef.current = false;
-  }, [heroItems.length, heroItemKeySignature]);
-
-  function beginHeroTouch() {
-    if (heroItemsLengthRef.current > 1) setHeroGestureActive(true);
-  }
-
-  function endHeroTouch() {
-    setHeroGestureActive(false);
-  }
-
-  function settleHeroPan(gestureDy: number, gestureVy: number) {
-    const currentIndex = activeHeroIndexRef.current;
-    const length = heroItemsLengthRef.current;
-    const thresholdTarget = Math.abs(gestureDy) > 58
-      ? currentIndex + (gestureDy < 0 ? 1 : -1)
-      : currentIndex;
-    const targetIndex = gestureVy < -0.55
-      ? currentIndex + 1
-      : gestureVy > 0.55
-        ? currentIndex - 1
-        : thresholdTarget;
-    const boundedTargetIndex = clamp(targetIndex, 0, Math.max(length - 1, 0));
-    if (boundedTargetIndex === currentIndex) {
-      resetHeroCardMotion();
-      return;
-    }
-    animateHeroCardToIndex(boundedTargetIndex);
-  }
-
-  const heroPanResponder = useMemo(
-    () => {
-      const shouldCaptureHeroSwipe = (gesture: { dx: number; dy: number }, threshold: number) => (
-        heroItemsLengthRef.current > 1 &&
-        !heroTransitioningRef.current &&
-        Math.abs(gesture.dy) > threshold &&
-        Math.abs(gesture.dy) > Math.abs(gesture.dx) * HERO_VERTICAL_SWIPE_DOMINANCE_RATIO
-      );
-
-      return PanResponder.create({
-        onMoveShouldSetPanResponderCapture: (_, gesture) => shouldCaptureHeroSwipe(gesture, HERO_VERTICAL_SWIPE_CAPTURE_DY),
-        onMoveShouldSetPanResponder: (_, gesture) => shouldCaptureHeroSwipe(gesture, HERO_VERTICAL_SWIPE_ACTIVATION_DY),
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: () => {
-          setHeroGestureActive(true);
-          heroAnimationRef.current?.stop();
-          heroAnimationRef.current = null;
-          heroStackProgressAnim.stopAnimation();
-          heroContainerHeightAnim.stopAnimation();
-          heroStackProgressAnim.setValue(0);
-          setHeroTransition(null);
-          heroTransitioningRef.current = false;
-        },
-        onPanResponderMove: () => {},
-        onPanResponderRelease: (_, gesture) => {
-          setHeroGestureActive(false);
-          settleHeroPan(gesture.dy, gesture.vy);
-        },
-        onPanResponderTerminate: (_, gesture) => {
-          setHeroGestureActive(false);
-          settleHeroPan(gesture.dy, gesture.vy);
-        },
-      });
-    },
-    [heroItems.length, heroItemKeySignature]
-  );
 
   function renderHeroCardContent(item: HeroCardItem): ReactNode {
     if (item.type === 'diningMenu') {
@@ -3508,7 +3299,6 @@ export default function HomeScreen({
         ref={scrollRef}
         style={{ flex: 1, backgroundColor: colors.bg }}
         contentContainerStyle={{ paddingTop: topInset + 9, paddingHorizontal: 18, paddingBottom: bottomInset + 84 }}
-        scrollEnabled={!heroGestureActive}
         showsVerticalScrollIndicator={false}
       >
       <View style={{ marginBottom: 10 }}>
@@ -3538,141 +3328,101 @@ export default function HomeScreen({
         </Text>
       </View>
 
-      <Animated.View style={{ marginBottom: 14, width: heroCardWidth, transform: [{ translateY: heroNudgeAnim }] }}>
-        {activeHeroItem ? (
-          <View
-            style={{ width: heroCardWidth }}
-            onTouchStart={beginHeroTouch}
-            onTouchEnd={endHeroTouch}
-            onTouchCancel={endHeroTouch}
-            {...(heroItems.length > 1 ? heroPanResponder.panHandlers : {})}
-          >
-            <Animated.View
+      {/* Main schedule card */}
+      <View style={{ marginBottom: 10 }}>
+        {renderHeroCardContent(mainHeroItem)}
+      </View>
+
+      {/* Info thumbnail cards */}
+      {(shouldShowDiningHeroPage || shouldShowSportsHeroPage) && (
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+          {shouldShowDiningHeroPage && (
+            <TouchableOpacity
+              onPress={() => openHeroSheetFor('dining')}
+              activeOpacity={0.78}
               style={{
-                width: heroCardWidth,
-                height: heroTransition ? heroContainerHeightAnim : undefined,
-                overflow: heroTransition ? 'hidden' : 'visible',
-                borderRadius: heroTransition ? 28 : 0,
+                flex: 1,
+                backgroundColor: colors.card,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.border,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                alignItems: 'center',
+                gap: 5,
               }}
             >
-              {heroTransition ? (
-                <>
-                  <Animated.View
-                    pointerEvents="none"
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: heroCardWidth,
-                      opacity: heroOutgoingStackOpacity,
-                      transform: [{ translateY: heroOutgoingStackTranslateY }],
-                    }}
-                    onLayout={(e) => handleHeroCardMeasured(heroTransition.fromItem, e.nativeEvent.layout.height)}
-                  >
-                    {renderHeroCardContent(heroTransition.fromItem)}
-                  </Animated.View>
-                  <Animated.View
-                    pointerEvents="none"
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: heroCardWidth,
-                      opacity: heroIncomingStackOpacity,
-                      transform: [{ translateY: heroIncomingStackTranslateY }],
-                    }}
-                    onLayout={(e) => handleHeroCardMeasured(heroTransition.toItem, e.nativeEvent.layout.height)}
-                  >
-                    {renderHeroCardContent(heroTransition.toItem)}
-                  </Animated.View>
-                </>
-              ) : (
-                <View
-                  style={{
-                    width: heroCardWidth,
-                  }}
-                  onLayout={(e) => handleHeroCardMeasured(activeHeroItem, e.nativeEvent.layout.height)}
-                >
-                  {renderHeroCardContent(activeHeroItem)}
-                </View>
-              )}
-            </Animated.View>
-            {adjacentHeroMeasureItems.map((item) => (
-              <View
-                key={`${getHeroItemKey(item)}-hero-measure`}
-                pointerEvents="none"
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: heroCardWidth,
-                  opacity: 0,
-                  zIndex: -1,
-                }}
-                onLayout={(e) => handleHeroCardMeasured(item, e.nativeEvent.layout.height)}
-              >
-                {renderHeroCardContent(item)}
+              <View style={{
+                width: 34, height: 34, borderRadius: 10,
+                backgroundColor: 'rgba(245,158,11,0.12)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Ionicons name="restaurant-outline" size={17} color="#F59E0B" />
               </View>
-            ))}
-          </View>
-        ) : (
-          <View>
-            <View style={{
-              ...raisedCardStyle,
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Dining</Text>
+              <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary }}>
+                {diningMenus.length > 0 ? `${diningMenus.length} open` : 'No data'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {shouldShowSportsHeroPage && (
+            <TouchableOpacity
+              onPress={() => openHeroSheetFor('sports')}
+              activeOpacity={0.78}
+              style={{
+                flex: 1,
+                backgroundColor: colors.card,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.border,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                alignItems: 'center',
+                gap: 5,
+              }}
+            >
+              <View style={{
+                width: 34, height: 34, borderRadius: 10,
+                backgroundColor: `${colors.brand}18`,
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Ionicons name="trophy-outline" size={17} color={colors.brand} />
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Sports</Text>
+              <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary }}>
+                {visibleCampusEvents.length > 0 ? `${visibleCampusEvents.length} events` : 'No games'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            onPress={() => openHeroSheetFor('campus')}
+            activeOpacity={0.78}
+            style={{
+              flex: 1,
               backgroundColor: colors.card,
-              paddingHorizontal: 18,
-              paddingVertical: 17,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              alignItems: 'center',
+              gap: 5,
+            }}
+          >
+            <View style={{
+              width: 34, height: 34, borderRadius: 10,
+              backgroundColor: 'rgba(16,185,129,0.12)',
+              alignItems: 'center', justifyContent: 'center',
             }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', color: colors.text }}>
-                    {todayCourses.length > 0 ? 'You are clear for the rest of today' : 'No classes on your schedule today'}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'center', alignSelf: 'flex-start' }}>
-                  <DualProgressRing
-                    outerProgress={quarterProgress}
-                    outerColor={colors.brand}
-                    outerTrackColor={colors.bgTertiary}
-                    innerProgress={heroProgress}
-                    innerColor={colors.brand}
-                    innerTrackColor={colors.bgTertiary}
-                    primaryLabel={heroProgressLabel}
-                    secondaryLabel={heroProgressSubLabel}
-                    textColor={colors.text}
-                    subTextColor={colors.textTertiary}
-                    size={76}
-                    outerStrokeWidth={4}
-                    innerStrokeWidth={5}
-                  />
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand, marginTop: 5 }}>
-                    {termLabel(selectedQuarter, school)}
-                  </Text>
-                  <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 1 }}>
-                    {`${Math.round(quarterProgress * 100)}% · ${daysRemaining}d left`}
-                  </Text>
-                </View>
-              </View>
+              <Ionicons name="map-outline" size={17} color="#10B981" />
             </View>
-          </View>
-        )}
-        {heroItems.length > 1 && (
-          <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 10 }}>
-            {heroItems.map((_, index) => (
-              <View
-                key={index}
-                style={{
-                  width: index === activeHeroIndex ? 8 : 6,
-                  height: index === activeHeroIndex ? 8 : 6,
-                  borderRadius: 4,
-                  backgroundColor: index === activeHeroIndex ? colors.brand : colors.textTertiary,
-                  opacity: index === activeHeroIndex ? 1 : 0.35,
-                }}
-              />
-            ))}
-          </View>
-        )}
-      </Animated.View>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Campus</Text>
+            <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary }}>Quick links</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -3929,6 +3679,169 @@ export default function HomeScreen({
         </View>
       </View>
       </ScrollView>
+
+      {/* ── Hero info sheet (absolutely positioned, no Modal) ── */}
+      {heroSheetVisible && (
+        <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} pointerEvents="box-none">
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.45)' }}
+            activeOpacity={1}
+            onPress={closeHeroSheet}
+          />
+          <Animated.View style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            transform: [{ translateY: heroSheetSlideAnim }],
+            backgroundColor: colors.bg,
+            borderTopLeftRadius: 26,
+            borderTopRightRadius: 26,
+            maxHeight: '88%',
+            overflow: 'hidden',
+          }}>
+            <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 2 }}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 }}>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>
+                {openHeroSheet === 'dining' ? 'Today\'s Dining' : openHeroSheet === 'sports' ? 'Sports Events' : 'Campus'}
+              </Text>
+              <TouchableOpacity onPress={closeHeroSheet} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.bgSecondary, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="close" size={17} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: bottomInset + 84 }} showsVerticalScrollIndicator={false}>
+              {/* ── Dining ── */}
+              {openHeroSheet === 'dining' && (
+                <View style={{ gap: 12 }}>
+                  {diningLoading && diningMenus.length === 0 ? (
+                    <View style={{ gap: 10 }}><SkeletonBlock height={110} radius={18} /><SkeletonBlock height={110} radius={18} /></View>
+                  ) : diningMenus.length === 0 ? (
+                    <EmptyState compact icon="restaurant-outline" title="No dining data" body={diningError ?? 'No menu available today.'} />
+                  ) : diningMenusExternalOnly ? (
+                    <TouchableOpacity onPress={openDiningMenuList} activeOpacity={0.78}
+                      style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: themedIconBackground(diningAccent, isDark, '#fff7ed'), alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="restaurant-outline" size={20} color={themedIconColor(diningAccent, isDark)} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>View Official Menu</Text>
+                        <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>Opens in browser</Text>
+                      </View>
+                      <Ionicons name="open-outline" size={16} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  ) : (
+                    diningMenus.map((menu) => {
+                      const statusColor = menu.isOpen === true ? '#10B981' : menu.isOpen === false ? '#EF4444' : diningAccent;
+                      const items = previewDiningItems(menu, 18);
+                      return (
+                        <TouchableOpacity key={menu.id} onPress={openDiningMenuList} activeOpacity={0.78}
+                          style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 16 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                            <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: themedIconBackground(diningAccent, isDark, '#fff7ed'), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <Ionicons name="restaurant-outline" size={19} color={themedIconColor(diningAccent, isDark)} />
+                            </View>
+                            <Text numberOfLines={1} style={{ flex: 1, fontSize: 16, fontWeight: '800', color: colors.text }}>{menu.name}</Text>
+                            {menu.statusLabel ? (
+                              <View style={{ borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, backgroundColor: `${statusColor}18`, borderWidth: 1, borderColor: `${statusColor}35`, flexShrink: 0 }}>
+                                <Text style={{ fontSize: 11, fontWeight: '900', color: statusColor }}>{menu.statusLabel}</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          {menu.statusDetail ? <Text style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 10 }}>{menu.statusDetail}</Text> : null}
+                          {items.length > 0 ? (
+                            <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19 }}>
+                              {items.join('  ·  ')}
+                            </Text>
+                          ) : null}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 10, gap: 3 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textTertiary }}>Full menu</Text>
+                            <Ionicons name="chevron-forward" size={12} color={colors.textTertiary} />
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
+                </View>
+              )}
+              {/* ── Sports ── */}
+              {openHeroSheet === 'sports' && (
+                <View style={{ gap: 10 }}>
+                  {sportsLoading && visibleCampusEvents.length === 0 ? (
+                    <View style={{ gap: 10 }}><SkeletonBlock height={72} radius={18} /><SkeletonBlock height={72} radius={18} /><SkeletonBlock height={72} radius={18} /></View>
+                  ) : visibleCampusEvents.length === 0 ? (
+                    <EmptyState compact icon="trophy-outline" title="No upcoming sports events" body="Events will appear here when the athletics calendar has something coming up." />
+                  ) : (
+                    visibleCampusEvents.map((event) => (
+                      <TouchableOpacity key={event.id}
+                        onPress={() => { closeHeroSheet(); setTimeout(() => openSportsEvent(event), 260); }}
+                        activeOpacity={0.76}
+                        style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: themedIconBackground(event.color, isDark, event.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Ionicons name={event.icon} size={20} color={themedIconColor(event.color, isDark)} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>{event.title}</Text>
+                          <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                            {formatRelativeEventDayLabel(event.date, now, effectiveTimeZone)} · {formatSportsEventTime(event.date, event.timeLabel, effectiveTimeZone)}
+                          </Text>
+                        </View>
+                        <InfoChip label={sportsHomeAwayLabel(event)} tone={event.isHome ? 'brand' : 'neutral'} compact
+                          color={event.isHome ? colors.brand : colors.textSecondary}
+                          borderColor={event.isHome ? `${colors.brand}44` : colors.borderSubtle}
+                          backgroundColor={event.isHome ? colors.brandBg : colors.bgTertiary} />
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </View>
+              )}
+              {/* ── Campus ── */}
+              {openHeroSheet === 'campus' && (
+                <View style={{ gap: 10 }}>
+                  {campusInfoResources.map((resource) => {
+                    const resourceCaption = campusInfoResourceCaption(resource);
+                    if (resource.children?.length) {
+                      return (
+                        <View key={resource.id} style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                            <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: themedIconBackground(resource.color, isDark, resource.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <Ionicons name={resource.icon} size={18} color={themedIconColor(resource.color, isDark)} />
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>{resource.title}</Text>
+                              {resourceCaption ? <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 1 }}>{resourceCaption}</Text> : null}
+                            </View>
+                          </View>
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                            {resource.children.map((child) => (
+                              <TouchableOpacity key={child.id} onPress={() => void openCampusInfoLink(child)} activeOpacity={0.76}
+                                style={{ flexGrow: 1, flexBasis: '47%', minHeight: 36, borderRadius: 12, backgroundColor: themedIconBackground(resource.color, isDark, resource.bg), alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }}>
+                                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '800', color: themedIconColor(resource.color, isDark) }}>{child.title}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </View>
+                      );
+                    }
+                    return (
+                      <TouchableOpacity key={resource.id} onPress={() => void openCampusInfoLink(resource)} activeOpacity={0.76}
+                        style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: themedIconBackground(resource.color, isDark, resource.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Ionicons name={resource.icon} size={19} color={themedIconColor(resource.color, isDark)} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>{resource.title}</Text>
+                          {resourceCaption ? <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 1 }}>{resourceCaption}</Text> : null}
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      )}
 
       <Modal
         visible={showCampusInfo}
@@ -4828,7 +4741,7 @@ export default function HomeScreen({
                 paddingTop: 10,
                 paddingBottom: 0,
                 overflow: 'hidden',
-                transform: [{ translateY: sportsEventSheetAnim }],
+                transform: [{ translateY: Animated.add(sportsEventSheetAnim, sportsEventKeyboardOffsetAnim) }],
               }}
             >
               <View style={{ alignItems: 'center', paddingBottom: 8 }}>

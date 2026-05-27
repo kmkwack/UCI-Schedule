@@ -21,6 +21,11 @@ const path = require('path');
 const CURRENT_YEAR = new Date().getFullYear();
 
 const SCHOOL_SEEDERS = {
+  uci: {
+    label: 'UC Irvine',
+    script: 'seed-sections.js',
+    terms: ['Winter', 'Spring', 'Summer1', 'Summer10wk', 'Summer2', 'Fall'],
+  },
   umd: {
     label: 'University of Maryland, College Park',
     script: 'seed-umd-sections.js',
@@ -165,7 +170,7 @@ function printHelp() {
   node scripts/backfill-school-sections.js [options]
 
 Options:
-  --schools umd,cornell,purdue,uiuc
+  --schools uci,umd,cornell,purdue,uiuc
                                   Schools to seed. Defaults to all.
   --terms Spring,Summer,Fall     Terms to seed. Defaults to each school's standard terms.
   --from-year 2019               First catalog year. Defaults to 2019.

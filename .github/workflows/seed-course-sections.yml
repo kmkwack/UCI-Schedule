@@ -1,140 +1,123 @@
 name: Seed course sections
 
+# Runs daily at 03:00 UTC for every supported school.
+# All schools are seeded through the same backfill runner — no school is special.
+#
+# Supported schools: uci, umd, cornell, purdue, uiuc
+#
+# Required GitHub secrets:
+#   SUPABASE_URL              – Supabase project URL
+#   SUPABASE_SERVICE_KEY      – service_role key (write access)
+#   ANTEATER_API_KEY          – needed only for UCI
+#
+# If secrets are not configured the run exits cleanly (no failure email).
+
 on:
+  schedule:
+    - cron: "0 3 * * *"    # every day at 03:00 UTC
   workflow_dispatch:
     inputs:
       schools:
-        description: "Comma-separated school keys, or all"
+        description: "Schools to seed: uci,umd,cornell,purdue,uiuc  (or 'all')"
         required: false
         default: "all"
       from_year:
-        description: "First catalog year"
+        description: "First year  (default: current year)"
         required: false
         default: ""
       to_year:
-        description: "Last catalog year"
+        description: "Last year   (default: current year + 1)"
         required: false
         default: ""
       terms:
-        description: "Optional comma-separated terms, like Spring,Fall"
+        description: "Terms to seed, e.g. Spring,Fall  (default: all terms for each school)"
         required: false
         default: ""
+
+env:
+  SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_KEY:      ${{ secrets.SUPABASE_SERVICE_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  ANTEATER_API_KEY:          ${{ secrets.ANTEATER_API_KEY }}
 
 jobs:
   seed:
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
-    env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      ANTEATER_API_KEY: ${{ secrets.ANTEATER_API_KEY }}
-
     steps:
+      # ── 0. Guard: skip cleanly when secrets are absent ───────────────────────
+      - name: Check secrets
+        id: check
+        shell: bash
+        run: |
+          if [[ -z "${SUPABASE_URL:-}" || ( -z "${SUPABASE_SERVICE_KEY:-}" && -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ) ]]; then
+            echo "Supabase secrets not configured — skipping run."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── 1. Setup ─────────────────────────────────────────────────────────────
       - name: Checkout
+        if: steps.check.outputs.skip != 'true'
         uses: actions/checkout@v4
 
-      - name: Set up Node
+      - name: Set up Node 24
+        if: steps.check.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
 
       - name: Install dependencies
+        if: steps.check.outputs.skip != 'true'
         run: npm ci
 
-      - name: Check Supabase secrets
+      # ── 2. Seed all schools — current year ───────────────────────────────────
+      - name: Seed all schools — current year
+        if: steps.check.outputs.skip != 'true'
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          YEAR="$(date +%Y)"
 
-          if [[ -z "${SUPABASE_URL:-}" ]]; then
-            echo "Missing SUPABASE_URL secret."
-            exit 1
-          fi
+          # For manual dispatch, honour the inputs; for schedule use current year
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            FROM="${{ github.event.inputs.from_year }}"
+            TO="${{ github.event.inputs.to_year }}"
+            FROM="${FROM:-$YEAR}"
+            TO="${TO:-$((YEAR + 1))}"
+            ARGS=(--from-year "$FROM" --to-year "$TO")
 
-          if [[ -z "${SUPABASE_SERVICE_KEY:-}" && -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
-            echo "Missing SUPABASE_SERVICE_KEY or SUPABASE_SERVICE_ROLE_KEY secret."
-            exit 1
-          fi
+            SCHOOLS="${{ github.event.inputs.schools }}"
+            SCHOOLS="${SCHOOLS:-all}"
+            [[ "$SCHOOLS" != "all" ]] && ARGS+=(--schools "$SCHOOLS")
 
-      - name: Seed requested sections
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          CURRENT_YEAR="$(date +%Y)"
-          NEXT_YEAR="$((CURRENT_YEAR + 1))"
-          FROM_YEAR="${{ github.event.inputs.from_year }}"
-          TO_YEAR="${{ github.event.inputs.to_year }}"
-          SCHOOLS="${{ github.event.inputs.schools }}"
-          TERMS="${{ github.event.inputs.terms }}"
-
-          FROM_YEAR="${FROM_YEAR:-$CURRENT_YEAR}"
-          TO_YEAR="${TO_YEAR:-$NEXT_YEAR}"
-          SCHOOLS="${SCHOOLS:-all}"
-
-          ARGS=(--from-year "$FROM_YEAR" --to-year "$TO_YEAR")
-
-          if [[ "$SCHOOLS" != "all" ]]; then
-            ARGS+=(--schools "$SCHOOLS")
-          fi
-
-          if [[ -n "$TERMS" ]]; then
-            ARGS+=(--terms "$TERMS")
+            TERMS="${{ github.event.inputs.terms }}"
+            [[ -n "$TERMS" ]] && ARGS+=(--terms "$TERMS")
+          else
+            ARGS=(--from-year "$YEAR" --to-year "$YEAR")
           fi
 
           node scripts/backfill-school-sections.js "${ARGS[@]}"
 
-      - name: Seed current-year sections
-        if: github.event_name == 'schedule'
-        shell: bash
-        run: |
-          set -euo pipefail
-          CURRENT_YEAR="$(date +%Y)"
-          node scripts/backfill-school-sections.js --from-year "$CURRENT_YEAR" --to-year "$CURRENT_YEAR"
-
-      - name: Seed UCI current-year sections
-        if: github.event_name == 'schedule'
+      # ── 3. Seed all schools — next year (when data is available) ─────────────
+      - name: Seed all schools — next year
+        if: steps.check.outputs.skip != 'true' && github.event_name == 'schedule'
         continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          NEXT="$(( $(date +%Y) + 1 ))"
+          node scripts/backfill-school-sections.js --from-year "$NEXT" --to-year "$NEXT"
 
-          if [[ -z "${ANTEATER_API_KEY:-}" ]]; then
-            echo "Skipping UCI seeding because ANTEATER_API_KEY is not configured."
-            exit 0
-          fi
-
-          CURRENT_YEAR="$(date +%Y)"
-          for TERM in Winter Spring Fall; do
-            node scripts/seed-sections.js "$TERM" "$CURRENT_YEAR"
-          done
-
-      - name: Seed next-year sections when available
-        if: github.event_name == 'schedule'
+      # ── 4. Reconcile school_terms index ──────────────────────────────────────
+      - name: Reconcile school_terms index
+        if: steps.check.outputs.skip != 'true'
         continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          NEXT_YEAR="$(( $(date +%Y) + 1 ))"
-          node scripts/backfill-school-sections.js --from-year "$NEXT_YEAR" --to-year "$NEXT_YEAR"
-
-      - name: Seed UCI next-year sections when available
-        if: github.event_name == 'schedule'
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${ANTEATER_API_KEY:-}" ]]; then
-            echo "Skipping UCI seeding because ANTEATER_API_KEY is not configured."
-            exit 0
-          fi
-
-          NEXT_YEAR="$(( $(date +%Y) + 1 ))"
-          for TERM in Winter Spring Fall; do
-            node scripts/seed-sections.js "$TERM" "$NEXT_YEAR"
-          done
+          YEAR="$(date +%Y)"
+          node scripts/reconcile-school-terms.js \
+            --from-year "$((YEAR - 1))" \
+            --to-year   "$((YEAR + 1))"

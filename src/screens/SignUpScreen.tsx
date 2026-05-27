@@ -4,8 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
-import Constants from 'expo-constants';
 import { DEFAULT_UNIVERSITY, type University } from '../data/schools';
 import LegalConsentText from '../components/LegalConsentText';
 import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
@@ -14,16 +12,8 @@ import { supabase } from '../lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const FALLBACK_AUTH_SCHEME = 'com.parksihyun.classmate';
-
 function getOAuthRedirectUrl() {
-  const configuredScheme = Constants.expoConfig?.scheme;
-  const scheme =
-    (Array.isArray(configuredScheme) ? configuredScheme[0] : configuredScheme) ||
-    (Constants.expoConfig?.extra as { expoClient?: { scheme?: string } } | undefined)?.expoClient?.scheme ||
-    FALLBACK_AUTH_SCHEME;
-
-  return Linking.createURL('auth/callback', { scheme });
+  return 'com.parksihyun.classmate://auth/callback';
 }
 
 type Props = {

@@ -1982,13 +1982,22 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     triggerSuccessHaptic();
   };
 
+  const replaceVersionRef = useRef(0);
   const handleReplaceCourse = async (oldId: string, newCourse: Course) => {
-    const target = activeTimetable;
-    if (!target) return;
-    const newCourses = target.courses.map((c) => (c.id === oldId ? newCourse : c));
-    const updated = { ...target, courses: newCourses };
-    setTimetables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    if (!activeTimetable) return;
+    const timetableId = activeTimetable.id;
+    const version = ++replaceVersionRef.current;
+    let updated: Timetable | undefined;
+    setTimetables((prev) => {
+      const target = prev.find((t) => t.id === timetableId);
+      if (!target) return prev;
+      const newCourses = target.courses.map((c) => (c.id === oldId ? newCourse : c));
+      updated = { ...target, courses: newCourses };
+      return prev.map((t) => (t.id === timetableId ? updated! : t));
+    });
+    if (!updated) return;
     await saveTimetable(updated);
+    if (replaceVersionRef.current !== version) return;
     triggerSuccessHaptic();
   };
 

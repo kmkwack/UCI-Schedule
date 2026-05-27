@@ -373,9 +373,11 @@ export default function FriendsScreen({
 
   useEffect(() => {
     if (!userId) return;
+    let cancelled = false;
 
     async function loadClassmates() {
       const cached = await AsyncStorage.getItem(classmateCacheKey);
+      if (cancelled) return;
       if (cached) {
         const { friends: cf, pendingRequests: cp, sentRequests: cs, sentRequestIds: csi } = JSON.parse(cached);
         setFriends(cf ?? []);
@@ -402,6 +404,7 @@ export default function FriendsScreen({
         requestsError = fallback.error;
       }
 
+      if (cancelled) return;
       if (requestsError) {
         if (isMissingSchoolColumnError(requestsError)) {
           setFriends([]);
@@ -540,13 +543,14 @@ export default function FriendsScreen({
           year: profile.year?.trim() || 'Student',
         }));
 
+      if (cancelled) return;
       setFriends(freshFriends);
       setPendingRequests(freshPending);
       setSentRequests(freshSent);
       setSentRequestIds(outgoingPendingIds);
       setFriendsLoading(false);
 
-      AsyncStorage.setItem(classmateCacheKey, JSON.stringify({
+      void AsyncStorage.setItem(classmateCacheKey, JSON.stringify({
         friends: freshFriends,
         pendingRequests: freshPending,
         sentRequests: freshSent,
@@ -555,6 +559,7 @@ export default function FriendsScreen({
     }
 
     loadClassmates();
+    return () => { cancelled = true; };
   }, [classmateCacheKey, school, userId]);
 
   useEffect(() => {

@@ -893,7 +893,9 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
     async function loadGrades() {
       // Load cache first for instant display
       const cached = await AsyncStorage.getItem(cacheKey);
-      if (cached) setGrades(JSON.parse(cached));
+      if (cached) {
+        try { setGrades(JSON.parse(cached)); } catch { /* ignore malformed cache */ }
+      }
 
       // Then fetch from Supabase and update. Some deployed databases may not have
       // the school-scoped grades migration yet, so keep a silent legacy fallback.

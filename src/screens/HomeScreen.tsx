@@ -1995,6 +1995,30 @@ export default function HomeScreen({
   const heroStackProgressAnim = useMemo(() => new Animated.Value(0), [HERO_WIDGET_STACK_ANIMATION_VERSION]);
   const heroContainerHeightAnim = useMemo(() => new Animated.Value(0), [HERO_WIDGET_STACK_ANIMATION_VERSION]);
   const heroCardHeightsRef = useRef<Record<string, number>>({});
+  const heroNudgeAnim = useMemo(() => new Animated.Value(0), []);
+  const heroNudgeHintFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (heroItems.length <= 1 || heroNudgeHintFiredRef.current) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    void AsyncStorage.getItem('hero_swipe_hint_shown').then((shown) => {
+      if (shown || cancelled) return;
+      heroNudgeHintFiredRef.current = true;
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        Animated.sequence([
+          Animated.timing(heroNudgeAnim, { toValue: -14, duration: 200, useNativeDriver: true }),
+          Animated.spring(heroNudgeAnim, { toValue: 0, useNativeDriver: true, friction: 4, tension: 80 }),
+        ]).start();
+        void AsyncStorage.setItem('hero_swipe_hint_shown', '1');
+      }, 1200);
+    });
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [heroItems.length]);
 
   const daysRemaining = getDaysRemainingInQuarter(now, quarterEnd);
   const quarterProgress = clamp(
@@ -2338,22 +2362,29 @@ export default function HomeScreen({
   }
 
   function openSportsEvent(event: SportsEvent) {
-    closeSportsMoreList();
-    sportsEventBackdropAnim.setValue(0);
-    sportsEventSheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
-    selectedSportsEventRef.current = event;
-    setSelectedSportsEvent(event);
-    setSportsEventCommentInput('');
-    setSportsEventRsvp(sportsEventUserRsvps[event.id] ?? null);
-    setSportsEventGoingCount(sportsEventListParticipation[event.id] ?? 0);
-    setSportsEventComments([]);
-    setSavingSportsEventRsvp(false);
-    resetSportsEventDetailScroll();
-    Animated.parallel([
-      Animated.spring(sportsEventSheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
-      Animated.timing(sportsEventBackdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
-    ]).start();
-    void loadSportsEventSocial(event);
+    const doOpen = () => {
+      sportsEventBackdropAnim.setValue(0);
+      sportsEventSheetAnim.setValue(SHEET_INITIAL_TRANSLATE_Y);
+      selectedSportsEventRef.current = event;
+      setSelectedSportsEvent(event);
+      setSportsEventCommentInput('');
+      setSportsEventRsvp(sportsEventUserRsvps[event.id] ?? null);
+      setSportsEventGoingCount(sportsEventListParticipation[event.id] ?? 0);
+      setSportsEventComments([]);
+      setSavingSportsEventRsvp(false);
+      resetSportsEventDetailScroll();
+      Animated.parallel([
+        Animated.spring(sportsEventSheetAnim, { toValue: 0, useNativeDriver: true, ...SHEET_SPRING }),
+        Animated.timing(sportsEventBackdropAnim, { toValue: 1, duration: BACKDROP_DURATION, useNativeDriver: true }),
+      ]).start();
+      void loadSportsEventSocial(event);
+    };
+
+    if (showSportsEventsList) {
+      closeSportsMoreList(doOpen);
+    } else {
+      doOpen();
+    }
   }
 
   function closeSportsEvent() {
@@ -3507,7 +3538,7 @@ export default function HomeScreen({
         </Text>
       </View>
 
-      <View style={{ marginBottom: 14, width: heroCardWidth }}>
+      <Animated.View style={{ marginBottom: 14, width: heroCardWidth, transform: [{ translateY: heroNudgeAnim }] }}>
         {activeHeroItem ? (
           <View
             style={{ width: heroCardWidth }}
@@ -3625,7 +3656,23 @@ export default function HomeScreen({
             </View>
           </View>
         )}
-      </View>
+        {heroItems.length > 1 && (
+          <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 10 }}>
+            {heroItems.map((_, index) => (
+              <View
+                key={index}
+                style={{
+                  width: index === activeHeroIndex ? 8 : 6,
+                  height: index === activeHeroIndex ? 8 : 6,
+                  borderRadius: 4,
+                  backgroundColor: index === activeHeroIndex ? colors.brand : colors.textTertiary,
+                  opacity: index === activeHeroIndex ? 1 : 0.35,
+                }}
+              />
+            ))}
+          </View>
+        )}
+      </Animated.View>
 
       <View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>

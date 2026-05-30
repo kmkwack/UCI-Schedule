@@ -300,11 +300,21 @@ function summarizeDiningLocation(location: UciDiningLocationRow, now: Date): Uci
   };
 }
 
+const UCI_DINING_TIMEOUT_MS = 8_000;
+
 export async function fetchUciDiningSummaries(now = new Date()): Promise<UciDiningSummary[]> {
-  const response = await fetch(buildDiningGraphqlUrl(), {
-    method: 'GET',
-    headers: UCI_DINING_HEADERS,
-  });
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeout = setTimeout(() => controller?.abort(), UCI_DINING_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(buildDiningGraphqlUrl(), {
+      method: 'GET',
+      headers: UCI_DINING_HEADERS,
+      signal: controller?.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!response.ok) {
     throw new Error(`UCI Dining returned ${response.status}`);
   }

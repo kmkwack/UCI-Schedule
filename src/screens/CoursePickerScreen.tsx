@@ -918,7 +918,18 @@ export default function CoursePickerScreen({
   const hasSelectedDepartments = selectedDepts.length > 0;
   const isUciSchool = schoolConfig.id === 'uci';
 
-  // Clear GE filter when switching to a non-UCI school
+  // Clear all department/GE filters when school changes
+  const prevSchoolRef = useRef(school);
+  useEffect(() => {
+    if (prevSchoolRef.current !== school) {
+      prevSchoolRef.current = school;
+      setSelectedDepts([]);
+      setSelectedGE('');
+      setSearchText('');
+    }
+  }, [school]);
+
+  // Also clear GE if switching to non-UCI mid-session
   useEffect(() => {
     if (!isUciSchool && selectedGE) {
       setSelectedGE('');

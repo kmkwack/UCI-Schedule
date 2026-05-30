@@ -42,7 +42,7 @@ import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import type { ChatTarget } from '../data/messages';
-import { EmptyState, SkeletonBlock } from '../components/Polish';
+import { EmptyState } from '../components/Polish';
 import { MiniLoader } from '../components/ScheduleLoader';
 import {
   HORIZONTAL_SWIPE_ACTIVATION_DX,

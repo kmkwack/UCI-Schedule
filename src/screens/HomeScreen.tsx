@@ -1439,8 +1439,12 @@ export default function HomeScreen({
     requestAnimationFrame(run);
   }, []);
   const settleSportsEventComposer = useCallback((animated = true) => {
-    [0, 90, 180, 340].forEach((delay) => scrollSportsEventDetailToEnd(animated, delay));
-  }, [scrollSportsEventDetailToEnd]);
+    const timers = [90, 180, 340].map((delay) =>
+      setTimeout(() => sportsEventScrollRef.current?.scrollToEnd({ animated }), delay)
+    );
+    sportsEventScrollRef.current?.scrollToEnd({ animated });
+    return () => timers.forEach(clearTimeout);
+  }, []);
 
   useEffect(() => {
     selectedSportsEventRef.current = selectedSportsEvent;
@@ -3493,43 +3497,28 @@ export default function HomeScreen({
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 10, paddingRight: 2 }}
+            contentContainerStyle={{ gap: 8, paddingRight: 4 }}
           >
             {upcomingAcademicEvents.map((event) => {
               const days = daysUntilEvent(event, now);
               const cfg = CATEGORY_CONFIG[event.category];
-              const isUrgent = days <= 7;
-              const isVeryUrgent = days <= 3;
-              const isToday = days === 0;
-              const isOngoing = event.endDate && days <= 0 && event.endDate >= now.toISOString().slice(0, 10);
+              const todayStr = now.toISOString().slice(0, 10);
+              const isOngoing = !!event.endDate && days <= 0 && event.endDate >= todayStr;
+              const isVeryUrgent = days >= 0 && days <= 3;
+              const isUrgent    = days >= 0 && days <= 7;
 
-              const cardBg = isVeryUrgent
-                ? (isDark ? '#3B0A0A' : '#FEF2F2')
-                : isUrgent
-                  ? (isDark ? '#2D1A00' : '#FFFBEB')
-                  : (isDark ? colors.card : cfg.bg);
+              const accentColor = isVeryUrgent ? '#EF4444' : isUrgent ? '#F59E0B' : cfg.color;
+              const cardBg      = isDark ? colors.card : cfg.bg;
+              const borderColor = isDark ? colors.border : `${accentColor}35`;
 
-              const accentColor = isVeryUrgent
-                ? '#EF4444'
-                : isUrgent
-                  ? '#F59E0B'
-                  : cfg.color;
+              const dLabel = days === 0  ? 'Today'
+                : days === 1             ? 'Tomorrow'
+                : isOngoing              ? 'Ongoing'
+                : `D-${days}`;
 
-              const borderColor = isVeryUrgent
-                ? (isDark ? '#7F1D1D' : '#FECACA')
-                : isUrgent
-                  ? (isDark ? '#78350F' : '#FDE68A')
-                  : (isDark ? colors.border : `${cfg.color}30`);
-
-              const dLabel = isToday
-                ? 'Today'
-                : isOngoing
-                  ? 'Ongoing'
-                  : days === 1
-                    ? 'Tomorrow'
-                    : days < 0
-                      ? 'Past'
-                      : `D-${days}`;
+              const dateStr = event.endDate && event.endDate !== event.date
+                ? `${formatAcademicDate(event.date)} – ${formatAcademicDate(event.endDate)}`
+                : formatAcademicDate(event.date);
 
               return (
                 <TouchableOpacity
@@ -3537,42 +3526,40 @@ export default function HomeScreen({
                   onPress={() => openAcademicSheet(event)}
                   activeOpacity={0.76}
                   style={{
-                    width: 130,
+                    width: 148,
+                    height: 104,
                     borderRadius: 18,
                     borderWidth: 1.5,
                     borderColor,
                     backgroundColor: cardBg,
-                    padding: 14,
+                    padding: 13,
                     justifyContent: 'space-between',
-                    minHeight: 110,
                   }}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <Text style={{ fontSize: 22 }}>{cfg.icon}</Text>
+                  {/* Top row: icon + D-badge */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 20 }}>{cfg.icon}</Text>
                     <View style={{
                       borderRadius: 999,
                       backgroundColor: `${accentColor}18`,
                       borderWidth: 1,
-                      borderColor: `${accentColor}40`,
-                      paddingHorizontal: 7,
-                      paddingVertical: 3,
+                      borderColor: `${accentColor}45`,
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
                     }}>
-                      <Text style={{ fontSize: 10, fontWeight: '900', color: accentColor }}>{dLabel}</Text>
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: accentColor, letterSpacing: 0.2 }}>
+                        {dLabel}
+                      </Text>
                     </View>
                   </View>
-                  <View>
-                    <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '800', color: colors.text, lineHeight: 17 }}>
+
+                  {/* Bottom: title + date */}
+                  <View style={{ gap: 2 }}>
+                    <Text numberOfLines={2} style={{ fontSize: 12, fontWeight: '800', color: colors.text, lineHeight: 16 }}>
                       {event.title}
                     </Text>
-                    {event.subtitle ? (
-                      <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary, marginTop: 3 }}>
-                        {event.subtitle}
-                      </Text>
-                    ) : null}
-                    <Text style={{ fontSize: 11, color: accentColor, fontWeight: '700', marginTop: 5 }}>
-                      {event.endDate && event.endDate !== event.date
-                        ? `${formatAcademicDate(event.date)} – ${formatAcademicDate(event.endDate)}`
-                        : formatAcademicDate(event.date)}
+                    <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: accentColor }}>
+                      {dateStr}
                     </Text>
                   </View>
                 </TouchableOpacity>

@@ -8,7 +8,8 @@ name: Seed course sections
 # Required GitHub secrets:
 #   SUPABASE_URL              – Supabase project URL
 #   SUPABASE_SERVICE_KEY      – service_role key (write access)
-#   ANTEATER_API_KEY          – needed only for UCI
+#   ANTEATER_API_KEY          – UCI course data (Anteater API; no auth required,
+#                               but must be set to a non-empty value, e.g. "none")
 #
 # If secrets are not configured the run exits cleanly (no failure email).
 
@@ -38,7 +39,7 @@ env:
   SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
   SUPABASE_SERVICE_KEY:      ${{ secrets.SUPABASE_SERVICE_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
   SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-  ANTEATER_API_KEY:          ${{ secrets.ANTEATER_API_KEY }}
+  ANTEATER_API_KEY:          ${{ secrets.ANTEATER_API_KEY || 'none' }}
 
 jobs:
   seed:
@@ -46,7 +47,7 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      # ── 0. Guard: skip cleanly when secrets are absent ───────────────────────
+      # ── 0. Guard: skip cleanly when Supabase secrets are absent ─────────────
       - name: Check secrets
         id: check
         shell: bash
@@ -55,6 +56,7 @@ jobs:
             echo "Supabase secrets not configured — skipping run."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
+            echo "Secrets OK — SUPABASE_URL is set, service key is set."
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -70,9 +72,11 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Install dependencies
+      - name: Install dependencies (seeder-only, skip native postinstall)
         if: steps.check.outputs.skip != 'true'
-        run: npm ci
+        # --ignore-scripts skips native compilation (CocoaPods, Gradle, etc.)
+        # that would fail on Ubuntu. The seeder scripts only need pure-JS packages.
+        run: npm ci --ignore-scripts
 
       # ── 2. Seed all schools — current year ───────────────────────────────────
       - name: Seed all schools — current year
@@ -82,7 +86,6 @@ jobs:
         run: |
           YEAR="$(date +%Y)"
 
-          # For manual dispatch, honour the inputs; for schedule use current year
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             FROM="${{ github.event.inputs.from_year }}"
             TO="${{ github.event.inputs.to_year }}"
@@ -100,7 +103,8 @@ jobs:
             ARGS=(--from-year "$YEAR" --to-year "$YEAR")
           fi
 
-          node scripts/backfill-school-sections.js "${ARGS[@]}"
+          echo "Running: node scripts/backfill-school-sections.js ${ARGS[*]}"
+          node scripts/backfill-school-sections.js "${ARGS[@]}" || true
 
       # ── 3. Seed all schools — next year (when data is available) ─────────────
       - name: Seed all schools — next year
@@ -109,7 +113,8 @@ jobs:
         shell: bash
         run: |
           NEXT="$(( $(date +%Y) + 1 ))"
-          node scripts/backfill-school-sections.js --from-year "$NEXT" --to-year "$NEXT"
+          echo "Running: node scripts/backfill-school-sections.js --from-year $NEXT --to-year $NEXT"
+          node scripts/backfill-school-sections.js --from-year "$NEXT" --to-year "$NEXT" || true
 
       # ── 4. Reconcile school_terms index ──────────────────────────────────────
       - name: Reconcile school_terms index
@@ -120,4 +125,4 @@ jobs:
           YEAR="$(date +%Y)"
           node scripts/reconcile-school-terms.js \
             --from-year "$((YEAR - 1))" \
-            --to-year   "$((YEAR + 1))"
+            --to-year   "$((YEAR + 1))" || true

@@ -22,6 +22,7 @@ import AppErrorBoundary from './src/components/AppErrorBoundary';
 import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
+import { FullScreenLoader } from './src/components/ScheduleLoader';
 import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, quarterKey } from './src/data/courses';
 import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, resolveCurrentTerm, schoolFeatureEnabled, universityForName, type University } from './src/data/schools';
 import {
@@ -39,7 +40,7 @@ import {
 import { fetchSportsEventsForSchool } from './src/data/sportsEvents';
 import { addZonedDays, getZonedDateParts, normalizeTimeZone, zonedDateFromParts, zonedWeekdayIndex } from './src/data/timeZone';
 import { supabase } from './src/lib/supabase';
-import { isMissingSchoolColumnError } from './src/lib/supabaseErrors';
+import { isMissingSchoolColumnError, isRlsError } from './src/lib/supabaseErrors';
 import type { ChatTarget } from './src/data/messages';
 import { triggerLightHaptic, triggerSelectionHaptic, triggerSuccessHaptic } from './src/utils/haptics';
 import { MOTION } from './src/utils/motion';
@@ -570,93 +571,7 @@ function AuthNavigator({
 
 // ─── Schedule Loader ──────────────────────────────────────────────────────────
 // Cells: [col 0-4, row 0-5, hex color]
-const SCHEDULE_LOADER_CELLS: [number, number, string][] = [
-  [0, 0, '#60a5fa'], [0, 1, '#60a5fa'], [0, 2, '#60a5fa'],
-  [1, 2, '#86efac'], [1, 3, '#86efac'],
-  [2, 0, '#fca5a5'], [2, 1, '#fca5a5'], [2, 4, '#fca5a5'], [2, 5, '#fca5a5'],
-  [3, 1, '#c4b5fd'], [3, 2, '#c4b5fd'], [3, 3, '#c4b5fd'],
-  [4, 0, '#fcd34d'], [4, 3, '#fcd34d'], [4, 4, '#fcd34d'],
-];
-const SCHEDULE_LOADER_DAYS = ['M', 'T', 'W', 'Th', 'F'];
-const CELL_W = 42;
-const CELL_H = 24;
-const CELL_GAP = 5;
-
-function ScheduleLoader({ isDark }: { isDark: boolean }) {
-  const anims = useRef(
-    SCHEDULE_LOADER_CELLS.map(() => new Animated.Value(0))
-  ).current;
-  const textAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.stagger(
-      50,
-      anims.map((a) =>
-        Animated.spring(a, { toValue: 1, useNativeDriver: true, tension: 220, friction: 11 })
-      )
-    ).start();
-    // text fades in, then pulses
-    Animated.sequence([
-      Animated.timing(textAnim, { toValue: 1, duration: 350, delay: 300, useNativeDriver: true }),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(textAnim, { toValue: 0.35, duration: 700, useNativeDriver: true }),
-          Animated.timing(textAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
-        ])
-      ),
-    ]).start();
-  }, []);
-
-  const gridW = 5 * (CELL_W + CELL_GAP) - CELL_GAP;
-  const gridH = 6 * (CELL_H + CELL_GAP) - CELL_GAP;
-
-  return (
-    <View style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff', alignItems: 'center', justifyContent: 'center' }}>
-      {/* Day labels */}
-      <View style={{ flexDirection: 'row', gap: CELL_GAP, marginBottom: 8 }}>
-        {SCHEDULE_LOADER_DAYS.map((d) => (
-          <Text
-            key={d}
-            style={{ width: CELL_W, fontSize: 11, fontWeight: '800', textAlign: 'center', color: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)' }}
-          >
-            {d}
-          </Text>
-        ))}
-      </View>
-      {/* Grid */}
-      <View style={{ width: gridW, height: gridH }}>
-        {SCHEDULE_LOADER_CELLS.map(([col, row, color], idx) => (
-          <Animated.View
-            key={idx}
-            style={{
-              position: 'absolute',
-              left: col * (CELL_W + CELL_GAP),
-              top: row * (CELL_H + CELL_GAP),
-              width: CELL_W,
-              height: CELL_H,
-              borderRadius: 8,
-              backgroundColor: color,
-              opacity: anims[idx],
-              transform: [{ scale: anims[idx].interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
-            }}
-          />
-        ))}
-      </View>
-      {/* Loading text */}
-      <Animated.Text
-        style={{
-          marginTop: 28,
-          fontSize: 14,
-          fontWeight: '600',
-          color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.38)',
-          opacity: textAnim,
-        }}
-      >
-        Loading your schedule...
-      </Animated.Text>
-    </View>
-  );
-}
+// ScheduleLoader moved to src/components/ScheduleLoader.tsx
 
 function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const { colors, isDark } = useTheme();
@@ -1932,7 +1847,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     let cancelled = false;
 
     async function load() {
-      setTimetables([]);
+      // Don't clear timetables immediately — wait for new data to avoid flash of empty state
       setSelectedTimetableId(null);
 
       let { data, error } = await supabase
@@ -1951,14 +1866,22 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       }
 
       if (cancelled) return;
-      if (error) { console.warn('Failed to load timetables:', error); return; }
+      if (error) {
+        if (isRlsError(error)) {
+          console.warn('RLS violation loading timetables — user may not have permission');
+        } else {
+          console.warn('Failed to load timetables:', error);
+        }
+        setTimetables([]);
+        return;
+      }
 
       const loaded: Timetable[] = (data ?? [])
         .map((row: any, i: number) => ({
           id: row.id,
           name: row.name,
           quarterKey: row.quarter_key,
-          courses: row.courses as Course[],
+          courses: Array.isArray(row.courses) ? row.courses as Course[] : [],
           order: row.order ?? i,
         }))
         .sort((a: Timetable, b: Timetable) => a.order - b.order);
@@ -2268,7 +2191,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   const handleLogout = () => {
     suppressNextSignedOutClearRef.current = true;
-    void supabase.auth.signOut().finally(() => {
+    supabase.auth.signOut().catch((err) => {
+      console.warn('Sign out error:', err);
+    }).finally(() => {
       setTimeout(() => {
         suppressNextSignedOutClearRef.current = false;
       }, 1000);
@@ -2884,7 +2809,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   }
 
   if (userBootstrapLoading || !userBootstrapSettled) {
-    return <ScheduleLoader isDark={isDark} />;
+    return <FullScreenLoader isDark={isDark} />;
   }
 
   const renderFeatureOnboarding = () => (

@@ -58,6 +58,7 @@ import {
   SHEET_SPRING,
 } from '../utils/motion';
 import { EmptyState } from '../components/Polish';
+import { MiniLoader } from '../components/ScheduleLoader';
 
 type CommentRow = {
   id: string;
@@ -4160,9 +4161,8 @@ function NewPostModal({
           </TouchableOpacity>
 
           {uploadingAttachments ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <ActivityIndicator size="small" color={colors.brand} />
-              <Text style={{ fontSize: 13, color: colors.textSecondary }}>Uploading attachments...</Text>
+            <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              <MiniLoader label="Uploading attachments..." labelColor={colors.textSecondary} />
             </View>
           ) : null}
 

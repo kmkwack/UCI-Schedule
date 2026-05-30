@@ -18,6 +18,7 @@ import type {
 import { abbreviateMajor } from '../data/userPreferences';
 import { getSchoolConfig, SUPPORTED_UNIVERSITIES } from '../data/schools';
 import { themedIconBackground, themedIconBorder, themedIconColor } from '../utils/themeTint';
+import { MiniLoader } from '../components/ScheduleLoader';
 
 type Props = {
   visible: boolean;
@@ -1290,9 +1291,8 @@ function ModerationScreen({ school, onBack }: { school: string; onBack: () => vo
         </View>
 
         {loading ? (
-          <View style={{ alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 36 }}>
-            <ActivityIndicator color={colors.brand} />
-            <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading reports...</Text>
+          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 36 }}>
+            <MiniLoader label="Loading reports..." labelColor={colors.textTertiary} />
           </View>
         ) : filteredReports.length === 0 ? (
           <View
@@ -1695,9 +1695,8 @@ function ManageBoardsView({ school, onBack }: { school: string; onBack: () => vo
       <SubHeader title="Manage Boards" onBack={onBack} />
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         {loading ? (
-          <View style={{ alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 36 }}>
-            <ActivityIndicator color={colors.brand} />
-            <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading boards...</Text>
+          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 36 }}>
+            <MiniLoader label="Loading boards..." labelColor={colors.textTertiary} />
           </View>
         ) : boards.length === 0 ? (
           <View style={{ backgroundColor: colors.card, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: colors.borderSubtle, alignItems: 'center' }}>
@@ -1936,9 +1935,8 @@ function BoardRequestsScreen({ school, onBack }: { school: string; onBack: () =>
         </View>
 
         {loading ? (
-          <View style={{ alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 36 }}>
-            <ActivityIndicator color={colors.brand} />
-            <Text style={{ fontSize: 14, color: colors.textTertiary }}>Loading board requests...</Text>
+          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 36 }}>
+            <MiniLoader label="Loading board requests..." labelColor={colors.textTertiary} />
           </View>
         ) : filtered.length === 0 ? (
           <View style={{ backgroundColor: colors.card, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: colors.borderSubtle, alignItems: 'center' }}>
@@ -2134,7 +2132,7 @@ function BlockedUsersScreen({ userId, school, onBack }: { userId: string; school
         </Text>
         <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, overflow: 'hidden' }}>
           {loading ? (
-            <ActivityIndicator style={{ padding: 20 }} color={colors.textSecondary} />
+            <View style={{ alignItems: 'center', padding: 20 }}><MiniLoader labelColor={colors.textTertiary} /></View>
           ) : friendBlocks.length === 0 ? (
             <Text style={{ padding: 16, color: colors.textSecondary, fontSize: 14 }}>No friends blocked</Text>
           ) : (
@@ -2245,7 +2243,7 @@ function BannedWordsScreen({ onBack }: { onBack: () => void }) {
 
         <View style={{ backgroundColor: colors.bgSecondary, borderRadius: 14, overflow: 'hidden' }}>
           {loading ? (
-            <ActivityIndicator style={{ padding: 20 }} color={colors.textSecondary} />
+            <View style={{ alignItems: 'center', padding: 20 }}><MiniLoader labelColor={colors.textTertiary} /></View>
           ) : words.length === 0 ? (
             <Text style={{ padding: 16, color: colors.textSecondary, fontSize: 14 }}>No banned words yet.</Text>
           ) : (

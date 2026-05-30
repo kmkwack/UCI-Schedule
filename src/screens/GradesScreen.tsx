@@ -937,7 +937,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
       const loaded: Record<string, string> = {};
       (data ?? []).forEach((row: any) => { loaded[gk(row.quarter_key, row.course_id)] = row.grade; });
       setGrades(loaded);
-      AsyncStorage.setItem(cacheKey, JSON.stringify(loaded));
+      void AsyncStorage.setItem(cacheKey, JSON.stringify(loaded));
     }
     loadGrades();
   }, [cacheKey, school, userId]);
@@ -1011,7 +1011,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
   async function handleSetGrade(key: string, grade: string) {
     const updated = { ...grades, [key]: grade };
     setGrades(updated);
-    AsyncStorage.setItem(cacheKey, JSON.stringify(updated));
+    void AsyncStorage.setItem(cacheKey, JSON.stringify(updated));
     const [qk, courseId] = key.split('|');
     if (gradesSchoolColumnUnavailable) {
       const legacyResult = await supabase
@@ -1204,7 +1204,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
     const updated = { ...grades };
     delete updated[key];
     setGrades(updated);
-    AsyncStorage.setItem(cacheKey, JSON.stringify(updated));
+    void AsyncStorage.setItem(cacheKey, JSON.stringify(updated));
     const [qk, courseId] = key.split('|');
     if (gradesSchoolColumnUnavailable) {
       await supabase.from('grades').delete()

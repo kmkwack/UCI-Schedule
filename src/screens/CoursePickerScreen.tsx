@@ -26,6 +26,7 @@ import { getSchoolConfig, termLabel } from '../data/schools';
 import { departmentsForSchoolId } from '../data/schoolDepartments';
 import PreviewTimetable from '../components/PreviewTimetable';
 import InfoChip from '../components/InfoChip';
+import { MiniLoader } from '../components/ScheduleLoader';
 import { supabase } from '../lib/supabase';
 import ReviewsModal from '../components/ReviewsModal';
 import { useTheme } from '../context/ThemeContext';
@@ -915,11 +916,19 @@ export default function CoursePickerScreen({
   }, []);
 
   const hasSelectedDepartments = selectedDepts.length > 0;
+  const isUciSchool = schoolConfig.id === 'uci';
+
+  // Clear GE filter when switching to a non-UCI school
+  useEffect(() => {
+    if (!isUciSchool && selectedGE) {
+      setSelectedGE('');
+    }
+  }, [isUciSchool, selectedGE]);
+
   const hasSelectedCategory = hasSelectedDepartments || !!selectedGE;
   const isAllDepartmentsSelected = !hasSelectedDepartments && !selectedGE;
   const shouldLoadSavedCounts = hasSelectedCategory || isAllDepartmentsSelected || searchText.trim().length >= 2;
   const selectedDeptKey = selectedDepts.join('|');
-  const isUciSchool = schoolConfig.id === 'uci';
   const localDepartmentOptions = useMemo(() => departmentsForSchoolId(schoolConfig.id), [schoolConfig.id]);
   const activeCourseIds = useMemo(() => new Set(activeCourses.map((course) => course.id)), [activeCourses]);
   const departmentOptions = availableDepartments.length > 0
@@ -1061,30 +1070,37 @@ export default function CoursePickerScreen({
     const qNorm = q.replace(/^([a-zA-Z]+)\s*(\d+.*)$/i, '$1 $2').trim();
     setGlobalSearchLoading(true);
 
+    let cancelled = false;
     const timer = setTimeout(async () => {
-      const qk = quarterKey(selectedQuarter);
-      const baseClauses = `code.ilike.%${q}%,title.ilike.%${q}%,professor.ilike.%${q}%,id.ilike.%${q}%`;
-      const orClause = qNorm !== q
-        ? `${baseClauses},code.ilike.%${qNorm}%,id.ilike.%${qNorm}%`
-        : baseClauses;
-      const { data, error } = await supabase
-        .from('sections')
-        .select(SECTION_SELECT_COLUMNS)
-        .eq('school', school)
-        .eq('quarter_key', qk)
-        .or(orClause)
-        .order('code', { ascending: true })
-        .limit(500);
+      try {
+        const qk = quarterKey(selectedQuarter);
+        const baseClauses = `code.ilike.%${q}%,title.ilike.%${q}%,professor.ilike.%${q}%,id.ilike.%${q}%`;
+        const orClause = qNorm !== q
+          ? `${baseClauses},code.ilike.%${qNorm}%,id.ilike.%${qNorm}%`
+          : baseClauses;
+        const { data, error } = await supabase
+          .from('sections')
+          .select(SECTION_SELECT_COLUMNS)
+          .eq('school', school)
+          .eq('quarter_key', qk)
+          .or(orClause)
+          .order('code', { ascending: true })
+          .limit(500);
 
-      if (!error && data) {
-        const { catalog, sections } = buildCatalogFromRows(data);
-        setGlobalCatalog(catalog);
-        setGlobalSectionsMap(sections);
+        if (cancelled) return;
+        if (!error && data) {
+          const { catalog, sections } = buildCatalogFromRows(data);
+          setGlobalCatalog(catalog);
+          setGlobalSectionsMap(sections);
+        }
+      } catch (err) {
+        console.warn('Global search error:', err);
+      } finally {
+        if (!cancelled) setGlobalSearchLoading(false);
       }
-      setGlobalSearchLoading(false);
     }, 400);
 
-    return () => { clearTimeout(timer); setGlobalSearchLoading(false); };
+    return () => { cancelled = true; clearTimeout(timer); setGlobalSearchLoading(false); };
   }, [searchText, hasSelectedCategory, selectedQuarter, school]);
 
   useEffect(() => {
@@ -2035,8 +2051,8 @@ export default function CoursePickerScreen({
                 paddingVertical: 24,
               }}
             >
-              <ActivityIndicator color={courseAccent} size="small" />
-              <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800', marginTop: 14, textAlign: 'center' }}>
+              <MiniLoader labelColor={colors.textTertiary} />
+              <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800', marginTop: 18, textAlign: 'center' }}>
                 {courseLoadingTitle}
               </Text>
               <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 6, textAlign: 'center' }}>

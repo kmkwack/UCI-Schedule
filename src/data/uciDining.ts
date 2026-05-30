@@ -24,6 +24,12 @@ type UciDiningSchedule = {
   type?: string;
   start_date?: string;
   end_date?: string;
+  // API returns "meal_periods" with "meal_period" as the name field
+  meal_periods?: Array<{
+    meal_period?: string;
+    opening_hours?: string;
+  }>;
+  // Legacy field name (kept for safety)
   meal_period?: Array<{
     label?: string;
     opening_hours?: string;
@@ -252,12 +258,17 @@ function summarizeDiningLocation(location: UciDiningLocationRow, now: Date): Uci
   const timezone = location.commerceAttributes?.timezone ?? UCI_DINING_TIME_ZONE;
   const dateParts = getDiningDateParts(now, timezone);
   const schedule = getActiveSchedule(location.aemAttributes?.hoursOfOperation?.schedule ?? [], dateParts.dateKey);
-  const todayMeals = (schedule?.meal_period ?? [])
+  // API returns "meal_periods" with "meal_period" as name; fall back to legacy "meal_period" with "label"
+  const rawMealPeriods: Array<{ label: string; opening_hours?: string }> = [
+    ...(schedule?.meal_periods ?? []).map((mp) => ({ label: mp.meal_period?.trim() ?? '', opening_hours: mp.opening_hours })),
+    ...(schedule?.meal_period ?? []).map((mp) => ({ label: mp.label?.trim() ?? '', opening_hours: mp.opening_hours })),
+  ];
+
+  const todayMeals = rawMealPeriods
     .flatMap((mealPeriod) => {
-      const label = mealPeriod.label?.trim();
-      if (!label) return [];
+      if (!mealPeriod.label) return [];
       return parseOpeningHoursForDay(mealPeriod.opening_hours, dateParts.dayCode).map((window) => ({
-        label,
+        label: mealPeriod.label,
         startMinutes: window.startMinutes,
         endMinutes: window.endMinutes,
         timeLabel: formatDiningRange(window.startMinutes, window.endMinutes),

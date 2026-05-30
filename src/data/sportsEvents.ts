@@ -55,6 +55,7 @@ const SPORT_SCHEDULE_PATHS: Record<string, string> = {
 const SPORTS_SCHEDULE_FETCH_TIMEOUT_MS = 3500;
 const TEAM_SCHEDULE_FETCH_TIMEOUT_MS = 10000;
 const TEAM_SCHEDULE_FETCH_CONCURRENCY = 4;
+const FEED_FETCH_TIMEOUT_MS = 10_000;
 
 function getSportStyle(sport: string) {
   const normalized = sport.replace(/^(Men's|Women's)\s+/i, '');
@@ -195,7 +196,10 @@ function cleanScheduleLocation(line: string): string {
 
 function isGenericSportsLocation(location: string): boolean {
   const normalized = location.trim().toLowerCase();
-  return !normalized || ['uci athletics', 'uci campus', 'venue tba', 'tba', 'away'].includes(normalized);
+  if (!normalized) return true;
+  if (/^(venue tba|tba|away)$/.test(normalized)) return true;
+  if (/\bkids club\b|\bathletics?$|\bcampus$/.test(normalized)) return true;
+  return false;
 }
 
 async function fetchScheduleText(path: string): Promise<string | null> {
@@ -376,8 +380,7 @@ function makeSchedulePageEvent(
 
 function parseUpcomingHtmlSummary(summary: string): { sport: string; opponent: string; isHome: boolean } | null {
   const cleaned = summary
-    .replace(/^UCI\s+/i, '')
-    .replace(/^UC Irvine\s+/i, '')
+    .replace(/^[A-Z][A-Za-z .&-]{1,30}\s+(?=[A-Z][a-z])/m, '')
     .trim();
   const versusMatch = cleaned.match(/^(.*?)\s+(?:versus|vs\.?|vs)\s+(.+)$/i);
   if (versusMatch) {
@@ -399,7 +402,7 @@ function parseUpcomingHtmlSummary(summary: string): { sport: string; opponent: s
 }
 
 function parseSummary(raw: string): { sport: string; opponent: string; isHome: boolean } | null {
-  const s = raw.replace(/^\[.\]\s*/, '').replace(/^UCI\s+/, '');
+  const s = raw.replace(/^\[.\]\s*/, '').replace(/^[A-Z][A-Za-z .&-]{1,30}\s+(?=[A-Z][a-z])/, '');
   const vsIdx = s.indexOf(' vs ');
   const atIdx = s.indexOf(' at ');
   let sport: string;
@@ -755,15 +758,26 @@ async function fetchSidearmResponsiveEvents(feed: Extract<SportsFeedConfig, { ki
     url.searchParams.set('location', 'all');
     url.searchParams.set('date', `${month.getMonth() + 1}/1/${month.getFullYear()}`);
     url.searchParams.set('year', String(month.getFullYear()));
-    const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
-    if (!response.ok) continue;
-    const days = await response.json();
-    (Array.isArray(days) ? days : []).forEach((day: any) => {
-      (day.events ?? []).forEach((game: any) => {
-        const event = eventFromSidearmGame(game);
-        if (event) events.push(event);
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeout = setTimeout(() => controller?.abort(), FEED_FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetch(url.toString(), {
+        headers: { Accept: 'application/json' },
+        signal: controller?.signal,
       });
-    });
+      if (!response.ok) continue;
+      const days: unknown = await response.json();
+      (Array.isArray(days) ? days : []).forEach((day: any) => {
+        (day.events ?? []).forEach((game: any) => {
+          const event = eventFromSidearmGame(game);
+          if (event) events.push(event);
+        });
+      });
+    } catch {
+      // network error or abort — skip this month
+    } finally {
+      clearTimeout(timeout);
+    }
   }
   return dedupeSportsEvents(filterSportsEventsByWindow(events, options).sort((a, b) => a.date.getTime() - b.date.getTime()));
 }
@@ -935,14 +949,28 @@ export async function enrichSportsEventsWithScheduleVenues(events: SportsEvent[]
 export async function fetchSportsEventsForSchool(school: string, options?: { maxDaysAhead?: number; includePastDays?: number }) {
   const feed = sportsFeedForSchool(school);
   if (!feed) return [];
-  if (feed.kind === 'sidearm-responsive') return fetchSidearmResponsiveEvents(feed, options);
-  if (feed.kind === 'schedule-pages') return fetchSchedulePageEvents(feed, options);
 
-  const response = await fetch(feed.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-  if (!response.ok) return [];
-  const text = await response.text();
-  if (feed.kind === 'sidearm-components') return parseSidearmComponentsEvents(text, options);
+  try {
+    if (feed.kind === 'sidearm-responsive') return await fetchSidearmResponsiveEvents(feed, options);
+    if (feed.kind === 'schedule-pages') return await fetchSchedulePageEvents(feed, options);
 
-  const events = parseSportsCalendar(text, options);
-  return feed.kind === 'uci-calendar' ? enrichSportsEventsWithScheduleVenues(events) : events;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeout = setTimeout(() => controller?.abort(), FEED_FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetch(feed.url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: controller?.signal,
+      });
+      if (!response.ok) return [];
+      const text = await response.text();
+      if (feed.kind === 'sidearm-components') return parseSidearmComponentsEvents(text, options);
+
+      const events = parseSportsCalendar(text, options);
+      return feed.kind === 'uci-calendar' ? enrichSportsEventsWithScheduleVenues(events) : events;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    return [];
+  }
 }

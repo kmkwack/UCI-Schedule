@@ -336,6 +336,33 @@ const QUARTERS = [
 ### Session 92 (Hero info sheet — fix click-blocking + orphaned JSX)
 - `src/screens/HomeScreen.tsx` — Replaced transparent `<Modal>` hero info sheet (which was inside the main `ScrollView`) with an absolutely-positioned `Animated.View` overlay rendered **after** `</ScrollView>`. The Modal-inside-ScrollView pattern leaves an invisible touch-blocking layer on iOS after dismissal. New overlay: `heroSheetVisible && <View pointerEvents="box-none">` containing a full-screen backdrop `TouchableOpacity` + `Animated.View` sheet sliding from `heroSheetSlideAnim`. `openHeroSheetFor` springs `heroSheetSlideAnim` to 0; `closeHeroSheet` times it back to 700 before hiding. Removed orphaned hero sheet JSX (~160 lines) that was still inside the ScrollView from the partial modal migration, which was causing TypeScript "unclosed JSX tag" errors.
 
+### Session 93 (Production hardening — 전면 버그 수정)
+- `src/data/sportsEvents.ts` — `fetchSportsEventsForSchool()` 전체를 outer try/catch + AbortController(10s) 타임아웃으로 감쌈. `fetchSidearmResponsiveEvents()` for 루프 내 fetch에 AbortController + try/catch/finally 추가. `isGenericSportsLocation()` UCI 하드코딩("uci athletics", "uci campus") 제거 → 정규식 기반 범용 패턴으로 교체. `parseUpcomingHtmlSummary()` / `parseSummary()` UCI 학교명 하드코딩 제거 → 대문자 시작 최대 30자 학교명을 포괄하는 정규식으로 교체. `FEED_FETCH_TIMEOUT_MS = 10_000` 상수 추가.
+- `src/lib/supabaseErrors.ts` — `isMissingSchoolColumnError()`: `text.includes('school')` 과도한 오탐 제거, details+hint에 'school'+'column' 둘 다 있을 때만 true. `isRlsError()` (코드 42501) 신규 추가. `isNetworkError()` 신규 추가.
+- `src/screens/FriendsScreen.tsx` — `loadClassmates()` AsyncStorage 캐시 `JSON.parse` try/catch 추가 — 캐시 손상 시 크래시 방지.
+- `src/screens/HomeScreen.tsx` — `extractStartHour()` / `extractEndHour()`: "TBA" 등 비정상 time 입력 시 NaN 대신 0 반환으로 크래시 방지. `syncCalendarTasks()` calendar feed fetch에 15초 AbortController 타임아웃 추가 — 느린 Canvas/Brightspace 서버에서 무한 로딩 방지. `resetSportsEventDetailScroll()` setTimeout들을 배열로 관리해 cleanup 가능하게 수정.
+- `src/screens/CoursePickerScreen.tsx` — 글로벌 검색 setTimeout async 블록에 `cancelled` 플래그 + try/catch/finally 추가 — unmount 후 setState 방지 및 에러 시 로딩 스피너 영구 표시 방지. `isUciSchool` 기준으로 학교 전환 시 GE 필터 자동 초기화 useEffect 추가.
+- `src/screens/GradesScreen.tsx` — `AsyncStorage.setItem` 3곳 모두 `void` 명시 (fire-and-forget 의도 명확화).
+- `App.tsx` — `ScheduleLoader` `Animated.stagger`/`Animated.loop` 참조 보존 후 cleanup return에서 `.stop()` 호출 — unmount 후 메모리 누수 방지. `handleLogout()` signOut `.catch()` 핸들러 추가. timetable load 에러에서 `isRlsError` 체크 추가. `isRlsError` import 추가. 학교 전환 시 `setTimetables([])` 즉시 호출 제거 → 새 데이터 로드 후 교체 방식으로 변경 (빈 화면 순간 노출 방지). `courses` 필드 캐스팅에 `Array.isArray` 방어 코드 추가.
+
+### Session 93 (Academic Calendar — Supabase 기반 + 전 학교 P/NP 마감 추가)
+- `src/data/academicCalendar.ts` — 전면 재작성. Supabase `academic_calendar` 테이블 fetch (24h AsyncStorage 캐시) → 로컬 fallback 순서. `fetchAcademicEvents(school, quarterKey)`, `filterUpcomingEvents()`, `daysUntilEvent()`, `invalidateAcademicCalendarCache()` export. 카테고리에 `passnopass`(P/NP·S/U·Credit/No Credit), `withdrawal`(W등급 취소) 신규 추가.
+- `supabase/academic_calendar.sql` — 신규. 테이블 생성 + RLS(공개 읽기) + 5개 학교 seed 데이터 (UCI/Cornell/Purdue/UMD/UIUC, 2026 Winter·Spring·Fall). P/NP 마감·수강취소 마감·최종성적 제출일 포함. 새 학기는 Supabase 대시보드에서 INSERT만 하면 자동 반영.
+- `src/screens/HomeScreen.tsx` — `upcomingAcademicEvents` useMemo → useState+useEffect (비동기 fetch)로 교체.
+
+### Session 93 (Academic Calendar 가로 스크롤 스트립)
+- `src/data/academicCalendar.ts` — 신규 파일. 학교×학기 key dates 데이터 (UCI, Cornell, Purdue, UMD, UIUC; 2026 Spring/Winter/Fall). `getUpcomingAcademicEvents()`, `daysUntilEvent()`, `CATEGORY_CONFIG` export. 카테고리: instruction/enrollment/deadline/holiday/finals/graduation.
+- `src/screens/HomeScreen.tsx` — 소형 카드(Dining/Sports/Campus) 아래 Academic Calendar 가로 스크롤 스트립 추가. 카드 130px 고정 너비, 카테고리 아이콘 + D-day 배지 + 날짜 표시. D-7 이내 주황, D-3 이내 빨간 강조. 탭 시 animated 바텀시트 (날짜, 카테고리, Registrar 링크 버튼). `formatAcademicDate()` 헬퍼, `openAcademicSheet` / `closeAcademicSheet` + 관련 Animated.Value 추가. `upcomingAcademicEvents` useMemo (school + quarterKey + now 의존). 데이터 없는 학교/학기는 스트립 미표시.
+
+### Session 93 (MiniLoader — 앱 전체 로딩 통일)
+- `src/components/ScheduleLoader.tsx` — 신규 공유 컴포넌트. `FullScreenLoader` (부트 화면용, 5×6 그리드 + 요일 라벨 + 펄스 텍스트)와 `MiniLoader` (인라인 콘텐츠용, 동일 그리드 소형 18×10 + 선택적 라벨) 두 가지 export.
+- `App.tsx` — 인라인 `ScheduleLoader` 함수 및 관련 상수 제거. `FullScreenLoader` import로 교체. 부트 로딩 화면 동일하게 유지.
+- `src/screens/CoursePickerScreen.tsx` — 수업 로딩 카드 내 `ActivityIndicator` → `MiniLoader` 교체.
+- `src/screens/FriendsScreen.tsx` — Friends/Requests 탭 `SkeletonBlock` 2곳, 쿼터 로딩 `ActivityIndicator` → `MiniLoader` 교체.
+- `src/screens/SettingsScreen.tsx` — Reports/Boards/Board Requests/Blocked Friends/Banned Words 로딩 `ActivityIndicator` 5곳 → `MiniLoader` 교체.
+- `src/screens/BoardScreen.tsx` — 첨부파일 업로드 중 `ActivityIndicator` → `MiniLoader` 교체.
+- 버튼 내부 `ActivityIndicator` (submit, save, delete, Google sign-in 등)은 크기상 유지.
+
 ### Session 61 (RMP moved to ReviewsModal + Reviews button layout)
 - `src/components/ReviewsModal.tsx` — Added `sectionType: string` prop. Added RMP row in course info section (shows prof name as tappable link to RateMyProfessors). `fetchReviews` and `handleSubmit` filter/set `section_type`. Supabase `reviews` table requires `ALTER TABLE reviews ADD COLUMN section_type TEXT;`.
 - `src/screens/CoursePickerScreen.tsx` — Removed RMP button from section rows. Reviews button moved directly beneath Add button. Star rating ("★ X.X · N ratings") moved beneath Reviews button in right column. `fetchReviewSummary(courseCode, sectionType)` cache keyed as `"ECON 100A::Lec"`. Early-return guard: `if (cache[key]?.count)` (not truthy check). `handleExpandCourse` fetches summaries for all unique section types in the course.

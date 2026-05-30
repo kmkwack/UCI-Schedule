@@ -43,6 +43,7 @@ import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import type { ChatTarget } from '../data/messages';
 import { EmptyState, SkeletonBlock } from '../components/Polish';
+import { MiniLoader } from '../components/ScheduleLoader';
 import {
   HORIZONTAL_SWIPE_ACTIVATION_DX,
   HORIZONTAL_SWIPE_DOMINANCE_RATIO,
@@ -379,12 +380,16 @@ export default function FriendsScreen({
       const cached = await AsyncStorage.getItem(classmateCacheKey);
       if (cancelled) return;
       if (cached) {
-        const { friends: cf, pendingRequests: cp, sentRequests: cs, sentRequestIds: csi } = JSON.parse(cached);
-        setFriends(cf ?? []);
-        setPendingRequests(cp ?? []);
-        setSentRequests(cs ?? []);
-        setSentRequestIds(csi ?? []);
-        setFriendsLoading(false);
+        try {
+          const { friends: cf, pendingRequests: cp, sentRequests: cs, sentRequestIds: csi } = JSON.parse(cached);
+          setFriends(cf ?? []);
+          setPendingRequests(cp ?? []);
+          setSentRequests(cs ?? []);
+          setSentRequestIds(csi ?? []);
+          setFriendsLoading(false);
+        } catch {
+          // corrupted cache — ignore and fetch fresh
+        }
       } else {
         setFriendsLoading(true);
       }
@@ -1349,16 +1354,8 @@ export default function FriendsScreen({
           </View>
 
           {friendsLoading ? (
-            <View style={{ minHeight: 260, paddingHorizontal: 16, paddingTop: 18, gap: 12 }}>
-              {[0, 1, 2].map((index) => (
-                <View key={`friend-skeleton-${index}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <SkeletonBlock width={50} height={50} radius={25} />
-                  <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
-                    <SkeletonBlock height={14} radius={7} width={index === 1 ? '58%' : '74%'} />
-                    <SkeletonBlock height={12} radius={6} width={index === 1 ? '76%' : '88%'} />
-                  </View>
-                </View>
-              ))}
+            <View style={{ minHeight: 260, alignItems: 'center', justifyContent: 'center' }}>
+              <MiniLoader label="Loading classmates..." labelColor="rgba(0,0,0,0.35)" />
             </View>
           ) : filteredFriends.length === 0 ? (
             <EmptyState
@@ -1485,9 +1482,8 @@ export default function FriendsScreen({
           )}
           </ScrollView>
         ) : friendsLoading ? (
-          <View style={{ paddingHorizontal: 16, paddingTop: 22, gap: 12 }}>
-            <SkeletonBlock height={64} radius={18} />
-            <SkeletonBlock height={64} radius={18} width="92%" />
+          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+            <MiniLoader labelColor="rgba(0,0,0,0.35)" />
           </View>
         ) : pendingRequests.length === 0 && sentRequests.length === 0 ? (
           <EmptyState
@@ -1595,9 +1591,8 @@ export default function FriendsScreen({
                 opacity: quarterDropdownAnim,
               }}>
                 {fetchingQuarters ? (
-                  <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
-                    <ActivityIndicator size="small" color={colors.brand} style={{ marginBottom: 6 }} />
-                    <Text style={{ color: colors.textSecondary, fontSize: 14 }}>Loading…</Text>
+                  <View style={{ alignItems: 'center', paddingVertical: 18 }}>
+                    <MiniLoader labelColor="rgba(0,0,0,0.35)" />
                   </View>
                 ) : friendAvailableQuarters.length === 0 ? (
                   <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>

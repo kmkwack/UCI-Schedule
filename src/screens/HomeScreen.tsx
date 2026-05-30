@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, blockColorKey, formatCourseTimeRange12, pastelForCourse, quarterKey } from '../data/courses';
+import { CATEGORY_CONFIG, daysUntilEvent, fetchAcademicEvents, filterUpcomingEvents, type AcademicEvent } from '../data/academicCalendar';
 import { buildSectionMatchKey, getSharedClassMatch, normalizeCourseCode, type SharedClassMatch } from '../data/sharedClasses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
@@ -978,6 +979,13 @@ function getDateLabel(now: Date, selectedQuarter: Quarter, quarterStart: Date, q
   return `${month} ${date} ${dayName} · ${termLabel(selectedQuarter, school)} · Week ${week}`;
 }
 
+function formatAcademicDate(isoDate: string): string {
+  // "2026-06-06" → "Jun 6"
+  const [, month, day] = isoDate.split('-').map(Number);
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${monthNames[(month ?? 1) - 1]} ${day}`;
+}
+
 function formatEventDayLabel(date: Date, timeZone: string) {
   const parts = getZonedDateParts(date, timeZone);
   const dayName = DAY_LABELS[zonedWeekdayIndex(date, timeZone)];
@@ -1089,16 +1097,20 @@ function getDaysArray(daysString: string): string[] {
   return result;
 }
 
-function extractStartHour(timeRange: string) {
-  const start = timeRange.split(' - ')[0];
+function extractStartHour(timeRange: string): number {
+  const start = timeRange?.split(' - ')[0];
+  if (!start) return 0;
   const [hour, minute] = start.split(':').map(Number);
-  return hour + minute / 60;
+  if (isNaN(hour)) return 0;
+  return hour + (minute || 0) / 60;
 }
 
-function extractEndHour(timeRange: string) {
-  const end = timeRange.split(' - ')[1];
+function extractEndHour(timeRange: string): number {
+  const end = timeRange?.split(' - ')[1];
+  if (!end) return 0;
   const [hour, minute] = end.split(':').map(Number);
-  return hour + minute / 60;
+  if (isNaN(hour)) return 0;
+  return hour + (minute || 0) / 60;
 }
 
 function dateFromHour(baseDate: Date, hourValue: number, timeZone: string) {
@@ -1378,9 +1390,10 @@ export default function HomeScreen({
   const sportsEventCommentFooterPadding = sportsEventKeyboardVisible ? 8 : Math.max(bottomInset, 12) + 10;
   const sportsEventScrollBottomPadding = sportsEventKeyboardVisible ? 92 : 18;
   const resetSportsEventDetailScroll = useCallback(() => {
-    [0, 80, 180].forEach((delay) => {
-      setTimeout(() => sportsEventScrollRef.current?.scrollTo({ y: 0, animated: false }), delay);
-    });
+    const timers = [0, 80, 180].map((delay) =>
+      setTimeout(() => sportsEventScrollRef.current?.scrollTo({ y: 0, animated: false }), delay)
+    );
+    return () => timers.forEach(clearTimeout);
   }, []);
 
   useEffect(() => {
@@ -1453,7 +1466,14 @@ export default function HomeScreen({
     setCalendarTasksLoading(true);
     setCalendarTasksError(null);
     try {
-      const response = await fetch(trimmedUrl);
+      const calController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const calTimeout = setTimeout(() => calController?.abort(), 15_000);
+      let response: Response;
+      try {
+        response = await fetch(trimmedUrl, { signal: calController?.signal });
+      } finally {
+        clearTimeout(calTimeout);
+      }
       if (!response.ok) throw new Error(`Calendar feed returned ${response.status}`);
       const text = await response.text();
       const parsedTasks = parseCalendarTasksFromIcs(text, effectiveTimeZone);
@@ -1987,6 +2007,45 @@ export default function HomeScreen({
   const mainHeroItem: HeroCardItem = todayCourses.length > 0
     ? { type: 'upcomingSummary', courses: todayCourses }
     : { type: 'idleSummary' };
+  // ── Academic Calendar sheet ──────────────────────────────────────────────
+  const [selectedAcademicEvent, setSelectedAcademicEvent] = useState<AcademicEvent | null>(null);
+  const [academicSheetVisible, setAcademicSheetVisible] = useState(false);
+  const academicSheetAnim = useRef(new Animated.Value(700)).current;
+  const academicBackdropAnim = useRef(new Animated.Value(0)).current;
+
+  const openAcademicSheet = useCallback((event: AcademicEvent) => {
+    setSelectedAcademicEvent(event);
+    setAcademicSheetVisible(true);
+    academicSheetAnim.setValue(700);
+    academicBackdropAnim.setValue(0);
+    Animated.parallel([
+      Animated.spring(academicSheetAnim, { toValue: 0, useNativeDriver: true, damping: 28, stiffness: 320, mass: 0.85 }),
+      Animated.timing(academicBackdropAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+    ]).start();
+    triggerSelectionHaptic();
+  }, [academicSheetAnim, academicBackdropAnim]);
+
+  const closeAcademicSheet = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(academicSheetAnim, { toValue: 700, duration: 250, useNativeDriver: true }),
+      Animated.timing(academicBackdropAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start(() => {
+      setAcademicSheetVisible(false);
+      setSelectedAcademicEvent(null);
+    });
+  }, [academicSheetAnim, academicBackdropAnim]);
+
+  const qKey = quarterKey(selectedQuarter);
+  const [upcomingAcademicEvents, setUpcomingAcademicEvents] = useState<AcademicEvent[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAcademicEvents(school, qKey).then((events) => {
+      if (!cancelled) setUpcomingAcademicEvents(filterUpcomingEvents(events, new Date()));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [school, qKey]);
+
   const [openHeroSheet, setOpenHeroSheet] = useState<'dining' | 'sports' | 'campus' | null>(null);
   const [heroSheetVisible, setHeroSheetVisible] = useState(false);
   const heroSheetSlideAnim = useRef(new Animated.Value(700)).current;
@@ -3424,6 +3483,105 @@ export default function HomeScreen({
         </View>
       )}
 
+      {/* ── Academic Calendar Strip ─────────────────────────────────────── */}
+      {upcomingAcademicEvents.length > 0 && (
+        <View style={{ marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Academic Calendar</Text>
+            <Text style={{ fontSize: 12, color: colors.textTertiary }}>{termLabel(selectedQuarter, school)}</Text>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 10, paddingRight: 2 }}
+          >
+            {upcomingAcademicEvents.map((event) => {
+              const days = daysUntilEvent(event, now);
+              const cfg = CATEGORY_CONFIG[event.category];
+              const isUrgent = days <= 7;
+              const isVeryUrgent = days <= 3;
+              const isToday = days === 0;
+              const isOngoing = event.endDate && days <= 0 && event.endDate >= now.toISOString().slice(0, 10);
+
+              const cardBg = isVeryUrgent
+                ? (isDark ? '#3B0A0A' : '#FEF2F2')
+                : isUrgent
+                  ? (isDark ? '#2D1A00' : '#FFFBEB')
+                  : (isDark ? colors.card : cfg.bg);
+
+              const accentColor = isVeryUrgent
+                ? '#EF4444'
+                : isUrgent
+                  ? '#F59E0B'
+                  : cfg.color;
+
+              const borderColor = isVeryUrgent
+                ? (isDark ? '#7F1D1D' : '#FECACA')
+                : isUrgent
+                  ? (isDark ? '#78350F' : '#FDE68A')
+                  : (isDark ? colors.border : `${cfg.color}30`);
+
+              const dLabel = isToday
+                ? 'Today'
+                : isOngoing
+                  ? 'Ongoing'
+                  : days === 1
+                    ? 'Tomorrow'
+                    : days < 0
+                      ? 'Past'
+                      : `D-${days}`;
+
+              return (
+                <TouchableOpacity
+                  key={event.id}
+                  onPress={() => openAcademicSheet(event)}
+                  activeOpacity={0.76}
+                  style={{
+                    width: 130,
+                    borderRadius: 18,
+                    borderWidth: 1.5,
+                    borderColor,
+                    backgroundColor: cardBg,
+                    padding: 14,
+                    justifyContent: 'space-between',
+                    minHeight: 110,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <Text style={{ fontSize: 22 }}>{cfg.icon}</Text>
+                    <View style={{
+                      borderRadius: 999,
+                      backgroundColor: `${accentColor}18`,
+                      borderWidth: 1,
+                      borderColor: `${accentColor}40`,
+                      paddingHorizontal: 7,
+                      paddingVertical: 3,
+                    }}>
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: accentColor }}>{dLabel}</Text>
+                    </View>
+                  </View>
+                  <View>
+                    <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '800', color: colors.text, lineHeight: 17 }}>
+                      {event.title}
+                    </Text>
+                    {event.subtitle ? (
+                      <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary, marginTop: 3 }}>
+                        {event.subtitle}
+                      </Text>
+                    ) : null}
+                    <Text style={{ fontSize: 11, color: accentColor, fontWeight: '700', marginTop: 5 }}>
+                      {event.endDate && event.endDate !== event.date
+                        ? `${formatAcademicDate(event.date)} – ${formatAcademicDate(event.endDate)}`
+                        : formatAcademicDate(event.date)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       <View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <View>
@@ -3679,6 +3837,107 @@ export default function HomeScreen({
         </View>
       </View>
       </ScrollView>
+
+      {/* ── Academic Calendar detail sheet ───────────────────────────── */}
+      {academicSheetVisible && selectedAcademicEvent && (() => {
+        const event = selectedAcademicEvent;
+        const days = daysUntilEvent(event, now);
+        const cfg = CATEGORY_CONFIG[event.category];
+        const isUrgent = days <= 7;
+        const isVeryUrgent = days <= 3;
+        const accentColor = isVeryUrgent ? '#EF4444' : isUrgent ? '#F59E0B' : cfg.color;
+        const isMultiDay = event.endDate && event.endDate !== event.date;
+        const isOngoing = event.endDate && days <= 0 && event.endDate >= now.toISOString().slice(0, 10);
+        const dLabel = days === 0 ? 'Today' : isOngoing ? 'Ongoing' : days === 1 ? 'Tomorrow' : days < 0 ? 'Ended' : `${days} days away`;
+        return (
+          <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} pointerEvents="box-none">
+            <Animated.View
+              style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.45)', opacity: academicBackdropAnim }}
+              pointerEvents="auto"
+            >
+              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeAcademicSheet} />
+            </Animated.View>
+            <Animated.View style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0,
+              transform: [{ translateY: academicSheetAnim }],
+              backgroundColor: colors.bg,
+              borderTopLeftRadius: 26,
+              borderTopRightRadius: 26,
+              paddingBottom: Math.max(bottomInset, 20) + 8,
+              overflow: 'hidden',
+            }}>
+              <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
+                <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+              </View>
+              <View style={{ paddingHorizontal: 22, paddingTop: 12, paddingBottom: 20 }}>
+                {/* Header */}
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20 }}>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                      <Text style={{ fontSize: 30 }}>{cfg.icon}</Text>
+                      <View style={{
+                        borderRadius: 999,
+                        backgroundColor: `${accentColor}18`,
+                        borderWidth: 1,
+                        borderColor: `${accentColor}40`,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                      }}>
+                        <Text style={{ fontSize: 12, fontWeight: '900', color: accentColor }}>{dLabel}</Text>
+                      </View>
+                    </View>
+                    <Text style={{ fontSize: 24, fontWeight: '800', color: colors.text, lineHeight: 29 }}>{event.title}</Text>
+                    {event.subtitle ? (
+                      <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 4 }}>{event.subtitle}</Text>
+                    ) : null}
+                  </View>
+                  <TouchableOpacity
+                    onPress={closeAcademicSheet}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Ionicons name="close" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                {/* Date card */}
+                <View style={{ borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, padding: 16, marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name="calendar-outline" size={20} color={accentColor} />
+                    <View>
+                      <Text style={{ fontSize: 13, color: colors.textTertiary, fontWeight: '600', marginBottom: 2 }}>
+                        {isMultiDay ? 'Date Range' : 'Date'}
+                      </Text>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>
+                        {isMultiDay
+                          ? `${formatAcademicDate(event.date)} – ${formatAcademicDate(event.endDate!)}`
+                          : formatAcademicDate(event.date)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                {/* Action buttons */}
+                {event.url ? (
+                  <TouchableOpacity
+                    onPress={() => void Linking.openURL(event.url!)}
+                    style={{
+                      borderRadius: 14,
+                      backgroundColor: colors.brand,
+                      paddingVertical: 14,
+                      alignItems: 'center',
+                      flexDirection: 'row',
+                      justifyContent: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <Ionicons name="open-outline" size={16} color="white" />
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>View on Registrar</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </Animated.View>
+          </View>
+        );
+      })()}
 
       {/* ── Hero info sheet (absolutely positioned, no Modal) ── */}
       {heroSheetVisible && (

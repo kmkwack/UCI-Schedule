@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Alert,
-  ActivityIndicator,
   Animated,
   PanResponder,
   View,

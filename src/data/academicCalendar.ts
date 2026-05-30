@@ -21,15 +21,16 @@ export type AcademicEvent = {
   url?: string;
 };
 
-export const CATEGORY_CONFIG: Record<AcademicEventCategory, { icon: string; color: string; bg: string }> = {
-  instruction: { icon: '📚', color: '#4169E1', bg: '#EEF2FF' },
-  enrollment:  { icon: '✏️', color: '#7C3AED', bg: '#F5F3FF' },
-  passnopass:  { icon: '🔄', color: '#0891B2', bg: '#ECFEFF' },
-  withdrawal:  { icon: '🚪', color: '#EA580C', bg: '#FFF7ED' },
-  deadline:    { icon: '⏰', color: '#D97706', bg: '#FFFBEB' },
-  holiday:     { icon: '🌿', color: '#059669', bg: '#ECFDF5' },
-  finals:      { icon: '📝', color: '#DC2626', bg: '#FEF2F2' },
-  graduation:  { icon: '🎓', color: '#D97706', bg: '#FFFBEB' },
+// Ionicons name + brand-toned accent — consistent with app's design language
+export const CATEGORY_CONFIG: Record<AcademicEventCategory, { ionIcon: string; accent: string }> = {
+  instruction: { ionIcon: 'book-outline',             accent: '#4169E1' },
+  enrollment:  { ionIcon: 'pencil-outline',            accent: '#4169E1' },
+  passnopass:  { ionIcon: 'swap-horizontal-outline',   accent: '#4169E1' },
+  withdrawal:  { ionIcon: 'exit-outline',              accent: '#4169E1' },
+  deadline:    { ionIcon: 'time-outline',              accent: '#4169E1' },
+  holiday:     { ionIcon: 'sunny-outline',             accent: '#4169E1' },
+  finals:      { ionIcon: 'document-text-outline',     accent: '#4169E1' },
+  graduation:  { ionIcon: 'school-outline',            accent: '#4169E1' },
 };
 
 // ─── Local fallback data ──────────────────────────────────────────────────────
@@ -38,6 +39,17 @@ export const CATEGORY_CONFIG: Record<AcademicEventCategory, { icon: string; colo
 
 const LOCAL_FALLBACK: Record<string, Record<string, AcademicEvent[]>> = {
   'UC Irvine': {
+    '2025-Fall': [
+      { id: 'uci-fa25-start',        title: 'Instruction Begins',       date: '2025-09-22', category: 'instruction' },
+      { id: 'uci-fa25-adddrop',      title: 'Add/Drop Deadline',        subtitle: 'No dean\'s approval needed (5 PM)', date: '2025-10-10', category: 'enrollment',  url: 'https://reg.uci.edu/calendars/quarterly/2025-2026/quarterly25-26.html' },
+      { id: 'uci-fa25-pnp',          title: 'P/NP Change Deadline',     subtitle: 'Last drop without W grade (5 PM)',  date: '2025-11-07', category: 'passnopass',  url: 'https://reg.uci.edu/enrollment/grading/passnopass.html' },
+      { id: 'uci-fa25-veterans',     title: 'Veterans Day',             subtitle: 'No classes',                        date: '2025-11-11', category: 'holiday' },
+      { id: 'uci-fa25-thanksgiving', title: 'Thanksgiving',             subtitle: 'No classes',                        date: '2025-11-27', endDate: '2025-11-28', category: 'holiday' },
+      { id: 'uci-fa25-withdraw',     title: 'Withdrawal Deadline',      subtitle: 'W grade assigned (5 PM)',           date: '2025-12-05', category: 'withdrawal',  url: 'https://reg.uci.edu/calendars/quarterly/2025-2026/quarterly25-26.html' },
+      { id: 'uci-fa25-lastday',      title: 'Last Day of Instruction',  date: '2025-12-05', category: 'instruction' },
+      { id: 'uci-fa25-finals',       title: 'Finals Week',              date: '2025-12-06', endDate: '2025-12-12',   category: 'finals',      url: 'https://reg.uci.edu/calendars/quarterly/2025-2026/quarterly25-26.html' },
+      { id: 'uci-fa25-grades',       title: 'Final Grades Due',         subtitle: 'Grades available 10 PM',           date: '2025-12-18', category: 'deadline' },
+    ],
     '2026-Winter': [
       { id: 'uci-wi26-start',      title: 'Instruction Begins',       date: '2026-01-05', category: 'instruction' },
       { id: 'uci-wi26-mlk',        title: 'MLK Day',                  subtitle: 'No classes',                     date: '2026-01-19', category: 'holiday' },

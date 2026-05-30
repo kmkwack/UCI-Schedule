@@ -345,6 +345,12 @@ const QUARTERS = [
 - `src/screens/GradesScreen.tsx` — `AsyncStorage.setItem` 3곳 모두 `void` 명시 (fire-and-forget 의도 명확화).
 - `App.tsx` — `ScheduleLoader` `Animated.stagger`/`Animated.loop` 참조 보존 후 cleanup return에서 `.stop()` 호출 — unmount 후 메모리 누수 방지. `handleLogout()` signOut `.catch()` 핸들러 추가. timetable load 에러에서 `isRlsError` 체크 추가. `isRlsError` import 추가. 학교 전환 시 `setTimetables([])` 즉시 호출 제거 → 새 데이터 로드 후 교체 방식으로 변경 (빈 화면 순간 노출 방지). `courses` 필드 캐스팅에 `Array.isArray` 방어 코드 추가.
 
+### Session 93 (전체 점검 — Critical/High/Medium 수정)
+- `src/screens/HomeScreen.tsx` — `settleSportsEventComposer`: `[0,90,180,340].forEach(setTimeout)` 패턴을 배열 관리 + cleanup 가능하도록 수정. 3개 지연 타이머를 배열로 관리, 즉시 scroll은 직접 호출로 분리. unmount 후 scroll 접근 크래시 방지.
+- `src/data/uciDining.ts` — `fetchUciDiningSummaries()`: AbortController 8초 타임아웃 추가. 느린 UCI Dining API 서버에서 무한 대기 방지.
+- `src/screens/CoursePickerScreen.tsx` — 학교 전환 시 `selectedDepts` + `searchText` 미초기화 버그 수정. `prevSchoolRef`로 school 변경 감지, 전환 시 필터/검색어 전체 초기화.
+- `src/screens/FriendsScreen.tsx` — `ActivityIndicator` (MiniLoader 교체 후 잔존), `SkeletonBlock` (MiniLoader 교체 후 잔존) 미사용 import 제거.
+
 ### Session 93 (Academic Calendar — Supabase 기반 + 전 학교 P/NP 마감 추가)
 - `src/data/academicCalendar.ts` — 전면 재작성. Supabase `academic_calendar` 테이블 fetch (24h AsyncStorage 캐시) → 로컬 fallback 순서. `fetchAcademicEvents(school, quarterKey)`, `filterUpcomingEvents()`, `daysUntilEvent()`, `invalidateAcademicCalendarCache()` export. 카테고리에 `passnopass`(P/NP·S/U·Credit/No Credit), `withdrawal`(W등급 취소) 신규 추가.
 - `supabase/academic_calendar.sql` — 신규. 테이블 생성 + RLS(공개 읽기) + 5개 학교 seed 데이터 (UCI/Cornell/Purdue/UMD/UIUC, 2026 Winter·Spring·Fall). P/NP 마감·수강취소 마감·최종성적 제출일 포함. 새 학기는 Supabase 대시보드에서 INSERT만 하면 자동 반영.

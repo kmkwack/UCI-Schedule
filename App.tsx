@@ -2867,6 +2867,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 	        school={currentSchool}
 	        timeZone={effectiveTimeZone}
 	        onAssignmentCalendarChange={handleAssignmentCalendarChange}
+          timetableSettings={timetableSettings}
 	      />
     );
   } else if (currentTab === 'timetable') {

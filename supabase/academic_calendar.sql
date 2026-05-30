@@ -203,3 +203,20 @@ ON CONFLICT (id) DO UPDATE SET
 --   title = EXCLUDED.title, subtitle = EXCLUDED.subtitle,
 --   date = EXCLUDED.date, end_date = EXCLUDED.end_date,
 --   category = EXCLUDED.category, url = EXCLUDED.url;
+
+-- UC Irvine — Fall 2025 (학사년도 2025-26)
+-- Source: https://reg.uci.edu/calendars/quarterly/2025-2026/quarterly25-26.html
+INSERT INTO academic_calendar (id, school, quarter_key, title, subtitle, date, end_date, category, url) VALUES
+  ('uci-fa25-start',        'UC Irvine', '2025-Fall', 'Instruction Begins',      null,                                    '2025-09-22', null,         'instruction', null),
+  ('uci-fa25-adddrop',      'UC Irvine', '2025-Fall', 'Add/Drop Deadline',       'No dean''s approval needed (5 PM)',     '2025-10-10', null,         'enrollment',  'https://reg.uci.edu/calendars/quarterly/2025-2026/quarterly25-26.html'),
+  ('uci-fa25-pnp',          'UC Irvine', '2025-Fall', 'P/NP Change Deadline',    'Last drop without W grade (5 PM)',      '2025-11-07', null,         'passnopass',  'https://reg.uci.edu/enrollment/grading/passnopass.html'),
+  ('uci-fa25-veterans',     'UC Irvine', '2025-Fall', 'Veterans Day',            'No classes',                            '2025-11-11', null,         'holiday',     null),
+  ('uci-fa25-thanksgiving', 'UC Irvine', '2025-Fall', 'Thanksgiving',            'No classes',                            '2025-11-27', '2025-11-28', 'holiday',     null),
+  ('uci-fa25-withdraw',     'UC Irvine', '2025-Fall', 'Withdrawal Deadline',     'W grade assigned (5 PM)',               '2025-12-05', null,         'withdrawal',  'https://reg.uci.edu/calendars/quarterly/2025-2026/quarterly25-26.html'),
+  ('uci-fa25-lastday',      'UC Irvine', '2025-Fall', 'Last Day of Instruction', null,                                    '2025-12-05', null,         'instruction', null),
+  ('uci-fa25-finals',       'UC Irvine', '2025-Fall', 'Finals Week',             null,                                    '2025-12-06', '2025-12-12', 'finals',      'https://reg.uci.edu/calendars/quarterly/2025-2026/quarterly25-26.html'),
+  ('uci-fa25-grades',       'UC Irvine', '2025-Fall', 'Final Grades Due',        'Grades available 10 PM',                '2025-12-18', null,         'deadline',    null)
+ON CONFLICT (id) DO UPDATE SET
+  title = EXCLUDED.title, subtitle = EXCLUDED.subtitle,
+  date = EXCLUDED.date, end_date = EXCLUDED.end_date,
+  category = EXCLUDED.category, url = EXCLUDED.url;

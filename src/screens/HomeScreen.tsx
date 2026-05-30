@@ -4,7 +4,7 @@ import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, Linking, 
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
-import { Course, Quarter, blockColorKey, formatCourseTimeRange12, pastelForCourse, quarterKey } from '../data/courses';
+import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, blockColorKey, formatCourseTimeRange12, getBlockColors, quarterKey } from '../data/courses';
 import { CATEGORY_CONFIG, daysUntilEvent, fetchAcademicEvents, filterUpcomingEvents, type AcademicEvent } from '../data/academicCalendar';
 import { buildSectionMatchKey, getSharedClassMatch, normalizeCourseCode, type SharedClassMatch } from '../data/sharedClasses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
@@ -48,6 +48,7 @@ type Props = {
   bottomInset?: number;
   scrollToTopTrigger?: number;
   onAssignmentCalendarChange?: () => void;
+  timetableSettings?: TimetableSettings;
 };
 
 type FriendRequestRow = {
@@ -1307,6 +1308,7 @@ export default function HomeScreen({
   bottomInset = 0,
   scrollToTopTrigger = 0,
   onAssignmentCalendarChange,
+  timetableSettings = DEFAULT_TIMETABLE_SETTINGS,
 }: Props) {
   const { colors, isDark } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -2045,7 +2047,19 @@ export default function HomeScreen({
   useEffect(() => {
     let cancelled = false;
     fetchAcademicEvents(school, qKey).then((events) => {
-      if (!cancelled) setUpcomingAcademicEvents(filterUpcomingEvents(events, new Date()));
+      if (!cancelled) {
+        // 현재 학기: 아직 안 지난 이벤트만 표시 (스트립 깔끔하게)
+        // 지난 학기: 전체 이벤트 표시 (학기 전체 일정 참고용)
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const quarterEndStr = events.length > 0
+          ? events[events.length - 1].endDate ?? events[events.length - 1].date
+          : todayStr;
+        const isCurrentOrFutureQuarter = quarterEndStr >= todayStr;
+        const filtered = isCurrentOrFutureQuarter
+          ? filterUpcomingEvents(events, new Date())
+          : events;
+        setUpcomingAcademicEvents(filtered);
+      }
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [school, qKey]);
@@ -3102,7 +3116,7 @@ export default function HomeScreen({
         ? dateFromHour(now, extractEndHour(lastSummaryCourse.time), effectiveTimeZone)
         : now;
     const accent = course
-      ? pastelForCourse(blockColorKey(course)).border
+      ? getBlockColors(course, timetableSettings.theme).border
       : item.type === 'completedSummary'
         ? colors.textTertiary
         : colors.brand;
@@ -3253,7 +3267,7 @@ export default function HomeScreen({
                 const rowIsCurrent = rowStartDate.getTime() <= now.getTime() && rowEndDate.getTime() >= now.getTime();
                 const summaryCourseAccent = rowIsPast
                   ? colors.border
-                  : pastelForCourse(blockColorKey(summaryCourse)).border;
+                  : getBlockColors(summaryCourse, timetableSettings.theme).border;
                 const rowPrimaryColor = rowIsPast ? colors.textTertiary : colors.text;
                 const rowSecondaryColor = rowIsPast ? colors.textTertiary : colors.textSecondary;
                 return (
@@ -3417,10 +3431,10 @@ export default function HomeScreen({
             >
               <View style={{
                 width: 34, height: 34, borderRadius: 10,
-                backgroundColor: 'rgba(245,158,11,0.12)',
+                backgroundColor: `${colors.brand}14`,
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                <Ionicons name="restaurant-outline" size={17} color="#F59E0B" />
+                <Ionicons name="restaurant-outline" size={17} color={colors.brand} />
               </View>
               <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Dining</Text>
               <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary }}>
@@ -3476,10 +3490,10 @@ export default function HomeScreen({
           >
             <View style={{
               width: 34, height: 34, borderRadius: 10,
-              backgroundColor: 'rgba(16,185,129,0.12)',
+              backgroundColor: `${colors.brand}14`,
               alignItems: 'center', justifyContent: 'center',
             }}>
-              <Ionicons name="map-outline" size={17} color="#10B981" />
+              <Ionicons name="map-outline" size={17} color={colors.brand} />
             </View>
             <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Campus</Text>
             <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary }}>Quick links</Text>
@@ -3500,22 +3514,6 @@ export default function HomeScreen({
             contentContainerStyle={{ gap: 8, paddingRight: 4 }}
           >
             {upcomingAcademicEvents.map((event) => {
-              const days = daysUntilEvent(event, now);
-              const cfg = CATEGORY_CONFIG[event.category];
-              const todayStr = now.toISOString().slice(0, 10);
-              const isOngoing = !!event.endDate && days <= 0 && event.endDate >= todayStr;
-              const isVeryUrgent = days >= 0 && days <= 3;
-              const isUrgent    = days >= 0 && days <= 7;
-
-              const accentColor = isVeryUrgent ? '#EF4444' : isUrgent ? '#F59E0B' : cfg.color;
-              const cardBg      = isDark ? colors.card : cfg.bg;
-              const borderColor = isDark ? colors.border : `${accentColor}35`;
-
-              const dLabel = days === 0  ? 'Today'
-                : days === 1             ? 'Tomorrow'
-                : isOngoing              ? 'Ongoing'
-                : `D-${days}`;
-
               const dateStr = event.endDate && event.endDate !== event.date
                 ? `${formatAcademicDate(event.date)} – ${formatAcademicDate(event.endDate)}`
                 : formatAcademicDate(event.date);
@@ -3526,42 +3524,23 @@ export default function HomeScreen({
                   onPress={() => openAcademicSheet(event)}
                   activeOpacity={0.76}
                   style={{
-                    width: 148,
-                    height: 104,
+                    width: 140,
                     borderRadius: 18,
-                    borderWidth: 1.5,
-                    borderColor,
-                    backgroundColor: cardBg,
-                    padding: 13,
-                    justifyContent: 'space-between',
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.card,
+                    paddingHorizontal: 14,
+                    paddingVertical: 13,
+                    gap: 4,
+                    justifyContent: 'center',
                   }}
                 >
-                  {/* Top row: icon + D-badge */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 20 }}>{cfg.icon}</Text>
-                    <View style={{
-                      borderRadius: 999,
-                      backgroundColor: `${accentColor}18`,
-                      borderWidth: 1,
-                      borderColor: `${accentColor}45`,
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                    }}>
-                      <Text style={{ fontSize: 10, fontWeight: '900', color: accentColor, letterSpacing: 0.2 }}>
-                        {dLabel}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Bottom: title + date */}
-                  <View style={{ gap: 2 }}>
-                    <Text numberOfLines={2} style={{ fontSize: 12, fontWeight: '800', color: colors.text, lineHeight: 16 }}>
-                      {event.title}
-                    </Text>
-                    <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: accentColor }}>
-                      {dateStr}
-                    </Text>
-                  </View>
+                  <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17 }}>
+                    {event.title}
+                  </Text>
+                  <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>
+                    {dateStr}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -3830,9 +3809,7 @@ export default function HomeScreen({
         const event = selectedAcademicEvent;
         const days = daysUntilEvent(event, now);
         const cfg = CATEGORY_CONFIG[event.category];
-        const isUrgent = days <= 7;
-        const isVeryUrgent = days <= 3;
-        const accentColor = isVeryUrgent ? '#EF4444' : isUrgent ? '#F59E0B' : cfg.color;
+        const accentColor = colors.brand;
         const isMultiDay = event.endDate && event.endDate !== event.date;
         const isOngoing = event.endDate && days <= 0 && event.endDate >= now.toISOString().slice(0, 10);
         const dLabel = days === 0 ? 'Today' : isOngoing ? 'Ongoing' : days === 1 ? 'Tomorrow' : days < 0 ? 'Ended' : `${days} days away`;
@@ -3850,7 +3827,7 @@ export default function HomeScreen({
               backgroundColor: colors.bg,
               borderTopLeftRadius: 26,
               borderTopRightRadius: 26,
-              paddingBottom: Math.max(bottomInset, 20) + 8,
+              paddingBottom: bottomInset + 84,
               overflow: 'hidden',
             }}>
               <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
@@ -3861,7 +3838,9 @@ export default function HomeScreen({
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20 }}>
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                      <Text style={{ fontSize: 30 }}>{cfg.icon}</Text>
+                      <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: `${accentColor}14`, alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name={cfg.ionIcon as any} size={24} color={accentColor} />
+                      </View>
                       <View style={{
                         borderRadius: 999,
                         backgroundColor: `${accentColor}18`,

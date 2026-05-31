@@ -115,9 +115,22 @@ function makeId(school, quarterKey, title) {
   return `auto-${slug}`;
 }
 
+// ─── Quarter assignment by date ───────────────────────────────────────────────
+// Given an ISO date string, assign it to the right quarter for UCI
+// (or any quarter-system school with Fall/Winter/Spring)
+function uciQuarterForDate(isoDate, y1, y2) {
+  const [year, month] = isoDate.split('-').map(Number);
+  if (year === y1 && month >= 9)  return `${y1}-Fall`;    // Sep-Dec → Fall
+  if (year === y2 && month <= 3)  return `${y2}-Winter`;  // Jan-Mar → Winter
+  if (year === y2 && month >= 3 && month <= 7) return `${y2}-Spring`; // Mar-Jul → Spring
+  if (year === y2 && month >= 6 && month <= 8) return null; // Summer → skip
+  return null;
+}
+
 // ─── UCI ─────────────────────────────────────────────────────────────────────
 // https://reg.uci.edu/calendars/quarterly/YYYY-YYYY/quarterlyYY-YY.html
 // Table: description | Fall | Winter | Spring
+// Holidays section uses different column layout — we use date-based assignment
 
 async function scrapeUci(academicYear) {
   const y1 = academicYear, y2 = academicYear + 1;
@@ -130,21 +143,32 @@ async function scrapeUci(academicYear) {
     { key: `${y2}-Winter`, year: y2 },
     { key: `${y2}-Spring`, year: y2 },
   ];
+  const quarterByKey = Object.fromEntries(quarters.map((q) => [q.key, q]));
 
-  const rules = [
-    { re: /instruction begins/i,                        title: 'Instruction Begins',    category: 'instruction' },
-    { re: /drop.*without dean.*approval/i,              title: 'Add/Drop Deadline',     category: 'enrollment',  subtitle: "No dean's approval needed (5 PM)", url },
-    { re: /grading option.*dean.*required/i,            title: 'P/NP Change Deadline',  category: 'passnopass',  subtitle: 'Last drop without W grade (5 PM)', url: 'https://reg.uci.edu/enrollment/grading/passnopass.html' },
-    { re: /withdraw.*W grade assigned/i,                title: 'Withdrawal Deadline',   category: 'withdrawal',  subtitle: 'W grade assigned (5 PM)', url },
-    { re: /instruction ends/i,                          title: 'Last Day of Instruction', category: 'instruction' },
-    { re: /final exam/i,                                title: 'Finals Week',            category: 'finals', url },
-    { re: /deadline.*submit.*final grades/i,            title: 'Final Grades Due',       category: 'deadline', subtitle: 'Grades available 10 PM' },
-    { re: /veterans day/i,                              title: 'Veterans Day',           category: 'holiday', subtitle: 'No classes', cols: [0] },
-    { re: /thanksgiving/i,                              title: 'Thanksgiving',           category: 'holiday', subtitle: 'No classes', cols: [0] },
-    { re: /martin luther king|mlk/i,                   title: 'MLK Day',               category: 'holiday', subtitle: 'No classes', cols: [1] },
-    { re: /president.{0,3}s.*day/i,                    title: "Presidents' Day",       category: 'holiday', subtitle: 'No classes', cols: [1] },
-    { re: /memorial day/i,                             title: 'Memorial Day',          category: 'holiday', subtitle: 'No classes', cols: [2] },
-    { re: /commencement/i,                             title: 'Commencement',          category: 'graduation', cols: [2] },
+  // Rules for column-based parsing (academic deadlines have clear column layout)
+  const colRules = [
+    { re: /instruction begins/i,              title: 'Instruction Begins',      category: 'instruction' },
+    { re: /drop.*without dean.*approval/i,    title: 'Add/Drop Deadline',       category: 'enrollment',  subtitle: "No dean's approval needed (5 PM)", url },
+    { re: /grading option.*dean.*required/i,  title: 'P/NP Change Deadline',    category: 'passnopass',  subtitle: 'Last drop without W grade (5 PM)', url: 'https://reg.uci.edu/enrollment/grading/passnopass.html' },
+    { re: /withdraw.*W grade assigned/i,      title: 'Withdrawal Deadline',     category: 'withdrawal',  subtitle: 'W grade assigned (5 PM)', url },
+    { re: /instruction ends/i,                title: 'Last Day of Instruction', category: 'instruction' },
+    { re: /final exam/i,                      title: 'Finals Week',             category: 'finals', url },
+    { re: /deadline.*submit.*final grades/i,  title: 'Final Grades Due',        category: 'deadline', subtitle: 'Grades available 10 PM' },
+  ];
+
+  // Rules for date-based parsing (holidays section has inconsistent columns)
+  const dateRules = [
+    { re: /labor day/i,                       title: 'Labor Day',               category: 'holiday', subtitle: 'No classes' },
+    { re: /veterans day/i,                    title: 'Veterans Day',            category: 'holiday', subtitle: 'No classes' },
+    { re: /thanksgiving/i,                    title: 'Thanksgiving',            category: 'holiday', subtitle: 'No classes' },
+    { re: /martin luther king|mlk/i,          title: 'MLK Day',                category: 'holiday', subtitle: 'No classes' },
+    { re: /president.{0,3}s.*day/i,           title: "Presidents' Day",        category: 'holiday', subtitle: 'No classes' },
+    { re: /memorial day/i,                    title: 'Memorial Day',           category: 'holiday', subtitle: 'No classes' },
+    { re: /farmworkers|cesar|césar/i,         title: 'Farmworkers Day',        category: 'holiday', subtitle: 'No classes' },
+    { re: /juneteenth/i,                      title: 'Juneteenth',             category: 'holiday', subtitle: 'No classes' },
+    { re: /spring break|spring recess/i,      title: 'Spring Break',           category: 'holiday', subtitle: 'No classes' },
+    { re: /winter break|winter recess/i,      title: 'Winter Break',           category: 'holiday', subtitle: 'No classes' },
+    { re: /commencement/i,                    title: 'Commencement',           category: 'graduation' },
   ];
 
   const tableRowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
@@ -158,29 +182,57 @@ async function scrapeUci(academicYear) {
     let c;
     cellRe.lastIndex = 0;
     while ((c = cellRe.exec(m[1])) !== null) cells.push(stripHtml(c[1]));
-    if (cells.length < 4) continue;
+    if (cells.length < 2) continue;
     const desc = cells[0];
 
-    for (const rule of rules) {
+    // Try column-based rules first (needs 4 cells: desc + 3 quarter columns)
+    if (cells.length >= 4) {
+      for (const rule of colRules) {
+        if (!rule.re.test(desc)) continue;
+        for (let qi = 0; qi < 3; qi++) {
+          const parsed = parseDateCell(cells[qi + 1] ?? '', quarters[qi].year);
+          if (!parsed) continue;
+          const key = `${quarters[qi].key}::${rule.title}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          events.push({
+            id: makeId('uci', quarters[qi].key, rule.title),
+            school: 'UC Irvine', quarterKey: quarters[qi].key,
+            title: rule.title, subtitle: rule.subtitle ?? null,
+            date: parsed.date, endDate: parsed.endDate,
+            category: rule.category, url: rule.url ?? null,
+          });
+        }
+        break;
+      }
+    }
+
+    // Date-based rules: scan ALL cells for any date, assign quarter by month
+    for (const rule of dateRules) {
       if (!rule.re.test(desc)) continue;
-      const colIndices = rule.cols ?? [0, 1, 2];
-      for (const qi of colIndices) {
-        const parsed = parseDateCell(cells[qi + 1] ?? '', quarters[qi].year);
-        if (!parsed) continue;
-        const key = `${quarters[qi].key}::${rule.title}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        events.push({
-          id: makeId('uci', quarters[qi].key, rule.title),
-          school: 'UC Irvine',
-          quarterKey: quarters[qi].key,
-          title: rule.title,
-          subtitle: rule.subtitle ?? null,
-          date: parsed.date,
-          endDate: parsed.endDate,
-          category: rule.category,
-          url: rule.url ?? null,
-        });
+      // Collect all dates from all cells
+      const allText = cells.slice(1).join(' ');
+      const dateRe = /([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:\s*[–-]\s*(?:[A-Za-z]{3,9}\.?\s+)?(\d{1,2}))?/g;
+      let dm;
+      while ((dm = dateRe.exec(allText)) !== null) {
+        // Try both possible years to find a valid quarter assignment
+        for (const yr of [y1, y2]) {
+          const parsed = parseDateCell(dm[0], yr);
+          if (!parsed) continue;
+          const qKey = uciQuarterForDate(parsed.date, y1, y2);
+          if (!qKey || !quarterByKey[qKey]) continue;
+          const key = `${qKey}::${rule.title}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          events.push({
+            id: makeId('uci', qKey, rule.title),
+            school: 'UC Irvine', quarterKey: qKey,
+            title: rule.title, subtitle: rule.subtitle ?? null,
+            date: parsed.date, endDate: parsed.endDate ?? null,
+            category: rule.category, url: rule.url ?? null,
+          });
+          break;
+        }
       }
       break;
     }
@@ -207,17 +259,24 @@ async function scrapeCornel(academicYear) {
   ];
 
   const rules = [
-    { re: /last day to add classes.*(?:regular|full)/i,                         title: 'Add Deadline',               category: 'enrollment' },
-    { re: /last day to drop classes.*(?:regular|full)/i,                        title: 'Drop Deadline',              category: 'enrollment' },
-    { re: /last day to change grading basis/i,                                  title: 'S/U Grade Deadline',         category: 'passnopass', subtitle: 'Satisfactory/Unsatisfactory', url: 'https://registrar.cornell.edu/student-services/su-option' },
-    { re: /last day of instruction.*(?:regular|full)/i,                         title: 'Last Day of Classes',        category: 'instruction' },
-    { re: /(?:regular|full).*final exam|final exam.*(?:regular|full)/i,         title: 'Finals Period',              category: 'finals', url },
-    { re: /fall break/i,                                                         title: 'Fall Break',                 category: 'holiday', termLabel: `Fall ${y1}` },
-    { re: /spring break/i,                                                       title: 'Spring Break',               category: 'holiday', termLabel: `Spring ${y2}` },
-    { re: /thanksgiving/i,                                                       title: 'Thanksgiving Break',         category: 'holiday', termLabel: `Fall ${y1}` },
-    { re: /labor day/i,                                                          title: 'Labor Day',                  category: 'holiday', subtitle: 'No classes', termLabel: `Fall ${y1}` },
-    { re: /instruction begins|classes begin/i,                                   title: 'Classes Begin',              category: 'instruction' },
-    { re: /commencement|graduation ceremony/i,                                   title: 'Commencement',               category: 'graduation', termLabel: `Spring ${y2}` },
+    { re: /last day to add classes.*(?:regular|full)/i,          title: 'Add Deadline',          category: 'enrollment' },
+    { re: /last day to drop classes.*(?:regular|full)/i,         title: 'Drop Deadline',         category: 'enrollment' },
+    { re: /last day to change grading basis/i,                   title: 'S/U Grade Deadline',    category: 'passnopass', subtitle: 'Satisfactory/Unsatisfactory', url: 'https://registrar.cornell.edu/student-services/su-option' },
+    { re: /last day of instruction.*(?:regular|full)/i,          title: 'Last Day of Classes',   category: 'instruction' },
+    { re: /(?:regular|full).*final exam|final exam.*(?:regular|full)/i, title: 'Finals Period', category: 'finals', url },
+    { re: /instruction begins|classes begin/i,                   title: 'Classes Begin',         category: 'instruction' },
+    { re: /fall break/i,                                         title: 'Fall Break',            category: 'holiday', termLabel: `Fall ${y1}` },
+    { re: /spring break/i,                                       title: 'Spring Break',          category: 'holiday', termLabel: `Spring ${y2}` },
+    { re: /thanksgiving/i,                                       title: 'Thanksgiving Break',    category: 'holiday', termLabel: `Fall ${y1}` },
+    { re: /labor day/i,                                          title: 'Labor Day',             category: 'holiday', subtitle: 'No classes', termLabel: `Fall ${y1}` },
+    { re: /indigenous peoples|columbus day/i,                    title: 'Indigenous Peoples Day',category: 'holiday', subtitle: 'No classes', termLabel: `Fall ${y1}` },
+    { re: /veterans day/i,                                       title: 'Veterans Day',          category: 'holiday', subtitle: 'No classes', termLabel: `Fall ${y1}` },
+    { re: /martin luther king|mlk/i,                            title: 'MLK Day',               category: 'holiday', subtitle: 'No classes', termLabel: `Spring ${y2}` },
+    { re: /president.{0,3}s.*day/i,                             title: "Presidents' Day",       category: 'holiday', subtitle: 'No classes', termLabel: `Spring ${y2}` },
+    { re: /memorial day/i,                                       title: 'Memorial Day',          category: 'holiday', subtitle: 'No classes', termLabel: `Spring ${y2}` },
+    { re: /juneteenth/i,                                         title: 'Juneteenth',            category: 'holiday', subtitle: 'No classes', termLabel: `Spring ${y2}` },
+    { re: /winter recess|winter break/i,                         title: 'Winter Break',          category: 'holiday', termLabel: `Fall ${y1}` },
+    { re: /commencement|graduation ceremony/i,                   title: 'Commencement',          category: 'graduation', termLabel: `Spring ${y2}` },
   ];
 
   const events = [];
@@ -291,17 +350,23 @@ async function scrapePurdue(academicYear) {
 
   // Purdue catalog page lists dates inline: "Fall Break October 13-14"
   const rules = [
-    { re: /classes begin|instruction begins/i,      title: 'Classes Begin',         category: 'instruction' },
-    { re: /last day.*add.*drop|add.*drop.*deadline/i, title: 'Add/Drop Deadline',   category: 'enrollment', url: calUrl },
+    { re: /classes begin|instruction begins/i,       title: 'Classes Begin',          category: 'instruction' },
+    { re: /last day.*add.*drop|add.*drop.*deadline/i,title: 'Add/Drop Deadline',      category: 'enrollment', url: calUrl },
     { re: /S\/U.*deadline|satisfactory.*unsatisfactory|grade.*option.*change/i, title: 'S/U Grade Deadline', category: 'passnopass', subtitle: 'Satisfactory/Unsatisfactory', url: calUrl },
-    { re: /last day.*withdraw|withdrawal deadline/i, title: 'Withdrawal Deadline',  category: 'withdrawal', subtitle: 'W grade assigned', url: calUrl },
+    { re: /last day.*withdraw|withdrawal deadline/i, title: 'Withdrawal Deadline',    category: 'withdrawal', subtitle: 'W grade assigned', url: calUrl },
     { re: /last day.*class|last day.*instruction|end.*instruction/i, title: 'Last Day of Classes', category: 'instruction' },
-    { re: /final exam/i,                             title: 'Finals Week',           category: 'finals', url: calUrl },
-    { re: /spring break/i,                           title: 'Spring Break',          category: 'holiday', termLabel: 'Spring' },
-    { re: /fall break/i,                             title: 'Fall Break',            category: 'holiday', termLabel: 'Fall' },
-    { re: /thanksgiving/i,                           title: 'Thanksgiving Break',    category: 'holiday', termLabel: 'Fall' },
-    { re: /labor day/i,                              title: 'Labor Day',             category: 'holiday', subtitle: 'No classes', termLabel: 'Fall' },
-    { re: /mlk|martin luther king/i,                title: 'MLK Day',               category: 'holiday', subtitle: 'No classes', termLabel: 'Spring' },
+    { re: /final exam/i,                             title: 'Finals Week',            category: 'finals', url: calUrl },
+    { re: /spring break/i,                           title: 'Spring Break',           category: 'holiday', termLabel: 'Spring' },
+    { re: /fall break/i,                             title: 'Fall Break',             category: 'holiday', termLabel: 'Fall' },
+    { re: /thanksgiving/i,                           title: 'Thanksgiving Break',     category: 'holiday', termLabel: 'Fall' },
+    { re: /labor day/i,                              title: 'Labor Day',              category: 'holiday', subtitle: 'No classes', termLabel: 'Fall' },
+    { re: /mlk|martin luther king/i,                title: 'MLK Day',                category: 'holiday', subtitle: 'No classes', termLabel: 'Spring' },
+    { re: /president.{0,3}s.*day/i,                 title: "Presidents' Day",        category: 'holiday', subtitle: 'No classes', termLabel: 'Spring' },
+    { re: /memorial day/i,                           title: 'Memorial Day',           category: 'holiday', subtitle: 'No classes', termLabel: 'Spring' },
+    { re: /veterans day/i,                           title: 'Veterans Day',           category: 'holiday', subtitle: 'No classes', termLabel: 'Fall' },
+    { re: /juneteenth/i,                             title: 'Juneteenth',             category: 'holiday', subtitle: 'No classes', termLabel: 'Spring' },
+    { re: /winter recess|winter break/i,             title: 'Winter Break',           category: 'holiday', termLabel: 'Fall' },
+    { re: /commencement/i,                           title: 'Commencement',           category: 'graduation', termLabel: 'Spring' },
   ];
 
   const events = [];
@@ -362,14 +427,22 @@ async function scrapeUmd(academicYear) {
   ];
 
   const rules = [
-    { re: /first day of classes|instruction begins/i,           title: 'Classes Begin',         category: 'instruction' },
-    { re: /schedule adjustment|last day.*add.*drop/i,           title: 'Add/Drop Deadline',     category: 'enrollment', subtitle: 'Schedule adjustment period ends', url },
-    { re: /pass.?fail deadline|grade.*pass.*fail/i,             title: 'Pass/Fail Deadline',    category: 'passnopass', url: 'https://registrar.umd.edu/current-students/registration/grading-options' },
-    { re: /last day.*withdraw|withdrawal deadline/i,            title: 'Withdrawal Deadline',   category: 'withdrawal', subtitle: 'W grade assigned', url },
-    { re: /last day of classes|instruction ends/i,              title: 'Last Day of Classes',   category: 'instruction' },
-    { re: /final exam/i,                                        title: 'Finals Period',         category: 'finals', url },
-    { re: /spring break/i,                                      title: 'Spring Break',          category: 'holiday', termLabel: `Spring ${y2}` },
-    { re: /thanksgiving/i,                                      title: 'Thanksgiving Break',    category: 'holiday', termLabel: `Fall ${y1}` },
+    { re: /first day of classes|instruction begins/i,  title: 'Classes Begin',         category: 'instruction' },
+    { re: /schedule adjustment|last day.*add.*drop/i,  title: 'Add/Drop Deadline',     category: 'enrollment', subtitle: 'Schedule adjustment period ends', url },
+    { re: /pass.?fail deadline|grade.*pass.*fail/i,    title: 'Pass/Fail Deadline',    category: 'passnopass', url: 'https://registrar.umd.edu/current-students/registration/grading-options' },
+    { re: /last day.*withdraw|withdrawal deadline/i,   title: 'Withdrawal Deadline',   category: 'withdrawal', subtitle: 'W grade assigned', url },
+    { re: /last day of classes|instruction ends/i,     title: 'Last Day of Classes',   category: 'instruction' },
+    { re: /final exam/i,                               title: 'Finals Period',         category: 'finals', url },
+    { re: /spring break/i,                             title: 'Spring Break',          category: 'holiday', termLabel: `Spring ${y2}` },
+    { re: /winter recess|winter break/i,               title: 'Winter Break',          category: 'holiday', termLabel: `Fall ${y1}` },
+    { re: /thanksgiving/i,                             title: 'Thanksgiving Break',    category: 'holiday', termLabel: `Fall ${y1}` },
+    { re: /labor day/i,                                title: 'Labor Day',             category: 'holiday', subtitle: 'No classes', termLabel: `Fall ${y1}` },
+    { re: /veterans day/i,                             title: 'Veterans Day',          category: 'holiday', subtitle: 'No classes', termLabel: `Fall ${y1}` },
+    { re: /martin luther king|mlk/i,                  title: 'MLK Day',               category: 'holiday', subtitle: 'No classes', termLabel: `Spring ${y2}` },
+    { re: /president.{0,3}s.*day/i,                   title: "Presidents' Day",       category: 'holiday', subtitle: 'No classes', termLabel: `Spring ${y2}` },
+    { re: /memorial day/i,                             title: 'Memorial Day',          category: 'holiday', subtitle: 'No classes', termLabel: `Spring ${y2}` },
+    { re: /juneteenth/i,                               title: 'Juneteenth',            category: 'holiday', subtitle: 'No classes', termLabel: `Spring ${y2}` },
+    { re: /commencement/i,                             title: 'Commencement',          category: 'graduation', termLabel: `Spring ${y2}` },
   ];
 
   const events = [];
@@ -434,17 +507,24 @@ async function scrapeUiuc(academicYear) {
   ];
 
   const rules = [
-    { re: /instruction begins|classes begin|first day of instruction/i, title: 'Classes Begin',              category: 'instruction' },
-    { re: /last day.*add|last day.*enroll/i,                            title: 'Add Deadline',               category: 'enrollment' },
-    { re: /credit.?no.?credit|credit\/no credit/i,                      title: 'Credit/No Credit Deadline',  category: 'passnopass', url: 'https://registrar.illinois.edu/courses-grades/credit-no-credit/' },
-    { re: /last day.*drop|last day.*withdraw/i,                         title: 'Withdrawal Deadline',        category: 'withdrawal', subtitle: 'W grade assigned' },
-    { re: /last day of instruction|instruction ends|classes end/i,      title: 'Last Day of Classes',        category: 'instruction' },
-    { re: /final exam/i,                                                 title: 'Finals Period',              category: 'finals' },
-    { re: /thanksgiving/i,                                               title: 'Thanksgiving Break',         category: 'holiday' },
-    { re: /spring break/i,                                               title: 'Spring Break',               category: 'holiday' },
-    { re: /fall break/i,                                                 title: 'Fall Break',                 category: 'holiday' },
-    { re: /labor day/i,                                                  title: 'Labor Day',                  category: 'holiday', subtitle: 'No classes' },
-    { re: /mlk|martin luther king/i,                                    title: 'MLK Day',                    category: 'holiday', subtitle: 'No classes' },
+    { re: /instruction begins|classes begin|first day of instruction/i,  title: 'Classes Begin',              category: 'instruction' },
+    { re: /last day.*add|last day.*enroll/i,                             title: 'Add Deadline',               category: 'enrollment' },
+    { re: /credit.?no.?credit|credit\/no credit/i,                       title: 'Credit/No Credit Deadline',  category: 'passnopass', url: 'https://registrar.illinois.edu/courses-grades/credit-no-credit/' },
+    { re: /last day.*drop|last day.*withdraw/i,                          title: 'Withdrawal Deadline',        category: 'withdrawal', subtitle: 'W grade assigned' },
+    { re: /last day of instruction|instruction ends|classes end/i,       title: 'Last Day of Classes',        category: 'instruction' },
+    { re: /final exam/i,                                                  title: 'Finals Period',              category: 'finals' },
+    { re: /thanksgiving/i,                                                title: 'Thanksgiving Break',         category: 'holiday' },
+    { re: /spring break/i,                                                title: 'Spring Break',               category: 'holiday' },
+    { re: /fall break/i,                                                  title: 'Fall Break',                 category: 'holiday' },
+    { re: /labor day/i,                                                   title: 'Labor Day',                  category: 'holiday', subtitle: 'No classes' },
+    { re: /mlk|martin luther king/i,                                     title: 'MLK Day',                    category: 'holiday', subtitle: 'No classes' },
+    { re: /president.{0,3}s.*day/i,                                      title: "Presidents' Day",            category: 'holiday', subtitle: 'No classes' },
+    { re: /memorial day/i,                                                title: 'Memorial Day',               category: 'holiday', subtitle: 'No classes' },
+    { re: /veterans day/i,                                                title: 'Veterans Day',               category: 'holiday', subtitle: 'No classes' },
+    { re: /juneteenth/i,                                                  title: 'Juneteenth',                 category: 'holiday', subtitle: 'No classes' },
+    { re: /indigenous peoples|columbus day/i,                             title: 'Indigenous Peoples Day',     category: 'holiday', subtitle: 'No classes' },
+    { re: /winter recess|winter break/i,                                  title: 'Winter Break',               category: 'holiday' },
+    { re: /commencement/i,                                                title: 'Commencement',               category: 'graduation' },
   ];
 
   const events = [];

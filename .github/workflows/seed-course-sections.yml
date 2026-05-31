@@ -117,6 +117,8 @@ jobs:
           node scripts/backfill-school-sections.js --from-year "$NEXT" --to-year "$NEXT" || true
 
       # ── 4. Reconcile school_terms index ──────────────────────────────────────
+      # from-year: 2 years back (covers all recent terms)
+      # to-year:   next year (covers Fall of current year + upcoming terms)
       - name: Reconcile school_terms index
         if: steps.check.outputs.skip != 'true'
         continue-on-error: true
@@ -124,5 +126,5 @@ jobs:
         run: |
           YEAR="$(date +%Y)"
           node scripts/reconcile-school-terms.js \
-            --from-year "$((YEAR - 1))" \
+            --from-year "$((YEAR - 2))" \
             --to-year   "$((YEAR + 1))" || true

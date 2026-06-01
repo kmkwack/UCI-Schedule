@@ -20,7 +20,7 @@ export type SportsVenue = {
 
 const CLASSROOM_LOCATIONS: Record<string, LocationMatcher[]> = {
   'UC Irvine': [
-    { code: 'ALP', name: 'Aldrich Park', latitude: 33.646358, longitude: -117.842751, aliases: ['ALP', 'ALDRICH PARK'] },
+    { code: 'ALP', name: 'Anteater Learning Pavilion', latitude: 33.647800, longitude: -117.842600, aliases: ['ALP', 'ANTEATER LEARNING PAVILION'] },
     { code: 'ALH', name: 'Aldrich Hall', latitude: 33.647677, longitude: -117.841761, aliases: ['ALH', 'ALDRICH HALL'] },
     { code: 'ACT', name: 'Art Culture and Technology', latitude: 33.650562, longitude: -117.844849, aliases: ['ACT', 'ART CULTURE TECHNOLOGY'] },
     { code: 'AIRB', name: 'Anteater Instruction and Research Building', latitude: 33.642933, longitude: -117.838005, aliases: ['AIRB', 'ANTEATER INSTRUCTION RESEARCH BUILDING'] },

@@ -15,9 +15,11 @@ const SUPABASE_URL         = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ANTEATER_API_KEY     = process.env.ANTEATER_API_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !ANTEATER_API_KEY) {
-  throw new Error('Missing SUPABASE_URL, SUPABASE_SERVICE_KEY/SUPABASE_SERVICE_ROLE_KEY, or ANTEATER_API_KEY environment variable.');
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY/SUPABASE_SERVICE_ROLE_KEY environment variable.');
 }
+// Anteater API doesn't require auth — only send header if key is a real token (not "none"/empty)
+const USE_API_KEY = ANTEATER_API_KEY && ANTEATER_API_KEY !== 'none';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 const SCHOOL = 'UC Irvine';
@@ -41,7 +43,7 @@ const RETRY_DELAY_MS = 5000; // longer pause after a 429/error
 
 async function fetchDepartments() {
   const url = 'https://anteaterapi.com/v2/rest/websoc/departments';
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${ANTEATER_API_KEY}` } });
+  const res = await fetch(url, { headers: USE_API_KEY ? { Authorization: `Bearer ${ANTEATER_API_KEY}` } : {} });
   if (!res.ok) throw new Error(`Failed to fetch departments: HTTP ${res.status}`);
   const json = await res.json();
   if (!json.ok || !Array.isArray(json.data)) throw new Error('Unexpected departments response');
@@ -70,7 +72,7 @@ function numberOrNull(value) {
 
 async function fetchDepartment(year, quarter, dept, retries = 3) {
   const url = `https://anteaterapi.com/v2/rest/websoc?department=${encodeURIComponent(dept)}&year=${year}&quarter=${quarter}`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${ANTEATER_API_KEY}` } });
+  const res = await fetch(url, { headers: USE_API_KEY ? { Authorization: `Bearer ${ANTEATER_API_KEY}` } : {} });
   if (res.status === 429) {
     if (retries > 0) {
       await sleep(RETRY_DELAY_MS);
@@ -104,10 +106,6 @@ async function fetchDepartment(year, quarter, dept, retries = 3) {
             source_term_code: `${year}-${quarter}`,
             campus:          'Irvine',
             status:          section.status ?? null,
-            enrolled:        numberOrNull(section.numCurrentlyEnrolled?.totalEnrolled),
-            capacity:        numberOrNull(section.maxCapacity),
-            waitlist:        numberOrNull(section.numOnWaitlist),
-            waitlist_capacity: numberOrNull(section.numWaitlistCap),
             last_synced_at:  new Date().toISOString(),
             quarter_key:     qKey,
             department:      d.deptCode,
@@ -222,7 +220,7 @@ async function seedGECategories(year, quarter) {
     try {
       await sleep(REQUEST_DELAY_MS);
       const url = `https://anteaterapi.com/v2/rest/websoc?ge=${ge}&year=${year}&quarter=${quarter}`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${ANTEATER_API_KEY}` } });
+      const res = await fetch(url, { headers: USE_API_KEY ? { Authorization: `Bearer ${ANTEATER_API_KEY}` } : {} });
       if (!res.ok) { console.error(`  ✗ ${ge} HTTP ${res.status}`); continue; }
       const json = await res.json();
       if (!json.ok) continue;
@@ -248,8 +246,10 @@ async function seedGECategories(year, quarter) {
   }
 
   // Upsert ge_categories for all matched sections
+  // quarter_key is NOT NULL — must include it to avoid constraint violation on insert
   const updates = [...geMap.entries()].map(([id, ges]) => ({
     id,
+    quarter_key: qKey,
     ge_categories: [...ges],
   }));
 

@@ -789,11 +789,15 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   currentTabRef.current = currentTab;
 
   function triggerTabReset(tab: MainTab) {
-    if (tab === 'home') setHomeTabTapCount(c => c + 1);
-    else if (tab === 'timetable') setTimetableTabTapCount(c => c + 1);
-    else if (tab === 'grades') setGradesTabTapCount(c => c + 1);
-    else if (tab === 'board') setBoardTabTapCount(c => c + 1);
-    else if (tab === 'friends') setFriendsTabTapCount(c => c + 1);
+    // Only increment the tap count when already on the tab (re-tap = scroll to top).
+    // Switching TO a tab should not remount it — screens handle scroll-to-top via the trigger prop.
+    if (tab === currentTabRef.current) {
+      if (tab === 'home') setHomeTabTapCount(c => c + 1);
+      else if (tab === 'timetable') setTimetableTabTapCount(c => c + 1);
+      else if (tab === 'grades') setGradesTabTapCount(c => c + 1);
+      else if (tab === 'board') setBoardTabTapCount(c => c + 1);
+      else if (tab === 'friends') setFriendsTabTapCount(c => c + 1);
+    }
 
     setShowCoursePicker(false);
     setRenderCoursePicker(false);
@@ -2853,28 +2857,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   let content = null;
 
-  if (currentTab === 'home') {
-    content = (
-      <HomeScreen
-        key={`home-${homeTabTapCount}`}
-        activeCourses={homeQuarterCourses}
-        selectedQuarter={homeQuarterKey === academicQuarterKey ? academicQuarter : selectedQuarter}
-        onOpenSettings={openSettingsSheet}
-        userId={USER_ID}
-        topInset={insets.top}
-        bottomInset={appBottomInset}
-        scrollToTopTrigger={homeTabTapCount}
-	        school={currentSchool}
-	        timeZone={effectiveTimeZone}
-	        onAssignmentCalendarChange={handleAssignmentCalendarChange}
-          timetableSettings={timetableSettings}
-	      />
-    );
-  } else if (currentTab === 'timetable') {
+  if (currentTab === 'timetable') {
     content = (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <TimetableScreen
-          key={`timetable-${timetableTabTapCount}`}
           activeCourses={activeCourses}
           selectedQuarter={selectedQuarter}
           focusedCourseId={focusedCourseId}
@@ -2904,7 +2890,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   } else if (currentTab === 'grades') {
     content = (
       <GradesScreen
-        key={`grades-${gradesTabTapCount}`}
         timetables={timetables}
         userId={USER_ID}
         school={currentSchool}
@@ -2916,7 +2901,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   } else if (currentTab === 'board') {
     content = (
       <BoardScreen
-        key={`board-${boardTabTapCount}`}
         school={currentSchool}
         userId={USER_ID}
         boardAuthorName={userProfile.nickname.trim() || displayUserName}
@@ -2940,7 +2924,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     content = (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <FriendsScreen
-          key={`friends-${friendsTabTapCount}`}
           userId={USER_ID}
           userEmail={userEmail}
           school={currentSchool}
@@ -2963,6 +2946,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     active,
     onPress,
     scaleAnim,
+    tabIndex,
     badgeCount,
     badgeLabel,
   }: {
@@ -2971,6 +2955,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     active: boolean;
     onPress: () => void;
     scaleAnim: Animated.Value;
+    tabIndex: number;
     badgeCount?: number;
     badgeLabel?: string;
   }) => (
@@ -2983,8 +2968,18 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         paddingHorizontal: tabItemHorizontalPadding,
         minWidth: 0,
       }}
-      onPressIn={() => Animated.spring(scaleAnim, { toValue: 1.25, useNativeDriver: true, tension: 300, friction: 10 }).start()}
-      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 300, friction: 10 }).start()}
+      onPressIn={() => {
+        Animated.spring(scaleAnim, { toValue: 1.25, useNativeDriver: true, tension: 300, friction: 10 }).start();
+        if (!active) {
+          const tabW = tabBarWidthRef.current / 5;
+          Animated.spring(pillXAnim, { toValue: tabIndex * tabW, useNativeDriver: false, ...MOTION.spring.snap }).start();
+        }
+        Animated.spring(pillScaleAnim, { toValue: 1.12, useNativeDriver: false, ...MOTION.spring.press }).start();
+      }}
+      onPressOut={() => {
+        Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 300, friction: 10 }).start();
+        Animated.spring(pillScaleAnim, { toValue: 1, useNativeDriver: false, ...MOTION.spring.press }).start();
+      }}
       onPress={onPress}
     >
       <Animated.View style={{ position: 'relative', transform: [{ scale: scaleAnim }] }}>
@@ -3030,6 +3025,20 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bgSecondary }}>
+      <View style={{ flex: 1, display: currentTab === 'home' ? 'flex' : 'none' }}>
+        <HomeScreen
+          activeCourses={homeQuarterCourses}
+          selectedQuarter={homeQuarterKey === academicQuarterKey ? academicQuarter : selectedQuarter}
+          onOpenSettings={openSettingsSheet}
+          userId={USER_ID}
+          topInset={insets.top}
+          bottomInset={appBottomInset}
+          scrollToTopTrigger={homeTabTapCount}
+          school={currentSchool}
+          timeZone={effectiveTimeZone}
+          onAssignmentCalendarChange={handleAssignmentCalendarChange}
+        />
+      </View>
       {content}
 
       <View
@@ -3086,13 +3095,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
                 }}
               />
             )}
-            <TabItem label="Today" icon="home-outline" active={currentTab === 'home'} scaleAnim={tabIconScaleAnims[0]} onPress={() => handleTabPress('home')} />
-            <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} scaleAnim={tabIconScaleAnims[1]} onPress={() => handleTabPress('timetable')} />
-            <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} scaleAnim={tabIconScaleAnims[2]} onPress={() => handleTabPress('grades')} />
+            <TabItem label="Today" icon="home-outline" active={currentTab === 'home'} tabIndex={0} scaleAnim={tabIconScaleAnims[0]} onPress={() => handleTabPress('home')} />
+            <TabItem label="Timetable" icon="calendar-outline" active={currentTab === 'timetable'} tabIndex={1} scaleAnim={tabIconScaleAnims[1]} onPress={() => handleTabPress('timetable')} />
+            <TabItem label="Grades" icon="school-outline" active={currentTab === 'grades'} tabIndex={2} scaleAnim={tabIconScaleAnims[2]} onPress={() => handleTabPress('grades')} />
             <TabItem
               label="Board"
               icon="clipboard-outline"
               active={currentTab === 'board'}
+              tabIndex={3}
               scaleAnim={tabIconScaleAnims[3]}
               badgeCount={currentTab === 'board' ? 0 : newBoardPostCount}
               badgeLabel="NEW"
@@ -3102,6 +3112,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               label="ClassMates"
               icon="person-add-outline"
               active={currentTab === 'friends'}
+              tabIndex={4}
               scaleAnim={tabIconScaleAnims[4]}
               badgeCount={unreadMessageCount}
               onPress={() => handleTabPress('friends')}

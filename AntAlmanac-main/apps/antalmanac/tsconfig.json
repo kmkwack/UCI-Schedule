@@ -1,0 +1,39 @@
+{
+    "compilerOptions": {
+        "target": "esnext",
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "lib": ["dom", "dom.iterable", "esnext"],
+        "allowJs": true,
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "strict": true,
+        "incremental": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "noEmit": true,
+        "jsx": "react-jsx",
+        "plugins": [
+            {
+                "name": "next"
+            }
+        ],
+        "baseUrl": ".",
+        "paths": {
+            "$actions/*": ["src/actions/*"],
+            "$api/*": ["src/api/*"],
+            "$components/*": ["src/components/*"],
+            "$generated/*": ["src/generated/*"],
+            "$lib/*": ["src/lib/*"],
+            "$hooks/*": ["src/hooks/*"],
+            "$providers/*": ["src/providers/*"],
+            "$routes/*": ["src/routes/*"],
+            "$stores/*": ["src/stores/*"],
+            "$src/*": ["src/*"]
+        }
+    },
+    "include": ["./dist/types/**/*.ts", "./next-env.d.ts", "./src", ".next/types/**/*.ts", ".next/dev/types/**/*.ts", "./scripts"],
+    "exclude": ["./node_modules"]
+}

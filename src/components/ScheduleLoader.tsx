@@ -22,27 +22,40 @@ export function FullScreenLoader({ isDark, label = 'Loading your schedule...' }:
   const textAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const stagger = Animated.stagger(
-      50,
-      anims.map((a) =>
-        Animated.spring(a, { toValue: 1, useNativeDriver: true, tension: 220, friction: 11 })
-      )
+    // Blocks: stagger pop-in → hold → fade out → repeat
+    const blockLoop = Animated.loop(
+      Animated.sequence([
+        Animated.stagger(
+          50,
+          anims.map((a) =>
+            Animated.spring(a, { toValue: 1, useNativeDriver: true, tension: 220, friction: 11 })
+          )
+        ),
+        Animated.delay(700),
+        Animated.parallel(
+          anims.map((a) =>
+            Animated.timing(a, { toValue: 0, duration: 280, useNativeDriver: true })
+          )
+        ),
+        Animated.delay(180),
+      ])
     );
-    stagger.start();
+    blockLoop.start();
 
+    // Text: fade in then pulse
     const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(textAnim, { toValue: 0.35, duration: 700, useNativeDriver: true }),
         Animated.timing(textAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
       ])
     );
-    const sequence = Animated.sequence([
+    const textSequence = Animated.sequence([
       Animated.timing(textAnim, { toValue: 1, duration: 350, delay: 300, useNativeDriver: true }),
       pulse,
     ]);
-    sequence.start();
+    textSequence.start();
 
-    return () => { stagger.stop(); sequence.stop(); pulse.stop(); };
+    return () => { blockLoop.stop(); textSequence.stop(); pulse.stop(); };
   }, []);
 
   const gridW = 5 * (FULL_W + FULL_GAP) - FULL_GAP;
@@ -103,29 +116,40 @@ export function MiniLoader({ label, labelColor = 'rgba(0,0,0,0.38)' }: { label?:
   const textAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Pop in once
-    const stagger = Animated.stagger(
-      35,
-      anims.map((a) =>
-        Animated.spring(a, { toValue: 1, useNativeDriver: true, tension: 260, friction: 12 })
-      )
+    // Blocks: stagger pop-in → hold → fade out → repeat
+    const blockLoop = Animated.loop(
+      Animated.sequence([
+        Animated.stagger(
+          35,
+          anims.map((a) =>
+            Animated.spring(a, { toValue: 1, useNativeDriver: true, tension: 260, friction: 12 })
+          )
+        ),
+        Animated.delay(600),
+        Animated.parallel(
+          anims.map((a) =>
+            Animated.timing(a, { toValue: 0, duration: 220, useNativeDriver: true })
+          )
+        ),
+        Animated.delay(150),
+      ])
     );
-    stagger.start();
+    blockLoop.start();
 
-    // Then pulse gently
+    // Text pulse
     const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(textAnim, { toValue: 0.4, duration: 600, useNativeDriver: true }),
         Animated.timing(textAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
       ])
     );
-    const sequence = Animated.sequence([
+    const textSequence = Animated.sequence([
       Animated.timing(textAnim, { toValue: 1, duration: 250, delay: 200, useNativeDriver: true }),
       pulse,
     ]);
-    sequence.start();
+    textSequence.start();
 
-    return () => { stagger.stop(); sequence.stop(); pulse.stop(); };
+    return () => { blockLoop.stop(); textSequence.stop(); pulse.stop(); };
   }, []);
 
   const gridW = 5 * (MINI_W + MINI_GAP) - MINI_GAP;

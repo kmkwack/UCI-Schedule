@@ -445,6 +445,7 @@ export default function TimetableScreen({
 
   const [showAddQuarterModal, setShowAddQuarterModal] = useState(false);
   const [addableQuarters, setAddableQuarters] = useState<Quarter[]>([]);
+  const [existingQuarterKeys, setExistingQuarterKeys] = useState<Set<string>>(new Set());
   const [selectedAddYear, setSelectedAddYear] = useState<string | null>(null); // drives header
   const [mountedYear, setMountedYear] = useState<string | null>(null); // keeps quarter list alive during slide-out
   const addYearSlideAnim = useRef(new Animated.Value(screenWidth)).current;
@@ -930,16 +931,17 @@ export default function TimetableScreen({
 
     const cachedSeededKeys = seededQuartersCacheBySchool[school];
     if (cachedSeededKeys) {
+      // Show ALL seeded quarters — existing ones included (user can navigate to them)
       setAddableQuarters(
         allCandidates
-          .filter((q) => !existingQks.has(quarterKey(q)) && cachedSeededKeys.has(quarterKey(q)))
+          .filter((q) => cachedSeededKeys.has(quarterKey(q)))
           .reverse()
       );
     }
 
     const seededKeys = await loadSeededQuarterKeys(school);
     seededQuartersCacheBySchool[school] = seededKeys;
-    const seeded = allCandidates.filter((q) => !existingQks.has(quarterKey(q)) && seededKeys.has(quarterKey(q)));
+    const seeded = allCandidates.filter((q) => seededKeys.has(quarterKey(q)));
 
     const uniqueYears = [...new Set(seeded.map((q) => q.year))].length;
     const h = Math.min(360, uniqueYears * 53);
@@ -947,6 +949,8 @@ export default function TimetableScreen({
     yearListHeightRef.current = h;
 
     setAddableQuarters(seeded.reverse());
+    // keep existingQks in scope for UI rendering below
+    setExistingQuarterKeys(existingQks);
   }
 
   function openSettings() {
@@ -1372,20 +1376,35 @@ export default function TimetableScreen({
                       <ScrollView showsVerticalScrollIndicator={false}>
                         {addableQuarters
                           .filter((q) => q.year === mountedYear)
-                          .map((q, index) => (
-                            <TouchableOpacity
-                              key={quarterKey(q)}
-                              onPress={() => { closeAddQuarterModal(); onAddQuarter(q); }}
-                              style={{
-                                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                                paddingHorizontal: 24, paddingVertical: 16,
-                                borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.borderSubtle,
-                              }}
-                            >
-                              <Text style={{ fontSize: 16, color: colors.text }}>{pickerTermLabel(q)}</Text>
-                              <Ionicons name="add-circle-outline" size={20} color={colors.brand} />
-                            </TouchableOpacity>
-                          ))}
+                          .map((q, index) => {
+                            const qk = quarterKey(q);
+                            const alreadyExists = existingQuarterKeys.has(qk);
+                            return (
+                              <TouchableOpacity
+                                key={qk}
+                                onPress={() => {
+                                  closeAddQuarterModal();
+                                  if (alreadyExists) {
+                                    onChangeQuarter(q);
+                                  } else {
+                                    onAddQuarter(q);
+                                  }
+                                }}
+                                style={{
+                                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                                  paddingHorizontal: 24, paddingVertical: 16,
+                                  borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.borderSubtle,
+                                }}
+                              >
+                                <Text style={{ fontSize: 16, color: colors.text }}>{pickerTermLabel(q)}</Text>
+                                <Ionicons
+                                  name={alreadyExists ? 'arrow-forward-circle-outline' : 'add-circle-outline'}
+                                  size={20}
+                                  color={alreadyExists ? colors.textTertiary : colors.brand}
+                                />
+                              </TouchableOpacity>
+                            );
+                          })}
                       </ScrollView>
                     </Animated.View>
                   )}

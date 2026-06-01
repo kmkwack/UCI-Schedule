@@ -3412,7 +3412,7 @@ export default function HomeScreen({
 
       {/* Info thumbnail cards */}
       {(shouldShowDiningHeroPage || shouldShowSportsHeroPage) && (
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
           {shouldShowDiningHeroPage && (
             <TouchableOpacity
               onPress={() => openHeroSheetFor('dining')}
@@ -3420,30 +3420,26 @@ export default function HomeScreen({
               style={{
                 flex: 1,
                 backgroundColor: colors.card,
-                borderRadius: 14,
+                borderRadius: 18,
                 borderWidth: 1,
                 borderColor: colors.border,
-                paddingVertical: 8,
-                paddingHorizontal: 10,
-                flexDirection: 'row',
+                paddingVertical: 10,
+                paddingHorizontal: 12,
                 alignItems: 'center',
-                gap: 8,
+                gap: 5,
               }}
             >
               <View style={{
-                width: 28, height: 28, borderRadius: 8,
-                backgroundColor: 'rgba(245,158,11,0.12)',
+                width: 34, height: 34, borderRadius: 10,
+                backgroundColor: `${colors.brand}14`,
                 alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
               }}>
-                <Ionicons name="restaurant-outline" size={14} color="#F59E0B" />
+                <Ionicons name="restaurant-outline" size={17} color={colors.brand} />
               </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>Dining</Text>
-                <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary }}>
-                  {diningMenus.length > 0 ? `${diningMenus.length} open` : 'No data'}
-                </Text>
-              </View>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Dining</Text>
+              <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary }}>
+                {diningMenus.length > 0 ? `${diningMenus.length} open` : 'No data'}
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -3454,30 +3450,26 @@ export default function HomeScreen({
               style={{
                 flex: 1,
                 backgroundColor: colors.card,
-                borderRadius: 14,
+                borderRadius: 18,
                 borderWidth: 1,
                 borderColor: colors.border,
-                paddingVertical: 8,
-                paddingHorizontal: 10,
-                flexDirection: 'row',
+                paddingVertical: 10,
+                paddingHorizontal: 12,
                 alignItems: 'center',
-                gap: 8,
+                gap: 5,
               }}
             >
               <View style={{
-                width: 28, height: 28, borderRadius: 8,
+                width: 34, height: 34, borderRadius: 10,
                 backgroundColor: `${colors.brand}18`,
                 alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
               }}>
-                <Ionicons name="trophy-outline" size={14} color={colors.brand} />
+                <Ionicons name="trophy-outline" size={17} color={colors.brand} />
               </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>Sports</Text>
-                <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary }}>
-                  {visibleCampusEvents.length > 0 ? `${visibleCampusEvents.length} events` : 'No games'}
-                </Text>
-              </View>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Sports</Text>
+              <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary }}>
+                {visibleCampusEvents.length > 0 ? `${visibleCampusEvents.length} events` : 'No games'}
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -3487,37 +3479,33 @@ export default function HomeScreen({
             style={{
               flex: 1,
               backgroundColor: colors.card,
-              borderRadius: 14,
+              borderRadius: 18,
               borderWidth: 1,
               borderColor: colors.border,
-              paddingVertical: 8,
-              paddingHorizontal: 10,
-              flexDirection: 'row',
+              paddingVertical: 10,
+              paddingHorizontal: 12,
               alignItems: 'center',
-              gap: 8,
+              gap: 5,
             }}
           >
             <View style={{
-              width: 28, height: 28, borderRadius: 8,
-              backgroundColor: 'rgba(16,185,129,0.12)',
+              width: 34, height: 34, borderRadius: 10,
+              backgroundColor: `${colors.brand}14`,
               alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
             }}>
-              <Ionicons name="map-outline" size={14} color="#10B981" />
+              <Ionicons name="map-outline" size={17} color={colors.brand} />
             </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>Campus</Text>
-              <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary }}>Quick links</Text>
-            </View>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Campus</Text>
+            <Text numberOfLines={1} style={{ fontSize: 11, color: colors.textTertiary }}>Quick links</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {/* ── Academic Calendar Strip ─────────────────────────────────────── */}
       {upcomingAcademicEvents.length > 0 && (
-        <View style={{ marginBottom: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Academic Calendar</Text>
+        <View style={{ marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Academic Calendar</Text>
             <Text style={{ fontSize: 12, color: colors.textTertiary }}>{termLabel(selectedQuarter, school)}</Text>
           </View>
           <ScrollView
@@ -3536,28 +3524,22 @@ export default function HomeScreen({
                   onPress={() => openAcademicSheet(event)}
                   activeOpacity={0.76}
                   style={{
-                    width: 120,
-                    borderRadius: 14,
+                    width: 140,
+                    borderRadius: 18,
                     borderWidth: 1,
                     borderColor: colors.border,
                     backgroundColor: colors.card,
-                    padding: 10,
-                    gap: 6,
+                    paddingHorizontal: 14,
+                    paddingVertical: 13,
+                    gap: 4,
+                    justifyContent: 'center',
                   }}
                 >
-                  {/* D-badge + date on same row */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 9, fontWeight: '700', color: accentColor, letterSpacing: 0.2 }}>
-                      {dLabel}
-                    </Text>
-                    <Text numberOfLines={1} style={{ fontSize: 9, color: colors.textTertiary }}>
-                      {dateStr}
-                    </Text>
-                  </View>
-
-                  {/* Title */}
-                  <Text numberOfLines={2} style={{ fontSize: 11, fontWeight: '700', color: colors.text, lineHeight: 14 }}>
+                  <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17 }}>
                     {event.title}
+                  </Text>
+                  <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>
+                    {dateStr}
                   </Text>
                 </TouchableOpacity>
               );

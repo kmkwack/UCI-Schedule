@@ -369,6 +369,9 @@ const QUARTERS = [
 - `src/screens/BoardScreen.tsx` — 첨부파일 업로드 중 `ActivityIndicator` → `MiniLoader` 교체.
 - 버튼 내부 `ActivityIndicator` (submit, save, delete, Google sign-in 등)은 크기상 유지.
 
+### Session 94 (Compact + uniform info cards + simplified Academic Calendar)
+- `src/screens/HomeScreen.tsx` — Dining/Sports/Campus info cards: changed from vertical to compact horizontal rows (icon 28×28 + text side-by-side); all three icon backgrounds now use `colors.brand` (uniform color, no more per-card amber/green). Academic Calendar cards: removed emoji icon entirely, removed colored card backgrounds/borders (now plain `colors.card` + `colors.border`), simplified to D-label + title + date with no icon row.
+
 ### Session 61 (RMP moved to ReviewsModal + Reviews button layout)
 - `src/components/ReviewsModal.tsx` — Added `sectionType: string` prop. Added RMP row in course info section (shows prof name as tappable link to RateMyProfessors). `fetchReviews` and `handleSubmit` filter/set `section_type`. Supabase `reviews` table requires `ALTER TABLE reviews ADD COLUMN section_type TEXT;`.
 - `src/screens/CoursePickerScreen.tsx` — Removed RMP button from section rows. Reviews button moved directly beneath Add button. Star rating ("★ X.X · N ratings") moved beneath Reviews button in right column. `fetchReviewSummary(courseCode, sectionType)` cache keyed as `"ECON 100A::Lec"`. Early-return guard: `if (cache[key]?.count)` (not truthy check). `handleExpandCourse` fetches summaries for all unique section types in the course.

@@ -1125,7 +1125,10 @@ function AboutScreen({ onBack }: { onBack: () => void }) {
           </TouchableOpacity>
         ))}
 
-        <Text style={{ textAlign: 'center', color: colors.border, fontSize: 12, marginTop: 20 }}>© 2026 ClassMate. All rights reserved.</Text>
+        <Text style={{ textAlign: 'center', color: colors.textTertiary, fontSize: 12, marginTop: 20, lineHeight: 18 }}>
+          ClassMate is an independent student-built app. It is not affiliated with or endorsed by any university. Course and schedule data is provided by public APIs.
+        </Text>
+        <Text style={{ textAlign: 'center', color: colors.border, fontSize: 12, marginTop: 12 }}>© 2026 ClassMate. All rights reserved.</Text>
       </ScrollView>
       <LegalDocumentModal
         visible={!!activeDocument}

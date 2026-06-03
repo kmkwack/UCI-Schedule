@@ -3508,10 +3508,11 @@ export default function HomeScreen({
             <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Academic Calendar</Text>
             <Text style={{ fontSize: 12, color: colors.textTertiary }}>{termLabel(selectedQuarter, school)}</Text>
           </View>
+          <View style={{ position: 'relative' }}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+            contentContainerStyle={{ gap: 8, paddingRight: 32 }}
           >
             {upcomingAcademicEvents.map((event) => {
               const dateStr = event.endDate && event.endDate !== event.date
@@ -3545,6 +3546,26 @@ export default function HomeScreen({
               );
             })}
           </ScrollView>
+          {/* Right fade — hints there's more to scroll */}
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 40,
+              borderRadius: 4,
+              opacity: 0.95,
+              backgroundColor: colors.bg,
+              // Soft left edge via shadow
+              shadowColor: colors.bg,
+              shadowOffset: { width: -24, height: 0 },
+              shadowOpacity: 1,
+              shadowRadius: 20,
+            }}
+          />
+          </View>
         </View>
       )}
 

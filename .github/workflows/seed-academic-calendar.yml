@@ -13,9 +13,9 @@ on:
   workflow_dispatch:
     inputs:
       schools:
-        description: "Schools to seed (e.g. uci)"
+        description: "Schools: uci,cornell,purdue,umd,uiuc (or 'all')"
         required: false
-        default: "uci"
+        default: "uci,cornell,purdue,umd,uiuc"
       years:
         description: "Academic year starts (e.g. 2025,2026)"
         required: false

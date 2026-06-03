@@ -3104,8 +3104,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               active={currentTab === 'board'}
               tabIndex={3}
               scaleAnim={tabIconScaleAnims[3]}
-              badgeCount={currentTab === 'board' ? 0 : newBoardPostCount}
-              badgeLabel="NEW"
+              badgeCount={0}
               onPress={() => handleTabPress('board')}
             />
             <TabItem

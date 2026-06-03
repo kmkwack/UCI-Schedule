@@ -725,6 +725,9 @@ export default function BoardScreen({
   const boardSlideAnim = useRef(new Animated.Value(screenWidth)).current;
   const postsCacheKey = `board_posts_${school}_${userId}`;
   const boardsCacheKey = `board_catalog_${school}`;
+  const boardLastSeenKey = `board_last_seen_${school}_${userId}`;
+  // Set of board categories that have posts newer than last-seen
+  const [newBoardCategories, setNewBoardCategories] = useState<Set<string>>(new Set());
   const boardListScrollRef = useRef<ScrollView>(null);
   const selectedPostScrollRef = useRef<ScrollView>(null);
   const commentInputRef = useRef<TextInput>(null);
@@ -1253,6 +1256,21 @@ export default function BoardScreen({
       setPosts(freshPosts);
       await AsyncStorage.setItem(postsCacheKey, JSON.stringify(freshPosts));
       hydrateAttachmentUrlsForPosts(freshPosts);
+
+      // Compute which boards have new posts since last visit
+      try {
+        const lastSeenAt = await AsyncStorage.getItem(boardLastSeenKey);
+        if (lastSeenAt) {
+          const lastSeenTime = new Date(lastSeenAt).getTime();
+          const newCats = new Set(
+            freshPosts
+              .filter((p) => new Date(p.created_at ?? '').getTime() > lastSeenTime)
+              .map((p) => (p.category ?? 'General') as string)
+          );
+          setNewBoardCategories(newCats);
+        }
+      } catch {}
+
     } catch (error) {
       if (!isNetworkRequestError(error)) console.warn('Failed to refresh board posts:', error);
     }
@@ -1918,6 +1936,14 @@ export default function BoardScreen({
   }
 
   function openBoard(board: Board) {
+    // Clear NEW badge for this board when user opens it
+    const cat = boardCategory(board);
+    setNewBoardCategories((prev) => {
+      if (!prev.has(cat)) return prev;
+      const next = new Set(prev);
+      next.delete(cat);
+      return next;
+    });
     boardSlideAnim.setValue(screenWidthRef.current);
     setSelectedBoard(board);
     Animated.spring(boardSlideAnim, {
@@ -2616,7 +2642,14 @@ export default function BoardScreen({
                   <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 4 }}>
                     {boardListDescription(board)}
                   </Text>
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{board.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 16, fontWeight: '700', color: colors.text, flex: 1 }}>{board.name}</Text>
+                    {newBoardCategories.has(boardCategory(board)) && (
+                      <View style={{ borderRadius: 999, backgroundColor: colors.brand, paddingHorizontal: 7, paddingVertical: 2 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '900', color: '#fff', letterSpacing: 0.3 }}>NEW</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
                 <View
                   style={{

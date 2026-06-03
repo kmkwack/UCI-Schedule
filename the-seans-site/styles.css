@@ -1390,3 +1390,161 @@ footer a {
     gap: 10px;
   }
 }
+
+/* ── Download buttons ─────────────────────────────────────── */
+.hero-download {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+  margin-bottom: 0;
+}
+
+.download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 20px;
+  border-radius: 12px;
+  text-decoration: none;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  transition: background 0.18s, border-color 0.18s;
+  backdrop-filter: blur(8px);
+}
+.download-btn:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.28);
+}
+.download-btn span {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.download-btn small {
+  font-size: 10px;
+  opacity: 0.65;
+  font-weight: 400;
+}
+.download-btn strong {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* ── Product CTA row ──────────────────────────────────────── */
+.product-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+.button.secondary {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.22);
+  color: rgba(255,255,255,0.8);
+}
+.button.secondary:hover {
+  border-color: rgba(255,255,255,0.5);
+  color: #fff;
+}
+
+/* ── Product screenshot ───────────────────────────────────── */
+.product-screenshot {
+  display: flex;
+  justify-content: center;
+  margin: 60px auto 0;
+  max-width: 340px;
+}
+.product-screenshot img {
+  width: 100%;
+  border-radius: 32px;
+  box-shadow: 0 40px 100px rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* ── Footer redesign ──────────────────────────────────────── */
+footer {
+  padding: 64px 40px 40px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.footer-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 48px;
+  margin-bottom: 48px;
+  flex-wrap: wrap;
+}
+.footer-brand {
+  max-width: 280px;
+}
+.footer-brand strong {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  display: block;
+  margin-bottom: 10px;
+}
+.footer-brand p {
+  font-size: 14px;
+  color: rgba(255,255,255,0.45);
+  line-height: 1.6;
+  margin: 0;
+}
+.footer-links {
+  display: flex;
+  gap: 48px;
+  flex-wrap: wrap;
+}
+.footer-links > div {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 120px;
+}
+.footer-links strong {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 2px;
+}
+.footer-links a {
+  font-size: 14px;
+  color: rgba(255,255,255,0.65);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.footer-links a:hover { color: #fff; }
+.footer-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 13px;
+  color: rgba(255,255,255,0.35);
+}
+.footer-contact {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.footer-contact a {
+  color: rgba(255,255,255,0.45);
+  text-decoration: none;
+}
+.footer-contact a:hover { color: rgba(255,255,255,0.8); }
+
+@media (max-width: 600px) {
+  .hero-download { flex-direction: column; }
+  .product-cta-row { flex-direction: column; }
+  .footer-top { flex-direction: column; }
+  .footer-links { gap: 32px; }
+  .footer-bottom { flex-direction: column; align-items: flex-start; }
+}

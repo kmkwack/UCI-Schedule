@@ -52,6 +52,13 @@
     },
     "plugins": [
       [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-5910770082164549~8972803193",
+          "iosAppId": "ca-app-pub-5910770082164549~1940187061"
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "ClassMate uses your photo library so you can attach images to community posts.",

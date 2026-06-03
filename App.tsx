@@ -45,6 +45,7 @@ import type { ChatTarget } from './src/data/messages';
 import { triggerLightHaptic, triggerSelectionHaptic, triggerSuccessHaptic } from './src/utils/haptics';
 import { MOTION } from './src/utils/motion';
 import type { PanResponderGestureState } from 'react-native';
+import { AppOpenAd, AdEventType, TestIds } from 'react-native-google-mobile-ads';
 import type { DateFormatPreference, EditableProfile, LanguagePreference, NotificationPreferences, PushPermissionStatus, TimetableVisibility, UserSettingsState } from './src/data/userPreferences';
 
 type ConversationMessageNotificationRow = {
@@ -571,6 +572,19 @@ function AuthNavigator({
 
 // ─── Schedule Loader ──────────────────────────────────────────────────────────
 // Cells: [col 0-4, row 0-5, hex color]
+// ─── AdMob ────────────────────────────────────────────────────────────────────
+const APP_OPEN_AD_UNIT_ID = __DEV__
+  ? TestIds.APP_OPEN
+  : Platform.OS === 'ios'
+    ? 'ca-app-pub-5910770082164549/9954408454'
+    : 'ca-app-pub-5910770082164549/5632020060';
+
+export const NATIVE_AD_UNIT_ID = __DEV__
+  ? TestIds.NATIVE
+  : Platform.OS === 'ios'
+    ? 'ca-app-pub-5910770082164549/9870115140'
+    : 'ca-app-pub-5910770082164549/1001977088';
+
 // ScheduleLoader moved to src/components/ScheduleLoader.tsx
 
 function AppContent({ themePreference, onThemeChange }: AppContentProps) {
@@ -750,6 +764,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [needsFeatureOnboarding, setNeedsFeatureOnboarding] = useState(false);
   const [showNotificationPermissionPrompt, setShowNotificationPermissionPrompt] = useState(false);
+  const appOpenAdRef = useRef<AppOpenAd | null>(null);
+  const appOpenAdLoadedRef = useRef(false);
+  const appOpenAdShownRef = useRef(false);
   const [showBrandIntro, setShowBrandIntro] = useState(false);
   const [savingOnboarding, setSavingOnboarding] = useState(false);
   const [forceReviewOnboardingOnce, setForceReviewOnboardingOnce] = useState(false);
@@ -1159,9 +1176,31 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
     let active = true;
 
+    // 광고 미리 로드 (부트 중에 백그라운드로 준비)
+    if (!appOpenAdShownRef.current && !appOpenAdRef.current) {
+      try {
+        const ad = AppOpenAd.createForAdRequest(APP_OPEN_AD_UNIT_ID, {
+          requestNonPersonalizedAdsOnly: true,
+        });
+        ad.addAdEventListener(AdEventType.LOADED, () => {
+          appOpenAdLoadedRef.current = true;
+        });
+        ad.addAdEventListener(AdEventType.CLOSED, () => {
+          appOpenAdShownRef.current = true;
+          appOpenAdRef.current = null;
+        });
+        ad.addAdEventListener(AdEventType.ERROR, () => {
+          appOpenAdRef.current = null;
+        });
+        ad.load();
+        appOpenAdRef.current = ad;
+      } catch {}
+    }
+
     async function loadUserPreferences() {
       setUserBootstrapSettled(false);
       setUserBootstrapLoading(true);
+      const bootstrapStartMs = Date.now();
       const fallback = fallbackProfileFromEmail(userEmail || `student${DEFAULT_UNIVERSITY.domain}`);
       let settingsDetails: Record<string, any> | null | undefined;
       const themeStorageKey = scopedPreferenceStorageKey('theme_preference', currentSchool, userId);
@@ -1286,9 +1325,21 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         setShowNotificationPermissionPrompt(false);
       } finally {
         if (active) {
-          pendingAuthUniversityRef.current = null;
-          setUserBootstrapLoading(false);
-          setUserBootstrapSettled(true);
+          // 광고 노출을 위해 최소 3초 로딩 화면 유지
+          const MIN_SPLASH_MS = 3000;
+          const elapsed = Date.now() - bootstrapStartMs;
+          const remaining = MIN_SPLASH_MS - elapsed;
+          if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
+          if (active) {
+            pendingAuthUniversityRef.current = null;
+            setUserBootstrapLoading(false);
+            setUserBootstrapSettled(true);
+            // 광고 로드 완료됐으면 표시 (1회만)
+            if (!appOpenAdShownRef.current && appOpenAdLoadedRef.current && appOpenAdRef.current) {
+              appOpenAdShownRef.current = true;
+              appOpenAdRef.current.show();
+            }
+          }
         }
       }
     }

@@ -1119,8 +1119,8 @@ p {
   align-items: flex-start;
   border-radius: 20px;
   overflow: hidden;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
   color: white;
   transition: transform 0.22s ease, border-color 0.22s ease;
 }

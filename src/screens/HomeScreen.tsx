@@ -3959,20 +3959,6 @@ export default function HomeScreen({
               {/* ── Dining ── */}
               {openHeroSheet === 'dining' && (
                 <View style={{ gap: 12 }}>
-                  {/* Sponsored card — Dining */}
-                  <TouchableOpacity activeOpacity={0.76} style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(234,88,12,0.1)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Ionicons name="bag-handle-outline" size={20} color="#EA580C" />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary }}>Sponsored</Text>
-                      </View>
-                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>DoorDash — $0 delivery for students</Text>
-                      <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>Free DashPass with your .edu email</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                  </TouchableOpacity>
                   {diningLoading && diningMenus.length === 0 ? (
                     <View style={{ gap: 10 }}><SkeletonBlock height={110} radius={18} /><SkeletonBlock height={110} radius={18} /></View>
                   ) : diningMenus.length === 0 ? (
@@ -4021,25 +4007,23 @@ export default function HomeScreen({
                       );
                     })
                   )}
+                  {/* Sponsored card — Dining (bottom) */}
+                  <TouchableOpacity activeOpacity={0.76} style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(234,88,12,0.1)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Ionicons name="bag-handle-outline" size={20} color="#EA580C" />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, marginBottom: 2 }}>Sponsored</Text>
+                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>DoorDash — $0 delivery for students</Text>
+                      <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>Free DashPass with your .edu email</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                  </TouchableOpacity>
                 </View>
               )}
               {/* ── Sports ── */}
               {openHeroSheet === 'sports' && (
                 <View style={{ gap: 10 }}>
-                  {/* Sponsored card — Sports */}
-                  <TouchableOpacity activeOpacity={0.76} style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(65,105,225,0.1)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Ionicons name="tv-outline" size={20} color={colors.brand} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary }}>Sponsored</Text>
-                      </View>
-                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>ESPN+ — Watch every game live</Text>
-                      <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>Student discount available</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                  </TouchableOpacity>
                   {sportsLoading && visibleCampusEvents.length === 0 ? (
                     <View style={{ gap: 10 }}><SkeletonBlock height={72} radius={18} /><SkeletonBlock height={72} radius={18} /><SkeletonBlock height={72} radius={18} /></View>
                   ) : visibleCampusEvents.length === 0 ? (
@@ -4066,25 +4050,23 @@ export default function HomeScreen({
                       </TouchableOpacity>
                     ))
                   )}
+                  {/* Sponsored card — Sports (bottom) */}
+                  <TouchableOpacity activeOpacity={0.76} style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(65,105,225,0.1)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Ionicons name="tv-outline" size={20} color={colors.brand} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, marginBottom: 2 }}>Sponsored</Text>
+                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>ESPN+ — Watch every game live</Text>
+                      <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>Student discount available</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                  </TouchableOpacity>
                 </View>
               )}
               {/* ── Campus ── */}
               {openHeroSheet === 'campus' && (
                 <View style={{ gap: 10 }}>
-                  {/* Sponsored card — Campus */}
-                  <TouchableOpacity activeOpacity={0.76} style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(5,150,105,0.1)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Ionicons name="briefcase-outline" size={20} color="#059669" />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary }}>Sponsored</Text>
-                      </View>
-                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Handshake — Internships for UCI students</Text>
-                      <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>1,200+ open roles near Irvine</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                  </TouchableOpacity>
                   {campusInfoResources.map((resource) => {
                     const resourceCaption = campusInfoResourceCaption(resource);
                     if (resource.children?.length) {
@@ -4111,19 +4093,34 @@ export default function HomeScreen({
                       );
                     }
                     return (
-                      <TouchableOpacity key={resource.id} onPress={() => void openCampusInfoLink(resource)} activeOpacity={0.76}
-                        style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                        <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: themedIconBackground(resource.color, isDark, resource.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <Ionicons name={resource.icon} size={19} color={themedIconColor(resource.color, isDark)} />
-                        </View>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>{resource.title}</Text>
-                          {resourceCaption ? <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 1 }}>{resourceCaption}</Text> : null}
-                        </View>
-                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                      </TouchableOpacity>
+                      <View key={resource.id}>
+                        <TouchableOpacity onPress={() => void openCampusInfoLink(resource)} activeOpacity={0.76}
+                          style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                          <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: themedIconBackground(resource.color, isDark, resource.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Ionicons name={resource.icon} size={19} color={themedIconColor(resource.color, isDark)} />
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>{resource.title}</Text>
+                            {resourceCaption ? <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 1 }}>{resourceCaption}</Text> : null}
+                          </View>
+                          <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                        {resource.id === 'jobs' && (
+                          <TouchableOpacity activeOpacity={0.76} style={{ marginTop: 10, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(5,150,105,0.1)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <Ionicons name="briefcase-outline" size={20} color="#059669" />
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, marginBottom: 2 }}>Sponsored</Text>
+                              <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Handshake — Internships near campus</Text>
+                              <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>1,200+ open roles near Irvine</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     );
-                  })}
+})}
                 </View>
               )}
             </ScrollView>

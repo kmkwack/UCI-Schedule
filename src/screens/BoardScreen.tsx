@@ -3310,7 +3310,7 @@ export default function BoardScreen({
                 >
                   {filteredPosts.map((post, index) => {
                     const previewImage = post.attachments.find((attachment) => isImageAttachment(attachment) && attachmentUri(attachment));
-                    const showSponsoredCard = index > 0 && index % 3 === 0;
+                    const showSponsoredCard = index > 0 && index % 5 === 0;
 
                     return (
                     <View key={post.id}>

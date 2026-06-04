@@ -1561,10 +1561,76 @@ footer {
 }
 .footer-contact a:hover { color: rgba(255,255,255,0.8); }
 
+@media (max-width: 620px) {
+  /* Founders — 모바일에서도 2열 유지, 사진 비율 조정 */
+  .founders-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .founder-photo-wrap {
+    aspect-ratio: 3 / 4;
+  }
+  .founder-card strong {
+    font-size: 15px;
+    padding: 14px 14px 3px;
+  }
+  .founder-card p {
+    font-size: 11px;
+    padding: 0 14px 14px;
+  }
+}
+
 @media (max-width: 600px) {
-  .hero-download { flex-direction: column; }
-  .product-cta-row { flex-direction: column; }
+  /* Hero 다운로드 버튼 — 센터 정렬 */
+  .hero-download {
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+  .hero-download .download-btn {
+    width: 100%;
+    max-width: 280px;
+    justify-content: center;
+  }
+
+  /* Product CTA */
+  .product-cta-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  /* Footer */
   .footer-top { flex-direction: column; }
   .footer-links { gap: 32px; }
   .footer-bottom { flex-direction: column; align-items: flex-start; }
+
+  footer {
+    padding: 48px 20px 32px;
+  }
+}
+
+/* Scroll showcase — 모바일에서 모든 단계 정적으로 표시 */
+@media (max-width: 980px) {
+  .showcase-copy-stack {
+    min-height: auto;
+    gap: 32px;
+    padding-bottom: 0;
+  }
+  .showcase-step {
+    display: block !important;
+    opacity: 1 !important;
+  }
+  .showcase-step span {
+    font-size: 12px;
+    color: rgba(255,255,255,0.4);
+    font-weight: 700;
+    display: block;
+    margin-bottom: 8px;
+  }
+  .showcase-meter {
+    display: none;
+  }
+  .showcase-visual {
+    order: -1;
+  }
 }

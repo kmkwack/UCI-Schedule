@@ -4071,24 +4071,39 @@ export default function HomeScreen({
                     const resourceCaption = campusInfoResourceCaption(resource);
                     if (resource.children?.length) {
                       return (
-                        <View key={resource.id} style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                            <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: themedIconBackground(resource.color, isDark, resource.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <Ionicons name={resource.icon} size={18} color={themedIconColor(resource.color, isDark)} />
+                        <View key={resource.id}>
+                          <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                              <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: themedIconBackground(resource.color, isDark, resource.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <Ionicons name={resource.icon} size={18} color={themedIconColor(resource.color, isDark)} />
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>{resource.title}</Text>
+                                {resourceCaption ? <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 1 }}>{resourceCaption}</Text> : null}
+                              </View>
                             </View>
-                            <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>{resource.title}</Text>
-                              {resourceCaption ? <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 1 }}>{resourceCaption}</Text> : null}
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                              {resource.children.map((child) => (
+                                <TouchableOpacity key={child.id} onPress={() => void openCampusInfoLink(child)} activeOpacity={0.76}
+                                  style={{ flexGrow: 1, flexBasis: '47%', minHeight: 36, borderRadius: 12, backgroundColor: themedIconBackground(resource.color, isDark, resource.bg), alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }}>
+                                  <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '800', color: themedIconColor(resource.color, isDark) }}>{child.title}</Text>
+                                </TouchableOpacity>
+                              ))}
                             </View>
                           </View>
-                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                            {resource.children.map((child) => (
-                              <TouchableOpacity key={child.id} onPress={() => void openCampusInfoLink(child)} activeOpacity={0.76}
-                                style={{ flexGrow: 1, flexBasis: '47%', minHeight: 36, borderRadius: 12, backgroundColor: themedIconBackground(resource.color, isDark, resource.bg), alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }}>
-                                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '800', color: themedIconColor(resource.color, isDark) }}>{child.title}</Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
+                          {resource.id === 'jobs' && (
+                            <TouchableOpacity activeOpacity={0.76} style={{ marginTop: 10, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(5,150,105,0.1)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <Ionicons name="briefcase-outline" size={20} color="#059669" />
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, marginBottom: 2 }}>Sponsored</Text>
+                                <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Handshake — Internships near campus</Text>
+                                <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>1,200+ open roles near Irvine</Text>
+                              </View>
+                              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                            </TouchableOpacity>
+                          )}
                         </View>
                       );
                     }

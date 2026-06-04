@@ -756,7 +756,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [needsFeatureOnboarding, setNeedsFeatureOnboarding] = useState(false);
   const [showNotificationPermissionPrompt, setShowNotificationPermissionPrompt] = useState(false);
-  const appOpenAdShownRef = useRef(false);
   const [showBrandIntro, setShowBrandIntro] = useState(false);
   const [savingOnboarding, setSavingOnboarding] = useState(false);
   const [forceReviewOnboardingOnce, setForceReviewOnboardingOnce] = useState(false);

@@ -3514,37 +3514,56 @@ export default function HomeScreen({
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ gap: 8, paddingRight: 32 }}
           >
-            {upcomingAcademicEvents.map((event) => {
-              const dateStr = event.endDate && event.endDate !== event.date
-                ? `${formatAcademicDate(event.date)} – ${formatAcademicDate(event.endDate)}`
-                : formatAcademicDate(event.date);
+            {(() => {
+              const cardStyle = {
+                width: 140,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+                paddingHorizontal: 14,
+                paddingVertical: 13,
+                gap: 4 as const,
+                justifyContent: 'center' as const,
+              };
 
-              return (
-                <TouchableOpacity
-                  key={event.id}
-                  onPress={() => openAcademicSheet(event)}
-                  activeOpacity={0.76}
-                  style={{
-                    width: 140,
-                    borderRadius: 18,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    backgroundColor: colors.card,
-                    paddingHorizontal: 14,
-                    paddingVertical: 13,
-                    gap: 4,
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17 }}>
-                    {event.title}
-                  </Text>
-                  <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>
-                    {dateStr}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+              const items: React.ReactNode[] = [];
+              upcomingAcademicEvents.forEach((event, index) => {
+                const dateStr = event.endDate && event.endDate !== event.date
+                  ? `${formatAcademicDate(event.date)} – ${formatAcademicDate(event.endDate)}`
+                  : formatAcademicDate(event.date);
+
+                items.push(
+                  <TouchableOpacity
+                    key={event.id}
+                    onPress={() => openAcademicSheet(event)}
+                    activeOpacity={0.76}
+                    style={cardStyle}
+                  >
+                    <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17 }}>
+                      {event.title}
+                    </Text>
+                    <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>
+                      {dateStr}
+                    </Text>
+                  </TouchableOpacity>
+                );
+                if (index === 2) {
+                  items.push(
+                    <TouchableOpacity
+                      key="cal-ad"
+                      activeOpacity={0.76}
+                      style={{ ...cardStyle, borderColor: `${colors.brand}28`, backgroundColor: `${colors.brand}08` }}
+                    >
+                      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textTertiary, marginBottom: 1 }}>Sponsored</Text>
+                      <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17 }}>Chegg Study</Text>
+                      <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>Free 7-day trial</Text>
+                    </TouchableOpacity>
+                  );
+                }
+              });
+              return items;
+            })()}
           </ScrollView>
           {/* Right fade — hints there's more to scroll */}
           <View

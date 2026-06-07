@@ -1,12 +1,6 @@
 name: Deploy the seans site
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'the-seans-site/**'
-      - '.github/workflows/deploy-the-seans-site.yml'
   workflow_dispatch:
 
 permissions:

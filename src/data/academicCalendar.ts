@@ -19,6 +19,7 @@ export type AcademicEvent = {
   endDate?: string;   // "YYYY-MM-DD" for multi-day ranges
   category: AcademicEventCategory;
   url?: string;
+  isCustom?: boolean; // true if added by the user themselves (deletable)
 };
 
 // Ionicons name + brand-toned accent — consistent with app's design language
@@ -150,6 +151,77 @@ export function daysUntilEvent(event: AcademicEvent, now: Date): number {
   const today = new Date(now.toISOString().slice(0, 10) + 'T00:00:00');
   const eventDate = new Date(event.date + 'T00:00:00');
   return Math.round((eventDate.getTime() - today.getTime()) / 86_400_000);
+}
+
+// ─── User-added personal academic events ─────────────────────────────────────
+
+function rowToCustomEvent(row: any): AcademicEvent {
+  return {
+    id:       String(row.id),
+    title:    String(row.title),
+    subtitle: row.subtitle ?? undefined,
+    date:     String(row.date),
+    endDate:  row.end_date ?? undefined,
+    category: row.category as AcademicEventCategory,
+    isCustom: true,
+  };
+}
+
+/** Fetch the events a user has personally added for a given school + term. */
+export async function fetchUserAcademicEvents(userId: string, school: string, quarterKey: string): Promise<AcademicEvent[]> {
+  try {
+    const { data, error } = await supabase
+      .from('user_academic_events')
+      .select('id, title, subtitle, date, end_date, category')
+      .eq('user_id', userId)
+      .eq('school', school)
+      .eq('quarter_key', quarterKey)
+      .order('date', { ascending: true });
+
+    if (!error && data) return data.map(rowToCustomEvent);
+  } catch {}
+  return [];
+}
+
+/** Add a personal academic event. Returns the created event, or null on failure. */
+export async function addUserAcademicEvent(
+  userId: string,
+  school: string,
+  quarterKey: string,
+  input: { title: string; date: string; endDate?: string; subtitle?: string; category?: AcademicEventCategory }
+): Promise<AcademicEvent | null> {
+  try {
+    const { data, error } = await supabase
+      .from('user_academic_events')
+      .insert({
+        user_id: userId,
+        school,
+        quarter_key: quarterKey,
+        title: input.title,
+        subtitle: input.subtitle ?? null,
+        date: input.date,
+        end_date: input.endDate ?? null,
+        category: input.category ?? 'deadline',
+      })
+      .select('id, title, subtitle, date, end_date, category')
+      .single();
+
+    if (!error && data) return rowToCustomEvent(data);
+  } catch {}
+  return null;
+}
+
+/** Delete a personal academic event the user added themselves. */
+export async function deleteUserAcademicEvent(eventId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('user_academic_events')
+      .delete()
+      .eq('id', eventId);
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 /** Invalidate cache so next fetch pulls fresh data from Supabase. */

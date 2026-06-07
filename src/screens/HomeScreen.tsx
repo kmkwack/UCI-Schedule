@@ -5,12 +5,12 @@ import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, blockColorKey, formatCourseTimeRange12, getBlockColors, quarterKey } from '../data/courses';
-import { CATEGORY_CONFIG, daysUntilEvent, fetchAcademicEvents, type AcademicEvent } from '../data/academicCalendar';
+import { addUserAcademicEvent, CATEGORY_CONFIG, daysUntilEvent, deleteUserAcademicEvent, fetchAcademicEvents, fetchUserAcademicEvents, type AcademicEvent } from '../data/academicCalendar';
 import { buildSectionMatchKey, getSharedClassMatch, normalizeCourseCode, type SharedClassMatch } from '../data/sharedClasses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
 import { fetchDiningMenusForSchool, schoolDiningMenusSupported, type DiningLocationMenu, type DiningMenuMeal } from '../data/diningMenus';
-import { academicSystemNoun, buildTermCandidates, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
+import { academicSystemNoun, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { formatDateInTimeZone, getZonedDateParts, normalizeTimeZone, zonedDateFromParts, zonedDateKey, zonedWeekdayIndex } from '../data/timeZone';
 import {
@@ -2043,18 +2043,126 @@ export default function HomeScreen({
 
   const [academicEventGroups, setAcademicEventGroups] = useState<{ term: Quarter; events: AcademicEvent[] }[]>([]);
 
+  // ── Full academic calendar (current + next term, past/upcoming, personal events) ──
+  const [allCalendarVisible, setAllCalendarVisible] = useState(false);
+  const [allCalendarLoading, setAllCalendarLoading] = useState(false);
+  const [allCalendarGroups, setAllCalendarGroups] = useState<{ term: Quarter; events: AcademicEvent[] }[]>([]);
+  const [addEventTerm, setAddEventTerm] = useState<Quarter | null>(null);
+  const [addEventTitle, setAddEventTitle] = useState('');
+  const [addEventDate, setAddEventDate] = useState('');
+  const [addEventSaving, setAddEventSaving] = useState(false);
+
+  const loadAllAcademicCalendar = useCallback(async () => {
+    setAllCalendarLoading(true);
+    try {
+      const todayQuarter = getAcademicTermForDate(school, now);
+      const year = Number(todayQuarter.year);
+      const qKey0 = quarterKey(todayQuarter);
+      const candidates = buildTermCandidates(school, year, year + 1);
+      const startIndex = Math.max(0, candidates.findIndex((c) => quarterKey(c) === qKey0));
+      const groups: { term: Quarter; events: AcademicEvent[] }[] = [];
+      for (let i = startIndex; i < candidates.length && groups.length < 2; i++) {
+        const term = candidates[i];
+        const qKey = quarterKey(term);
+        const [official, custom] = await Promise.all([
+          fetchAcademicEvents(school, qKey).catch(() => []),
+          userId ? fetchUserAcademicEvents(userId, school, qKey).catch(() => []) : Promise.resolve([] as AcademicEvent[]),
+        ]);
+        const events = [...official, ...custom].sort((a, b) => a.date.localeCompare(b.date));
+        if (events.length > 0) groups.push({ term, events });
+      }
+      setAllCalendarGroups(groups);
+    } finally {
+      setAllCalendarLoading(false);
+    }
+  }, [school, now, userId]);
+
+  const openAllCalendar = useCallback(() => {
+    setAllCalendarVisible(true);
+    triggerSelectionHaptic();
+    void loadAllAcademicCalendar();
+  }, [loadAllAcademicCalendar]);
+
+  const openAddCustomEvent = useCallback((term: Quarter) => {
+    setAddEventTerm(term);
+    setAddEventTitle('');
+    setAddEventDate('');
+    triggerSelectionHaptic();
+  }, []);
+
+  const handleAddCustomEvent = useCallback(async () => {
+    if (!userId || !addEventTerm) return;
+    const title = addEventTitle.trim();
+    const date = addEventDate.trim();
+    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      Alert.alert('Check your input', 'Please enter a title and a date in YYYY-MM-DD format.');
+      return;
+    }
+    setAddEventSaving(true);
+    try {
+      const term = addEventTerm;
+      const qKey = quarterKey(term);
+      const created = await addUserAcademicEvent(userId, school, qKey, { title, date, category: 'deadline' });
+      if (created) {
+        setAllCalendarGroups((prev) => {
+          const exists = prev.some((g) => quarterKey(g.term) === qKey);
+          const next = exists
+            ? prev.map((g) => (quarterKey(g.term) === qKey
+              ? { ...g, events: [...g.events, created].sort((a, b) => a.date.localeCompare(b.date)) }
+              : g))
+            : [...prev, { term, events: [created] }];
+          return next.sort((a, b) => quarterKey(a.term).localeCompare(quarterKey(b.term)) || a.events[0].date.localeCompare(b.events[0].date));
+        });
+        setAddEventTerm(null);
+        setAddEventTitle('');
+        setAddEventDate('');
+        triggerSuccessHaptic();
+      } else {
+        Alert.alert('Add failed', 'Please try again in a moment.');
+      }
+    } finally {
+      setAddEventSaving(false);
+    }
+  }, [userId, school, addEventTerm, addEventTitle, addEventDate]);
+
+  const handleDeleteCustomEvent = useCallback((event: AcademicEvent) => {
+    Alert.alert('Delete event', `Delete "${event.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          const ok = await deleteUserAcademicEvent(event.id);
+          if (ok) {
+            setAllCalendarGroups((prev) => prev
+              .map((g) => ({ ...g, events: g.events.filter((e) => e.id !== event.id) }))
+              .filter((g) => g.events.length > 0));
+            triggerSelectionHaptic();
+          } else {
+            Alert.alert('Delete failed', 'Please try again in a moment.');
+          }
+        },
+      },
+    ]);
+  }, []);
+
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // 현재 학기부터 시작해서, 데이터가 있는 학기를 앞으로 2개까지만 자동으로 불러옴
-      const year = Number(selectedQuarter.year);
-      const qKey = quarterKey(selectedQuarter);
+      // 오늘 날짜 기준 현재 학기부터 시작해서, 데이터가 있는 학기를 앞으로 2개까지만 자동으로 불러옴
+      // (타임테이블에서 과거 학기를 보고 있어도 홈의 학사일정은 항상 "오늘" 기준으로 표시)
+      const todayQuarter = getAcademicTermForDate(school, new Date());
+      const year = Number(todayQuarter.year);
+      const qKey = quarterKey(todayQuarter);
       const candidates = buildTermCandidates(school, year, year + 1);
       const startIndex = Math.max(0, candidates.findIndex((c) => quarterKey(c) === qKey));
+      const todayStr = new Date().toISOString().slice(0, 10);
       const groups: { term: Quarter; events: AcademicEvent[] }[] = [];
       for (let i = startIndex; i < candidates.length && groups.length < 2; i++) {
         const term = candidates[i];
         const events = (await fetchAcademicEvents(school, quarterKey(term)).catch(() => []))
+          .filter((e) => (e.endDate ?? e.date) >= todayStr)
           .slice()
           .sort((a, b) => a.date.localeCompare(b.date));
         if (events.length > 0) groups.push({ term, events });
@@ -2062,7 +2170,7 @@ export default function HomeScreen({
       if (!cancelled) setAcademicEventGroups(groups);
     })();
     return () => { cancelled = true; };
-  }, [school, selectedQuarter.year]);
+  }, [school]);
 
   const [openHeroSheet, setOpenHeroSheet] = useState<'dining' | 'sports' | 'campus' | null>(null);
   const [heroSheetVisible, setHeroSheetVisible] = useState(false);
@@ -3504,22 +3612,33 @@ export default function HomeScreen({
       {/* ── Academic Calendar Strip (앞으로 두 학기를 가로 스크롤로 나열) ──────── */}
       {academicEventGroups.length > 0 && (
         <View style={{ marginBottom: 14 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 8 }}>Academic Calendar</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Academic Calendar</Text>
+            <TouchableOpacity
+              onPress={openAllCalendar}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.brand }}>View All</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.brand} />
+            </TouchableOpacity>
+          </View>
           <View style={{ position: 'relative' }}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8, paddingRight: 32 }}
+              contentContainerStyle={{ gap: 8, paddingRight: 32, alignItems: 'center' }}
             >
               {(() => {
                 const cardStyle = {
                   width: 140,
+                  height: 76,
                   borderRadius: 18,
                   borderWidth: 1,
                   borderColor: colors.border,
                   backgroundColor: colors.card,
                   paddingHorizontal: 14,
-                  paddingVertical: 13,
+                  paddingVertical: 12,
                   gap: 4 as const,
                   justifyContent: 'center' as const,
                 };
@@ -3531,7 +3650,7 @@ export default function HomeScreen({
                     items.push(
                       <View
                         key={`divider-${quarterKey(group.term)}`}
-                        style={{ width: 1, alignSelf: 'stretch', backgroundColor: colors.border, marginHorizontal: 4 }}
+                        style={{ width: 1, height: 52, backgroundColor: colors.border, marginHorizontal: 4 }}
                       />
                     );
                   }
@@ -3960,6 +4079,185 @@ export default function HomeScreen({
           </View>
         );
       })()}
+
+      {/* ── Full academic calendar (current + next term, past/upcoming D-day, add/delete) ── */}
+      <Modal
+        visible={allCalendarVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setAllCalendarVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+            paddingHorizontal: 18, paddingTop: 16, paddingBottom: 12,
+            borderBottomWidth: 1, borderBottomColor: colors.border,
+          }}>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Academic Calendar</Text>
+            <TouchableOpacity
+              onPress={() => setAllCalendarVisible(false)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Ionicons name="close" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          {allCalendarLoading && allCalendarGroups.length === 0 ? (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator color={colors.brand} />
+            </View>
+          ) : (
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 14, paddingBottom: Math.max(bottomInset, 18) + 24, gap: 18 }}
+            >
+              {allCalendarGroups.length === 0 ? (
+                <Text style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginTop: 40 }}>
+                  No academic calendar events to show.
+                </Text>
+              ) : allCalendarGroups.map((group) => {
+                const qKey = quarterKey(group.term);
+                return (
+                  <View key={qKey}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
+                        {termLabel(group.term, school)}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => openAddCustomEvent(group.term)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: `${colors.brand}14` }}
+                      >
+                        <Ionicons name="add" size={14} color={colors.brand} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.brand }}>Add Event</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, overflow: 'hidden' }}>
+                      {group.events.map((event, idx) => {
+                        const days = daysUntilEvent(event, now);
+                        const todayStr = now.toISOString().slice(0, 10);
+                        const isOngoing = !!event.endDate && days < 0 && event.endDate >= todayStr;
+                        const isPast = !isOngoing && days < 0;
+                        const dLabel = isPast ? 'Past' : isOngoing ? 'Ongoing' : days === 0 ? 'D-Day' : `D-${days}`;
+                        const dColor = isPast ? colors.textTertiary : colors.brand;
+                        const dateStr = event.endDate && event.endDate !== event.date
+                          ? `${formatAcademicDate(event.date)} – ${formatAcademicDate(event.endDate)}`
+                          : formatAcademicDate(event.date);
+                        return (
+                          <View
+                            key={event.id}
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', gap: 10,
+                              paddingHorizontal: 14, paddingVertical: 12,
+                              borderTopWidth: idx === 0 ? 0 : 1, borderTopColor: colors.border,
+                              opacity: isPast ? 0.5 : 1,
+                            }}
+                          >
+                            <View style={{
+                              minWidth: 52, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999,
+                              backgroundColor: `${dColor}16`, alignItems: 'center',
+                            }}>
+                              <Text style={{ fontSize: 11, fontWeight: '800', color: dColor }}>{dLabel}</Text>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }} numberOfLines={1}>
+                                {event.title}
+                              </Text>
+                              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
+                                {dateStr}
+                              </Text>
+                            </View>
+                            {event.isCustom ? (
+                              <TouchableOpacity
+                                onPress={() => handleDeleteCustomEvent(event)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
+
+      {/* ── Add personal academic event modal ── */}
+      <Modal
+        visible={!!addEventTerm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddEventTerm(null)}
+      >
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setAddEventTerm(null)}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          <View style={{
+            borderTopLeftRadius: SHEET_CORNER_RADIUS,
+            borderTopRightRadius: SHEET_CORNER_RADIUS,
+            backgroundColor: colors.bg,
+            paddingHorizontal: 20,
+            paddingTop: 18,
+            paddingBottom: Math.max(bottomInset, 18) + 18,
+          }}>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 4 }}>
+              Add Your Event
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
+              {addEventTerm ? termLabel(addEventTerm, school) : ''}
+            </Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>Title</Text>
+            <TextInput
+              value={addEventTitle}
+              onChangeText={setAddEventTitle}
+              placeholder="e.g. Scholarship application deadline"
+              placeholderTextColor={colors.textTertiary}
+              style={{
+                borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+                paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text,
+                marginBottom: 14,
+              }}
+            />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>Date (YYYY-MM-DD)</Text>
+            <TextInput
+              value={addEventDate}
+              onChangeText={setAddEventDate}
+              placeholder="2026-09-01"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="numbers-and-punctuation"
+              style={{
+                borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+                paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text,
+                marginBottom: 18,
+              }}
+            />
+            <TouchableOpacity
+              onPress={handleAddCustomEvent}
+              disabled={addEventSaving}
+              style={{
+                borderRadius: 14, backgroundColor: colors.brand, paddingVertical: 14,
+                alignItems: 'center', opacity: addEventSaving ? 0.6 : 1,
+              }}
+            >
+              {addEventSaving ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>Add</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Hero info sheet (absolutely positioned, no Modal) ── */}
       {heroSheetVisible && (

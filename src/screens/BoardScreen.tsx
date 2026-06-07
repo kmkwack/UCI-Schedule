@@ -2543,65 +2543,6 @@ export default function BoardScreen({
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => {
-                setDepartmentSearch('');
-                setShowDepartmentBoards(true);
-              }}
-              activeOpacity={0.7}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: colors.card,
-                borderRadius: 18,
-                padding: 16,
-                marginBottom: 12,
-                borderWidth: 1,
-                borderColor: colors.border,
-                shadowColor: '#0f172a',
-                shadowOffset: { width: 0, height: 10 },
-                shadowOpacity: isDark ? 0.18 : 0.06,
-                shadowRadius: 20,
-                elevation: 4,
-              }}
-            >
-              <View
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 14,
-                  backgroundColor: colors.brandBg,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: 14,
-                  borderWidth: 1,
-                  borderColor: `${colors.brand}20`,
-                }}
-              >
-                <Ionicons name="school-outline" size={22} color={colors.brand} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 4 }}>
-                  Browse your department
-                </Text>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Department Boards</Text>
-              </View>
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
-                  backgroundColor: colors.brandBg,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderWidth: 1,
-                  borderColor: `${colors.brand}18`,
-                }}
-              >
-                <Ionicons name="chevron-forward" size={16} color={colors.brand} />
-              </View>
-            </TouchableOpacity>
-
             {boards.map((board) => (
               <TouchableOpacity
                 key={board.id}
@@ -2667,6 +2608,65 @@ export default function BoardScreen({
                 </View>
               </TouchableOpacity>
             ))}
+
+            <TouchableOpacity
+              onPress={() => {
+                setDepartmentSearch('');
+                setShowDepartmentBoards(true);
+              }}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.card,
+                borderRadius: 18,
+                padding: 16,
+                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+                shadowColor: '#0f172a',
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: isDark ? 0.18 : 0.06,
+                shadowRadius: 20,
+                elevation: 4,
+              }}
+            >
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 14,
+                  backgroundColor: colors.brandBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 14,
+                  borderWidth: 1,
+                  borderColor: `${colors.brand}20`,
+                }}
+              >
+                <Ionicons name="school-outline" size={22} color={colors.brand} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 4 }}>
+                  Browse your department
+                </Text>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Department Boards</Text>
+              </View>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: colors.brandBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: `${colors.brand}18`,
+                }}
+              >
+                <Ionicons name="chevron-forward" size={16} color={colors.brand} />
+              </View>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={{

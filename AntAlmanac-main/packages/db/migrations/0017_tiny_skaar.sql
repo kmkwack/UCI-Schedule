@@ -1,1 +1,0 @@
-ALTER TABLE "coursesInSchedule" ADD COLUMN IF NOT EXISTS "visibility" text DEFAULT 'visible' NOT NULL;

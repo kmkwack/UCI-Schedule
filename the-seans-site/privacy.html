@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Privacy Policy | The Seans</title>
-    <meta name="description" content="Privacy Policy for ClassMate by The Seans." />
+    <title>Privacy Policy | ClassMate by The Seans</title>
+    <meta name="description" content="Privacy Policy for ClassMate — how we collect, use, and protect your information." />
     <link rel="icon" href="./assets/favicon.png" />
     <link rel="stylesheet" href="./styles.css" />
     <style>
       .legal-page {
         max-width: 720px;
         margin: 0 auto;
-        padding: 120px 24px 80px;
+        padding: 120px 24px 100px;
         color: #e2e8f0;
         line-height: 1.8;
       }
@@ -31,7 +31,9 @@
         font-weight: 700;
         color: #fff;
         margin-top: 40px;
-        margin-bottom: 12px;
+        margin-bottom: 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
       }
       .legal-page p, .legal-page li {
         font-size: 0.9375rem;
@@ -40,7 +42,9 @@
       }
       .legal-page ul {
         padding-left: 20px;
+        margin-bottom: 12px;
       }
+      .legal-page li { margin-bottom: 6px; }
       .legal-page a {
         color: #4169E1;
         text-decoration: underline;
@@ -53,6 +57,45 @@
         font-size: 0.875rem;
       }
       .legal-page .back-link:hover { color: #fff; }
+      .legal-page .callout {
+        background: rgba(65,105,225,0.10);
+        border: 1px solid rgba(65,105,225,0.22);
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-top: 40px;
+        font-size: 0.875rem;
+        color: #94a3b8;
+        line-height: 1.7;
+      }
+      .toc {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px;
+        padding: 20px 24px;
+        margin-bottom: 40px;
+      }
+      .toc p {
+        font-size: 0.8125rem;
+        font-weight: 700;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 10px;
+      }
+      .toc ol {
+        padding-left: 18px;
+        margin: 0;
+      }
+      .toc li {
+        font-size: 0.875rem;
+        color: #94a3b8;
+        margin-bottom: 4px;
+      }
+      .toc li a {
+        color: #94a3b8;
+        text-decoration: none;
+      }
+      .toc li a:hover { color: #fff; }
     </style>
   </head>
   <body style="background:#050506;">
@@ -66,69 +109,165 @@
     <main class="legal-page">
       <a class="back-link" href="/">← Back to The Seans</a>
       <h1>Privacy Policy</h1>
-      <p class="meta">Effective date: June 1, 2026 &nbsp;·&nbsp; Last updated: June 1, 2026</p>
+      <p class="meta">Effective date: May 8, 2026 &nbsp;·&nbsp; Last updated: June 7, 2026</p>
 
-      <p>This Privacy Policy describes how The Seans ("we", "us", or "our") collects, uses, and shares information about you when you use ClassMate and our related services (collectively, the "Service").</p>
+      <div class="toc">
+        <p>Contents</p>
+        <ol>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#information-we-collect">Information We Collect</a></li>
+          <li><a href="#not-collected">Information We Do Not Pull From Schools or LMSs</a></li>
+          <li><a href="#timetables">Timetables, ClassMates, and Shared Classes</a></li>
+          <li><a href="#lms-feeds">LMS Assignment Calendar Feeds</a></li>
+          <li><a href="#grades">Grades and GPA Tracking</a></li>
+          <li><a href="#how-we-use">How We Use Information</a></li>
+          <li><a href="#what-others-see">What Other Users Can See</a></li>
+          <li><a href="#how-we-share">How We Share Information</a></li>
+          <li><a href="#third-parties">Third-Party Service Providers</a></li>
+          <li><a href="#notifications">Notifications and Device Permissions</a></li>
+          <li><a href="#ugc">Reviews, Community Content, and Messages</a></li>
+          <li><a href="#retention">Data Retention</a></li>
+          <li><a href="#your-choices">Your Choices and Requests</a></li>
+          <li><a href="#security">Security</a></li>
+          <li><a href="#children">Children's Privacy</a></li>
+          <li><a href="#changes">Changes to This Policy</a></li>
+          <li><a href="#contact">Contact Us</a></li>
+        </ol>
+      </div>
 
-      <h2>1. Information We Collect</h2>
-      <p><strong>Account information.</strong> When you create an account, we collect your email address, name, university affiliation, major, year of study, and any profile information you choose to provide.</p>
-      <p><strong>Academic data.</strong> We collect the course schedules, timetables, grades, and GPA data you enter or import into the Service.</p>
-      <p><strong>Community content.</strong> We collect posts, comments, replies, and direct messages you create within the Service.</p>
-      <p><strong>Usage data.</strong> We automatically collect information about how you interact with the Service, including log data, device information, and general location (country/region based on IP address).</p>
-      <p><strong>Communications.</strong> If you contact us for support, we may collect the contents of your message and any associated metadata.</p>
+      <h2 id="overview">1. Overview</h2>
+      <p>This Privacy Policy explains how ClassMate ("we", "us", or "our"), developed by The Seans, collects, uses, stores, and shares information when you use the ClassMate mobile application and related services (collectively, the "Service").</p>
+      <p>It is written to reflect the app's current features, including university sign-in, timetable planning, manually entered grade tracking, LMS assignment deadline imports, reviews, community posts, friend connections, direct messages, notifications, support, and moderation tools.</p>
+      <p>By using ClassMate, you agree to the collection and use of information as described in this policy.</p>
 
-      <h2>2. How We Use Your Information</h2>
+      <h2 id="information-we-collect">2. Information We Collect</h2>
+      <p>Depending on how you use ClassMate, we may collect the following:</p>
       <ul>
-        <li>To provide, maintain, and improve the Service</li>
-        <li>To personalize your experience (e.g., showing courses and boards relevant to your university)</li>
-        <li>To enable social features such as finding classmates in your courses</li>
-        <li>To send you notifications about activity relevant to you (with your permission)</li>
-        <li>To respond to your comments and questions</li>
-        <li>To monitor and analyze usage patterns and improve the Service</li>
-        <li>To detect, prevent, and address fraud, abuse, and safety issues</li>
+        <li><strong>Account information</strong> — your university email address, selected school, display name, major, year of study, and any optional profile details you choose to add.</li>
+        <li><strong>Academic data</strong> — user-saved timetable data, saved courses, manually entered grade-tracking entries, timetable visibility settings, and accepted friend connections.</li>
+        <li><strong>Community content</strong> — course reviews, posts, comments, direct messages, and attachment metadata.</li>
+        <li><strong>Moderation data</strong> — reports you submit, blocked user records, and moderation actions taken on your account.</li>
+        <li><strong>Notification data</strong> — your notification preferences, permission status, and device push token.</li>
+        <li><strong>Usage data</strong> — limited device and app usage information needed to keep the service working (such as session identifiers and general error logs). We do not collect precise location data, contacts, or microphone access.</li>
+        <li><strong>Support communications</strong> — contents of messages you send to us for support or feedback.</li>
       </ul>
 
-      <h2>3. How We Share Your Information</h2>
-      <p><strong>Other users.</strong> Your display name, university, major, year, and any content you post publicly within the Service is visible to other verified users at your university.</p>
-      <p><strong>Service providers.</strong> We share data with third-party service providers who help us operate the Service, including:</p>
+      <h2 id="not-collected">3. Information We Do Not Pull From Schools or LMSs</h2>
+      <p>ClassMate does not pull Canvas rosters, LMS participant lists, official enrollment records, student IDs, transcripts, official grades, Canvas submissions, private course files, or registrar records.</p>
+      <p>Shared-class indicators are <strong>not</strong> based on official school rosters. Course browsing may display public or aggregate course and section data — such as section status or enrollment counts — but those counts do not identify individual students.</p>
+
+      <h2 id="timetables">4. Timetables, ClassMates, and Shared Classes</h2>
+      <p>The ClassMates feature works only between users who have added each other as friends and whose timetable visibility settings permit sharing. Shared classes are calculated by comparing courses that each friend <em>voluntarily saved</em> in their own ClassMate timetable — not from official enrollment rosters.</p>
+      <p>If your timetable visibility is set to private, your timetable and shared-class matches are not visible to any other user. ClassMate does not expose a list of everyone enrolled in a class.</p>
+
+      <h2 id="lms-feeds">5. LMS Assignment Calendar Feeds</h2>
+      <p>If you paste an LMS iCal feed link (Canvas, Brightspace, Blackboard, Moodle, Sakai, Google Classroom, or similar), ClassMate fetches that feed to create assignment deadline checklist items. The import stores the selected provider, feed link, parsed assignment deadlines, completion state, and last-sync time.</p>
+      <p>This feature is for assignment deadlines only — it does not read LMS rosters, submissions, official grades, private course files, or any data beyond the calendar events included in the iCal feed you provide. Disconnecting the calendar feed removes the local feed link and cached assignment data from the app.</p>
+
+      <h2 id="grades">6. Grades and GPA Tracking</h2>
+      <p>Grades and GPA calculations in ClassMate are based entirely on values you <strong>manually enter</strong> for personal planning. They are not imported from your university, Canvas, or any other LMS or registrar system. If you use grade tracking while signed in, ClassMate may store those manually entered values so they can sync across sessions.</p>
+
+      <h2 id="how-we-use">7. How We Use Information</h2>
+      <p>We use the information we collect to:</p>
       <ul>
-        <li><strong>Supabase</strong> — database and authentication infrastructure</li>
-        <li><strong>Google</strong> — optional sign-in via Google OAuth</li>
-        <li><strong>Apple</strong> — optional sign-in via Apple ID</li>
-        <li><strong>Expo / EAS</strong> — app distribution and push notifications</li>
+        <li>Provide, operate, maintain, and improve the Service</li>
+        <li>Personalize your experience (for example, showing courses and boards relevant to your university)</li>
+        <li>Sync your schedules, settings, and data across sessions and devices</li>
+        <li>Enable social features such as finding classmates in your saved courses</li>
+        <li>Send you notifications you have requested (with your permission)</li>
+        <li>Detect and prevent abuse, spam, and safety issues</li>
+        <li>Review reports, moderate content, and enforce our Terms of Service</li>
+        <li>Troubleshoot errors and monitor performance</li>
+        <li>Respond to support and feedback requests</li>
+        <li>Comply with applicable legal obligations</li>
       </ul>
-      <p>These providers are bound by confidentiality obligations and may only use your data to perform services on our behalf.</p>
-      <p><strong>Legal requirements.</strong> We may disclose information if required by law or if we believe disclosure is necessary to protect our rights, your safety, or the safety of others.</p>
-      <p>We do not sell your personal information to third parties.</p>
+      <p>We do not sell your personal information to third parties. We do not use your data for cross-app advertising or tracking.</p>
 
-      <h2>4. Data Retention</h2>
-      <p>We retain your information for as long as your account is active or as needed to provide the Service. You may request deletion of your account and associated data at any time by contacting us at <a href="mailto:heyy.seans@gmail.com">heyy.seans@gmail.com</a>. We will process deletion requests within 30 days.</p>
-
-      <h2>5. Security</h2>
-      <p>We implement reasonable technical and organizational measures to protect your information. However, no method of transmission over the internet or electronic storage is 100% secure. We cannot guarantee absolute security.</p>
-
-      <h2>6. Children's Privacy</h2>
-      <p>The Service is intended for users who are enrolled in or affiliated with a university. We do not knowingly collect personal information from children under 13. If we learn that we have collected such information, we will delete it promptly.</p>
-
-      <h2>7. Your Rights and Choices</h2>
+      <h2 id="what-others-see">8. What Other Users Can See</h2>
+      <p>What other users can see depends on the feature and your privacy settings:</p>
       <ul>
-        <li><strong>Access and correction.</strong> You may access and update most of your account information directly within the app.</li>
-        <li><strong>Deletion.</strong> You may delete your account from the Settings screen or by contacting us.</li>
-        <li><strong>Notifications.</strong> You may opt out of push notifications through your device settings.</li>
-        <li><strong>Data portability.</strong> You may request a copy of your data by contacting us.</li>
+        <li><strong>Accepted friends</strong> may see your saved timetable and shared-class matches only when your timetable visibility setting allows it.</li>
+        <li><strong>Board posts, comments, and reviews</strong> are visible to verified users at your university according to the audience of those features.</li>
+        <li><strong>Direct messages</strong> are visible only to the participants of each conversation.</li>
+        <li><strong>Profile information</strong> such as your display name, university, major, and year is visible to other verified users in social features.</li>
+      </ul>
+      <p>Information you choose to post, review, message, or share with friends may be copied, retained, or re-shared by recipients.</p>
+
+      <h2 id="how-we-share">9. How We Share Information</h2>
+      <p>We do not sell your personal information. We may share information in the following circumstances:</p>
+      <ul>
+        <li><strong>Service providers</strong> — with infrastructure and service partners who help us operate ClassMate, as described in Section 10 below.</li>
+        <li><strong>Other users</strong> — according to your in-app privacy and visibility settings, as described in Section 8.</li>
+        <li><strong>Legal requirements</strong> — when reasonably necessary to comply with applicable law, valid legal process, enforce our Terms of Service, investigate abuse, protect the safety of users, or prevent fraud or harm.</li>
+        <li><strong>Business transfers</strong> — in connection with a merger, acquisition, or sale of assets, in which case your information may be transferred subject to the same privacy protections described here.</li>
       </ul>
 
-      <h2>8. Third-Party Links and Services</h2>
-      <p>The Service may link to third-party websites or services (e.g., Rate My Professors, university registrar pages). This Privacy Policy does not apply to those third parties, and we encourage you to read their privacy policies.</p>
+      <h2 id="third-parties">10. Third-Party Service Providers</h2>
+      <p>We share data with the following categories of third-party service providers who help us operate the Service. Each is bound by confidentiality obligations and data processing agreements, and may only use your data to perform services on our behalf — not for their own advertising or unrelated purposes:</p>
+      <ul>
+        <li><strong>Supabase</strong> — database, authentication infrastructure, and real-time features</li>
+        <li><strong>Google</strong> — optional sign-in via Google OAuth (university-scoped)</li>
+        <li><strong>Expo / EAS</strong> — app distribution and push notification delivery</li>
+        <li><strong>Open-Meteo</strong> — weather data (no personal data sent; location is campus-level only)</li>
+        <li><strong>ICSSC Anteater API</strong> — public UC Irvine course and section data</li>
+      </ul>
+      <p>These providers are contractually required to provide the same or equivalent level of data protection as described in this Privacy Policy. We will update this list if our provider relationships change in a material way.</p>
 
-      <h2>9. Changes to This Policy</h2>
-      <p>We may update this Privacy Policy from time to time. We will notify you of significant changes by posting the new policy in the app or on this page with an updated effective date. Your continued use of the Service after such changes constitutes your acceptance of the updated policy.</p>
+      <h2 id="notifications">11. Notifications and Device Permissions</h2>
+      <p>If you enable push notifications, ClassMate stores your notification settings, permission status, and a device push token to send class reminders or social alerts. You can disable notifications at any time through your device settings or through Settings within the app.</p>
+      <p>ClassMate requests the following device permissions:</p>
+      <ul>
+        <li><strong>Photo Library (read)</strong> — to attach images to community posts (only when you initiate an attachment)</li>
+        <li><strong>Photo Library (save)</strong> — to save your schedule snapshot to your photo library when you tap "Save Schedule"</li>
+        <li><strong>Push notifications</strong> — to send class reminders and social alerts you have opted into</li>
+      </ul>
+      <p>Camera and microphone access are not requested and not used. Notification delivery depends on your device, OS permissions, and third-party push infrastructure, and may not always be immediate or successful.</p>
 
-      <h2>10. Contact Us</h2>
-      <p>If you have questions or concerns about this Privacy Policy, please contact us at:</p>
-      <p><strong>The Seans</strong><br />
-      Email: <a href="mailto:heyy.seans@gmail.com">heyy.seans@gmail.com</a></p>
+      <h2 id="ugc">12. Reviews, Community Content, and Messages</h2>
+      <p>ClassMate stores the content you submit to social features so the app can display and manage it. This includes course reviews, board posts, comments, direct messages, attachment references, and abuse reports.</p>
+      <p>We may use this content to moderate submissions, investigate complaints, enforce our Terms of Service, and maintain community safety. Content that violates our community standards may be removed by moderators.</p>
+
+      <h2 id="retention">13. Data Retention</h2>
+      <p>We retain your information for as long as reasonably necessary to provide the Service, maintain records of community activity, resolve disputes, enforce our agreements, and meet legal, operational, or safety needs.</p>
+      <p>Local assignment calendar feed data remains on your device until you disconnect the feed, clear app data, or delete the app. Some server data may remain in backups, logs, or safety records for a limited period after a deletion request or account change is processed.</p>
+      <p>You may request deletion of your account and associated data at any time (see Section 14). We will process deletion requests within 30 days.</p>
+
+      <h2 id="your-choices">14. Your Choices and Requests</h2>
+      <p>You have the following controls over your information:</p>
+      <ul>
+        <li><strong>Access and correction</strong> — you can access and update most account information directly within the app (Settings → Profile).</li>
+        <li><strong>Timetable and social visibility</strong> — you can control who sees your timetable and board profile in Settings → Privacy &amp; Security.</li>
+        <li><strong>Notifications</strong> — you can opt out of push notifications through your device settings or Settings → Notifications in the app.</li>
+        <li><strong>Account deletion</strong> — you can delete your account from Settings → Delete Account. Deletion is intended to remove your account and account-related personal data that we are not legally required to retain.</li>
+        <li><strong>Consent withdrawal</strong> — you can revoke photo library or notification permissions at any time through your device's system settings. Withdrawing permissions will disable features that depend on them but will not affect your account or other data.</li>
+        <li><strong>Data portability</strong> — you may request a copy of your personal data by contacting us at the address below.</li>
+      </ul>
+      <p>For account-access issues, privacy questions, or deletion requests, contact us using the information in Section 18.</p>
+
+      <h2 id="security">15. Security</h2>
+      <p>We implement reasonable administrative, technical, and organizational measures to protect your information. These include privacy-by-default sharing settings and the use of established infrastructure providers (Supabase) with their own security certifications.</p>
+      <p>However, no method of transmission over the internet or electronic storage is completely secure. We cannot guarantee absolute security. You are also responsible for protecting access to your device and your university account credentials.</p>
+
+      <h2 id="children">16. Children's Privacy</h2>
+      <p>ClassMate is intended for students enrolled in or affiliated with a university and is not directed at children under 13. We do not knowingly collect personal information from children under 13. If we learn that we have collected such information without verifiable parental consent, we will delete it promptly. If you believe we have inadvertently collected information from a child under 13, please contact us.</p>
+
+      <h2 id="changes">17. Changes to This Policy</h2>
+      <p>We may update this Privacy Policy as the app changes. If we make material changes, we will update the effective date at the top of this page and may notify you within the app. Your continued use of the Service after the updated effective date constitutes your acceptance of the revised policy.</p>
+      <p>We encourage you to review this policy periodically.</p>
+
+      <h2 id="contact">18. Contact Us</h2>
+      <p>If you have questions or concerns about this Privacy Policy, wish to exercise your data rights, or need to submit a deletion request, please contact us:</p>
+      <p>
+        <strong>The Seans</strong><br />
+        Email: <a href="mailto:heyy.seans@gmail.com">heyy.seans@gmail.com</a>
+      </p>
+      <p>We will respond to privacy-related inquiries within 30 days.</p>
+
+      <div class="callout">
+        This Privacy Policy describes the ClassMate experience as of the effective date above. Because the app is actively developed, this policy may be updated as new features are added. We recommend checking this page periodically for the latest version.
+      </div>
     </main>
+
     <script src="./script.js"></script>
   </body>
 </html>

@@ -145,12 +145,6 @@ export async function fetchAcademicEvents(school: string, quarterKey: string): P
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Filter to only upcoming (or ongoing) events relative to now. */
-export function filterUpcomingEvents(events: AcademicEvent[], now: Date): AcademicEvent[] {
-  const todayStr = now.toISOString().slice(0, 10);
-  return events.filter((e) => (e.endDate ?? e.date) >= todayStr);
-}
-
 /** Days from today until event start (negative = past). */
 export function daysUntilEvent(event: AcademicEvent, now: Date): number {
   const today = new Date(now.toISOString().slice(0, 10) + 'T00:00:00');

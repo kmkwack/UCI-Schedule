@@ -5,12 +5,12 @@ import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle } from 'react-native-svg';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, blockColorKey, formatCourseTimeRange12, getBlockColors, quarterKey } from '../data/courses';
-import { CATEGORY_CONFIG, daysUntilEvent, fetchAcademicEvents, filterUpcomingEvents, type AcademicEvent } from '../data/academicCalendar';
+import { CATEGORY_CONFIG, daysUntilEvent, fetchAcademicEvents, type AcademicEvent } from '../data/academicCalendar';
 import { buildSectionMatchKey, getSharedClassMatch, normalizeCourseCode, type SharedClassMatch } from '../data/sharedClasses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
 import { fetchDiningMenusForSchool, schoolDiningMenusSupported, type DiningLocationMenu, type DiningMenuMeal } from '../data/diningMenus';
-import { academicSystemNoun, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
+import { academicSystemNoun, buildTermCandidates, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { formatDateInTimeZone, getZonedDateParts, normalizeTimeZone, zonedDateFromParts, zonedDateKey, zonedWeekdayIndex } from '../data/timeZone';
 import {
@@ -2041,28 +2041,28 @@ export default function HomeScreen({
     });
   }, [academicSheetAnim, academicBackdropAnim]);
 
-  const qKey = quarterKey(selectedQuarter);
-  const [upcomingAcademicEvents, setUpcomingAcademicEvents] = useState<AcademicEvent[]>([]);
+  const [academicEventGroups, setAcademicEventGroups] = useState<{ term: Quarter; events: AcademicEvent[] }[]>([]);
 
   useEffect(() => {
     let cancelled = false;
-    fetchAcademicEvents(school, qKey).then((events) => {
-      if (!cancelled) {
-        // 현재 학기: 아직 안 지난 이벤트만 표시 (스트립 깔끔하게)
-        // 지난 학기: 전체 이벤트 표시 (학기 전체 일정 참고용)
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const quarterEndStr = events.length > 0
-          ? events[events.length - 1].endDate ?? events[events.length - 1].date
-          : todayStr;
-        const isCurrentOrFutureQuarter = quarterEndStr >= todayStr;
-        const filtered = isCurrentOrFutureQuarter
-          ? filterUpcomingEvents(events, new Date())
-          : events;
-        setUpcomingAcademicEvents(filtered);
+    (async () => {
+      // 현재 학기부터 시작해서, 데이터가 있는 학기를 앞으로 2개까지만 자동으로 불러옴
+      const year = Number(selectedQuarter.year);
+      const qKey = quarterKey(selectedQuarter);
+      const candidates = buildTermCandidates(school, year, year + 1);
+      const startIndex = Math.max(0, candidates.findIndex((c) => quarterKey(c) === qKey));
+      const groups: { term: Quarter; events: AcademicEvent[] }[] = [];
+      for (let i = startIndex; i < candidates.length && groups.length < 2; i++) {
+        const term = candidates[i];
+        const events = (await fetchAcademicEvents(school, quarterKey(term)).catch(() => []))
+          .slice()
+          .sort((a, b) => a.date.localeCompare(b.date));
+        if (events.length > 0) groups.push({ term, events });
       }
-    }).catch(() => {});
+      if (!cancelled) setAcademicEventGroups(groups);
+    })();
     return () => { cancelled = true; };
-  }, [school, qKey]);
+  }, [school, selectedQuarter.year]);
 
   const [openHeroSheet, setOpenHeroSheet] = useState<'dining' | 'sports' | 'campus' | null>(null);
   const [heroSheetVisible, setHeroSheetVisible] = useState(false);
@@ -3501,89 +3501,105 @@ export default function HomeScreen({
         </View>
       )}
 
-      {/* ── Academic Calendar Strip ─────────────────────────────────────── */}
-      {upcomingAcademicEvents.length > 0 && (
+      {/* ── Academic Calendar Strip (앞으로 두 학기를 가로 스크롤로 나열) ──────── */}
+      {academicEventGroups.length > 0 && (
         <View style={{ marginBottom: 14 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Academic Calendar</Text>
-            <Text style={{ fontSize: 12, color: colors.textTertiary }}>{termLabel(selectedQuarter, school)}</Text>
-          </View>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 8 }}>Academic Calendar</Text>
           <View style={{ position: 'relative' }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingRight: 32 }}
-          >
-            {(() => {
-              const cardStyle = {
-                width: 140,
-                borderRadius: 18,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.card,
-                paddingHorizontal: 14,
-                paddingVertical: 13,
-                gap: 4 as const,
-                justifyContent: 'center' as const,
-              };
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8, paddingRight: 32 }}
+            >
+              {(() => {
+                const cardStyle = {
+                  width: 140,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  paddingHorizontal: 14,
+                  paddingVertical: 13,
+                  gap: 4 as const,
+                  justifyContent: 'center' as const,
+                };
 
-              const items: React.ReactNode[] = [];
-              upcomingAcademicEvents.forEach((event, index) => {
-                const dateStr = event.endDate && event.endDate !== event.date
-                  ? `${formatAcademicDate(event.date)} – ${formatAcademicDate(event.endDate)}`
-                  : formatAcademicDate(event.date);
-
-                items.push(
-                  <TouchableOpacity
-                    key={event.id}
-                    onPress={() => openAcademicSheet(event)}
-                    activeOpacity={0.76}
-                    style={cardStyle}
-                  >
-                    <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17 }}>
-                      {event.title}
-                    </Text>
-                    <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>
-                      {dateStr}
-                    </Text>
-                  </TouchableOpacity>
-                );
-                if (index === 2) {
+                const items: React.ReactNode[] = [];
+                let cardCount = 0;
+                academicEventGroups.forEach((group, groupIndex) => {
+                  if (groupIndex > 0) {
+                    items.push(
+                      <View
+                        key={`divider-${quarterKey(group.term)}`}
+                        style={{ width: 1, alignSelf: 'stretch', backgroundColor: colors.border, marginHorizontal: 4 }}
+                      />
+                    );
+                  }
                   items.push(
-                    <TouchableOpacity
-                      key="cal-ad"
-                      activeOpacity={0.76}
-                      style={{ ...cardStyle, borderColor: `${colors.brand}28`, backgroundColor: `${colors.brand}08` }}
-                    >
-                      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textTertiary, marginBottom: 1 }}>Sponsored</Text>
-                      <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17 }}>Chegg Study</Text>
-                      <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>Free 7-day trial</Text>
-                    </TouchableOpacity>
+                    <View key={`label-${quarterKey(group.term)}`} style={{ justifyContent: 'center', paddingHorizontal: 2 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary, width: 60 }}>
+                        {termLabel(group.term, school)}
+                      </Text>
+                    </View>
                   );
-                }
-              });
-              return items;
-            })()}
-          </ScrollView>
-          {/* Right fade — hints there's more to scroll */}
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              right: 0,
-              top: 0,
-              bottom: 0,
-              width: 40,
-              borderRadius: 4,
-              opacity: 0.95,
-              backgroundColor: colors.bg,
-              // Soft left edge via shadow
-              shadowColor: colors.bg,
-              shadowOffset: { width: -24, height: 0 },
-              shadowOpacity: 1,
-              shadowRadius: 20,
-            }}
-          />
+                  group.events.forEach((event) => {
+                    const dateStr = event.endDate && event.endDate !== event.date
+                      ? `${formatAcademicDate(event.date)} – ${formatAcademicDate(event.endDate)}`
+                      : formatAcademicDate(event.date);
+
+                    items.push(
+                      <TouchableOpacity
+                        key={event.id}
+                        onPress={() => openAcademicSheet(event)}
+                        activeOpacity={0.76}
+                        style={cardStyle}
+                      >
+                        <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17 }}>
+                          {event.title}
+                        </Text>
+                        <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>
+                          {dateStr}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                    if (cardCount === 2) {
+                      items.push(
+                        <TouchableOpacity
+                          key="cal-ad"
+                          activeOpacity={0.76}
+                          style={{ ...cardStyle, borderColor: `${colors.brand}28`, backgroundColor: `${colors.brand}08` }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textTertiary, marginBottom: 1 }}>Sponsored</Text>
+                          <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17 }}>Chegg Study</Text>
+                          <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>Free 7-day trial</Text>
+                        </TouchableOpacity>
+                      );
+                    }
+                    cardCount += 1;
+                  });
+                });
+                return items;
+              })()}
+            </ScrollView>
+            {/* Right fade — hints there's more to scroll */}
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 40,
+                borderRadius: 4,
+                opacity: 0.95,
+                backgroundColor: colors.bg,
+                // Soft left edge via shadow
+                shadowColor: colors.bg,
+                shadowOffset: { width: -24, height: 0 },
+                shadowOpacity: 1,
+                shadowRadius: 20,
+              }}
+            />
           </View>
         </View>
       )}

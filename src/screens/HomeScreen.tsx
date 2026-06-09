@@ -3,9 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, Linking, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, blockColorKey, formatCourseTimeRange12, getBlockColors, quarterKey } from '../data/courses';
-import { addUserAcademicEvent, CATEGORY_CONFIG, daysUntilEvent, deleteUserAcademicEvent, fetchAcademicEvents, fetchUserAcademicEvents, type AcademicEvent } from '../data/academicCalendar';
+import { addUserAcademicEvent, CATEGORY_CONFIG, daysUntilEvent, dedupeAcademicEvents, deleteUserAcademicEvent, fetchAcademicEvents, fetchUserAcademicEvents, type AcademicEvent } from '../data/academicCalendar';
 import { buildSectionMatchKey, getSharedClassMatch, normalizeCourseCode, type SharedClassMatch } from '../data/sharedClasses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
@@ -24,6 +24,7 @@ import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import InfoChip from '../components/InfoChip';
 import { EmptyState, SkeletonBlock } from '../components/Polish';
+import { FullScreenLoader } from '../components/ScheduleLoader';
 import { themedIconBackground, themedIconColor } from '../utils/themeTint';
 import { triggerSelectionHaptic, triggerSuccessHaptic } from '../utils/haptics';
 import {
@@ -2048,11 +2049,37 @@ export default function HomeScreen({
   const [allCalendarLoading, setAllCalendarLoading] = useState(false);
   const [allCalendarGroups, setAllCalendarGroups] = useState<{ term: Quarter; events: AcademicEvent[] }[]>([]);
   const [addEventTerm, setAddEventTerm] = useState<Quarter | null>(null);
+  const [addEventTermPickerOpen, setAddEventTermPickerOpen] = useState(false);
   const [addEventTitle, setAddEventTitle] = useState('');
   const [addEventDate, setAddEventDate] = useState('');
   const [addEventSaving, setAddEventSaving] = useState(false);
+  const addEventKeyboardOffsetAnim = useRef(new Animated.Value(0)).current;
 
+  // Shift the "add event" sheet up when the keyboard appears so the inputs/button stay visible
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      Animated.timing(addEventKeyboardOffsetAnim, {
+        toValue: -(e.endCoordinates?.height ?? 0),
+        duration: (e as any).duration ?? 250,
+        useNativeDriver: true,
+      }).start();
+    });
+    const hideSub = Keyboard.addListener(hideEvent, (e) => {
+      Animated.timing(addEventKeyboardOffsetAnim, {
+        toValue: 0,
+        duration: (e as any).duration ?? 200,
+        useNativeDriver: true,
+      }).start();
+    });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, [addEventKeyboardOffsetAnim]);
+
+  const allCalendarLoadingRef = useRef(false);
   const loadAllAcademicCalendar = useCallback(async () => {
+    if (allCalendarLoadingRef.current) return; // 연타로 인한 중복 호출 방지
+    allCalendarLoadingRef.current = true;
     setAllCalendarLoading(true);
     try {
       const todayQuarter = getAcademicTermForDate(school, now);
@@ -2068,27 +2095,59 @@ export default function HomeScreen({
           fetchAcademicEvents(school, qKey).catch(() => []),
           userId ? fetchUserAcademicEvents(userId, school, qKey).catch(() => []) : Promise.resolve([] as AcademicEvent[]),
         ]);
-        const events = [...official, ...custom].sort((a, b) => a.date.localeCompare(b.date));
+        const events = dedupeAcademicEvents([...official, ...custom]).sort((a, b) => a.date.localeCompare(b.date));
         if (events.length > 0) groups.push({ term, events });
       }
       setAllCalendarGroups(groups);
     } finally {
       setAllCalendarLoading(false);
+      allCalendarLoadingRef.current = false;
     }
   }, [school, now, userId]);
 
+  const allCalendarVisibleRef = useRef(false);
+  useEffect(() => { allCalendarVisibleRef.current = allCalendarVisible; }, [allCalendarVisible]);
+
   const openAllCalendar = useCallback(() => {
-    setAllCalendarVisible(true);
     triggerSelectionHaptic();
+    if (allCalendarVisibleRef.current) return; // 이미 열려있으면 다시 열지 않음 (연타 방지)
+    setAllCalendarVisible(true);
     void loadAllAcademicCalendar();
   }, [loadAllAcademicCalendar]);
 
   const openAddCustomEvent = useCallback((term: Quarter) => {
     setAddEventTerm(term);
+    setAddEventTermPickerOpen(false);
     setAddEventTitle('');
     setAddEventDate('');
+    addEventKeyboardOffsetAnim.setValue(0);
     triggerSelectionHaptic();
-  }, []);
+  }, [addEventKeyboardOffsetAnim]);
+
+  const loadHomeAcademicGroups = useCallback(async () => {
+    // 오늘 날짜 기준 현재 학기부터 시작해서, 데이터가 있는 학기를 앞으로 2개까지만 자동으로 불러옴
+    // (타임테이블에서 과거 학기를 보고 있어도 홈의 학사일정은 항상 "오늘" 기준으로 표시)
+    const todayQuarter = getAcademicTermForDate(school, new Date());
+    const year = Number(todayQuarter.year);
+    const qKey = quarterKey(todayQuarter);
+    const candidates = buildTermCandidates(school, year, year + 1);
+    const startIndex = Math.max(0, candidates.findIndex((c) => quarterKey(c) === qKey));
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const groups: { term: Quarter; events: AcademicEvent[] }[] = [];
+    for (let i = startIndex; i < candidates.length && groups.length < 2; i++) {
+      const term = candidates[i];
+      const qKeyTerm = quarterKey(term);
+      const [official, custom] = await Promise.all([
+        fetchAcademicEvents(school, qKeyTerm).catch(() => []),
+        userId ? fetchUserAcademicEvents(userId, school, qKeyTerm).catch(() => []) : Promise.resolve([] as AcademicEvent[]),
+      ]);
+      const events = dedupeAcademicEvents([...official, ...custom])
+        .filter((e) => (e.endDate ?? e.date) >= todayStr)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      if (events.length > 0) groups.push({ term, events });
+    }
+    return groups;
+  }, [school, userId]);
 
   const handleAddCustomEvent = useCallback(async () => {
     if (!userId || !addEventTerm) return;
@@ -2117,13 +2176,14 @@ export default function HomeScreen({
         setAddEventTitle('');
         setAddEventDate('');
         triggerSuccessHaptic();
+        void loadHomeAcademicGroups().then(setAcademicEventGroups);
       } else {
         Alert.alert('Add failed', 'Please try again in a moment.');
       }
     } finally {
       setAddEventSaving(false);
     }
-  }, [userId, school, addEventTerm, addEventTitle, addEventDate]);
+  }, [userId, school, addEventTerm, addEventTitle, addEventDate, loadHomeAcademicGroups]);
 
   const handleDeleteCustomEvent = useCallback((event: AcademicEvent) => {
     Alert.alert('Delete event', `Delete "${event.title}"?`, [
@@ -2138,39 +2198,23 @@ export default function HomeScreen({
               .map((g) => ({ ...g, events: g.events.filter((e) => e.id !== event.id) }))
               .filter((g) => g.events.length > 0));
             triggerSelectionHaptic();
+            void loadHomeAcademicGroups().then(setAcademicEventGroups);
           } else {
             Alert.alert('Delete failed', 'Please try again in a moment.');
           }
         },
       },
     ]);
-  }, []);
+  }, [loadHomeAcademicGroups]);
 
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      // 오늘 날짜 기준 현재 학기부터 시작해서, 데이터가 있는 학기를 앞으로 2개까지만 자동으로 불러옴
-      // (타임테이블에서 과거 학기를 보고 있어도 홈의 학사일정은 항상 "오늘" 기준으로 표시)
-      const todayQuarter = getAcademicTermForDate(school, new Date());
-      const year = Number(todayQuarter.year);
-      const qKey = quarterKey(todayQuarter);
-      const candidates = buildTermCandidates(school, year, year + 1);
-      const startIndex = Math.max(0, candidates.findIndex((c) => quarterKey(c) === qKey));
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const groups: { term: Quarter; events: AcademicEvent[] }[] = [];
-      for (let i = startIndex; i < candidates.length && groups.length < 2; i++) {
-        const term = candidates[i];
-        const events = (await fetchAcademicEvents(school, quarterKey(term)).catch(() => []))
-          .filter((e) => (e.endDate ?? e.date) >= todayStr)
-          .slice()
-          .sort((a, b) => a.date.localeCompare(b.date));
-        if (events.length > 0) groups.push({ term, events });
-      }
+    void loadHomeAcademicGroups().then((groups) => {
       if (!cancelled) setAcademicEventGroups(groups);
-    })();
+    });
     return () => { cancelled = true; };
-  }, [school]);
+  }, [loadHomeAcademicGroups]);
 
   const [openHeroSheet, setOpenHeroSheet] = useState<'dining' | 'sports' | 'campus' | null>(null);
   const [heroSheetVisible, setHeroSheetVisible] = useState(false);
@@ -3655,10 +3699,16 @@ export default function HomeScreen({
                     );
                   }
                   items.push(
-                    <View key={`label-${quarterKey(group.term)}`} style={{ justifyContent: 'center', paddingHorizontal: 2 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary, width: 60 }}>
-                        {termLabel(group.term, school)}
-                      </Text>
+                    <View key={`label-${quarterKey(group.term)}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary }}>
+                          {String(group.term.quarter)}
+                        </Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textTertiary }}>
+                          {String(group.term.year)}
+                        </Text>
+                      </View>
+                      <View style={{ width: 1, height: 40, backgroundColor: colors.border }} />
                     </View>
                   );
                   group.events.forEach((event) => {
@@ -3681,44 +3731,29 @@ export default function HomeScreen({
                         </Text>
                       </TouchableOpacity>
                     );
-                    if (cardCount === 2) {
-                      items.push(
-                        <TouchableOpacity
-                          key="cal-ad"
-                          activeOpacity={0.76}
-                          style={{ ...cardStyle, borderColor: `${colors.brand}28`, backgroundColor: `${colors.brand}08` }}
-                        >
-                          <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textTertiary, marginBottom: 1 }}>Sponsored</Text>
-                          <Text numberOfLines={2} style={{ fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17 }}>Chegg Study</Text>
-                          <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: colors.brand }}>Free 7-day trial</Text>
-                        </TouchableOpacity>
-                      );
-                    }
+                    // [AD-SLOT: academic-calendar-strip] cardCount === 2일 때 카드 형태의 광고를 끼워넣을 수 있는 자리.
+                    // 실제 광고 SDK 연동 전까지는 비워둠 (가짜 브랜드 카드 제거 — 2026-06-07).
                     cardCount += 1;
                   });
                 });
                 return items;
               })()}
             </ScrollView>
-            {/* Right fade — hints there's more to scroll */}
-            <View
+            {/* Right fade — hints there's more to scroll (실제 그라데이션으로, 경계선 안 보이게) */}
+            <Svg
               pointerEvents="none"
-              style={{
-                position: 'absolute',
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: 40,
-                borderRadius: 4,
-                opacity: 0.95,
-                backgroundColor: colors.bg,
-                // Soft left edge via shadow
-                shadowColor: colors.bg,
-                shadowOffset: { width: -24, height: 0 },
-                shadowOpacity: 1,
-                shadowRadius: 20,
-              }}
-            />
+              width={40}
+              height="100%"
+              style={{ position: 'absolute', right: 0, top: 0, bottom: 0 }}
+            >
+              <Defs>
+                <LinearGradient id="academicStripFade" x1="0" y1="0" x2="1" y2="0">
+                  <Stop offset="0" stopColor={colors.bg} stopOpacity={0} />
+                  <Stop offset="1" stopColor={colors.bg} stopOpacity={1} />
+                </LinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="40" height="100%" fill="url(#academicStripFade)" />
+            </Svg>
           </View>
         </View>
       )}
@@ -4104,9 +4139,7 @@ export default function HomeScreen({
           </View>
 
           {allCalendarLoading && allCalendarGroups.length === 0 ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <ActivityIndicator color={colors.brand} />
-            </View>
+            <FullScreenLoader isDark={isDark} label="Loading academic calendar..." />
           ) : (
             <ScrollView
               showsVerticalScrollIndicator={false}
@@ -4133,6 +4166,7 @@ export default function HomeScreen({
                         <Text style={{ fontSize: 12, fontWeight: '700', color: colors.brand }}>Add Event</Text>
                       </TouchableOpacity>
                     </View>
+                    <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 10 }} />
                     <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, overflow: 'hidden' }}>
                       {group.events.map((event, idx) => {
                         const days = daysUntilEvent(event, now);
@@ -4155,10 +4189,17 @@ export default function HomeScreen({
                             }}
                           >
                             <View style={{
-                              minWidth: 52, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999,
-                              backgroundColor: `${dColor}16`, alignItems: 'center',
+                              width: 60, paddingVertical: 4, borderRadius: 999,
+                              backgroundColor: `${dColor}16`, alignItems: 'center', justifyContent: 'center',
                             }}>
-                              <Text style={{ fontSize: 11, fontWeight: '800', color: dColor }}>{dLabel}</Text>
+                              <Text
+                                style={{ fontSize: 11, fontWeight: '800', color: dColor }}
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.75}
+                              >
+                                {dLabel}
+                              </Text>
                             </View>
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }} numberOfLines={1}>
@@ -4186,76 +4227,106 @@ export default function HomeScreen({
               })}
             </ScrollView>
           )}
-        </View>
-      </Modal>
 
-      {/* ── Add personal academic event modal ── */}
-      <Modal
-        visible={!!addEventTerm}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAddEventTerm(null)}
-      >
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.34)' }}>
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={() => setAddEventTerm(null)}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-          />
-          <View style={{
-            borderTopLeftRadius: SHEET_CORNER_RADIUS,
-            borderTopRightRadius: SHEET_CORNER_RADIUS,
-            backgroundColor: colors.bg,
-            paddingHorizontal: 20,
-            paddingTop: 18,
-            paddingBottom: Math.max(bottomInset, 18) + 18,
-          }}>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 4 }}>
-              Add Your Event
-            </Text>
-            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
-              {addEventTerm ? termLabel(addEventTerm, school) : ''}
-            </Text>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>Title</Text>
-            <TextInput
-              value={addEventTitle}
-              onChangeText={setAddEventTitle}
-              placeholder="e.g. Scholarship application deadline"
-              placeholderTextColor={colors.textTertiary}
-              style={{
-                borderWidth: 1, borderColor: colors.border, borderRadius: 12,
-                paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text,
-                marginBottom: 14,
-              }}
-            />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>Date (YYYY-MM-DD)</Text>
-            <TextInput
-              value={addEventDate}
-              onChangeText={setAddEventDate}
-              placeholder="2026-09-01"
-              placeholderTextColor={colors.textTertiary}
-              keyboardType="numbers-and-punctuation"
-              style={{
-                borderWidth: 1, borderColor: colors.border, borderRadius: 12,
-                paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text,
-                marginBottom: 18,
-              }}
-            />
-            <TouchableOpacity
-              onPress={handleAddCustomEvent}
-              disabled={addEventSaving}
-              style={{
-                borderRadius: 14, backgroundColor: colors.brand, paddingVertical: 14,
-                alignItems: 'center', opacity: addEventSaving ? 0.6 : 1,
-              }}
-            >
-              {addEventSaving ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>Add</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+          {/* ── Add personal academic event sheet (rendered inside this Modal — nesting a second <Modal> breaks on iOS) ── */}
+          {!!addEventTerm && (
+            <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} pointerEvents="box-none">
+              <TouchableOpacity
+                activeOpacity={1}
+                onPress={() => setAddEventTerm(null)}
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.34)' }}
+              />
+              <Animated.View style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0,
+                transform: [{ translateY: addEventKeyboardOffsetAnim }],
+                borderTopLeftRadius: SHEET_CORNER_RADIUS,
+                borderTopRightRadius: SHEET_CORNER_RADIUS,
+                backgroundColor: colors.bg,
+                paddingHorizontal: 20,
+                paddingTop: 18,
+                paddingBottom: Math.max(bottomInset, 18) + 18,
+              }}>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 4 }}>
+                  Add Your Event
+                </Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>Term</Text>
+                <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, overflow: 'hidden', marginBottom: 16 }}>
+                  <TouchableOpacity
+                    onPress={() => { setAddEventTermPickerOpen((v) => !v); triggerSelectionHaptic(); }}
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
+                      {addEventTerm ? termLabel(addEventTerm, school) : 'Select a term'}
+                    </Text>
+                    <Ionicons name={addEventTermPickerOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                  {addEventTermPickerOpen && (
+                    <View style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
+                      {allCalendarGroups.map((g, idx) => {
+                        const selected = !!addEventTerm && quarterKey(g.term) === quarterKey(addEventTerm);
+                        return (
+                          <TouchableOpacity
+                            key={quarterKey(g.term)}
+                            onPress={() => { setAddEventTerm(g.term); setAddEventTermPickerOpen(false); triggerSelectionHaptic(); }}
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                              paddingHorizontal: 14, paddingVertical: 12,
+                              borderTopWidth: idx === 0 ? 0 : 1, borderTopColor: colors.border,
+                              backgroundColor: selected ? `${colors.brand}10` : 'transparent',
+                            }}
+                          >
+                            <Text style={{ fontSize: 14, fontWeight: selected ? '800' : '600', color: selected ? colors.brand : colors.text }}>
+                              {termLabel(g.term, school)}
+                            </Text>
+                            {selected ? <Ionicons name="checkmark" size={16} color={colors.brand} /> : null}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>Title</Text>
+                <TextInput
+                  value={addEventTitle}
+                  onChangeText={setAddEventTitle}
+                  placeholder="e.g. Scholarship application deadline"
+                  placeholderTextColor={colors.textTertiary}
+                  style={{
+                    borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+                    paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text,
+                    marginBottom: 14,
+                  }}
+                />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>Date (YYYY-MM-DD)</Text>
+                <TextInput
+                  value={addEventDate}
+                  onChangeText={setAddEventDate}
+                  placeholder="2026-09-01"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="numbers-and-punctuation"
+                  style={{
+                    borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+                    paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text,
+                    marginBottom: 18,
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={handleAddCustomEvent}
+                  disabled={addEventSaving}
+                  style={{
+                    borderRadius: 14, backgroundColor: colors.brand, paddingVertical: 14,
+                    alignItems: 'center', opacity: addEventSaving ? 0.6 : 1,
+                  }}
+                >
+                  {addEventSaving ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: 'white' }}>Add</Text>
+                  )}
+                </TouchableOpacity>
+              </Animated.View>
+            </View>
+          )}
         </View>
       </Modal>
 
@@ -4340,18 +4411,7 @@ export default function HomeScreen({
                       );
                     })
                   )}
-                  {/* Sponsored card — Dining (bottom) */}
-                  <TouchableOpacity activeOpacity={0.76} style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(234,88,12,0.1)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Ionicons name="bag-handle-outline" size={20} color="#EA580C" />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, marginBottom: 2 }}>Sponsored</Text>
-                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>DoorDash — $0 delivery for students</Text>
-                      <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>Free DashPass with your .edu email</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                  </TouchableOpacity>
+                  {/* [AD-SLOT: dining-sheet-bottom] 실제 광고 SDK 연동 전까지 비워둠 (가짜 DoorDash 카드 제거 — 2026-06-07) */}
                 </View>
               )}
               {/* ── Sports ── */}
@@ -4383,18 +4443,7 @@ export default function HomeScreen({
                       </TouchableOpacity>
                     ))
                   )}
-                  {/* Sponsored card — Sports (bottom) */}
-                  <TouchableOpacity activeOpacity={0.76} style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(65,105,225,0.1)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Ionicons name="tv-outline" size={20} color={colors.brand} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, marginBottom: 2 }}>Sponsored</Text>
-                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>ESPN+ — Watch every game live</Text>
-                      <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>Student discount available</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                  </TouchableOpacity>
+                  {/* [AD-SLOT: sports-sheet-bottom] 실제 광고 SDK 연동 전까지 비워둠 (가짜 ESPN+ 카드 제거 — 2026-06-07) */}
                 </View>
               )}
               {/* ── Campus ── */}
@@ -4424,19 +4473,7 @@ export default function HomeScreen({
                               ))}
                             </View>
                           </View>
-                          {resource.id === 'jobs' && (
-                            <TouchableOpacity activeOpacity={0.76} style={{ marginTop: 10, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(5,150,105,0.1)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                <Ionicons name="briefcase-outline" size={20} color="#059669" />
-                              </View>
-                              <View style={{ flex: 1, minWidth: 0 }}>
-                                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, marginBottom: 2 }}>Sponsored</Text>
-                                <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Handshake — Internships near campus</Text>
-                                <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>1,200+ open roles near Irvine</Text>
-                              </View>
-                              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                            </TouchableOpacity>
-                          )}
+                          {/* [AD-SLOT: campus-jobs-resource-a] 실제 광고 SDK 연동 전까지 비워둠 (가짜 Handshake 카드 제거 — 2026-06-07) */}
                         </View>
                       );
                     }
@@ -4453,19 +4490,7 @@ export default function HomeScreen({
                           </View>
                           <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
                         </TouchableOpacity>
-                        {resource.id === 'jobs' && (
-                          <TouchableOpacity activeOpacity={0.76} style={{ marginTop: 10, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                            <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(5,150,105,0.1)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <Ionicons name="briefcase-outline" size={20} color="#059669" />
-                            </View>
-                            <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textTertiary, marginBottom: 2 }}>Sponsored</Text>
-                              <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Handshake — Internships near campus</Text>
-                              <Text numberOfLines={1} style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>1,200+ open roles near Irvine</Text>
-                            </View>
-                            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                          </TouchableOpacity>
-                        )}
+                        {/* [AD-SLOT: campus-jobs-resource-b] 실제 광고 SDK 연동 전까지 비워둠 (가짜 Handshake 카드 제거 — 2026-06-07) */}
                       </View>
                     );
 })}

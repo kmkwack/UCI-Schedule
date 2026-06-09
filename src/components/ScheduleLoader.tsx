@@ -62,7 +62,7 @@ export function FullScreenLoader({ isDark, label = 'Loading your schedule...' }:
   const gridH = 6 * (FULL_H + FULL_GAP) - FULL_GAP;
 
   return (
-    <View style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff', alignItems: 'center', justifyContent: 'center', paddingBottom: 80 }}>
+    <View style={{ flex: 1, backgroundColor: isDark ? '#09111d' : '#f4f7ff', alignItems: 'center', justifyContent: 'center' }}>
       <View style={{ flexDirection: 'row', gap: FULL_GAP, marginBottom: 8 }}>
         {FULL_DAYS.map((d) => (
           <Text
@@ -103,44 +103,9 @@ export function FullScreenLoader({ isDark, label = 'Loading your schedule...' }:
         {label}
       </Animated.Text>
 
-      {/* App Open Ad — image format, higher CPM */}
-      <View style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        paddingHorizontal: 20,
-        paddingBottom: 40,
-        paddingTop: 14,
-        borderTopWidth: 1,
-        borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
-      }}>
-        <Text style={{ fontSize: 10, fontWeight: '600', color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.18)', letterSpacing: 0.5, marginBottom: 8, textAlign: 'center' }}>
-          Sponsored
-        </Text>
-        {/* Image ad card */}
-        <View style={{
-          borderRadius: 14,
-          overflow: 'hidden',
-          backgroundColor: '#1e3a5f',
-          flexDirection: 'row',
-          alignItems: 'center',
-          padding: 14,
-          gap: 12,
-        }}>
-          {/* Ad image placeholder — replaced by real image from AdMob */}
-          <View style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: '#2d5a9e', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Text style={{ fontSize: 28 }}>📚</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '800', color: '#fff', marginBottom: 2 }}>Chegg Study</Text>
-            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', lineHeight: 16 }}>Free 7-day trial · Textbook solutions & Q&A</Text>
-          </View>
-          <View style={{ backgroundColor: '#4169E1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}>
-            <Text style={{ fontSize: 11, fontWeight: '800', color: '#fff' }}>Free</Text>
-          </View>
-        </View>
-      </View>
+      {/* [AD-SLOT: full-screen-loader-bottom] App Open Ad (이미지형, 높은 CPM) 자리.
+          실제 광고 SDK(AdMob 등) 연동 전까지는 비워둠 (가짜 "Chegg Study" 카드 제거 — 2026-06-07).
+          연동 시 여기에 'Sponsored' 라벨 + 이미지/타이틀/CTA 카드를 복원하면 됨. */}
     </View>
   );
 }

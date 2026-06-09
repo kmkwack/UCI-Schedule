@@ -3310,51 +3310,11 @@ export default function BoardScreen({
                 >
                   {filteredPosts.map((post, index) => {
                     const previewImage = post.attachments.find((attachment) => isImageAttachment(attachment) && attachmentUri(attachment));
-                    const showSponsoredCard = index > 0 && index % 5 === 0;
+                    // [AD-SLOT: board-feed-every-5th] index > 0 && index % 5 === 0 위치에 카드형 광고를 끼워넣을 수 있는 자리.
+                    // 실제 광고 SDK 연동 전까지는 비워둠 (가짜 "Chegg Study" 카드 제거 — 2026-06-07).
 
                     return (
                     <View key={post.id}>
-                    {showSponsoredCard && (
-                      <TouchableOpacity
-                        activeOpacity={0.76}
-                        onPress={() => {}}
-                        style={{ paddingHorizontal: 16, paddingVertical: 14 }}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                          <View style={{
-                            borderRadius: 4,
-                            borderWidth: 1,
-                            borderColor: colors.border,
-                            paddingHorizontal: 5,
-                            paddingVertical: 1,
-                          }}>
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textTertiary, letterSpacing: 0.2 }}>Sponsored</Text>
-                          </View>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-                          <View style={{
-                            width: 44, height: 44, borderRadius: 12,
-                            backgroundColor: '#f0f4ff',
-                            alignItems: 'center', justifyContent: 'center',
-                            flexShrink: 0,
-                          }}>
-                            <Text style={{ fontSize: 22 }}>📚</Text>
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 3 }}>
-                              Finals coming up? Chegg Study can help.
-                            </Text>
-                            <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 18 }} numberOfLines={2}>
-                              Step-by-step solutions, expert Q&A, and textbook access — free trial for students.
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 8, backgroundColor: `${colors.brand}12`, paddingHorizontal: 12, paddingVertical: 6 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.brand }}>Try free →</Text>
-                        </View>
-                      </TouchableOpacity>
-                    )}
-                    {showSponsoredCard && <View style={{ height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 16 }} />}
                     <TouchableOpacity onPress={() => void openPost(post)} activeOpacity={0.8}>
                       <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>

@@ -146,6 +146,28 @@ export async function fetchAcademicEvents(school: string, quarterKey: string): P
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Remove duplicate events from a merged (official + custom) list.
+ * Dedupes first by `id`, then by a content fingerprint (title+date+endDate),
+ * which catches cases where the same event was seeded twice with different ids
+ * (e.g. duplicate rows in the academic_calendar table) or a user re-added an
+ * event that already exists officially.
+ */
+export function dedupeAcademicEvents(events: AcademicEvent[]): AcademicEvent[] {
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+  const result: AcademicEvent[] = [];
+  for (const event of events) {
+    if (seenIds.has(event.id)) continue;
+    const fingerprint = `${event.title.trim().toLowerCase()}|${event.date}|${event.endDate ?? ''}`;
+    if (seenFingerprints.has(fingerprint)) continue;
+    seenIds.add(event.id);
+    seenFingerprints.add(fingerprint);
+    result.push(event);
+  }
+  return result;
+}
+
 /** Days from today until event start (negative = past). */
 export function daysUntilEvent(event: AcademicEvent, now: Date): number {
   const today = new Date(now.toISOString().slice(0, 10) + 'T00:00:00');

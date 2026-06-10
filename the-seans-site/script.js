@@ -1,3 +1,7 @@
+// JS가 살아있음을 표시 — .reveal 숨김은 .js 가 있을 때만 적용되므로,
+// 스크립트가 아예 실패하면 콘텐츠가 항상 보인다 (graceful degradation).
+document.documentElement.classList.add('js');
+
 const header = document.querySelector('[data-header]');
 const revealItems = document.querySelectorAll('.reveal');
 const heroMedia = document.querySelector('.hero-media');
@@ -45,7 +49,31 @@ const revealObserver = new IntersectionObserver(
   { threshold: 0.06, rootMargin: '0px 0px 10% 0px' }
 );
 
-revealItems.forEach(item => revealObserver.observe(item));
+// 스크롤 기반 폴백: IntersectionObserver가 어떤 이유로든 동작하지 않아도
+// 뷰포트에 들어온 .reveal 요소는 무조건 보이게 한다.
+function revealInView() {
+  const trigger = window.innerHeight * 0.92;
+  revealItems.forEach(item => {
+    if (item.classList.contains('visible')) return;
+    if (item.getBoundingClientRect().top < trigger) {
+      item.classList.add('visible');
+    }
+  });
+}
+
+if ('IntersectionObserver' in window) {
+  revealItems.forEach(item => revealObserver.observe(item));
+} else {
+  // 옵저버 미지원 → 전부 표시
+  revealItems.forEach(item => item.classList.add('visible'));
+}
+
+window.addEventListener('scroll', revealInView, { passive: true });
+window.addEventListener('resize', revealInView);
+window.addEventListener('load', revealInView);
+revealInView();
+// 최종 안전장치: 1.2초 뒤에도 숨겨진 게 있으면 강제로 표시 (애니메이션 실패 대비)
+setTimeout(() => revealItems.forEach(item => item.classList.add('visible')), 1200);
 
 window.addEventListener(
   'scroll',

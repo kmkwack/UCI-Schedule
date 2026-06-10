@@ -131,11 +131,14 @@ nav a:hover {
   align-items: center;
   justify-content: center;
   transform: scale(1);
+  background-image: url('./assets/campus-lecture-seats.jpg');
+  background-size: cover;
+  background-position: center;
 }
 
 .hero-shade {
   background:
-    linear-gradient(180deg, rgba(5, 5, 6, 0.2) 0%, rgba(5, 5, 6, 0.12) 45%, rgba(5, 5, 6, 0.72) 100%);
+    linear-gradient(180deg, rgba(5, 7, 14, 0.72) 0%, rgba(5, 7, 14, 0.6) 45%, rgba(5, 5, 6, 0.9) 100%);
 }
 
 .hero-canvas {

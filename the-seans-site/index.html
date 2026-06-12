@@ -14,428 +14,323 @@
     <meta property="og:site_name" content="The Seans" />
     <meta property="og:image" content="./assets/classmate-logo-approved-transparent.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#050506" />
+    <meta name="theme-color" content="#0a0c12" />
     <link rel="icon" href="./assets/favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <header class="site-header" data-header>
-      <a class="brand-lockup" href="#top" aria-label="The Seans home">
-        <span class="brand-mark"></span>
-        <span>The Seans</span>
-      </a>
-      <nav aria-label="Primary navigation">
-        <a href="#motto">Motto</a>
-        <a href="#product">ClassMate</a>
-        <a href="#founder">Founders</a>
-        <a href="#roadmap">Roadmap</a>
-        <a href="./privacy.html">Privacy</a>
-      </nav>
-      <a class="nav-action" href="https://apps.apple.com/us/app/classmate/id6763340951" target="_blank" rel="noopener">Download</a>
+      <div class="header-inner">
+        <a class="brand" href="#top" aria-label="The Seans home">
+          <span class="brand-mark"></span>
+          <span class="brand-name">The Seans</span>
+        </a>
+        <nav class="primary-nav" aria-label="Primary navigation">
+          <a href="#product">Product</a>
+          <a href="#company">Company</a>
+          <a href="#founders">Founders</a>
+          <a href="#roadmap">Roadmap</a>
+          <a href="./privacy.html">Privacy</a>
+        </nav>
+        <a class="nav-cta" href="https://apps.apple.com/us/app/classmate/id6763340951" target="_blank" rel="noopener">Download</a>
+      </div>
     </header>
 
     <main id="top">
+      <!-- ───────────────── Hero ───────────────── -->
       <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-media" aria-hidden="true">
-          <div class="hero-canvas">
-            <div class="hero-thread"></div>
+        <div class="hero-bg" aria-hidden="true"></div>
+        <div class="hero-inner">
+          <p class="hero-eyebrow">Education &amp; campus community software</p>
+          <h1 id="hero-title">The student layer for<br />American universities.</h1>
+          <p class="hero-sub">
+            We build student-native software that makes college easier to navigate,
+            trust, and belong to — starting with the academic week.
+          </p>
+          <div class="hero-actions">
+            <a class="store-btn" href="https://apps.apple.com/us/app/classmate/id6763340951" target="_blank" rel="noopener" aria-label="Download on the App Store">
+              <svg viewBox="0 0 814 1000" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-43.4-150.3-107.9C71.1 727.9 0 577.8 0 542c0-6.4.6-130.8 79-191.8 49.9-38.5 101-63.3 165.6-63.3 113.2 0 147.2 44.4 218.7 44.4 69.4 0 111.3-44.4 219.7-44.4 58.3 0 107.2 25.5 105.1 53.9zM545.9 85.5C578.5 47.4 601 0 601 0S415.7 11.9 357.4 156.4c-19.7 49.5-17.4 97.3-13.6 120.1 116.6-3.3 176.1-60.1 202.1-191z"/></svg>
+              <span><small>Download on the</small><strong>App Store</strong></span>
+            </a>
+            <a class="store-btn ghost" href="https://testflight.apple.com/join/9UjRhFmz" target="_blank" rel="noopener">
+              <span><small>Beta via</small><strong>TestFlight</strong></span>
+            </a>
+            <a class="store-btn ghost" href="https://expo.dev/accounts/parksihyun/projects/classmate/builds/a4497d2b-a8a7-4e61-8f8c-20f2243230da" target="_blank" rel="noopener">
+              <span><small>Android</small><strong>APK</strong></span>
+            </a>
           </div>
         </div>
-        <div class="hero-shade"></div>
-        <div class="hero-content">
-          <h1 id="hero-title">The Seans</h1>
-          <p>
-            We build student-native software that makes college easier to navigate, trust, and belong to.
-          </p>
-        </div>
-        <div class="hero-download" aria-label="Download ClassMate">
-          <a class="download-btn apple" href="https://apps.apple.com/us/app/classmate/id6763340951" target="_blank" rel="noopener" aria-label="Download on the App Store">
-            <svg viewBox="0 0 814 1000" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-43.4-150.3-107.9C71.1 727.9 0 577.8 0 542c0-6.4.6-130.8 79-191.8 49.9-38.5 101-63.3 165.6-63.3 113.2 0 147.2 44.4 218.7 44.4 69.4 0 111.3-44.4 219.7-44.4 58.3 0 107.2 25.5 105.1 53.9zM545.9 85.5C578.5 47.4 601 0 601 0S415.7 11.9 357.4 156.4c-19.7 49.5-17.4 97.3-13.6 120.1 116.6-3.3 176.1-60.1 202.1-191z"/></svg>
-            <span><small>Download on the</small><strong>App Store</strong></span>
-          </a>
-          <a class="download-btn testflight" href="https://testflight.apple.com/join/9UjRhFmz" target="_blank" rel="noopener">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-            <span><small>Beta via</small><strong>TestFlight</strong></span>
-          </a>
-          <a class="download-btn android" href="https://expo.dev/accounts/parksihyun/projects/classmate/builds/a4497d2b-a8a7-4e61-8f8c-20f2243230da" target="_blank" rel="noopener">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M17.523 15.341c-.61 0-1.1.49-1.1 1.099 0 .61.49 1.1 1.1 1.1.609 0 1.099-.49 1.099-1.1 0-.609-.49-1.099-1.099-1.099zm-11.046 0c-.61 0-1.1.49-1.1 1.099 0 .61.49 1.1 1.1 1.1.609 0 1.099-.49 1.099-1.1 0-.609-.49-1.099-1.099-1.099zm11.429-6.512l1.9-3.291a.395.395 0 00-.145-.54.395.395 0 00-.54.144L17.15 8.46A11.878 11.878 0 0012 7.27c-1.826 0-3.548.41-5.088 1.14L4.879 5.142a.395.395 0 00-.54-.144.395.395 0 00-.144.54l1.9 3.29C3.46 10.27 1.898 12.74 1.8 15.6h20.4c-.098-2.861-1.66-5.33-4.295-6.771z"/></svg>
-            <span><small>Android</small><strong>APK</strong></span>
-          </a>
-        </div>
-        <div class="hero-footer">
-          <span>Founded from UC Irvine by international students, building from the student side.</span>
-          <a href="#motto">Explore the company</a>
-        </div>
       </section>
 
-      <section class="statement-section" id="motto" aria-labelledby="motto-title">
-        <div class="statement-inner reveal">
-          <p class="eyebrow blue">What we're doing</p>
-          <h2 id="motto-title">Help students make college make sense.</h2>
-          <p>
-            The Seans builds education and community software for the parts of college that fall between official systems — choosing classes, reading the campus, finding peer knowledge that's worth trusting, and feeling less alone inside a large university.
+      <!-- ───────────────── Schools strip ───────────────── -->
+      <section class="schools-strip" aria-label="Supported universities">
+        <span class="schools-label">Currently live at</span>
+        <ul>
+          <li>UC Irvine</li>
+          <li>University of Maryland</li>
+          <li>Cornell</li>
+          <li>Purdue</li>
+          <li>UIUC</li>
+        </ul>
+      </section>
+
+      <!-- ───────────────── Mission ───────────────── -->
+      <section class="section" id="company" aria-labelledby="mission-title">
+        <div class="section-inner narrow reveal">
+          <p class="eyebrow">What we're doing</p>
+          <h2 id="mission-title">Help students make college make sense.</h2>
+          <p class="lead">
+            The Seans builds education and community software for the parts of college that fall
+            between official systems — choosing classes, reading the campus, finding peer knowledge
+            that's worth trusting, and feeling less alone inside a large university.
           </p>
         </div>
       </section>
 
-      <section class="cinema-section dark" aria-labelledby="why-title">
-        <div class="cinema-copy reveal">
-          <p class="eyebrow blue">Why we started</p>
-          <h2 id="why-title">Campus life feels more disconnected than it should.</h2>
-          <p>
-            Students assemble university life across calendars, the registrar, Canvas, Reddit, Discord,
-            RateMyProfessors, group chats, and private notes. Each tool solves one slice — none of them
-            make the whole experience feel like one thing.
-          </p>
-          <p>
-            We think the next student platform in the U.S. should pull that back together: school-verified,
-            personally anonymous participation that makes campus easier to read and far less lonely.
-          </p>
-        </div>
-      </section>
-
-      <section class="product-hero" id="product" aria-labelledby="product-title">
-        <div class="product-heading">
-          <p class="eyebrow blue">First product</p>
-          <h2 id="product-title">ClassMate.</h2>
-          <p>Our first product turns the class schedule into a starting point — for course decisions, peer knowledge, and campus community.</p>
-          <p class="supported-schools-note">Currently supported: UC Irvine, University of Maryland, Cornell, Purdue, and University of Illinois Urbana-Champaign.</p>
-          <div class="product-cta-row">
-            <a class="button primary" href="https://apps.apple.com/us/app/classmate/id6763340951" target="_blank" rel="noopener">Download on App Store</a>
-            <a class="button secondary" href="https://testflight.apple.com/join/9UjRhFmz" target="_blank" rel="noopener">Join TestFlight Beta</a>
+      <!-- ───────────────── Why ───────────────── -->
+      <section class="section split-section" aria-labelledby="why-title">
+        <div class="section-inner split">
+          <figure class="split-media reveal" aria-hidden="true">
+            <img src="./assets/students-classroom.jpg" alt="" loading="lazy" />
+          </figure>
+          <div class="split-copy reveal">
+            <p class="eyebrow">Why we started</p>
+            <h2 id="why-title">Campus life feels more disconnected than it should.</h2>
+            <p>
+              Students assemble university life across calendars, the registrar, Canvas, Reddit,
+              Discord, RateMyProfessors, group chats, and private notes. Each tool solves one
+              slice — none of them make the whole experience feel like one thing.
+            </p>
+            <p>
+              We think the next student platform in the U.S. should pull that back together:
+              school-verified, personally anonymous participation that makes campus easier
+              to read and far less lonely.
+            </p>
           </div>
         </div>
-
       </section>
 
-      <section class="scroll-showcase" data-scroll-showcase aria-labelledby="showcase-title">
-        <div class="showcase-sticky">
-          <div class="showcase-copy">
-            <p class="eyebrow blue">The product idea</p>
-            <div class="showcase-copy-stack">
-              <article class="showcase-step active" data-step-copy>
-                <span>01</span>
-                <h2 id="showcase-title">Build around real student life.</h2>
-                <p>College isn't just registration, grades, and announcements. It's the daily mix of classes, people, questions, and campus habits that official systems were never built to understand.</p>
-              </article>
-              <article class="showcase-step" data-step-copy>
-                <span>02</span>
-                <h2>Make campus conversation easier to start.</h2>
-                <p>Students already trade advice about classes, professors, housing, clubs, and daily life. We give school-verified students a personally anonymous place to ask, answer, and share more freely.</p>
-              </article>
-              <article class="showcase-step" data-step-copy>
-                <span>03</span>
-                <h2>Verified students, anonymous voices.</h2>
-                <p>The community isn't anonymous to the platform — it's anonymous to other students. Verification keeps the space campus-bound; anonymity makes the conversation honest.</p>
-              </article>
-              <article class="showcase-step" data-step-copy>
-                <span>04</span>
-                <h2>Grow campus by campus.</h2>
-                <p>Every university has its own language, data, and routines. We expand where we can build real academic utility first, then let community grow from verified participation.</p>
-              </article>
-            </div>
-            <div class="showcase-meter" aria-hidden="true">
-              <span data-showcase-meter></span>
+      <!-- ───────────────── Product ───────────────── -->
+      <section class="section product-section" id="product" aria-labelledby="product-title">
+        <div class="section-inner">
+          <div class="product-head reveal">
+            <p class="eyebrow">First product</p>
+            <h2 id="product-title">ClassMate.</h2>
+            <p class="lead">
+              ClassMate turns the class schedule into a starting point — for course decisions,
+              peer knowledge, and campus community.
+            </p>
+            <div class="product-cta">
+              <a class="button primary" href="https://apps.apple.com/us/app/classmate/id6763340951" target="_blank" rel="noopener">Download on App Store</a>
+              <a class="button ghost" href="https://testflight.apple.com/join/9UjRhFmz" target="_blank" rel="noopener">Join TestFlight Beta</a>
             </div>
           </div>
 
-          <div class="showcase-visual" aria-label="ClassMate product motion preview">
-            <div class="motion-phone">
-              <div class="phone-sensor"></div>
-              <div class="motion-screen">
-                <section class="mock-layer active" data-step-layer>
-                  <div class="mock-top">
-                    <span>Today</span>
-                    <strong>Spring 2026</strong>
-                  </div>
-                  <div class="mock-current">
-                    <div class="mock-card-head">
-                      <small>Current class</small>
-                      <span>1/3 done</span>
-                    </div>
-                    <h3>Ends in<br />22 min</h3>
-                    <p>ECON 1120 · Microeconomics</p>
-                    <strong>Main Campus · 9:05-9:55 AM</strong>
-                    <div class="mock-progress"><span></span></div>
-                  </div>
-                  <div class="today-mini-grid">
-                    <div>
-                      <span>Weather</span>
-                      <strong>19°</strong>
-                      <small>Mainly clear</small>
-                    </div>
-                    <div>
-                      <span>Sunrise</span>
-                      <strong>6:03</strong>
-                      <small>6:03 AM · 7:34 PM</small>
-                    </div>
-                  </div>
-                  <div class="mock-list-card">
-                    <div>
-                      <span>Next</span>
-                      <strong>CMSC 131</strong>
-                      <small>1:00 PM · Computer Science</small>
-                    </div>
-                    <div>
-                      <span>Sports</span>
-                      <strong>Basketball vs Penn State</strong>
-                      <small>Tonight · Home · 12 going</small>
-                    </div>
-                  </div>
-                </section>
-                <section class="mock-layer" data-step-layer>
-                  <div class="mock-top">
-                    <span>Reviews</span>
-                    <strong>Anonymous by default</strong>
-                  </div>
-                  <div class="mock-search">Search courses or professors</div>
-                  <div class="mock-tabs">
-                    <span class="active">Reviews</span>
-                    <span>ClassMates</span>
-                  </div>
-                  <div class="shared-card">
-                    <small>Student perspective</small>
-                    <div class="shared-row">
-                      <strong>Worth taking?</strong>
-                      <span><b>4.7</b></span>
-                    </div>
-                    <div class="shared-row">
-                      <strong>Workload talk</strong>
-                      <span><b>3.1</b></span>
-                    </div>
-                    <div class="shared-row">
-                      <strong>Would repeat</strong>
-                      <span><b>86%</b></span>
-                    </div>
-                  </div>
-                  <div class="friend-list">
-                    <div><b>A</b><span>Anonymous student<small>Clear lectures, fair exams</small></span></div>
-                    <div><b>B</b><span>School-verified student<small>Useful but project-heavy</small></span></div>
-                    <div><b>C</b><span>Anonymous review<small>Professor explains well</small></span></div>
-                  </div>
-                </section>
-                <section class="mock-layer" data-step-layer>
-                  <div class="mock-top">
-                    <span>Boards</span>
-                    <strong>School verified</strong>
-                  </div>
-                  <div class="mock-search">Search boards or posts</div>
-                  <div class="board-pills">
-                    <span class="active">General</span>
-                    <span>Marketplace</span>
-                    <span>Departments</span>
-                  </div>
-                  <div class="board-stack">
-                    <article>
-                      <span>Course reviews · 14 replies</span>
-                      <strong>Is this professor worth taking next term?</strong>
-                      <small>Anonymous student replies</small>
-                    </article>
-                    <article>
-                      <span>Housing · 3 saves</span>
-                      <strong>What should I know before signing this lease?</strong>
-                      <small>Campus-bound discussion</small>
-                    </article>
-                    <article>
-                      <span>Campus life</span>
-                      <strong>Best quiet study spots after 8 PM?</strong>
-                      <small>Verified students, anonymous voices</small>
-                    </article>
-                  </div>
-                </section>
-                <section class="mock-layer" data-step-layer>
-                  <div class="mock-top">
-                    <span>Timetable</span>
-                    <strong>Spring 2026</strong>
-                  </div>
-                  <div class="schedule-pill-row">
-                    <span class="active">My Schedule</span>
-                    <span>Plan B</span>
-                    <span class="add">+</span>
-                  </div>
-                  <div class="mini-timetable">
-                    <div class="mini-days"><span>M</span><span>T</span><span>W</span><span>Th</span><span>F</span></div>
-                    <div class="mini-times"><span>9</span><span>10</span><span>11</span><span>12</span><span>1</span></div>
-                    <div class="mini-grid">
-                      <span class="block b1">ECON<br />1120</span>
-                      <span class="block b2">CMSC<br />131</span>
-                      <span class="block b3">ENGL<br />101</span>
-                      <span class="block b4">Study</span>
-                    </div>
-                  </div>
-                  <div class="mock-row">
-                    <span>Course data</span>
-                    <strong>Select a real section. The week builds itself.</strong>
-                  </div>
-                  <div class="mock-bottom-tabs">
-                    <span class="active">Today</span>
-                    <span>Schedule</span>
-                    <span>Courses</span>
-                    <span>Board</span>
-                  </div>
-                </section>
+          <div class="product-grid">
+            <div class="phone reveal" aria-label="ClassMate Today screen preview">
+              <div class="phone-notch"></div>
+              <div class="phone-screen">
+                <div class="mock-top"><span>Today</span><strong>Spring 2026</strong></div>
+                <div class="mock-current">
+                  <div class="mock-card-head"><small>Current class</small><span>1/3 done</span></div>
+                  <h3>Ends in 22 min</h3>
+                  <p>ECON 1120 · Microeconomics</p>
+                  <strong>Main Campus · 9:05–9:55 AM</strong>
+                  <div class="mock-progress"><span></span></div>
+                </div>
+                <div class="mock-mini-grid">
+                  <div><span>Weather</span><strong>19°</strong><small>Mainly clear</small></div>
+                  <div><span>Sunrise</span><strong>6:03</strong><small>6:03 AM · 7:34 PM</small></div>
+                </div>
+                <div class="mock-list">
+                  <div><span>Next</span><strong>CMSC 131</strong><small>1:00 PM · Computer Science</small></div>
+                  <div><span>Sports</span><strong>Basketball vs Penn State</strong><small>Tonight · Home · 12 going</small></div>
+                </div>
               </div>
             </div>
+
+            <div class="feature-list">
+              <article class="feature reveal">
+                <span class="feature-num">01</span>
+                <div>
+                  <h3>Real courses, not manual entry.</h3>
+                  <p>Students pull from actual school course data instead of rebuilding their week by hand from scattered registrar pages.</p>
+                </div>
+              </article>
+              <article class="feature reveal">
+                <span class="feature-num">02</span>
+                <div>
+                  <h3>One-tap schedules.</h3>
+                  <p>Add a section and the week reshapes itself — conflicts surface, the plan gets clearer instantly.</p>
+                </div>
+              </article>
+              <article class="feature reveal">
+                <span class="feature-num">03</span>
+                <div>
+                  <h3>Reviews from the same campus.</h3>
+                  <p>Course advice lands harder when it comes from students who know the same professors, departments, and academic culture.</p>
+                </div>
+              </article>
+              <article class="feature reveal">
+                <span class="feature-num">04</span>
+                <div>
+                  <h3>Community with boundaries.</h3>
+                  <p>Post personally anonymously while the space stays school-verified and grounded in a real campus.</p>
+                </div>
+              </article>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="feature-panels" aria-label="ClassMate product pillars">
-        <article class="feature-panel reveal">
-          <span>01</span>
-          <h3>Real courses, not manual entry.</h3>
-          <p>Students pull from actual school course data instead of rebuilding their week by hand from scattered registrar pages.</p>
-        </article>
-        <article class="feature-panel reveal">
-          <span>02</span>
-          <h3>One-tap schedules.</h3>
-          <p>Add a section and the week reshapes itself — conflicts surface, the plan gets clearer instantly.</p>
-        </article>
-        <article class="feature-panel reveal">
-          <span>03</span>
-          <h3>Reviews from the same campus.</h3>
-          <p>Course advice lands harder when it comes from students who know the same professors, departments, and academic culture.</p>
-        </article>
-        <article class="feature-panel reveal">
-          <span>04</span>
-          <h3>Community with boundaries.</h3>
-          <p>Post personally anonymously while the space stays school-verified and grounded in a real campus.</p>
-        </article>
-      </section>
-
-      <section class="image-story" aria-labelledby="image-story-title">
-        <div class="system-map" aria-hidden="true">
-          <span>Schedule</span>
-          <span>Course reviews</span>
-          <span>Anonymous boards</span>
-          <span>Sports</span>
-          <span>ClassMates</span>
-          <span>Notifications</span>
-        </div>
-        <div class="image-story-copy reveal">
-          <p class="eyebrow">How the product connects</p>
-          <h2 id="image-story-title">The schedule is the center, not the endpoint.</h2>
-          <p>
-            ClassMate starts with the academic week because every student already needs it. From there — course reviews, anonymous boards, sports, classmates, notifications — everything connects around the same verified campus. So it reads like one student system, not another disconnected feed.
-          </p>
+      <!-- ───────────────── How it connects ───────────────── -->
+      <section class="section connect-section" aria-labelledby="connect-title">
+        <div class="section-inner split reverse">
+          <div class="split-copy reveal">
+            <p class="eyebrow light">How the product connects</p>
+            <h2 id="connect-title">The schedule is the center, not the endpoint.</h2>
+            <p>
+              ClassMate starts with the academic week because every student already needs it.
+              From there — course reviews, anonymous boards, sports, classmates, notifications —
+              everything connects around the same verified campus. So it reads like one student
+              system, not another disconnected feed.
+            </p>
+            <ul class="connect-chips" aria-label="Connected features">
+              <li>Schedule</li>
+              <li>Course reviews</li>
+              <li>Anonymous boards</li>
+              <li>Sports</li>
+              <li>ClassMates</li>
+              <li>Notifications</li>
+            </ul>
+          </div>
+          <figure class="split-media tall reveal" aria-hidden="true">
+            <img src="./assets/campus-lecture-hall.jpg" alt="" loading="lazy" />
+          </figure>
         </div>
       </section>
 
-      <section class="founder-section" id="founder" aria-labelledby="founder-title">
-        <div class="founder-copy reveal">
-          <p class="eyebrow blue">Founder perspective</p>
-          <h2 id="founder-title">We felt the gap as international students.</h2>
-          <p>
-            When we came to the U.S. for college, the academic tools were all there — but the student layer around them was scattered. Schedules, course advice, housing tips, club info, the everyday talk that actually shapes your week all lived in different places, so it was harder than it should be to read what was happening around us.
-          </p>
-          <p>
-            We'd seen college work differently — where academic life and student community sit close together — so we knew how connected a campus could feel. The Seans comes out of that contrast: software that helps American campuses feel easier to navigate, easier to understand, and less alone.
-          </p>
-        </div>
-        <div class="founders-grid reveal">
-          <article class="founder-card">
-            <div class="founder-photo-wrap">
-              <img src="./assets/founder-kwack.jpg" alt="Kyumin Kwack" class="founder-photo founder-photo--kwack" loading="eager" />
-              <div class="founder-photo-overlay"></div>
-            </div>
-            <div class="founder-info">
-              <strong>Kyumin Kwack</strong>
-              <p>Co-founder &amp; CTO</p>
-              <span class="founder-tag">EE · UC Irvine</span>
-            </div>
-          </article>
-          <article class="founder-card">
-            <div class="founder-photo-wrap">
-              <img src="./assets/founder-park.jpg" alt="Sihyun Park" class="founder-photo founder-photo--park" loading="eager" />
-              <div class="founder-photo-overlay"></div>
-            </div>
-            <div class="founder-info">
-              <strong>Sihyun Park</strong>
-              <p>Co-founder &amp; CEO</p>
-              <span class="founder-tag">ECON · UC Irvine</span>
-            </div>
-          </article>
+      <!-- ───────────────── Founders ───────────────── -->
+      <section class="section" id="founders" aria-labelledby="founders-title">
+        <div class="section-inner split">
+          <div class="split-copy reveal">
+            <p class="eyebrow">Founder perspective</p>
+            <h2 id="founders-title">We felt the gap as international students.</h2>
+            <p>
+              When we came to the U.S. for college, the academic tools were all there — but the
+              student layer around them was scattered. Schedules, course advice, housing tips,
+              club info, the everyday talk that actually shapes your week all lived in different
+              places, so it was harder than it should be to read what was happening around us.
+            </p>
+            <p>
+              We'd seen college work differently — where academic life and student community sit
+              close together — so we knew how connected a campus could feel. The Seans comes out
+              of that contrast: software that helps American campuses feel easier to navigate,
+              easier to understand, and less alone.
+            </p>
+          </div>
+          <div class="founders-grid reveal">
+            <article class="founder-card">
+              <img src="./assets/founder-park.jpg" alt="Sihyun Park" loading="lazy" />
+              <div class="founder-info">
+                <strong>Sihyun Park</strong>
+                <span>Co-founder &amp; CEO</span>
+                <small>ECON · UC Irvine</small>
+              </div>
+            </article>
+            <article class="founder-card">
+              <img src="./assets/founder-kwack.jpg" alt="Kyumin Kwack" loading="lazy" />
+              <div class="founder-info">
+                <strong>Kyumin Kwack</strong>
+                <span>Co-founder &amp; CTO</span>
+                <small>EE · UC Irvine</small>
+              </div>
+            </article>
+          </div>
         </div>
       </section>
 
-      <section class="roadmap-section" id="roadmap" aria-labelledby="roadmap-title">
-        <div class="roadmap-heading reveal">
-          <p class="eyebrow blue">Roadmap</p>
-          <h2 id="roadmap-title">From campus utility to the student network for higher education.</h2>
-        </div>
-        <ol class="timeline">
-          <li class="reveal">
-            <span>01</span>
-            <div>
+      <!-- ───────────────── Roadmap ───────────────── -->
+      <section class="section roadmap-section" id="roadmap" aria-labelledby="roadmap-title">
+        <div class="section-inner">
+          <div class="roadmap-head reveal">
+            <p class="eyebrow">Roadmap</p>
+            <h2 id="roadmap-title">From campus utility to the student network for higher education.</h2>
+          </div>
+          <ol class="roadmap-grid">
+            <li class="roadmap-card reveal">
+              <span>01</span>
               <h3>Win the academic week.</h3>
               <p>Start with the problem students feel every term: choosing classes, building schedules, reading reviews, managing the week. ClassMate earns its place before it ever asks students to socialize.</p>
-            </div>
-          </li>
-          <li class="reveal">
-            <span>02</span>
-            <div>
+            </li>
+            <li class="roadmap-card reveal">
+              <span>02</span>
               <h3>Build verified campus communities.</h3>
-              <p>Layer school-verified, personally anonymous discussion on top of academic context — courses, professors, housing, clubs, events, internships, everyday questions, all in one student space.</p>
-            </div>
-          </li>
-          <li class="reveal">
-            <span>03</span>
-            <div>
+              <p>Layer school-verified, personally anonymous discussion on top of academic context — courses, professors, housing, clubs, events, internships, everyday questions.</p>
+            </li>
+            <li class="roadmap-card reveal">
+              <span>03</span>
               <h3>Expand campus by campus.</h3>
-              <p>Grow through universities where course data, student density, and campus need are strong enough to form a real network. Each school gets its own context, culture, and verified student graph.</p>
-            </div>
-          </li>
-          <li class="reveal">
-            <span>04</span>
-            <div>
-              <h3>Become the student layer for American universities.</h3>
-              <p>Long term, The Seans is the company behind the student-native infrastructure of college life: academic planning, peer knowledge, campus communities, discovery, and the daily tools students use to understand where they belong.</p>
-            </div>
-          </li>
-        </ol>
+              <p>Grow through universities where course data, student density, and campus need are strong enough to form a real network. Each school gets its own context and verified student graph.</p>
+            </li>
+            <li class="roadmap-card reveal">
+              <span>04</span>
+              <h3>Become the student layer.</h3>
+              <p>Long term, The Seans is the company behind the student-native infrastructure of college life: academic planning, peer knowledge, campus communities, and discovery.</p>
+            </li>
+          </ol>
+        </div>
       </section>
 
-      <section class="closing-section" aria-labelledby="closing-title">
-        <div class="closing-inner reveal">
-          <p class="eyebrow blue">Company thesis</p>
+      <!-- ───────────────── Closing ───────────────── -->
+      <section class="closing" aria-labelledby="closing-title">
+        <div class="closing-bg" aria-hidden="true"></div>
+        <div class="section-inner narrow reveal">
+          <p class="eyebrow light">Company thesis</p>
           <h2 id="closing-title">The academic parts of campus and the human parts should live closer together.</h2>
-          <a class="button primary" href="mailto:heyy.seans@gmail.com">Get in touch — we read everything</a>
+          <a class="button primary large" href="mailto:heyy.seans@gmail.com">Get in touch — we read everything</a>
         </div>
       </section>
     </main>
 
+    <!-- ───────────────── Footer ───────────────── -->
     <footer>
-      <div class="footer-top">
-        <div class="footer-brand">
-          <strong>The Seans</strong>
-          <p>Building student-native education and campus community software.</p>
+      <div class="footer-inner">
+        <div class="footer-top">
+          <div class="footer-brand">
+            <a class="brand" href="#top"><span class="brand-mark"></span><span class="brand-name">The Seans</span></a>
+            <p>Building student-native education and campus community software.</p>
+          </div>
+          <div class="footer-links">
+            <div>
+              <strong>Product</strong>
+              <a href="https://apps.apple.com/us/app/classmate/id6763340951" target="_blank" rel="noopener">App Store</a>
+              <a href="https://testflight.apple.com/join/9UjRhFmz" target="_blank" rel="noopener">TestFlight</a>
+              <a href="https://expo.dev/accounts/parksihyun/projects/classmate/builds/a4497d2b-a8a7-4e61-8f8c-20f2243230da" target="_blank" rel="noopener">Android APK</a>
+            </div>
+            <div>
+              <strong>Company</strong>
+              <a href="#founders">Founders</a>
+              <a href="#roadmap">Roadmap</a>
+              <a href="mailto:heyy.seans@gmail.com">Contact</a>
+            </div>
+            <div>
+              <strong>Legal</strong>
+              <a href="./privacy.html">Privacy Policy</a>
+              <a href="./terms.html">Terms of Service</a>
+            </div>
+          </div>
         </div>
-        <div class="footer-links">
-          <div>
-            <strong>Product</strong>
-            <a href="https://apps.apple.com/us/app/classmate/id6763340951" target="_blank" rel="noopener">App Store</a>
-            <a href="https://testflight.apple.com/join/9UjRhFmz" target="_blank" rel="noopener">TestFlight</a>
-            <a href="https://expo.dev/accounts/parksihyun/projects/classmate/builds/a4497d2b-a8a7-4e61-8f8c-20f2243230da" target="_blank" rel="noopener">Android APK</a>
+        <div class="footer-bottom">
+          <span>© 2026 The Seans. All rights reserved.</span>
+          <div class="footer-contact">
+            <a href="mailto:heyy.seans@gmail.com">heyy.seans@gmail.com</a>
+            <span aria-hidden="true">·</span>
+            <a href="mailto:hii.seans@gmail.com">hii.seans@gmail.com</a>
           </div>
-          <div>
-            <strong>Company</strong>
-            <a href="#founder">Founders</a>
-            <a href="#roadmap">Roadmap</a>
-            <a href="mailto:heyy.seans@gmail.com">Contact</a>
-          </div>
-          <div>
-            <strong>Legal</strong>
-            <a href="./privacy.html">Privacy Policy</a>
-            <a href="./terms.html">Terms of Service</a>
-          </div>
-        </div>
-      </div>
-      <div class="footer-bottom">
-        <span>© 2026 The Seans. All rights reserved.</span>
-        <div class="footer-contact">
-          <a href="mailto:heyy.seans@gmail.com">heyy.seans@gmail.com</a>
-          <span>·</span>
-          <a href="mailto:hii.seans@gmail.com">hii.seans@gmail.com</a>
         </div>
       </div>
     </footer>

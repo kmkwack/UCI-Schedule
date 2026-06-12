@@ -1,94 +1,45 @@
-// JS가 살아있음을 표시 — .reveal 숨김은 .js 가 있을 때만 적용되므로,
-// 스크립트가 아예 실패하면 콘텐츠가 항상 보인다 (graceful degradation).
+// JS가 살아있음을 표시 — .reveal 숨김은 .js가 있을 때만 적용되므로
+// 스크립트가 실패해도 콘텐츠는 항상 보인다 (graceful degradation).
 document.documentElement.classList.add('js');
 
 const header = document.querySelector('[data-header]');
-const revealItems = document.querySelectorAll('.reveal');
-const heroMedia = document.querySelector('.hero-media');
-const showcase = document.querySelector('[data-scroll-showcase]');
-const showcaseCopies = showcase ? Array.from(showcase.querySelectorAll('[data-step-copy]')) : [];
-const showcaseLayers = showcase ? Array.from(showcase.querySelectorAll('[data-step-layer]')) : [];
-const showcaseMeter = showcase ? showcase.querySelector('[data-showcase-meter]') : null;
-const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const hero = document.querySelector('.hero');
+const revealItems = Array.from(document.querySelectorAll('.reveal'));
 
-function clamp(value, min = 0, max = 1) {
-  return Math.min(Math.max(value, min), max);
+/* ── Header state: 스크롤 그림자 + 다크 히어로 위에서 색 반전 ── */
+function updateHeader() {
+  if (!header) return;
+  header.classList.toggle('scrolled', window.scrollY > 8);
+  if (hero) {
+    const overDark = window.scrollY < hero.offsetHeight - 60;
+    header.classList.toggle('on-dark', overDark);
+  }
 }
+window.addEventListener('scroll', updateHeader, { passive: true });
+window.addEventListener('resize', updateHeader);
+updateHeader();
 
-function setActive(items, activeIndex) {
-  items.forEach((item, index) => {
-    item.classList.toggle('active', index === activeIndex);
-  });
-}
-
-function updateShowcase() {
-  if (!showcase || showcaseCopies.length === 0) return;
-  const rect = showcase.getBoundingClientRect();
-  const travel = Math.max(showcase.offsetHeight - window.innerHeight, 1);
-  const progress = clamp(-rect.top / travel);
-  const stepCount = showcaseCopies.length;
-  const activeIndex = Math.min(stepCount - 1, Math.floor(progress * stepCount));
-  const local = clamp((progress * stepCount) - activeIndex);
-
-  showcase.style.setProperty('--scene-progress', progress.toFixed(4));
-  showcase.style.setProperty('--scene-local', local.toFixed(4));
-  setActive(showcaseCopies, activeIndex);
-  setActive(showcaseLayers, activeIndex);
-  if (showcaseMeter) showcaseMeter.style.width = `${progress * 100}%`;
-}
-
-const revealObserver = new IntersectionObserver(
-  entries => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
-        revealObserver.unobserve(entry.target);
-      }
-    });
-  },
-  { threshold: 0.06, rootMargin: '0px 0px 10% 0px' }
-);
-
-// 스크롤 기반 폴백: IntersectionObserver가 어떤 이유로든 동작하지 않아도
-// 뷰포트에 들어온 .reveal 요소는 무조건 보이게 한다.
-function revealInView() {
-  const trigger = window.innerHeight * 0.92;
-  revealItems.forEach(item => {
-    if (item.classList.contains('visible')) return;
-    if (item.getBoundingClientRect().top < trigger) {
-      item.classList.add('visible');
-    }
-  });
+/* ── Scroll reveal (IntersectionObserver + 폴백) ── */
+function showAll() {
+  revealItems.forEach(el => el.classList.add('visible'));
 }
 
 if ('IntersectionObserver' in window) {
-  revealItems.forEach(item => revealObserver.observe(item));
+  const observer = new IntersectionObserver(
+    entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    },
+    { threshold: 0.08, rootMargin: '0px 0px 8% 0px' }
+  );
+  revealItems.forEach(el => observer.observe(el));
 } else {
-  // 옵저버 미지원 → 전부 표시
-  revealItems.forEach(item => item.classList.add('visible'));
+  showAll();
 }
 
-window.addEventListener('scroll', revealInView, { passive: true });
-window.addEventListener('resize', revealInView);
-window.addEventListener('load', revealInView);
-revealInView();
-// 최종 안전장치: 1.2초 뒤에도 숨겨진 게 있으면 강제로 표시 (애니메이션 실패 대비)
-setTimeout(() => revealItems.forEach(item => item.classList.add('visible')), 1200);
-
-window.addEventListener(
-  'scroll',
-  () => {
-    if (!header) return;
-    header.style.boxShadow = window.scrollY > 16
-      ? '0 12px 34px rgba(16, 24, 47, 0.18)'
-      : '0 10px 30px rgba(16, 24, 47, 0.13)';
-    if (heroMedia && !reduceMotion) {
-      heroMedia.style.transform = `scale(1) translateY(${window.scrollY * 0.04}px)`;
-    }
-    if (!reduceMotion) updateShowcase();
-  },
-  { passive: true }
-);
-
-window.addEventListener('resize', updateShowcase);
-updateShowcase();
+// 안전장치: 어떤 이유로든 안 보이면 1.2초 뒤 강제 표시
+setTimeout(showAll, 1200);

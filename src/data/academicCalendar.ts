@@ -144,6 +144,57 @@ export async function fetchAcademicEvents(school: string, quarterKey: string): P
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+// ─── Term boundaries (for "is this term still in session?") ───────────────────
+
+/**
+ * Resolve the academic end date of a term from the local calendar data.
+ * Prefers the end of finals; falls back to the last day of instruction.
+ * Returns a Date at end-of-day (local), or null if we have no data for the term.
+ *
+ * Used to decide whether class reminders should still fire — month-based term
+ * detection (getAcademicTermForDate) keeps reporting a term as "current" until
+ * the month boundary, even after finals are over, which caused reminders to keep
+ * firing for classes that already ended.
+ */
+export function getTermEndDate(school: string, quarterKey: string): Date | null {
+  const events = LOCAL_FALLBACK[school]?.[quarterKey];
+  if (!events || events.length === 0) return null;
+
+  const finals = events.find((e) => e.category === 'finals');
+  const lastInstruction = events
+    .filter((e) => e.category === 'instruction')
+    .sort((a, b) => (a.endDate ?? a.date).localeCompare(b.endDate ?? b.date))
+    .pop();
+
+  const endStr = (finals?.endDate ?? finals?.date) ?? (lastInstruction?.endDate ?? lastInstruction?.date);
+  if (!endStr) return null;
+  // end of that calendar day
+  return new Date(`${endStr}T23:59:59`);
+}
+
+/** Start date of a term (Instruction Begins), or null if unknown. */
+export function getTermStartDate(school: string, quarterKey: string): Date | null {
+  const events = LOCAL_FALLBACK[school]?.[quarterKey];
+  if (!events || events.length === 0) return null;
+  const start = events
+    .filter((e) => e.category === 'instruction')
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+  if (!start) return null;
+  return new Date(`${start.date}T00:00:00`);
+}
+
+/**
+ * Whether a term is currently in its active instruction/finals window.
+ * If we have no calendar data for the term, returns true (don't suppress).
+ */
+export function isTermInSession(school: string, quarterKey: string, now: Date = new Date()): boolean {
+  const end = getTermEndDate(school, quarterKey);
+  if (end && now > end) return false;          // term is over (past finals)
+  const start = getTermStartDate(school, quarterKey);
+  if (start && now < start) return false;       // term hasn't started yet
+  return true;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**

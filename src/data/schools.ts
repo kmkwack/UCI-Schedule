@@ -281,14 +281,21 @@ export const SCHOOL_CONFIGS: Record<string, SchoolConfig> = {
   },
 };
 
-export const SUPPORTED_UNIVERSITIES: University[] = Object.values(SCHOOL_CONFIGS).map((config) => ({
-  id: config.id,
-  name: config.name,
-  domain: config.domain,
-  location: config.location,
-  logo: config.logo,
-  status: 'available',
-}));
+// 현재 출시(데이터 보유) 학교. UCI를 확실히 잡은 뒤 여기에 학교명을 추가하면
+// 시드 스크립트 재실행 + 이 배열에 추가만으로 확장된다.
+// (SCHOOL_CONFIGS에는 향후 학교 설정을 그대로 남겨둠)
+export const LIVE_SCHOOL_NAMES = ['UC Irvine'];
+
+export const SUPPORTED_UNIVERSITIES: University[] = Object.values(SCHOOL_CONFIGS)
+  .filter((config) => LIVE_SCHOOL_NAMES.includes(config.name))
+  .map((config) => ({
+    id: config.id,
+    name: config.name,
+    domain: config.domain,
+    location: config.location,
+    logo: config.logo,
+    status: 'available',
+  }));
 
 export const DEFAULT_UNIVERSITY = SUPPORTED_UNIVERSITIES[0];
 

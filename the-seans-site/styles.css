@@ -274,6 +274,10 @@ a { color: inherit; }
   letter-spacing: -0.01em;
   color: var(--ink-soft);
 }
+.schools-strip li.soon {
+  font-weight: 500;
+  color: var(--muted);
+}
 
 /* ── Sections ─────────────────────────────────────────────── */
 .section { padding: 104px var(--pad-x); }

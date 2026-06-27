@@ -25,6 +25,7 @@ import NotificationPermissionScreen from './src/components/NotificationPermissio
 import { FullScreenLoader } from './src/components/ScheduleLoader';
 import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, quarterKey } from './src/data/courses';
 import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, resolveCurrentTerm, schoolFeatureEnabled, universityForName, type University } from './src/data/schools';
+import { isTermInSession } from './src/data/academicCalendar';
 import {
   buildDisplayName,
   DEFAULT_NOTIFICATION_PREFERENCES,
@@ -1714,7 +1715,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const selectedQuarterKey = quarterKey(selectedQuarter);
       const currentQuarter = getAcademicTermForDate(currentSchool, new Date());
       const quarterMatchesCurrent =
-        currentQuarter.year === selectedQuarter.year && currentQuarter.quarter === selectedQuarter.quarter;
+        currentQuarter.year === selectedQuarter.year &&
+        currentQuarter.quarter === selectedQuarter.quarter &&
+        // 월 경계가 아니라 실제 학사일정 종료일 기준 — 파이널이 끝난 학기는
+        // "현재 학기"로 잡혀도 수업 알림을 보내지 않는다 (끝난 수업 알림 방지)
+        isTermInSession(currentSchool, selectedQuarterKey, new Date());
 
       if (notifications.dailyScheduleSummary && quarterMatchesCurrent) {
 	        const dailySummaries = buildDailyScheduleSummaryDates(

@@ -996,7 +996,7 @@ function HelpCenterScreen({ onBack }: { onBack: () => void }) {
     ]},
     { title: 'Troubleshooting', icon: '🔧', faqs: [
       { q: "The app won't load my courses", a: 'Make sure you have a stable internet connection. Try refreshing the page or logging out and back in. If the problem persists, contact support.' },
-      { q: "I can't find my university", a: `ClassMate currently lists ${supportedUniversityCount} supported universities. Search by school name, city/state, or email domain. If your school is not listed yet, contact support.` },
+      { q: "I can't find my university", a: `ClassMate currently supports ${supportedUniversityCount === 1 ? 'one university' : `${supportedUniversityCount} universities`}, with more campuses being added. Search by school name, city/state, or email domain. If your school is not listed yet, contact support.` },
       { q: "Notifications aren't working", a: 'Check Settings > Notifications to ensure the types of notifications you want are enabled. Also verify that your device allows push notifications from ClassMate.' },
     ]},
   ];

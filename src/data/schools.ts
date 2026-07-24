@@ -377,15 +377,20 @@ function summerTermForSchool(school: string) {
 export function getAcademicTermForDate(school: string, date: Date): Quarter {
   const year = date.getFullYear();
   const month = date.getMonth();
+  const day = date.getDate();
   if (getSchoolConfig(school).academicSystem === 'quarter') {
     if (month <= 2) return { year: String(year), quarter: 'Winter' };
     if (month <= 5) return { year: String(year), quarter: 'Spring' };
-    if (month <= 8) return { year: String(year), quarter: summerTermForSchool(school) };
+    // Quarter-school fall instruction starts in the last week of September
+    // (UCI: ~Sept 22-25) — treating all of September as Summer left new users
+    // on an empty Summer tab during week 1 of Fall.
+    if (month < 8 || (month === 8 && day < 20)) return { year: String(year), quarter: summerTermForSchool(school) };
     return { year: String(year), quarter: 'Fall' };
   }
 
   if (month <= 4) return { year: String(year), quarter: 'Spring' };
-  if (month <= 7) {
+  // Semester-school fall instruction starts in late August (~Aug 24-26).
+  if (month < 7 || (month === 7 && day < 20)) {
     const summer = getSchoolConfig(school).terms.find((term) => term.toLowerCase().includes('summer'));
     return { year: String(year), quarter: summer ?? 'Spring' };
   }

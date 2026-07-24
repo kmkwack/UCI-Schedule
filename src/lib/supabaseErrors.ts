@@ -26,5 +26,14 @@ export function isRlsError(error: any) {
 
 /** Network or fetch-level error (no response from Supabase) */
 export function isNetworkError(error: any) {
-  return error instanceof TypeError && error.message.includes('fetch');
+  // React Native / Hermes throws `TypeError: Network request failed`; browsers
+  // throw "Failed to fetch". Match both plus aborted requests.
+  const message = String(error?.message ?? '').toLowerCase();
+  return (
+    message.includes('network request failed') ||
+    message.includes('failed to fetch') ||
+    message.includes('fetch failed') ||
+    (error instanceof TypeError && message.includes('fetch')) ||
+    error?.name === 'AbortError'
+  );
 }

@@ -245,13 +245,37 @@ async function seedGECategories(year, quarter) {
     }
   }
 
-  // Upsert ge_categories for all matched sections
+  // Only update sections that already exist for this quarter — upserting an
+  // unmatched id would INSERT a skeleton row (no school/department/code/title)
+  // into the shared sections table.
+  const existingIds = new Set();
+  {
+    const PAGE = 1000;
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from('sections')
+        .select('id')
+        .eq('quarter_key', qKey)
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) { console.error(`  ✗ GE existing-id fetch failed: ${error.message}`); break; }
+      (data ?? []).forEach((row) => existingIds.add(row.id));
+      if (!data || data.length < PAGE) break;
+      from += PAGE;
+    }
+  }
+
   // quarter_key is NOT NULL — must include it to avoid constraint violation on insert
-  const updates = [...geMap.entries()].map(([id, ges]) => ({
-    id,
-    quarter_key: qKey,
-    ge_categories: [...ges],
-  }));
+  const updates = [...geMap.entries()]
+    .filter(([id]) => existingIds.has(id))
+    .map(([id, ges]) => ({
+      id,
+      quarter_key: qKey,
+      ge_categories: [...ges],
+    }));
+  const skippedCount = geMap.size - updates.length;
+  if (skippedCount > 0) console.log(`  · ${skippedCount} GE sections not present in the sections table — skipped`);
 
   console.log(`  Updating ${updates.length} sections with GE categories…`);
   const CHUNK = 500;

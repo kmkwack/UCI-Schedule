@@ -311,6 +311,7 @@ const DAY_LABEL: Record<string, string> = {
 
 
 function parseHour(time: string) {
+  if (!time) return NaN;
   const [hourStr, minuteStr] = time.split(':');
   return Number(hourStr) + Number(minuteStr) / 60;
 }
@@ -629,7 +630,12 @@ export default function TimetableScreen({
         if (cancelled) return;
         if (error) {
           if (error.code !== 'PGRST205') console.warn('Failed to load course Discord link:', error);
-          setCourseDiscordLinks((current) => ({ ...current, [discordKey]: null }));
+          // Don't cache transient failures as "no link" — leaving the key unset
+          // lets the next open of this course retry. Only a missing table
+          // (PGRST205) is a definitive "no link" for the session.
+          if (error.code === 'PGRST205') {
+            setCourseDiscordLinks((current) => ({ ...current, [discordKey]: null }));
+          }
           return;
         }
         setCourseDiscordLinks((current) => ({
@@ -1871,6 +1877,7 @@ export default function TimetableScreen({
                       </Text>
                     </TouchableOpacity>
                   ) : null}
+                  {selectedCourse.department !== 'CUSTOM' && (
                   <TouchableOpacity
                     onPress={() => {
                       setReviewsCourse(selectedCourse);
@@ -1890,6 +1897,7 @@ export default function TimetableScreen({
                     <Ionicons name="star-outline" size={17} color="white" />
                     <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Reviews</Text>
                   </TouchableOpacity>
+                  )}
                   {courseMapUrl && !mappedLocation && (
                     <TouchableOpacity
                       onPress={() => { if (mapQuery) void openMaps(mapQuery, school, mappedLocation); }}

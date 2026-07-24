@@ -327,7 +327,21 @@ export function getCampusMapLocation(school: string, rawLocation?: string | null
 
   for (const location of schoolLocations) {
     const aliases = [location.code, location.name, ...location.aliases].map(normalize);
-    if (aliases.some((alias) => firstToken === alias || normalized === alias || noRoom === alias || compact.startsWith(alias.replace(/\s+/g, '')) || normalized.includes(alias))) {
+    // Exact/first-token matches are safe at any alias length. The fuzzy
+    // matches (prefix/substring) require length >= 3 and whole-word boundaries:
+    // bare substring matching let 2-letter codes fire inside unrelated names
+    // ("WILSON HALL" contains "ON" → pinned the Online placeholder at 0,0).
+    const matches = aliases.some((alias) => {
+      if (firstToken === alias || normalized === alias || noRoom === alias) return true;
+      const aliasCompact = alias.replace(/\s+/g, '');
+      if (aliasCompact.length >= 3 && compact.startsWith(aliasCompact)) return true;
+      if (alias.length >= 3 && new RegExp(`(^| )${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}( |$)`).test(normalized)) return true;
+      return false;
+    });
+    if (matches) {
+      // Placeholder entries (Online/Virtual) carry no real coordinates —
+      // treat them as unmappable instead of dropping a pin at (0, 0).
+      if (location.latitude === 0 && location.longitude === 0) return null;
       const { aliases: _aliases, ...mapped } = location;
       return mapped;
     }

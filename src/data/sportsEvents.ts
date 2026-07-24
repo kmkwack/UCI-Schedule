@@ -379,9 +379,14 @@ function makeSchedulePageEvent(
 }
 
 function parseUpcomingHtmlSummary(summary: string): { sport: string; opponent: string; isHome: boolean } | null {
-  const cleaned = summary
+  const stripped = summary
     .replace(/^[A-Z][A-Za-z .&-]{1,30}\s+(?=[A-Z][a-z])/m, '')
     .trim();
+  // The leading-school-name strip is greedy and can swallow the "vs/at" keyword
+  // when the opponent starts with a capital+lowercase (e.g. "... vs Stanford" →
+  // "Stanford"). If the keyword is gone, the strip over-matched — fall back to
+  // the original so the event isn't silently dropped.
+  const cleaned = /\s(?:versus|vs\.?|at)\s/i.test(stripped) ? stripped : summary.trim();
   const versusMatch = cleaned.match(/^(.*?)\s+(?:versus|vs\.?|vs)\s+(.+)$/i);
   if (versusMatch) {
     return {
@@ -402,7 +407,11 @@ function parseUpcomingHtmlSummary(summary: string): { sport: string; opponent: s
 }
 
 function parseSummary(raw: string): { sport: string; opponent: string; isHome: boolean } | null {
-  const s = raw.replace(/^\[.\]\s*/, '').replace(/^[A-Z][A-Za-z .&-]{1,30}\s+(?=[A-Z][a-z])/, '');
+  const withoutTag = raw.replace(/^\[.\]\s*/, '');
+  const stripped = withoutTag.replace(/^[A-Z][A-Za-z .&-]{1,30}\s+(?=[A-Z][a-z])/, '');
+  // Same over-greedy-strip guard as parseUpcomingHtmlSummary: keep the original
+  // when the strip removed the " vs "/" at " keyword.
+  const s = /\s(?:vs|at)\s/i.test(stripped) ? stripped : withoutTag;
   const vsIdx = s.indexOf(' vs ');
   const atIdx = s.indexOf(' at ');
   let sport: string;

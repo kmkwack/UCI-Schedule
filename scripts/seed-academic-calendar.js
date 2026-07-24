@@ -88,7 +88,12 @@ function parseDateCell(raw, year) {
   const fullRange = s.match(/([A-Za-z]+)\.?\s+(\d{1,2})\s*[–-]\s*([A-Za-z]+)\.?\s+(\d{1,2})/);
   if (fullRange) {
     const d = isoDate(fullRange[1], fullRange[2], year);
-    const e = isoDate(fullRange[3], fullRange[4], year);
+    // A range crossing the year boundary ("Dec 14 – Jan 2") ends the NEXT year;
+    // using the same year produced an endDate ~11 months before the start.
+    const startMonth = MONTHS[fullRange[1]];
+    const endMonth = MONTHS[fullRange[3]];
+    const endYear = startMonth && endMonth && Number(endMonth) < Number(startMonth) ? year + 1 : year;
+    const e = isoDate(fullRange[3], fullRange[4], endYear);
     return d ? { date: d, endDate: e } : null;
   }
 
@@ -119,12 +124,14 @@ function makeId(school, quarterKey, title) {
 // Given an ISO date string, assign it to the right quarter for UCI
 // (or any quarter-system school with Fall/Winter/Spring)
 function uciQuarterForDate(isoDate, y1, y2) {
-  const [year, month] = isoDate.split('-').map(Number);
-  if (year === y1 && month >= 9)  return `${y1}-Fall`;    // Sep-Dec → Fall
-  if (year === y2 && month <= 3)  return `${y2}-Winter`;  // Jan-Mar → Winter
-  if (year === y2 && month >= 3 && month <= 7) return `${y2}-Spring`; // Mar-Jul → Spring
-  if (year === y2 && month >= 6 && month <= 8) return null; // Summer → skip
-  return null;
+  const [year, month, day] = isoDate.split('-').map(Number);
+  if (year === y1 && month >= 9) return `${y1}-Fall`;                  // Sep-Dec → Fall
+  if (year !== y2) return null;
+  if (month <= 2) return `${y2}-Winter`;                               // Jan-Feb → Winter
+  if (month === 3) return day < 20 ? `${y2}-Winter` : `${y2}-Spring`;  // Winter finals end ~Mar 20; Spring starts late Mar
+  if (month <= 5) return `${y2}-Spring`;                               // Apr-May → Spring
+  if (month === 6 && day <= 15) return `${y2}-Spring`;                 // Spring finals end ~mid-June
+  return null;                                                         // mid-June-Aug (Summer) → skip
 }
 
 // ─── UCI ─────────────────────────────────────────────────────────────────────
@@ -649,4 +656,7 @@ async function main() {
   console.log('Done.\n');
 }
 
-main();
+main().catch((error) => {
+  console.error('Seed failed:', error);
+  process.exit(1);
+});

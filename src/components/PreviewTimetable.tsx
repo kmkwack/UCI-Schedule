@@ -20,6 +20,7 @@ const HOUR_HEIGHT = 76;
 const TIMETABLE_CARD_PADDING = 12;
 
 function parseHour(time: string) {
+  if (!time) return NaN;
   const [hourStr, minuteStr] = time.split(':');
   const hour = Number(hourStr);
   const minute = Number(minuteStr);

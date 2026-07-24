@@ -158,9 +158,11 @@ export function normalizeTimeInputTo24Hour(value: string, options: { allow24Hour
 
 export function getAcademicQuarterForDate(date: Date): Quarter {
   const month = date.getMonth();
+  const day = date.getDate();
   if (month <= 2) return { year: String(date.getFullYear()), quarter: 'Winter' };
   if (month <= 5) return { year: String(date.getFullYear()), quarter: 'Spring' };
-  if (month <= 8) return { year: String(date.getFullYear()), quarter: 'Summer10wk' };
+  // Fall instruction starts in the last week of September (UCI: ~Sept 22-25).
+  if (month < 8 || (month === 8 && day < 20)) return { year: String(date.getFullYear()), quarter: 'Summer10wk' };
   return { year: String(date.getFullYear()), quarter: 'Fall' };
 }
 

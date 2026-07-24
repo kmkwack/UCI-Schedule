@@ -286,7 +286,10 @@ function ProfileDropdownPicker({
 }
 
 function validateDOB(dob: string): string | null {
-  if (!dob || dob.length < 10) return null;
+  // Empty is allowed (optional field), but a partially typed date is not —
+  // treating it as valid persisted malformed dates like "01/02/19".
+  if (!dob) return null;
+  if (dob.length < 10) return 'Enter your birthday as MM/DD/YYYY';
 
   const [mm, dd, yyyy] = dob.split('/').map(Number);
   if (mm < 1 || mm > 12) return 'Invalid month (01-12)';

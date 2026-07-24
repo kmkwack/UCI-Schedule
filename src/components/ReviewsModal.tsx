@@ -195,9 +195,9 @@ async function fetchUciCatalogCourseInfo(department: string, courseNumber: strin
     uciCatalogCourseCache[cacheKey] = info;
     return info;
   } catch (_) {
-    const empty = { prerequisiteText: null, restrictionText: null, prerequisiteSourceKnown: false };
-    uciCatalogCourseCache[cacheKey] = empty;
-    return empty;
+    // Don't cache failures (offline, transient API error) — the next open of
+    // this course should retry instead of showing empty info all session.
+    return { prerequisiteText: null, restrictionText: null, prerequisiteSourceKnown: false };
   }
 }
 
@@ -260,6 +260,10 @@ export default function ReviewsModal({
   const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
   const writeReviewScrollRef = useRef<ScrollView>(null);
   const reviewInputRef = useRef<TextInput>(null);
+  // Incremented each time the modal (re)opens for a course; used to discard
+  // slow responses that belong to a previously viewed course.
+  const fetchGenerationRef = useRef(0);
+  const gradeFetchKeyRef = useRef<string | null>(null);
   const schoolConfig = getSchoolConfig(school);
   const supportsOfficialGradeDistribution = schoolConfig.gradeDistributionSource === 'anteaterapi';
   const reviewTermOptions = useMemo(
@@ -285,8 +289,11 @@ export default function ReviewsModal({
       setQuarterTaken(semesterLabel);
       setCourseInfo(null);
       setShowAllRestrictions(false);
-      fetchReviews();
-      fetchCourseInfo();
+      // Bump the generation so a slow response for a previously opened course
+      // can't overwrite this course's reviews/info.
+      const generation = ++fetchGenerationRef.current;
+      fetchReviews(generation);
+      fetchCourseInfo(generation);
     }
   }, [visible, sectionId, courseCode, quarterKey, school]);
 
@@ -327,6 +334,9 @@ export default function ReviewsModal({
       return;
     }
     setGradeLoading(true);
+    // Only the most recent request may clear the loading flag — an earlier
+    // professor's fetch finishing must not flash "no data" for the new one.
+    gradeFetchKeyRef.current = cacheKey;
     const params = new URLSearchParams({ department, courseNumber });
     if (instructor) params.append('instructor', instructor);
     fetch(`https://anteaterapi.com/v2/rest/grades/aggregate?${params}`)
@@ -335,10 +345,12 @@ export default function ReviewsModal({
         setGradesCache((prev) => ({ ...prev, [cacheKey]: json?.data?.gradeDistribution ?? null }));
       })
       .catch(() => setGradesCache((prev) => ({ ...prev, [cacheKey]: null })))
-      .finally(() => setGradeLoading(false));
+      .finally(() => {
+        if (gradeFetchKeyRef.current === cacheKey) setGradeLoading(false);
+      });
   }, [visible, instructor, school, department, courseNumber, supportsOfficialGradeDistribution]);
 
-  async function fetchCourseInfo() {
+  async function fetchCourseInfo(generation: number) {
     const sectionCandidates = sectionIdLookupCandidates(sectionId, quarterKey);
     const cacheKey = sectionCandidates.length > 0
       ? `${school}::section::${sectionCandidates.join('|')}`
@@ -357,30 +369,35 @@ export default function ReviewsModal({
     let catalogPrerequisiteText: string | null = null;
     let catalogRestrictionText: string | null = null;
     let prerequisiteSourceKnown = false;
+    // If any lookup failed, still display what we have but don't cache the
+    // (possibly empty) result for the rest of the session.
+    let hadError = false;
 
     if (sectionCandidates.length > 0) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('sections')
         .select('final_exam, restrictions, prerequisite_link, section_comment')
         .eq('school', school)
         .in('id', sectionCandidates)
         .limit(sectionCandidates.length);
+      if (error) hadError = true;
       rows = (data ?? []) as typeof rows;
     }
 
     if (rows.length === 0 && sectionCandidates.length === 0) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('sections')
         .select('final_exam, restrictions, prerequisite_link, section_comment')
         .eq('school', school)
         .eq('code', courseCode)
         .eq('quarter_key', quarterKey)
         .limit(25);
+      if (error) hadError = true;
       rows = (data ?? []) as typeof rows;
     }
 
     if (sectionCandidates.length > 0 && !rows.some((row) => normalizePrerequisiteLink(row.prerequisite_link))) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('sections')
         .select('prerequisite_link')
         .eq('school', school)
@@ -389,6 +406,7 @@ export default function ReviewsModal({
         .not('prerequisite_link', 'is', null)
         .neq('prerequisite_link', '')
         .limit(1);
+      if (error) hadError = true;
       coursePrerequisiteLink = (data?.[0] as { prerequisite_link?: string | null } | undefined)?.prerequisite_link ?? null;
     }
 
@@ -397,6 +415,7 @@ export default function ReviewsModal({
       catalogPrerequisiteText = catalogInfo.prerequisiteText;
       catalogRestrictionText = catalogInfo.restrictionText;
       prerequisiteSourceKnown = catalogInfo.prerequisiteSourceKnown;
+      if (!catalogInfo.prerequisiteSourceKnown) hadError = true;
     }
 
     const preferred =
@@ -412,16 +431,19 @@ export default function ReviewsModal({
       prerequisiteSourceKnown,
       sectionComment: preferred?.section_comment ?? null,
     };
-    courseInfoCache[cacheKey] = info;
+    if (!hadError) courseInfoCache[cacheKey] = info;
+    // A slow response for a previously opened course must not overwrite state.
+    if (fetchGenerationRef.current !== generation) return;
     setCourseInfo(info);
   }
 
-  async function fetchReviews() {
+  async function fetchReviews(generation: number) {
     setReviewsLoading(true);
     const { data, error } = await supabase
       .from('reviews').select('*')
       .eq('school', school).eq('course_code', courseCode).eq('section_type', sectionType)
       .order('created_at', { ascending: false });
+    if (fetchGenerationRef.current !== generation) return;
     if (!error && data) {
       setReviews(data.map((r: any) => ({
         id: r.id, userId: r.user_id, author: r.author, rating: r.rating,
@@ -462,7 +484,7 @@ export default function ReviewsModal({
     setEditingReviewId(null);
     setShowWriteReview(false);
     triggerSuccessHaptic();
-    await fetchReviews();
+    await fetchReviews(fetchGenerationRef.current);
   }
 
   function handleEdit(review: CourseReview) {

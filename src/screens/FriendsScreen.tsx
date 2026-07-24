@@ -297,6 +297,14 @@ export default function FriendsScreen({
   const [editMode, setEditMode] = useState(false);
   const schoolDomain = getSchoolConfig(school).domain || DEFAULT_UNIVERSITY.domain;
 
+  // friendQuarter is seeded once from the initial school; on a university switch
+  // (e.g. quarter → semester system) the old term key can't exist at the new
+  // school, so the friend timetable would render empty until the dropdown is
+  // opened. Reset it to the new school's current term whenever school changes.
+  useEffect(() => {
+    setFriendQuarter(getAcademicTermForDate(school, new Date()));
+  }, [school]);
+
   const friend = selectedFriendId ? friends.find((f) => f.id === selectedFriendId) ?? null : null;
   const friendQuarterCourses: Course[] = friend
     ? (friend.timetables[quarterKey(friendQuarter)] ?? [])
@@ -466,6 +474,9 @@ export default function FriendsScreen({
       }
 
       let visibilityByUserId: Record<string, TimetableVisibility> = {};
+      // Fail CLOSED: if we can't load visibility settings, treat every friend's
+      // timetable as private rather than exposing schedules that may be private.
+      let visibilityLoadFailed = false;
       if (acceptedIds.length > 0) {
         let { data: settingsRows, error: settingsError } = await supabase
           .rpc('get_friend_timetable_visibility', {
@@ -484,6 +495,7 @@ export default function FriendsScreen({
 
         if (settingsError && settingsError.code !== 'PGRST205') {
           console.error('Failed to load friend visibility settings:', settingsError);
+          visibilityLoadFailed = true;
         } else {
           visibilityByUserId = Object.fromEntries(
             ((settingsRows ?? []) as UserSettingsRow[]).map((row) => [
@@ -495,7 +507,7 @@ export default function FriendsScreen({
       }
 
       const friendTimetablesByUser: Record<string, Record<string, Course[]>> = {};
-      if (acceptedIds.length > 0) {
+      if (acceptedIds.length > 0 && !visibilityLoadFailed) {
         const { data: timetableRows, error: timetablesError } = await supabase
           .from('timetables')
           .select('user_id, quarter_key, courses')
@@ -523,7 +535,7 @@ export default function FriendsScreen({
           mapProfileToFriend(
             profile,
             friendTimetablesByUser[profile.id] ?? {},
-            visibilityByUserId[profile.id] ?? 'friends'
+            visibilityByUserId[profile.id] ?? (visibilityLoadFailed ? 'private' : 'friends')
           )
         );
       const freshPending = incomingPendingIds
@@ -573,6 +585,8 @@ export default function FriendsScreen({
       return;
     }
 
+    let cancelled = false;
+
     async function searchUsers() {
       setSearchLoading(true);
       const existingIds = new Set(friends.map((f) => f.id));
@@ -583,12 +597,34 @@ export default function FriendsScreen({
         ? debouncedEmailQuery.split('@')[0]
         : debouncedEmailQuery;
 
+      // Commas, parens and quotes are PostgREST .or() syntax — strip them so a
+      // search like "Smith, John" doesn't break the request. '%' is an ilike
+      // wildcard, so strip it too (otherwise a bare '%' matches everyone).
+      const sanitizeOrTerm = (value: string) => value.replace(/[,()"'\\%]/g, ' ').trim();
+      const safeEmailTerm = sanitizeOrTerm(emailTerm);
+      const safeNameTerm = sanitizeOrTerm(debouncedEmailQuery);
+
+      // A query like "@uci.edu" leaves an empty email local-part; an empty term
+      // becomes ilike '%%' and dumps every same-school profile. Only include a
+      // clause when its term is non-empty, and bail if neither is.
+      const orClauses: string[] = [];
+      if (safeEmailTerm) orClauses.push(`email.ilike.%${safeEmailTerm}%`);
+      if (safeNameTerm) orClauses.push(`name.ilike.%${safeNameTerm}%`);
+      if (orClauses.length === 0) {
+        setSearchResults([]);
+        setSearchLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('profiles')
         .select('id, email, name, major, year, school')
         .eq('school', school)
-        .or(`email.ilike.%${emailTerm}%,name.ilike.%${debouncedEmailQuery}%`)
+        .or(orClauses.join(','))
         .limit(50);
+
+      // A slow response for an older query must not overwrite newer results.
+      if (cancelled) return;
 
       if (error) {
         console.error('Failed to search users:', error);
@@ -618,11 +654,16 @@ export default function FriendsScreen({
     }
 
     searchUsers();
+
+    return () => { cancelled = true; };
   }, [debouncedEmailQuery, friends, pendingRequests, school, sentRequestIds, showAddModal, userEmail, userId]);
 
   // Re-fetch the selected friend's timetables when their view opens or dropdown opens
   useEffect(() => {
     if (!selectedFriendId) return;
+    // Never refetch (and overwrite local state with) a private friend's timetables.
+    const selected = friends.find((f) => f.id === selectedFriendId);
+    if (selected?.timetableVisibility === 'private') return;
     async function refreshFriendTimetables() {
       const { data: rows, error } = await supabase
         .from('timetables')
@@ -647,6 +688,9 @@ export default function FriendsScreen({
   function openFriendTimetable(friendId: string) {
     friendSlideAnim.setValue(screenWidthRef.current);
     setSelectedFriendId(friendId);
+    // Clear the previous friend's term list so their quarters can't briefly show
+    // (or persist, if the new fetch is slow/errors) under a different friend.
+    setFriendAvailableQuarters([]);
     Animated.spring(friendSlideAnim, { toValue: 0, useNativeDriver: true, ...MOTION.spring.sheet }).start();
   }
 
@@ -680,14 +724,29 @@ export default function FriendsScreen({
       .eq('user_id', selectedFriendId);
     if (!error && data) {
       const keys = [...new Set((data as { quarter_key: string }[]).map(r => r.quarter_key))];
-      keys.sort((a, b) => b.localeCompare(a));
+      // Sort chronologically (newest first) — plain string sort puts Winter
+      // ahead of Fall within the same year ("2025-Winter" > "2025-Fall").
+      const TERM_ORDER: Record<string, number> = {
+        Winter: 0, Spring: 1, Summer: 2, Summer1: 2, Summer10wk: 3, Summer2: 4, Fall: 5,
+      };
+      keys.sort((a, b) => {
+        const qa = parseQuarterKey(a), qb = parseQuarterKey(b);
+        const yearDiff = parseInt(qb.year, 10) - parseInt(qa.year, 10);
+        if (yearDiff !== 0) return yearDiff;
+        return (TERM_ORDER[qb.quarter] ?? 2) - (TERM_ORDER[qa.quarter] ?? 2);
+      });
       while (quarterItemAnims.current.length < keys.length) {
         quarterItemAnims.current.push(new Animated.Value(0));
       }
       quarterItemAnims.current.forEach((v) => v.setValue(0));
       setFriendAvailableQuarters(keys);
+      // Keep the user's current selection if it's still available; otherwise
+      // fall back to the friend's most recent term.
       if (keys.length > 0) {
-        setFriendQuarter(parseQuarterKey(keys[0]));
+        const currentKey = `${friendQuarter.year}-${friendQuarter.quarter}`;
+        if (!keys.includes(currentKey)) {
+          setFriendQuarter(parseQuarterKey(keys[0]));
+        }
       }
       Animated.stagger(45, keys.map((_, i) =>
         Animated.spring(quarterItemAnims.current[i], { toValue: 1, useNativeDriver: true, tension: 260, friction: 22 })
@@ -768,13 +827,14 @@ export default function FriendsScreen({
 
   const handleRespondToRequest = async (requesterId: string, status: 'accepted' | 'rejected') => {
     if (status === 'accepted') {
-      let { error } = await supabase
+      let { data: updatedRows, error } = await supabase
         .from('friend_requests')
         .update({ status: 'accepted' })
         .eq('school', school)
         .eq('sender_id', requesterId)
         .eq('receiver_id', userId)
-        .eq('status', 'pending');
+        .eq('status', 'pending')
+        .select('sender_id');
 
       if (error && school === DEFAULT_UNIVERSITY.name && isMissingSchoolColumnError(error)) {
         const fallback = await supabase
@@ -782,12 +842,22 @@ export default function FriendsScreen({
           .update({ status: 'accepted' })
           .eq('sender_id', requesterId)
           .eq('receiver_id', userId)
-          .eq('status', 'pending');
+          .eq('status', 'pending')
+          .select('sender_id');
+        updatedRows = fallback.data;
         error = fallback.error;
       }
 
       if (error) {
         Alert.alert('Request update failed', error.message);
+        return;
+      }
+
+      // 0 rows updated means the sender withdrew the request concurrently —
+      // don't add a phantom friend that doesn't exist server-side.
+      if (!updatedRows || updatedRows.length === 0) {
+        setPendingRequests((prev) => prev.filter((row) => row.id !== requesterId));
+        Alert.alert('Request unavailable', 'This friend request was withdrawn.');
         return;
       }
 
@@ -884,10 +954,16 @@ export default function FriendsScreen({
           text: 'Block',
           style: 'destructive',
           onPress: async () => {
-            await supabase.from('blocks').upsert(
+            const { error } = await supabase.from('blocks').upsert(
               { blocker_id: userId, blocked_id: friendId, source: 'friend' },
               { onConflict: 'blocker_id,blocked_id' }
             );
+            if (error) {
+              // Don't remove the friendship while making the user believe the
+              // block succeeded — the person could still message/re-friend them.
+              Alert.alert('Could not block', 'Please check your connection and try again.');
+              return;
+            }
             await handleDeleteFriend(friendId);
           },
         },

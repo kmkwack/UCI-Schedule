@@ -58,8 +58,6 @@ function formatNotificationHour(hour: number) {
   return `${hour12}:00 ${suffix}`;
 }
 
-const LEGACY_ASSIGNMENT_REMINDER_OPTION_MINUTES = [2880, 1440, 720];
-
 const ASSIGNMENT_REMINDER_OPTIONS = [
   { minutes: 2880, label: '2 days before' },
   { minutes: 1440, label: '1 day before' },
@@ -72,9 +70,9 @@ function normalizeAssignmentReminderOffsets(offsets?: number[]) {
   const selected = (Array.isArray(offsets) ? offsets : [])
     .filter((minutes) => allowed.has(minutes))
     .filter((minutes, index, values) => values.indexOf(minutes) === index);
-  const isLegacyDefault = selected.length === LEGACY_ASSIGNMENT_REMINDER_OPTION_MINUTES.length
-    && LEGACY_ASSIGNMENT_REMINDER_OPTION_MINUTES.every((minutes) => selected.includes(minutes));
-  if (isLegacyDefault) return ASSIGNMENT_REMINDER_OPTIONS.map((option) => option.minutes);
+  // Note: no "legacy default" re-expansion here — [2880, 1440, 720] is also
+  // the legitimate result of deselecting "1 hour before", and re-adding 60
+  // made that option impossible to turn off.
   return selected.length > 0 ? selected : ASSIGNMENT_REMINDER_OPTIONS.map((option) => option.minutes);
 }
 
@@ -2048,8 +2046,13 @@ function BlockedUsersScreen({ userId, school, onBack }: { userId: string; school
 
   async function fetchBlocks() {
     setLoading(true);
-    const { data } = await supabase.from('blocks').select('blocked_id, source').eq('blocker_id', userId);
-    if (!data) { setLoading(false); return; }
+    const { data, error } = await supabase.from('blocks').select('blocked_id, source').eq('blocker_id', userId);
+    if (error || !data) {
+      // Don't render a confident "No users blocked" empty state on a failed query.
+      if (error) Alert.alert('Could not load blocked users', 'Please check your connection and try again.');
+      setLoading(false);
+      return;
+    }
 
     const anonBlocks = (data as any[]).filter((r) => r.source === 'board' || !r.source);
     const fBlocks = (data as any[]).filter((r) => r.source === 'friend');
@@ -2083,8 +2086,12 @@ function BlockedUsersScreen({ userId, school, onBack }: { userId: string; school
           style: 'destructive',
           onPress: async () => {
             setClearingAll(true);
-            await supabase.from('blocks').delete().eq('blocker_id', userId).or('source.eq.board,source.is.null');
+            const { error } = await supabase.from('blocks').delete().eq('blocker_id', userId).or('source.eq.board,source.is.null');
             setClearingAll(false);
+            if (error) {
+              Alert.alert('Could not clear blocks', 'Please check your connection and try again.');
+              return;
+            }
             setAnonymousBlocks([]);
           },
         },
@@ -2094,8 +2101,14 @@ function BlockedUsersScreen({ userId, school, onBack }: { userId: string; school
 
   async function handleUnblockFriend(blockedId: string) {
     setUnblockingId(blockedId);
-    await supabase.from('blocks').delete().eq('blocker_id', userId).eq('blocked_id', blockedId).eq('source', 'friend');
+    // Unblock removes the block entirely (any source), so a block that was
+    // re-sourced elsewhere still clears — blocking is global.
+    const { error } = await supabase.from('blocks').delete().eq('blocker_id', userId).eq('blocked_id', blockedId);
     setUnblockingId(null);
+    if (error) {
+      Alert.alert('Could not unblock', 'Please check your connection and try again.');
+      return;
+    }
     setFriendBlocks((prev) => prev.filter((b) => b.blocked_id !== blockedId));
   }
 
@@ -2199,8 +2212,12 @@ function BannedWordsScreen({ onBack }: { onBack: () => void }) {
 
   async function handleDelete(word: string) {
     setDeletingWord(word);
-    await supabase.from('banned_words').delete().eq('word', word);
+    const { error } = await supabase.from('banned_words').delete().eq('word', word);
     setDeletingWord(null);
+    if (error) {
+      Alert.alert('Could not delete word', error.message);
+      return;
+    }
     setWords((prev) => prev.filter((w) => w !== word));
   }
 
@@ -2519,7 +2536,10 @@ export default function SettingsScreen({
           <View style={{ marginHorizontal: 0, paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: colors.borderSubtle }}>
             <TouchableOpacity
               onPress={onLogout}
-              style={{ backgroundColor: colors.destructiveBg, borderRadius: 14, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+              // Logging out mid-deletion would kill the session while account
+              // rows are still being removed, leaving a half-deleted account.
+              disabled={deletingAccount}
+              style={{ backgroundColor: colors.destructiveBg, borderRadius: 14, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: deletingAccount ? 0.55 : 1 }}
             >
               <Ionicons name="log-out-outline" size={20} color={colors.destructive} />
               <Text style={{ color: colors.destructive, fontWeight: '700', fontSize: 15 }}>Log Out</Text>

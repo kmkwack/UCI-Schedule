@@ -297,7 +297,12 @@ export function normalizeModerationText(input: string): NormalizedText {
     .replace(/[ñ]/g, 'n')
     .replace(/[ç]/g, 'c')
     .replace(/[0]/g, 'o')
-    .replace(/[1!|]/g, 'i')
+    // Fold '!' / '|' to 'i' only when they sit *between* letters (leetspeak like
+    // "b!tch" → "bitch"). A trailing/standalone '!' must stay punctuation, or it
+    // glues to the word ("kill yourself!" → "kill yourselfi") and defeats the
+    // phrase filter. Remaining '!' is stripped by the punctuation pass below.
+    .replace(/([a-z])[!|]+(?=[a-z])/g, '$1i')
+    .replace(/[1]/g, 'i')
     .replace(/[3]/g, 'e')
     .replace(/[4@]/g, 'a')
     .replace(/[5$]/g, 's')
@@ -307,7 +312,7 @@ export function normalizeModerationText(input: string): NormalizedText {
     .replace(/ㅂ\s*ㅅ/g, 'ㅂㅅ');
   const normalized = folded
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/[._*~`'"“”‘’()[\]{}<>:;,+/\\|¿¡-]+/g, ' ')
+    .replace(/[._*~`'"“”‘’()[\]{}<>:;,+/\\|¿¡!?-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   const skeleton = collapseRepeatedLetters(normalized);
@@ -384,9 +389,20 @@ function phraseMatches(pattern: string, language: ModerationLanguage, text: Norm
     return text.compact.includes(normalizedPattern.compact)
       || text.compactSkeleton.includes(normalizedPattern.compactSkeleton);
   }
-  return text.normalized.includes(normalizedPattern.normalized)
-    || text.skeleton.includes(normalizedPattern.skeleton)
-    || looseWordSequenceRegex(normalizedPattern.normalized).test(text.folded);
+  // Match latin phrases at word boundaries — bare substring matching blocked
+  // innocent words ("skyscraper" contains "kys", "go diet" contains "go die").
+  return phraseBoundaryRegex(normalizedPattern.normalized).test(text.normalized)
+    || phraseBoundaryRegex(normalizedPattern.skeleton).test(text.skeleton)
+    || boundedLooseWordSequenceRegex(normalizedPattern.normalized).test(text.folded);
+}
+
+function phraseBoundaryRegex(phrase: string) {
+  return new RegExp(`(^|[^a-z0-9])${escapeRegex(phrase)}([^a-z0-9]|$)`, 'i');
+}
+
+function boundedLooseWordSequenceRegex(value: string) {
+  const sequence = value.split(/\s+/).map(looseCharacters).join('[^a-z0-9]+');
+  return new RegExp(`(^|[^a-z0-9])${sequence}([^a-z0-9]|$)`, 'i');
 }
 
 function exactWordMatches(pattern: string, language: ModerationLanguage, text: NormalizedText) {
@@ -439,10 +455,6 @@ function collapseRepeatedLetters(value: string) {
 
 function looseExactWordRegex(word: string) {
   return new RegExp(`(^|[^a-z0-9])${looseCharacters(word)}([^a-z0-9]|$)`, 'i');
-}
-
-function looseWordSequenceRegex(value: string) {
-  return new RegExp(value.split(/\s+/).map(looseCharacters).join('[^a-z0-9]+'), 'i');
 }
 
 function looseCharacters(value: string) {

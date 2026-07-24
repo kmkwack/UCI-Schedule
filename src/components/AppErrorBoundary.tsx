@@ -19,8 +19,8 @@ export default class AppErrorBoundary extends React.Component<Props, State> {
     return { hasError: true };
   }
 
-  componentDidCatch(error: Error) {
-    console.warn('AppErrorBoundary caught an error:', error.message);
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.warn('AppErrorBoundary caught an error:', error.message, info.componentStack);
   }
 
   private handleRetry = () => {

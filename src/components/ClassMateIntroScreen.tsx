@@ -13,6 +13,11 @@ type Props = {
 
 export default function ClassMateIntroScreen({ onComplete, schoolName }: Props) {
   const { colors, isDark } = useTheme();
+  // Keep the latest callback in a ref so the intro effect doesn't restart (and
+  // reset its 3.2s dismissal timer) every time the parent re-renders and passes
+  // a new inline onComplete — that could keep the splash on screen indefinitely.
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
   const overlayOpacity = useRef(new Animated.Value(1)).current;
   const logoScale = useRef(new Animated.Value(0.72)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -76,7 +81,7 @@ export default function ClassMateIntroScreen({ onComplete, schoolName }: Props) 
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }).start(({ finished }) => {
-        if (finished) onComplete();
+        if (finished) onCompleteRef.current();
       });
     }, 3200);
 
@@ -84,7 +89,7 @@ export default function ClassMateIntroScreen({ onComplete, schoolName }: Props) 
       clearTimeout(timer);
       reveal.stop();
     };
-  }, [cardsOpacity, cardsTranslateY, logoOpacity, logoScale, onComplete, overlayOpacity, wordmarkOpacity, wordmarkTranslateY]);
+  }, [cardsOpacity, cardsTranslateY, logoOpacity, logoScale, overlayOpacity, wordmarkOpacity, wordmarkTranslateY]);
 
   const campusName = schoolName?.trim() || DEFAULT_UNIVERSITY.name;
   const chips = [

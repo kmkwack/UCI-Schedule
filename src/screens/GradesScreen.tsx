@@ -9,8 +9,8 @@ import {
 } from 'react-native';
 import Svg, { Path, Circle, Line, Defs, ClipPath, G, LinearGradient, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, Timetable, quarterKey, quarterLabel, resolveCurrentQuarter } from '../data/courses';
-import { gradeScaleForSchool } from '../data/schools';
+import { Course, Quarter, Timetable, quarterKey, quarterLabel } from '../data/courses';
+import { gradeScaleForSchool, resolveCurrentTerm, termOrderValue } from '../data/schools';
 import { supabase } from '../lib/supabase';
 import { isMissingSchoolColumnError } from '../lib/supabaseErrors';
 import { useTheme } from '../context/ThemeContext';
@@ -868,7 +868,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
   const { colors } = useTheme();
   const gradeScale = gradeScaleForSchool(school);
   const gradePoints = gradeScale.points;
-  const CURRENT_QUARTER: Quarter = resolveCurrentQuarter(timetables);
+  const CURRENT_QUARTER: Quarter = resolveCurrentTerm(school, timetables);
   const CURRENT_QK = quarterKey(CURRENT_QUARTER);
   const currentTimetable = timetables.find(t => t.quarterKey === CURRENT_QK && t.name === 'My Schedule') ?? null;
   const activeCourses = currentTimetable?.courses ?? [];
@@ -890,10 +890,12 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
   const legacyTransferCacheKey = `transfer_gpa_entries_${encodeURIComponent(school)}_${userId}`;
 
   useEffect(() => {
+    let active = true;
+
     async function loadGrades() {
       // Load cache first for instant display
       const cached = await AsyncStorage.getItem(cacheKey);
-      if (cached) {
+      if (active && cached) {
         try { setGrades(JSON.parse(cached)); } catch { /* ignore malformed cache */ }
       }
 
@@ -934,12 +936,19 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
           data = (scopedResult.data ?? null) as GradeRow[] | null;
         }
       }
+      // A late-resolving fetch (screen switched school/user, or the user just
+      // set a grade optimistically) must not clobber newer state.
+      if (!active) return;
       const loaded: Record<string, string> = {};
       (data ?? []).forEach((row: any) => { loaded[gk(row.quarter_key, row.course_id)] = row.grade; });
       setGrades(loaded);
       void AsyncStorage.setItem(cacheKey, JSON.stringify(loaded));
     }
     loadGrades();
+
+    return () => {
+      active = false;
+    };
   }, [cacheKey, school, userId]);
 
   useEffect(() => {
@@ -1220,8 +1229,14 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
     }
   }
 
-  // Past quarters: any timetable whose quarter key is before Spring 2026, derived from timetables directly
-  const QORDER_MAP: Record<string, number> = { Winter: 0, Spring: 1, Fall: 2 };
+  // Past quarters: any timetable whose quarter key is before the current term, derived from timetables directly.
+  // Must cover every term name that can appear in a quarter key — summer terms
+  // included — or those terms silently vanish from Past Terms / GPA / the chart.
+  // School-aware term ordering. termOrderValue returns the index within THIS
+  // school's configured term list (semester schools: Spring/Summer/Fall; UCI:
+  // Winter/Spring/Summer1/Summer10wk/Summer2/Fall), so current-vs-past sorting is
+  // correct for every school instead of assuming UCI's quarter calendar.
+  const quarterOrder = (quarter: string) => termOrderValue(quarter, school);
 
   function parseQk(qk: string): Quarter {
     const dash = qk.indexOf('-');
@@ -1233,7 +1248,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
     const curYear = parseInt(CURRENT_QUARTER.year);
     const qYear   = parseInt(q.year);
     if (qYear !== curYear) return qYear < curYear;
-    return QORDER_MAP[q.quarter] < QORDER_MAP[CURRENT_QUARTER.quarter];
+    return quarterOrder(q.quarter) < quarterOrder(CURRENT_QUARTER.quarter);
   }
 
   const pastQuarterItems = useMemo(() => {
@@ -1246,7 +1261,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
       const qa = parseQk(a), qb = parseQk(b);
       const yearDiff = parseInt(qb.year) - parseInt(qa.year);
       if (yearDiff !== 0) return yearDiff;
-      return QORDER_MAP[qb.quarter] - QORDER_MAP[qa.quarter];
+      return quarterOrder(qb.quarter) - quarterOrder(qa.quarter);
     });
 
     return pastQks.map(qk => {
@@ -1271,7 +1286,9 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
       });
       const totalCredits = graded.reduce((s, c) => s + getUnits(qk, c), 0);
       const totalPoints  = graded.reduce((s, c) => s + gradePoints[grades[gk(qk, c.id)]] * getUnits(qk, c), 0);
-      return totalCredits > 0 ? totalPoints / totalCredits : 0;
+      // null (not 0) when nothing is graded, so a genuine 0.00 (all-F) term stays
+      // distinguishable from an ungraded term and isn't dropped from the chart.
+      return totalCredits > 0 ? totalPoints / totalCredits : null;
     };
 
     return [
@@ -1279,7 +1296,7 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
         label, gpa: quarterGpa(qk, courses),
       })),
       { label: quarterLabel(CURRENT_QUARTER), gpa: quarterGpa(CURRENT_QK, activeCourses) },
-    ].filter(p => p.gpa > 0);
+    ].filter((p): p is { label: string; gpa: number } => p.gpa !== null);
   }, [pastQuarterItems, grades, activeCourses, unitOverrides, gradePoints]);
 
   const { gpa, credits, courseCount, gpaCredits, gpaPoints } = useMemo(() => {
@@ -1304,7 +1321,9 @@ export default function GradesScreen({ timetables, userId, school, topInset = 0,
     const gpaVal = totalCredits > 0 ? (pastPoints + activePoints) / totalCredits : 0;
 
     return {
-      gpa: gpaVal > 0 ? gpaVal.toFixed(2) : '—',
+      // Show the real GPA (including 0.00 for an all-F term) whenever any course
+      // is graded; '—' only when nothing is graded yet.
+      gpa: totalCredits > 0 ? gpaVal.toFixed(2) : '—',
       credits: pastQuarterItems.flatMap(({ qk, courses }) => courses.map(c => ({ c, qk }))).reduce((s, { c, qk }) => s + getUnits(qk, c), 0)
              + activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0).reduce((s, c) => s + getUnits(CURRENT_QK, c), 0),
       courseCount: pastQuarterItems.flatMap(q => q.courses).length + activeCourses.filter(c => getUnits(CURRENT_QK, c) > 0).length,

@@ -121,8 +121,10 @@ async function fetchRecipients() {
   let from = 0;
 
   while (true) {
+    // order=user_id keeps pagination stable — without it a user could be
+    // pushed twice or skipped when rows shift between pages.
     const rows = await fetchRows(
-      `user_settings?select=user_id,expo_push_token,notification_settings&expo_push_token=not.is.null&offset=${from}&limit=${PAGE_SIZE}`
+      `user_settings?select=user_id,expo_push_token,notification_settings&expo_push_token=not.is.null&order=user_id.asc&offset=${from}&limit=${PAGE_SIZE}`
     );
     rows.forEach((row) => {
       if (

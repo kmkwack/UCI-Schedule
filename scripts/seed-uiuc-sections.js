@@ -28,7 +28,10 @@ const UIUC_CIS_BASE = 'https://courses.illinois.edu/cisapp/explorer';
 const SCHOOL = 'University of Illinois Urbana-Champaign';
 const CONCURRENCY = Math.max(1, Math.floor(numberEnv('UIUC_CONCURRENCY', 1)));
 const REQUEST_DELAY_MS = numberEnv('UIUC_REQUEST_DELAY_MS', 900);
-const FETCH_RETRIES = Math.max(0, Math.floor(numberEnv('UIUC_FETCH_RETRIES', 0)));
+// The UIUC CIS API throws intermittent 403/429s — with 0 retries a single
+// transient failure aborts the subject mid-seed (the source of the failed-
+// subject backlog in retry-uiuc-failed-subjects.js).
+const FETCH_RETRIES = Math.max(0, Math.floor(numberEnv('UIUC_FETCH_RETRIES', 2)));
 const RETRY_DELAY_MS = numberEnv('UIUC_RETRY_DELAY_MS', 30000);
 const TRANSIENT_RETRY_DELAY_MS = numberEnv('UIUC_TRANSIENT_RETRY_DELAY_MS', 5000);
 const FETCH_HEADERS = {

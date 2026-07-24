@@ -151,6 +151,9 @@ async function fetchPreferredSeededQuarter(school: string, preferredKey: string)
 }
 
 const AUTH_VALIDATION_TIMEOUT_MS = 8000;
+// Stable identity for "no timetable" so effects depending on the course list
+// don't tear down and restart on every render.
+const EMPTY_COURSES: Course[] = [];
 const USER_BOOTSTRAP_TIMEOUT_MS = 7000;
 const MESSAGE_BADGE_INITIAL_DELAY_MS = 1000;
 const MESSAGE_BADGE_REFRESH_INTERVAL_MS = 60000;
@@ -159,7 +162,6 @@ const BOARD_BADGE_REFRESH_INTERVAL_MS = 60000;
 const SOCIAL_NOTIFICATION_BOOTSTRAP_DELAY_MS = 8000;
 const SOCIAL_NOTIFICATION_REFRESH_INTERVAL_MS = 120000;
 const REMINDER_RESCHEDULE_DELAY_MS = 4000;
-const LEGACY_ASSIGNMENT_REMINDER_OFFSETS = [2880, 1440, 720];
 const ASSIGNMENT_REMINDER_OFFSETS = [2880, 1440, 720, 60];
 const ASSIGNMENT_REMINDER_MAX_DAYS_AHEAD = 60;
 const REVIEW_ACCOUNT_EMAILS = new Set(['review@classmate.app']);
@@ -448,9 +450,9 @@ function normalizeAssignmentReminderOffsets(offsets?: number[]) {
   const normalized = source
     .filter((minutes) => allowed.has(minutes))
     .filter((minutes, index, values) => values.indexOf(minutes) === index);
-  const isLegacyDefault = normalized.length === LEGACY_ASSIGNMENT_REMINDER_OFFSETS.length
-    && LEGACY_ASSIGNMENT_REMINDER_OFFSETS.every((minutes) => normalized.includes(minutes));
-  if (isLegacyDefault) return ASSIGNMENT_REMINDER_OFFSETS;
+  // Note: no "legacy default" re-expansion here — [2880, 1440, 720] is also
+  // the legitimate result of deselecting "1 hour before", and re-adding 60
+  // made that option impossible to turn off.
   return normalized.length > 0 ? normalized : ASSIGNMENT_REMINDER_OFFSETS;
 }
 
@@ -670,6 +672,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> },
     active = true
   ) => {
+    // Already hydrated for this exact user (e.g. a routine TOKEN_REFRESHED an
+    // hour into the session) — re-running the full bootstrap would replace the
+    // UI with the splash loader and reset the selected quarter mid-use.
+    if (userIdRef.current === sessionUser.id) {
+      setAuthInitializing(false);
+      return;
+    }
+
     let verifiedUser: typeof sessionUser | null = null;
     let error: unknown = null;
     try {
@@ -682,6 +692,22 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     if (!active) return;
 
     if (error || !verifiedUser || verifiedUser.id !== sessionUser.id) {
+      // A transient failure (offline launch, flaky network, validation timeout)
+      // doesn't mean the session is invalid — keep the locally stored session
+      // instead of destroying it and kicking the user back to the welcome screen.
+      const errorMessage = String((error as { message?: unknown } | null | undefined)?.message ?? '');
+      const errorName = String((error as { name?: unknown } | null | undefined)?.name ?? '');
+      const isTransient =
+        isNetworkRequestError(error) ||
+        errorMessage.includes('timed out') ||
+        errorName === 'AuthRetryableFetchError';
+      const identityMismatch = !!verifiedUser && verifiedUser.id !== sessionUser.id;
+      if (isTransient && !identityMismatch) {
+        hydrateUserFromSession(sessionUser);
+        setAuthInitializing(false);
+        return;
+      }
+
       await supabase.auth.signOut();
       clearSignedOutState();
       setAuthInitializing(false);
@@ -728,7 +754,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-        void validateAndHydrateSession(session.user);
+        // Defer out of the auth callback: supabase-js holds its auth lock while
+        // this callback runs, so awaiting getUser()/signOut() inside it can
+        // deadlock until the timeout. Run validation on the next tick instead.
+        const sessionUser = session.user;
+        setTimeout(() => { void validateAndHydrateSession(sessionUser); }, 0);
         return;
       }
 
@@ -905,7 +935,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const activeKey = quarterKey(selectedQuarter);
   const quarterTimetables = timetables.filter((t) => t.quarterKey === activeKey);
   const activeTimetable = quarterTimetables.find((t) => t.id === selectedTimetableId) ?? quarterTimetables[0] ?? null;
-  const activeCourses = activeTimetable?.courses ?? [];
+  const activeCourses = activeTimetable?.courses ?? EMPTY_COURSES;
 
   const academicQuarter = getAcademicTermForDate(currentSchool, new Date());
   const academicQuarterKey = quarterKey(academicQuarter);
@@ -1483,7 +1513,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             .eq('school', currentSchool)
             .in('post_id', postIds)
             .neq('user_id', userId)
-            .order('created_at', { ascending: true })
+            // Newest 100 — ascending+limit would return the OLDEST 100 and never
+            // surface a new comment once a user's posts pass 100 total comments.
+            // The merged results are re-sorted ascending for display below.
+            .order('created_at', { ascending: false })
             .limit(100)
         );
       }
@@ -1495,7 +1528,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             .eq('school', currentSchool)
             .in('parent_comment_id', myCommentIdList)
             .neq('user_id', userId)
-            .order('created_at', { ascending: true })
+            // Newest 100 (see note on the post_id query above).
+            .order('created_at', { ascending: false })
             .limit(100)
         );
       }
@@ -1576,6 +1610,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       };
     }
 
+    // Until a baseline snapshot succeeds, we don't know what the user has
+    // already seen — notifying against empty "seen" sets would blast them with
+    // a notification for every pre-existing request/message/comment/like.
+    let baselineReady = false;
+
     async function bootstrapSocialNotificationState() {
       let snapshot: SocialNotificationSnapshot;
       try {
@@ -1590,6 +1629,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       seenMessageIdsRef.current = new Set(snapshot.messages.map((message) => message.id));
       seenCommentIdsRef.current = new Set(snapshot.comments.map((comment) => comment.id));
       seenLikeKeysRef.current = new Set(snapshot.likes.map(buildLikeKey));
+      baselineReady = true;
     }
 
     async function pollSocialNotifications() {
@@ -1601,6 +1641,17 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         return;
       }
       if (cancelled) return;
+
+      if (!baselineReady) {
+        // Bootstrap failed earlier (e.g. network blip at launch) — treat this
+        // first successful snapshot as the baseline instead of notifying.
+        seenFriendRequestIdsRef.current = new Set(snapshot.friendRequests.map((request) => request.id));
+        seenMessageIdsRef.current = new Set(snapshot.messages.map((message) => message.id));
+        seenCommentIdsRef.current = new Set(snapshot.comments.map((comment) => comment.id));
+        seenLikeKeysRef.current = new Set(snapshot.likes.map(buildLikeKey));
+        baselineReady = true;
+        return;
+      }
 
       const previousFriendRequestIds = seenFriendRequestIdsRef.current;
       const previousMessageIds = seenMessageIdsRef.current;
@@ -1722,9 +1773,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         isTermInSession(currentSchool, selectedQuarterKey, new Date());
 
       if (notifications.dailyScheduleSummary && quarterMatchesCurrent) {
+	        // Course meeting times are campus-local, so build these in the school's
+	        // timezone — a user timezone override would shift reminders to the
+	        // wrong absolute time (e.g. a 10:00 PT class reminded at 10:00 ET).
 	        const dailySummaries = buildDailyScheduleSummaryDates(
 	          activeCourses,
-	          effectiveTimeZone,
+	          schoolTimeZone,
 	          14,
 	          normalizeDailyScheduleSummaryHour(notifications.dailyScheduleSummaryHour)
 	        );
@@ -1753,7 +1807,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       }
 
       if (notifications.classReminders && quarterMatchesCurrent) {
-	        const classReminders = buildUpcomingClassReminderDates(activeCourses, notifications.classReminderMinutes, effectiveTimeZone);
+	        const classReminders = buildUpcomingClassReminderDates(activeCourses, notifications.classReminderMinutes, schoolTimeZone);
         for (const reminder of classReminders) {
           if (cancelled) return;
           await Notifications.scheduleNotificationAsync({
@@ -1863,7 +1917,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       cancelled = true;
       if (rescheduleTimerId) clearTimeout(rescheduleTimerId);
     };
-  }, [activeCourses, assignmentCalendarRevision, currentSchool, effectiveTimeZone, selectedQuarter.quarter, selectedQuarter.year, userId, userSettings]);
+  }, [activeCourses, assignmentCalendarRevision, currentSchool, schoolTimeZone, selectedQuarter.quarter, selectedQuarter.year, userId, userSettings]);
 
   useEffect(() => {
     if (!userId) return;
@@ -1961,7 +2015,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       });
       error = fallback.error;
     }
-    if (error) console.warn('Failed to save timetable:', error);
+    if (error) {
+      console.warn('Failed to save timetable:', error);
+      // The local UI already reflects the change — tell the user the server
+      // copy didn't update instead of silently losing it on next launch.
+      Alert.alert('Could not sync your schedule', 'The change was not saved to the server. Please check your connection and try again.');
+    }
   }
 
   async function createTimetable(qKey: string, name: string): Promise<Timetable | null> {
@@ -1998,22 +2057,28 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   }
 
   const handleToggleCourse = async (course: Course) => {
-    let target: Timetable | null = activeTimetable;
+    let targetId: string | null = activeTimetable?.id ?? null;
 
     // Auto-create a timetable if none exists for this quarter
-    if (!target) {
+    if (!targetId) {
       const created = await createTimetable(activeKey, 'My Schedule');
       if (!created) return;
-      target = created;
+      targetId = created.id;
     }
 
-    const isAdded = target.courses.some((c) => c.id === course.id);
-    const newCourses = isAdded
-      ? target.courses.filter((c) => c.id !== course.id)
-      : [...target.courses, course];
-
-    const updated = { ...target, courses: newCourses };
-    setTimetables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    // Compute from the latest state (not the render-captured timetable) so two
+    // rapid toggles can't overwrite each other's changes.
+    let updated: Timetable | undefined;
+    setTimetables((prev) => prev.map((t) => {
+      if (t.id !== targetId) return t;
+      const isAdded = t.courses.some((c) => c.id === course.id);
+      const newCourses = isAdded
+        ? t.courses.filter((c) => c.id !== course.id)
+        : [...t.courses, course];
+      updated = { ...t, courses: newCourses };
+      return updated;
+    }));
+    if (!updated) return;
     await saveTimetable(updated);
     triggerSuccessHaptic();
   };
@@ -2213,14 +2278,30 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   }, [pickerTranslateY, showCoursePicker, windowHeight]);
 
   const handleLogout = () => {
+    const loggingOutUserId = userId;
+    const hadPushToken = !!expoPushToken;
     suppressNextSignedOutClearRef.current = true;
-    supabase.auth.signOut().catch((err) => {
-      console.warn('Sign out error:', err);
-    }).finally(() => {
-      setTimeout(() => {
-        suppressNextSignedOutClearRef.current = false;
-      }, 1000);
-    });
+    void (async () => {
+      // Clear the stored push token BEFORE signing out, while the session is
+      // still valid, so this device stops receiving the account's pushes after
+      // logout (otherwise the next person to use it would get them).
+      if (loggingOutUserId && hadPushToken) {
+        try {
+          await supabase.from('user_settings').update({ expo_push_token: null }).eq('user_id', loggingOutUserId);
+        } catch (err) {
+          console.warn('Failed to clear push token on logout:', err);
+        }
+      }
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('Sign out error:', err);
+      } finally {
+        setTimeout(() => {
+          suppressNextSignedOutClearRef.current = false;
+        }, 1000);
+      }
+    })();
     void Notifications.cancelAllScheduledNotificationsAsync();
     clearSignedOutState();
   };
@@ -2330,7 +2411,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     nextProfile: EditableProfile = userProfile,
     nextExpoPushToken: string | null = expoPushToken,
     profileSetupComplete = !needsProfileSetup,
-    onboardingComplete = !needsFeatureOnboarding
+    onboardingComplete = !needsFeatureOnboarding,
+    // Background callers (token sync, theme change) set this so a transient
+    // save failure doesn't pop an unexplained alert on an unrelated screen.
+    silent = false
   ) => {
     if (!userId) throw new Error('missing-user-id');
 
@@ -2363,12 +2447,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     const { error } = await supabase.from('user_settings').upsert(payload);
     if (error) {
       console.warn('Failed to save user settings:', error);
-      Alert.alert(
-        'Could not save settings',
-        error.code === 'PGRST205'
-          ? 'The user_settings table is missing in Supabase. Run the required SQL first.'
-          : error.message
-      );
+      if (!silent) {
+        Alert.alert(
+          'Could not save settings',
+          error.code === 'PGRST205'
+            ? 'The user_settings table is missing in Supabase. Run the required SQL first.'
+            : error.message
+        );
+      }
       throw error;
 	    }
 	  };
@@ -2381,7 +2467,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 	      nextThemePreference
 	    );
 	    if (userId) {
-	      void saveUserSettingsRow(userSettings).catch(() => {});
+	      void saveUserSettingsRow(userSettings, undefined, undefined, undefined, undefined, true).catch(() => {});
 	    }
 	    triggerSuccessHaptic();
 	  };
@@ -2395,7 +2481,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 	      JSON.stringify(normalized)
 	    );
 	    if (userId) {
-	      void saveUserSettingsRow(userSettings).catch(() => {});
+	      void saveUserSettingsRow(userSettings, undefined, undefined, undefined, undefined, true).catch(() => {});
 	    }
 	  };
 
@@ -2670,7 +2756,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       const token = await registerExpoPushToken();
       if (cancelled || !token) return;
       try {
-        await saveUserSettingsRow(userSettings, userProfile, token);
+        await saveUserSettingsRow(userSettings, userProfile, token, undefined, undefined, true);
       } catch {
         return;
       }
@@ -2722,6 +2808,62 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     setCurrentTab('board');
     void loadUnreadMessageCount().then(setUnreadMessageCount);
   };
+
+  // ── Notification taps → navigate to the relevant screen ────────────────────
+  // Every notification we send carries a `data.type` (and ids) describing where
+  // it should lead. Without a response listener, tapping one just cold-opened the
+  // Home tab. Route by type instead. Kept in a ref so the once-registered
+  // listener always calls the latest closure (fresh state/handlers).
+  const pendingNotificationNavRef = useRef<Record<string, any> | null>(null);
+  const handleNotificationNavRef = useRef<((data: Record<string, any>) => void) | null>(null);
+  handleNotificationNavRef.current = (data) => {
+    if (!data || typeof data.type !== 'string') return;
+    // Not signed in / bootstrap not ready (e.g. cold start) — stash and replay
+    // once the user is available (effect below).
+    if (!userIdRef.current) { pendingNotificationNavRef.current = data; return; }
+    const type = data.type;
+    if (type === 'friend-request') {
+      setShowMessages(false);
+      handleOpenFriendsTab();
+    } else if (type === 'conversation-message' || type === 'direct-message') {
+      openMessages(null);
+    } else if (type === 'post-comment' || type === 'comment-reply' || type === 'post-like' || type === 'comment-like') {
+      const postId = typeof data.postId === 'string' ? data.postId : null;
+      if (postId) {
+        openBoardPostFromMessages(postId); // closes Messages, opens the post, switches to Board
+      } else {
+        setShowMessages(false);
+        setCurrentTab('board');
+      }
+    } else {
+      // class / assignment / sports / daily-schedule reminders → Home is the hub.
+      setShowMessages(false);
+      setCurrentTab('home');
+    }
+  };
+
+  useEffect(() => {
+    const handle = (data: Record<string, any> | null | undefined) => {
+      if (data) handleNotificationNavRef.current?.(data);
+    };
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      handle(response.notification.request.content.data as Record<string, any>);
+    });
+    // Cold start: app launched by tapping a notification while it wasn't running.
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) handle(response.notification.request.content.data as Record<string, any>);
+    });
+    return () => subscription.remove();
+  }, []);
+
+  // Replay a tap that arrived before the user was signed in / bootstrapped.
+  useEffect(() => {
+    if (userId && pendingNotificationNavRef.current) {
+      const data = pendingNotificationNavRef.current;
+      pendingNotificationNavRef.current = null;
+      handleNotificationNavRef.current?.(data);
+    }
+  }, [userId]);
 
 	  useEffect(() => {
 	    if (Platform.OS !== 'android') return undefined;
@@ -3123,7 +3265,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               active={currentTab === 'board'}
               tabIndex={3}
               scaleAnim={tabIconScaleAnims[3]}
-              badgeCount={0}
+              badgeCount={newBoardPostCount}
               onPress={() => handleTabPress('board')}
             />
             <TabItem

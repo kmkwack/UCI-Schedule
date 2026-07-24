@@ -196,7 +196,9 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 };
 
 export const DEFAULT_USER_SETTINGS: UserSettingsState = {
-  timetableVisibility: 'private',
+  // Default to sharing with friends; choosing 'private' is the deliberate opt-out
+  // that hides your timetable even from friends (enforced server-side by RLS).
+  timetableVisibility: 'friends',
   boardProfileVisible: false,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   pushPermissionStatus: 'undetermined',

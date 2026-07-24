@@ -242,10 +242,12 @@ function parseOpeningHoursForDay(openingHours: string | undefined, dayCode: stri
       const windows: Array<{ startMinutes: number; endMinutes: number }> = [];
       const timePattern = /(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/g;
       for (const match of timeExpression.matchAll(timePattern)) {
-        windows.push({
-          startMinutes: toMinutes(match[1], match[2]),
-          endMinutes: toMinutes(match[3], match[4]),
-        });
+        const startMinutes = toMinutes(match[1], match[2]);
+        let endMinutes = toMinutes(match[3], match[4]);
+        // A window like "21:00-00:00" (late night) crosses midnight — an end
+        // of 0 (or any end <= start) would make the open check always false.
+        if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+        windows.push({ startMinutes, endMinutes });
       }
       return windows;
     });

@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, blockColorKey, formatCourseTimeRange12, getBlockColors, quarterKey } from '../data/courses';
-import { addUserAcademicEvent, CATEGORY_CONFIG, daysUntilEvent, dedupeAcademicEvents, deleteUserAcademicEvent, fetchAcademicEvents, fetchUserAcademicEvents, type AcademicEvent } from '../data/academicCalendar';
+import { addUserAcademicEvent, CATEGORY_CONFIG, daysUntilEvent, dedupeAcademicEvents, deleteUserAcademicEvent, fetchAcademicEvents, fetchUserAcademicEvents, localDateKey, type AcademicEvent } from '../data/academicCalendar';
 import { buildSectionMatchKey, getSharedClassMatch, normalizeCourseCode, type SharedClassMatch } from '../data/sharedClasses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
@@ -149,16 +149,7 @@ type HeroCardItem =
   | { type: 'idleSummary' }
   | { type: 'completedSummary'; courses: Course[] }
   | { type: 'upcomingSummary'; courses: Course[] }
-  | { type: 'course'; course: Course }
-  | { type: 'diningMenu' }
-  | { type: 'sportsEvents' }
-  | { type: 'campusInfo' };
-
-function getHeroItemKey(item: HeroCardItem) {
-  if (item.type === 'course') return `course-${item.course.id}`;
-  if (item.type === 'completedSummary' || item.type === 'upcomingSummary') return `${item.type}-today`;
-  return item.type;
-}
+  | { type: 'course'; course: Course };
 
 type CampusInfoResource = {
   id: string;
@@ -682,6 +673,21 @@ function userScopedStorageKey(base: string, userId: string) {
   return `${base}_${userId || 'guest'}`;
 }
 
+// A YYYY-MM-DD string that is also a real calendar date. The regex alone accepts
+// impossible dates like 2026-02-31 / 2026-13-01, which later produce "D-NaN"
+// badges; round-tripping through Date (component constructor — Hermes-safe)
+// rejects them.
+function isRealCalendarDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const parsed = new Date(year, month - 1, day);
+  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+}
+
 function unfoldIcsLines(text: string) {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   const unfolded: string[] = [];
@@ -1164,72 +1170,6 @@ function formatHeroTimelineLocation(location?: string) {
   return raw;
 }
 
-function ProgressRing({
-  progress,
-  color,
-  trackColor,
-  textColor,
-  subTextColor,
-  primaryLabel,
-  secondaryLabel,
-  size = 74,
-  strokeWidth = 6,
-}: {
-  progress: number;
-  color: string;
-  trackColor: string;
-  textColor: string;
-  subTextColor: string;
-  primaryLabel: string;
-  secondaryLabel?: string;
-  size?: number;
-  strokeWidth?: number;
-}) {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const safeProgress = clamp(progress, 0, 1);
-  const dashOffset = circumference * (1 - safeProgress);
-  const primaryFontSize = size >= 108 ? 22 : size >= 90 ? 20 : size >= 74 ? 16 : 14;
-  const secondaryFontSize = size >= 108 ? 11 : 10;
-
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={size} height={size}>
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={trackColor}
-          strokeWidth={strokeWidth}
-          fill="none"
-        />
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={color}
-          strokeWidth={strokeWidth}
-          fill="none"
-          strokeLinecap="round"
-          strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={dashOffset}
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        />
-      </Svg>
-      <View style={{ position: 'absolute', alignItems: 'center', width: size - 18 }}>
-        <Text style={{ fontSize: primaryFontSize, fontWeight: '800', color: textColor }}>
-          {primaryLabel}
-        </Text>
-        {secondaryLabel ? (
-          <Text style={{ fontSize: secondaryFontSize, color: subTextColor, marginTop: 1, textAlign: 'center' }}>
-            {secondaryLabel}
-          </Text>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
 function DualProgressRing({
   outerProgress, outerColor, outerTrackColor,
   innerProgress, innerColor, innerTrackColor,
@@ -1579,7 +1519,18 @@ export default function HomeScreen({
           ...(legacyTasks ? [[calendarTasksStorageKey, legacyTasks] as [string, string]] : []),
           ...(legacyCompleted ? [[calendarCompletedStorageKey, legacyCompleted] as [string, string]] : []),
           ...(legacyLastSync ? [[calendarLastSyncStorageKey, legacyLastSync] as [string, string]] : []),
-        ]);
+        ]).then(() =>
+          // Remove the legacy keys once migrated — otherwise, after the user
+          // replaces their feed (which clears the new task keys), the next
+          // launch falls back to these stale Canvas assignments and merges
+          // them into the new feed's checklist.
+          AsyncStorage.multiRemove([
+            legacyCalendarFeedStorageKey,
+            legacyCalendarTasksStorageKey,
+            legacyCalendarCompletedStorageKey,
+            legacyCalendarLastSyncStorageKey,
+          ])
+        ).catch(() => {});
       }
 
       onAssignmentCalendarChange?.();
@@ -1672,19 +1623,19 @@ export default function HomeScreen({
   }
 
   function toggleCalendarTask(assignment: CalendarTask) {
-    setCompletedCalendarTasks((current) => {
-      const currentlyCompleted = isCalendarTaskCompleted(assignment, current, now);
-      const next = { ...current };
-      if (currentlyCompleted) {
-        next[assignment.id] = false;
-      } else {
-        next[assignment.id] = true;
-      }
-      completedCalendarTasksRef.current = next;
-      void AsyncStorage.setItem(calendarCompletedStorageKey, JSON.stringify(next));
-      onAssignmentCalendarChange?.();
-      return next;
-    });
+    // Side effects (storage write, parent notification) must live outside the
+    // setState updater — an updater runs during React's render pass, so calling
+    // the parent's onAssignmentCalendarChange there triggers a "cannot update a
+    // component while rendering" warning and double-fires under StrictMode.
+    // completedCalendarTasksRef mirrors the committed state (kept in sync by the
+    // effect above), so it's a safe source for the current value.
+    const current = completedCalendarTasksRef.current;
+    const currentlyCompleted = isCalendarTaskCompleted(assignment, current, now);
+    const next = { ...current, [assignment.id]: !currentlyCompleted };
+    completedCalendarTasksRef.current = next;
+    setCompletedCalendarTasks(next);
+    void AsyncStorage.setItem(calendarCompletedStorageKey, JSON.stringify(next));
+    onAssignmentCalendarChange?.();
   }
 
   async function openCalendarTask(assignment: CalendarTask) {
@@ -2132,7 +2083,9 @@ export default function HomeScreen({
     const qKey = quarterKey(todayQuarter);
     const candidates = buildTermCandidates(school, year, year + 1);
     const startIndex = Math.max(0, candidates.findIndex((c) => quarterKey(c) === qKey));
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // Local date, not toISOString(): the UTC date is already "tomorrow" every
+    // evening in US timezones, which hid same-day deadlines from the strip.
+    const todayStr = localDateKey(new Date());
     const groups: { term: Quarter; events: AcademicEvent[] }[] = [];
     for (let i = startIndex; i < candidates.length && groups.length < 2; i++) {
       const term = candidates[i];
@@ -2153,8 +2106,8 @@ export default function HomeScreen({
     if (!userId || !addEventTerm) return;
     const title = addEventTitle.trim();
     const date = addEventDate.trim();
-    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      Alert.alert('Check your input', 'Please enter a title and a date in YYYY-MM-DD format.');
+    if (!title || !isRealCalendarDate(date)) {
+      Alert.alert('Check your input', 'Please enter a title and a real date in YYYY-MM-DD format.');
       return;
     }
     setAddEventSaving(true);
@@ -2170,7 +2123,16 @@ export default function HomeScreen({
               ? { ...g, events: [...g.events, created].sort((a, b) => a.date.localeCompare(b.date)) }
               : g))
             : [...prev, { term, events: [created] }];
-          return next.sort((a, b) => quarterKey(a.term).localeCompare(quarterKey(b.term)) || a.events[0].date.localeCompare(b.events[0].date));
+          // Sort terms chronologically — comparing quarterKey strings puts
+          // "2026-Fall" before "2026-Spring" (lexicographic, not calendar order).
+          const TERM_ORDER: Record<string, number> = {
+            Winter: 0, Spring: 1, Summer: 2, Summer1: 2, Summer10wk: 3, Summer2: 4, Fall: 5,
+          };
+          return next.sort((a, b) => (
+            (parseInt(a.term.year, 10) - parseInt(b.term.year, 10))
+            || ((TERM_ORDER[a.term.quarter] ?? 2) - (TERM_ORDER[b.term.quarter] ?? 2))
+            || a.events[0].date.localeCompare(b.events[0].date)
+          ));
         });
         setAddEventTerm(null);
         setAddEventTitle('');
@@ -2872,344 +2834,6 @@ export default function HomeScreen({
   }
 
   function renderHeroCardContent(item: HeroCardItem): ReactNode {
-    if (item.type === 'diningMenu') {
-      return (
-        <View style={{
-          ...raisedCardStyle,
-          backgroundColor: colors.card,
-          padding: 22,
-        }}>
-          <View>
-            <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
-              Today's Dining
-            </Text>
-            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
-              {diningMenus.length > 0
-                ? diningMenusExternalOnly
-                  ? 'Official dining menu link'
-                  : `${diningMenus.length} location${diningMenus.length === 1 ? '' : 's'} · ${diningMenuItemCount} items`
-                : diningLoading
-                  ? 'Loading campus dining menus'
-                  : 'No menu data yet'}
-            </Text>
-          </View>
-
-          {homeDiningMenus.length > 0 ? (
-            <View style={{ marginTop: 16 }}>
-              {homeDiningMenus.map((menu, index, shownMenus) => {
-                const previewItems = previewDiningItems(menu, 3);
-                const statusColor = menu.isOpen === true ? '#10B981' : menu.isOpen === false ? '#EF4444' : diningAccent;
-                return (
-                  <TouchableOpacity
-                    key={`hero-dining-${menu.id}`}
-                    onPress={openDiningMenuList}
-                    activeOpacity={0.76}
-                    style={{
-                      paddingTop: index === 0 ? 0 : 11,
-                      paddingBottom: index === shownMenus.length - 1 ? 0 : 11,
-                      borderTopWidth: index === 0 ? 0 : 1,
-                      borderTopColor: colors.borderSubtle,
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                      <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: themedIconBackground(diningAccent, isDark, '#fff7ed'), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Ionicons name="restaurant-outline" size={20} color={themedIconColor(diningAccent, isDark)} />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
-                            {menu.name}
-                          </Text>
-                          {menu.statusLabel ? (
-                            <View style={{ borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: `${statusColor}16`, borderWidth: 1, borderColor: `${statusColor}30` }}>
-                              <Text style={{ fontSize: 10, lineHeight: 13, fontWeight: '900', color: statusColor }}>
-                                {menu.statusLabel}
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-                        {menu.statusDetail || previewItems.length > 0 ? (
-                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 12, color: colors.textTertiary, marginTop: 5 }}>
-                            {menu.statusDetail ?? previewItems.join(' · ')}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ) : diningLoading ? (
-            <View style={{ marginTop: 16, gap: 10 }}>
-              <SkeletonBlock height={48} radius={16} />
-              <SkeletonBlock height={48} radius={16} width="88%" />
-            </View>
-          ) : (
-            <EmptyState
-              compact
-              icon="restaurant-outline"
-              title="Dining menus unavailable"
-              body={diningError ?? 'Menus will appear here when the dining feed has food data for today.'}
-            />
-          )}
-
-          {diningMenus.length > 0 ? (
-            <TouchableOpacity
-              onPress={openDiningMenuList}
-              activeOpacity={0.72}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
-                View full menu
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      );
-    }
-
-    if (item.type === 'sportsEvents') {
-      return (
-        <View style={{
-          ...raisedCardStyle,
-          backgroundColor: colors.card,
-          padding: 22,
-        }}>
-          <View>
-            <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
-              Sports Events
-            </Text>
-            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 7 }}>
-              {visibleCampusEvents.length} upcoming
-            </Text>
-          </View>
-
-          {homeSportsEvents.length > 0 ? (
-            <View style={{ marginTop: 16 }}>
-              {homeSportsEvents.map((event, index, shownEvents) => (
-                <TouchableOpacity
-                  key={`hero-${event.id}`}
-                  onPress={() => openSportsEvent(event)}
-                  activeOpacity={0.76}
-                  style={{
-                    paddingTop: index === 0 ? 0 : 11,
-                    paddingBottom: index === shownEvents.length - 1 ? 0 : 11,
-                    borderTopWidth: index === 0 ? 0 : 1,
-                    borderTopColor: colors.borderSubtle,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                    <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: themedIconBackground(event.color, isDark, event.bg), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Ionicons name={event.icon} size={20} color={themedIconColor(event.color, isDark)} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text numberOfLines={2} ellipsizeMode="tail" style={{ fontSize: 16, lineHeight: 20, fontWeight: '800', color: colors.text }}>
-                        {event.title}
-                      </Text>
-                      <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-                        {formatRelativeEventDayLabel(event.date, now, effectiveTimeZone)} · {formatSportsEventTime(event.date, event.timeLabel, effectiveTimeZone)}
-                      </Text>
-                    </View>
-                    <InfoChip
-                      label={sportsHomeAwayLabel(event)}
-                      tone={event.isHome ? 'brand' : 'neutral'}
-                      compact
-                      color={event.isHome ? colors.brand : colors.textSecondary}
-                      borderColor={event.isHome ? `${colors.brand}44` : colors.borderSubtle}
-                      backgroundColor={event.isHome ? colors.brandBg : colors.bgTertiary}
-                    />
-                  </View>
-                  <InfoChip
-                    icon="people-outline"
-                    label={`${(sportsEventListParticipation[event.id] ?? 0) > 99 ? '99+' : (sportsEventListParticipation[event.id] ?? 0)} going`}
-                    tone="brand"
-                    compact
-                    color={sportsGoingAccent}
-                    backgroundColor={`${sportsGoingAccent}14`}
-                    borderColor={`${sportsGoingAccent}28`}
-                    style={{ marginTop: 7, marginLeft: 48 }}
-                  />
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : sportsLoading ? (
-            <View style={{ marginTop: 16, gap: 10 }}>
-              <SkeletonBlock height={50} radius={16} />
-              <SkeletonBlock height={50} radius={16} width="90%" />
-            </View>
-          ) : (
-            <EmptyState
-              compact
-              icon="trophy-outline"
-              title="No upcoming sports events"
-              body="Events will appear here when the athletics calendar has something coming up."
-            />
-          )}
-
-          {visibleCampusEvents.length > 0 ? (
-            <TouchableOpacity
-              onPress={openSportsMoreList}
-              activeOpacity={0.72}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary }}>
-                {remainingHomeSportsEventCount > 0 ? `More (${remainingHomeSportsEventCount})` : 'More'}
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      );
-    }
-
-    if (item.type === 'campusInfo') {
-      return (
-        <View style={{
-          ...raisedCardStyle,
-          backgroundColor: colors.card,
-          padding: 22,
-        }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.text }}>
-                Campus Info
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => setShowCampusInfo(true)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{
-                borderRadius: 999,
-                backgroundColor: colors.brandBg,
-                paddingHorizontal: 10,
-                paddingVertical: 7,
-              }}
-            >
-              <Text style={{ fontSize: 11, fontWeight: '800', color: colors.brand }}>
-                View all
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={{ marginTop: 16, gap: 8 }}>
-            {campusInfoResources.slice(0, 3).map((resource) => {
-              const resourceCaption = campusInfoResourceCaption(resource);
-              if (resource.children?.length) {
-                return (
-                  <View
-                    key={`hero-campus-info-${resource.id}`}
-                    style={{
-                      borderRadius: 18,
-                      borderWidth: 1,
-                      borderColor: colors.borderSubtle,
-                      backgroundColor: colors.bg,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <View
-                        style={{
-                          width: campusInfoHeroIconBoxSize,
-                          height: campusInfoHeroIconBoxSize,
-                          borderRadius: isCompactCampusInfoCard ? 13 : 14,
-                          backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={themedIconColor(resource.color, isDark)} />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroTitleSize, lineHeight: campusInfoHeroTitleLineHeight, fontWeight: '800', color: colors.text }}>
-                          {resource.title}
-                        </Text>
-                        {resourceCaption ? (
-                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroCaptionSize, lineHeight: campusInfoHeroCaptionLineHeight, color: colors.textSecondary, marginTop: 2 }}>
-                            {resourceCaption}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                      {resource.children.map((child) => (
-                        <TouchableOpacity
-                          key={`hero-campus-info-${resource.id}-${child.id}`}
-                          onPress={() => void openCampusInfoLink(child)}
-                          activeOpacity={0.76}
-                          style={{
-                            flexGrow: 1,
-                            flexBasis: '47%',
-                            minHeight: 34,
-                            borderRadius: 13,
-                            backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            paddingHorizontal: 8,
-                          }}
-                        >
-                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroChildSize, lineHeight: campusInfoHeroChildLineHeight, fontWeight: '800', color: themedIconColor(resource.color, isDark) }}>
-                            {child.title}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                );
-              }
-
-              return (
-                <TouchableOpacity
-                  key={`hero-campus-info-${resource.id}`}
-                  onPress={() => void openCampusInfoLink(resource)}
-                  activeOpacity={0.76}
-                  style={{
-                    minHeight: 56,
-                    borderRadius: 18,
-                    borderWidth: 1,
-                    borderColor: colors.borderSubtle,
-                    backgroundColor: colors.bg,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 10,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: campusInfoHeroIconBoxSize,
-                      height: campusInfoHeroIconBoxSize,
-                      borderRadius: isCompactCampusInfoCard ? 13 : 14,
-                      backgroundColor: themedIconBackground(resource.color, isDark, resource.bg),
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Ionicons name={resource.icon} size={campusInfoHeroIconSize} color={themedIconColor(resource.color, isDark)} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroTitleSize, lineHeight: campusInfoHeroTitleLineHeight, fontWeight: '800', color: colors.text }}>
-                      {resource.title}
-                    </Text>
-                    {resourceCaption ? (
-                      <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: campusInfoHeroCaptionSize, lineHeight: campusInfoHeroCaptionLineHeight, color: colors.textSecondary, marginTop: 2 }}>
-                        {resourceCaption}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <Ionicons name="chevron-forward" size={17} color={colors.textTertiary} />
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      );
-    }
-
     if (item.type === 'idleSummary') {
       return (
         <View style={{
@@ -3262,10 +2886,15 @@ export default function HomeScreen({
       : firstSummaryCourse
         ? dateFromHour(now, extractStartHour(firstSummaryCourse.time), effectiveTimeZone)
         : now;
+    // The day ends when the latest-ENDING class ends — the last-starting class
+    // (summaryCourses is sorted by start hour) can end before an earlier long lab.
+    const latestSummaryEndHour = summaryCourses.length > 0
+      ? Math.max(...summaryCourses.map((entry) => extractEndHour(entry.time)))
+      : null;
     const endDate = course
       ? dateFromHour(now, extractEndHour(course.time), effectiveTimeZone)
-      : lastSummaryCourse
-        ? dateFromHour(now, extractEndHour(lastSummaryCourse.time), effectiveTimeZone)
+      : latestSummaryEndHour !== null
+        ? dateFromHour(now, latestSummaryEndHour, effectiveTimeZone)
         : now;
     const accent = course
       ? getBlockColors(course, timetableSettings.theme).border
@@ -4021,7 +3650,7 @@ export default function HomeScreen({
         const cfg = CATEGORY_CONFIG[event.category];
         const accentColor = colors.brand;
         const isMultiDay = event.endDate && event.endDate !== event.date;
-        const isOngoing = event.endDate && days <= 0 && event.endDate >= now.toISOString().slice(0, 10);
+        const isOngoing = event.endDate && days <= 0 && event.endDate >= localDateKey(now);
         const dLabel = days === 0 ? 'Today' : isOngoing ? 'Ongoing' : days === 1 ? 'Tomorrow' : days < 0 ? 'Ended' : `${days} days away`;
         return (
           <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} pointerEvents="box-none">
@@ -4170,7 +3799,7 @@ export default function HomeScreen({
                     <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, overflow: 'hidden' }}>
                       {group.events.map((event, idx) => {
                         const days = daysUntilEvent(event, now);
-                        const todayStr = now.toISOString().slice(0, 10);
+                        const todayStr = localDateKey(now);
                         const isOngoing = !!event.endDate && days < 0 && event.endDate >= todayStr;
                         const isPast = !isOngoing && days < 0;
                         const dLabel = isPast ? 'Past' : isOngoing ? 'Ongoing' : days === 0 ? 'D-Day' : `D-${days}`;

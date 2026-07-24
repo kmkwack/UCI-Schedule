@@ -457,8 +457,15 @@ async function cacheImageAttachment(attachment: BoardAttachment, remoteUrl: stri
   }
 
   try {
+    // Deterministic filename (no Date.now()) so refreshes reuse the cached file
+    // instead of re-downloading every image and piling up duplicates forever.
     const safeId = sanitizeFileName(attachment.path ?? attachment.id) || `image-${attachment.id}`;
-    const localUri = `${FileSystem.cacheDirectory}board-${Date.now()}-${safeId}.${imageExtensionForAttachment(attachment)}`;
+    const localUri = `${FileSystem.cacheDirectory}board-${safeId}.${imageExtensionForAttachment(attachment)}`;
+
+    const existing = await FileSystem.getInfoAsync(localUri);
+    if (existing.exists && 'size' in existing && typeof existing.size === 'number' && existing.size > 0) {
+      return { ...attachment, localUri, url: remoteUrl };
+    }
 
     const downloaded = await FileSystem.downloadAsync(remoteUrl, localUri);
     const info = await FileSystem.getInfoAsync(downloaded.uri);
@@ -802,7 +809,19 @@ export default function BoardScreen({
     })
   ).current;
 
+  // Tracks the school currently shown so late-resolving fetches for a previous
+  // school can't overwrite the new school's posts.
+  const activeSchoolRef = useRef(school);
+
   useEffect(() => {
+    if (activeSchoolRef.current !== school) {
+      // School switched: never keep showing the previous school's posts.
+      activeSchoolRef.current = school;
+      postsRef.current = [];
+      setPosts([]);
+      setSelectedPost(null);
+      setComments([]);
+    }
     setDepartmentCodes(localDepartmentOptions);
     void fetchBoards();
     void fetchDepartmentBoards();
@@ -1177,9 +1196,12 @@ export default function BoardScreen({
   }
 
   async function fetchPosts() {
+    // The school this fetch belongs to — bail out before every state write if
+    // the user has switched schools while this call was in flight.
+    const fetchSchool = school;
     try {
       const cached = await AsyncStorage.getItem(postsCacheKey);
-      if (cached) {
+      if (cached && activeSchoolRef.current === fetchSchool) {
         try {
           const cachedPosts = (JSON.parse(cached) as Post[]).map((post) => ({
             ...post,
@@ -1208,6 +1230,8 @@ export default function BoardScreen({
         if (error && !isNetworkRequestError(error)) console.warn('Failed to refresh board posts:', error);
         return;
       }
+
+      if (activeSchoolRef.current !== fetchSchool) return;
 
       if (postsData.length === 0) {
         postsRef.current = [];
@@ -1252,6 +1276,7 @@ export default function BoardScreen({
         is_locked: !!post.is_locked,
       }));
 
+      if (activeSchoolRef.current !== fetchSchool) return;
       postsRef.current = freshPosts;
       setPosts(freshPosts);
       await AsyncStorage.setItem(postsCacheKey, JSON.stringify(freshPosts));
@@ -1372,7 +1397,15 @@ export default function BoardScreen({
     }
   }
 
+  // Guards loadCommentsForPost: a slow response for a previously opened post
+  // must not render its comment thread under a different post.
+  const selectedPostIdRef = useRef<string | null>(null);
+  selectedPostIdRef.current = selectedPost?.id ?? null;
+
   async function loadCommentsForPost(postId: string) {
+    // Mark this post as the one whose comments we're loading; a newer call (or
+    // backing out, via the render sync above) invalidates this one.
+    selectedPostIdRef.current = postId;
     setCommentsLoading(true);
     const { data: commentsData, error: commentsError } = await supabase
       .from('post_comments')
@@ -1380,6 +1413,8 @@ export default function BoardScreen({
       .eq('school', school)
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
+
+    if (selectedPostIdRef.current !== postId) return;
 
     if (commentsError) {
       console.error('Failed to load comments:', commentsError);
@@ -1413,6 +1448,7 @@ export default function BoardScreen({
         author_meta: authorSummaries[node.user_id]?.meta ?? null,
         replies: attachMeta(node.replies),
       }));
+    if (selectedPostIdRef.current !== postId) return;
     setComments(attachMeta(commentTree));
     setCommentsLoading(false);
   }
@@ -1521,9 +1557,17 @@ export default function BoardScreen({
     });
   }, [openPostId, openPostRequestId]);
 
+  // Tracks likes with an in-flight request ('post:<id>' / 'comment:<id>') so a
+  // rapid double-tap can't fire two toggles that both read liked=false and each
+  // add +1 (the DB unique constraint rejects the 2nd, leaving the count inflated).
+  const likeInFlightRef = useRef<Set<string>>(new Set());
+
   async function togglePostLike(postId: string) {
+    const flightKey = `post:${postId}`;
+    if (likeInFlightRef.current.has(flightKey)) return;
     const post = posts.find((entry) => entry.id === postId);
     if (!post) return;
+    likeInFlightRef.current.add(flightKey);
 
     const wasLiked = post.liked;
     setPosts((prev) =>
@@ -1532,14 +1576,31 @@ export default function BoardScreen({
       )
     );
 
-    if (wasLiked) {
-      await supabase.from('post_votes').delete().eq('school', school).eq('post_id', postId).eq('user_id', userId);
-    } else {
-      await supabase.from('post_votes').insert({ school, post_id: postId, user_id: userId });
+    try {
+      const { error } = wasLiked
+        ? await supabase.from('post_votes').delete().eq('school', school).eq('post_id', postId).eq('user_id', userId)
+        : await supabase.from('post_votes').insert({ school, post_id: postId, user_id: userId });
+
+      if (error) {
+        // A duplicate-vote insert (23505) means the server already agrees — keep
+        // the optimistic state. Otherwise roll back so the UI stays in sync.
+        if (error.code === '23505') return;
+        setPosts((prev) =>
+          prev.map((entry) =>
+            entry.id === postId ? { ...entry, liked: wasLiked, likes: wasLiked ? entry.likes + 1 : Math.max(0, entry.likes - 1) } : entry
+          )
+        );
+      }
+    } finally {
+      likeInFlightRef.current.delete(flightKey);
     }
   }
 
   async function toggleCommentLike(commentId: string, liked: boolean) {
+    const flightKey = `comment:${commentId}`;
+    if (likeInFlightRef.current.has(flightKey)) return;
+    likeInFlightRef.current.add(flightKey);
+
     setComments((prev) =>
       updateCommentTree(prev, commentId, (comment) => ({
         ...comment,
@@ -1552,21 +1613,28 @@ export default function BoardScreen({
       ? supabase.from('post_comment_votes').delete().eq('school', school).eq('comment_id', commentId).eq('user_id', userId)
       : supabase.from('post_comment_votes').insert({ school, comment_id: commentId, user_id: userId });
 
-    const { error } = await query;
-    if (error) {
-      setComments((prev) =>
-        updateCommentTree(prev, commentId, (comment) => ({
-          ...comment,
-          liked,
-          likes: liked ? comment.likes + 1 : Math.max(0, comment.likes - 1),
-        }))
-      );
-      Alert.alert(
-        'Could not update comment like',
-        error.code === 'PGRST205'
-          ? 'The post_comment_votes table is missing in Supabase. Run the SQL update first.'
-          : error.message
-      );
+    try {
+      const { error } = await query;
+      if (error) {
+        // 23505 (duplicate vote) means the server already recorded the like —
+        // keep the optimistic state instead of rolling back and alerting.
+        if (error.code === '23505') return;
+        setComments((prev) =>
+          updateCommentTree(prev, commentId, (comment) => ({
+            ...comment,
+            liked,
+            likes: liked ? comment.likes + 1 : Math.max(0, comment.likes - 1),
+          }))
+        );
+        Alert.alert(
+          'Could not update comment like',
+          error.code === 'PGRST205'
+            ? 'The post_comment_votes table is missing in Supabase. Run the SQL update first.'
+            : error.message
+        );
+      }
+    } finally {
+      likeInFlightRef.current.delete(flightKey);
     }
   }
 
@@ -1717,14 +1785,18 @@ export default function BoardScreen({
   }
 
   async function handleCreatePost() {
-    if (!newPostTitle.trim() || submittingPost) return;
+    if (!newPostTitle.trim() || !newPostBody.trim() || submittingPost) return;
     if (!(await ensurePublicTextAllowed(`${newPostTitle.trim()} ${newPostBody.trim()}`, 'Post not allowed'))) return;
     Keyboard.dismiss();
     setSubmittingPost(true);
     setUploadingAttachments(true);
 
-    const board = composerBoards.find((entry) => entry.id === newPostBoardId) ?? boards[0];
-    const category = board.category ?? 'General';
+    // When editing, the post's board (e.g. a department board opened from the
+    // Hot board) may not be in composerBoards — falling back to boards[0]
+    // would silently recategorize the post to "General". Keep its category.
+    const board = composerBoards.find((entry) => entry.id === newPostBoardId) ?? null;
+    const editingPost = editingPostId ? posts.find((post) => post.id === editingPostId) : null;
+    const category = board?.category ?? editingPost?.category ?? boards[0]?.category ?? 'General';
     try {
       const authorSummary = await resolveCurrentAuthorSummary();
       const authorName = authorSummary.displayName;
@@ -1890,30 +1962,17 @@ export default function BoardScreen({
         style: 'destructive',
         onPress: () => {
           void (async () => {
-            const { data: postRow } = await supabase
-              .from('posts')
-              .select('id')
-              .eq('id', post.id)
-              .eq('school', school)
-              .eq('user_id', userId)
-              .maybeSingle();
-            if (!postRow) {
-              Alert.alert('Delete failed', 'This post does not belong to the current school.');
-              return;
-            }
-
-            const { data: commentRows } = await supabase.from('post_comments').select('id').eq('school', school).eq('post_id', post.id);
-            const commentIds = (commentRows ?? []).map((row: any) => row.id);
-
-            if (commentIds.length > 0) {
-              await supabase.from('post_comment_votes').delete().eq('school', school).in('comment_id', commentIds);
-            }
-            await supabase.from('post_comments').delete().eq('school', school).eq('post_id', post.id);
-            await supabase.from('post_votes').delete().eq('school', school).eq('post_id', post.id);
-
-            const { error } = await supabase.from('posts').delete().eq('id', post.id).eq('school', school).eq('user_id', userId);
+            // Atomic server-side delete (post + comments + votes in one
+            // transaction) so a mid-way failure can't wipe the replies while
+            // leaving the post. Ownership is enforced inside the function.
+            const { error } = await supabase.rpc('delete_own_post', { target_post_id: post.id });
             if (error) {
-              Alert.alert('Delete failed', error.message);
+              Alert.alert(
+                'Delete failed',
+                error.code === 'PGRST202' || error.message.includes('delete_own_post')
+                  ? 'The delete_own_post function is not installed yet. Run supabase/sql/delete_own_post.sql in Supabase first.'
+                  : error.message
+              );
               return;
             }
 
@@ -2012,7 +2071,11 @@ export default function BoardScreen({
 
   async function fetchBlockedUsers() {
     if (!userId) return;
-    const { data } = await supabase.from('blocks').select('blocked_id').eq('blocker_id', userId).eq('source', 'board');
+    // A block is global: hide posts from anyone the user has blocked ANYWHERE
+    // (board or DMs), not just source='board'. Filtering by source let a person
+    // reappear on the board after being re-blocked from a DM (the upsert on
+    // (blocker_id, blocked_id) overwrites source).
+    const { data } = await supabase.from('blocks').select('blocked_id').eq('blocker_id', userId);
     if (data) setBlockedUserIds(new Set(data.map((row: any) => row.blocked_id as string)));
   }
 
@@ -2099,12 +2162,15 @@ export default function BoardScreen({
     const query = globalSearch.trim().toLowerCase();
     if (!query) return [];
     return posts.filter((post) =>
-      post.title.toLowerCase().includes(query) ||
-      post.body.toLowerCase().includes(query) ||
-      post.author_name.toLowerCase().includes(query) ||
-      post.category.toLowerCase().includes(query)
+      // Blocked users must not resurface through global search.
+      !blockedUserIds.has(post.user_id) && (
+        post.title.toLowerCase().includes(query) ||
+        post.body.toLowerCase().includes(query) ||
+        post.author_name.toLowerCase().includes(query) ||
+        post.category.toLowerCase().includes(query)
+      )
     );
-  }, [globalSearch, posts]);
+  }, [blockedUserIds, globalSearch, posts]);
 
   const filteredDepartmentBoards = useMemo(() => {
     const query = departmentSearch.trim().toLowerCase();
@@ -2179,6 +2245,38 @@ export default function BoardScreen({
         (buttonIndex) => {
           if (buttonIndex < actions.length) actions[buttonIndex].action();
         }
+      );
+      return;
+    }
+
+    // Android's Alert.alert renders at most 3 buttons — with 3 actions +
+    // Cancel, one option would silently disappear. Split into two steps.
+    if (actions.length + 1 > 3) {
+      Alert.alert(
+        'Comment options',
+        undefined,
+        [
+          { text: actions[0].label, onPress: actions[0].action },
+          {
+            text: 'More…',
+            onPress: () => {
+              const rest = actions.slice(1);
+              Alert.alert(
+                'Comment options',
+                undefined,
+                [
+                  ...rest.map((action) => ({
+                    text: action.label,
+                    style: action.destructive ? 'destructive' as const : 'default' as const,
+                    onPress: action.action,
+                  })),
+                  { text: 'Cancel', style: 'cancel' as const },
+                ]
+              );
+            },
+          },
+          { text: 'Cancel', style: 'cancel' as const },
+        ]
       );
       return;
     }
@@ -3058,6 +3156,10 @@ export default function BoardScreen({
                       </Text>
                       {comments.length > 0 ? (
                         comments.map((comment) => renderComment(comment))
+                      ) : commentsLoading ? (
+                        <View style={{ marginBottom: 18 }}>
+                          <MiniLoader label="Loading comments..." labelColor={colors.textTertiary} />
+                        </View>
                       ) : (
                         <Text style={{ fontSize: 14, color: colors.textTertiary, marginBottom: 18 }}>No comments yet.</Text>
                       )}
@@ -4209,7 +4311,7 @@ function NewPostModal({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={onSubmit}
-              disabled={!title.trim() || submitting || uploadingAttachments}
+              disabled={!title.trim() || !body.trim() || submitting || uploadingAttachments}
               style={{ flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: title.trim() ? colors.brand : colors.border }}
             >
               {submitting ? (

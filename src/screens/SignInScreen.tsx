@@ -74,7 +74,11 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
     email: string,
     options: { requireSchoolDomain: boolean; reviewAccount?: boolean }
   ) => {
-    if (options.requireSchoolDomain && emailDomain(email) !== expectedEmailDomain) {
+    // Accept departmental subdomains too (e.g. @ics.uci.edu for @uci.edu).
+    const domain = emailDomain(email);
+    const matchesSchoolDomain =
+      domain === expectedEmailDomain || domain.endsWith(`.${expectedEmailDomain.replace(/^@/, '')}`);
+    if (options.requireSchoolDomain && !matchesSchoolDomain) {
       await supabase.auth.signOut();
       Alert.alert('Wrong account', `Please sign in with your ${university.domain} email.`);
       return false;
@@ -208,43 +212,52 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
   };
 
   const handleGoogleSignIn = async () => {
+    if (loading) return;
     setLoading(true);
-    // Always sign out first so there's no auto-login from a persisted session
-    await supabase.auth.signOut();
+    // try/finally: a throw anywhere in this flow (e.g. the auth browser failing
+    // to open) must not leave the button spinning/disabled forever. Keeping
+    // loading=true through finalizeSignIn also prevents a second tap from
+    // calling signOut() mid-finalize and killing the session being verified.
+    try {
+      // Always sign out first so there's no auto-login from a persisted session
+      await supabase.auth.signOut();
 
-    const redirectTo = getOAuthRedirectUrl();
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo, queryParams: { hd, prompt: 'select_account' }, skipBrowserRedirect: true },
-    });
-    if (error || !data.url) {
+      const redirectTo = getOAuthRedirectUrl();
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo, queryParams: { hd, prompt: 'select_account' }, skipBrowserRedirect: true },
+      });
+      if (error || !data.url) {
+        Alert.alert('Sign-in failed', error?.message ?? 'Could not start sign-in');
+        return;
+      }
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type !== 'success') return;
+
+      const url = result.url;
+      const params = new URLSearchParams(url.split('#')[1] ?? url.split('?')[1] ?? '');
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      if (!accessToken) {
+        Alert.alert('Sign-in failed', 'No token returned.');
+        return;
+      }
+
+      const { data: sd, error: se } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken ?? '',
+      });
+      if (se || !sd.user) {
+        Alert.alert('Sign-in failed', se?.message ?? 'Unknown error');
+        return;
+      }
+
+      await finalizeSignIn(sd.user.id, sd.user.email ?? '', { requireSchoolDomain: true });
+    } catch (error: any) {
+      Alert.alert('Sign-in failed', error?.message ?? 'Please try again.');
+    } finally {
       setLoading(false);
-      Alert.alert('Sign-in failed', error?.message ?? 'Could not start sign-in');
-      return;
     }
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-    setLoading(false);
-    if (result.type !== 'success') return;
-
-    const url = result.url;
-    const params = new URLSearchParams(url.split('#')[1] ?? url.split('?')[1] ?? '');
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    if (!accessToken) {
-      Alert.alert('Sign-in failed', 'No token returned.');
-      return;
-    }
-
-    const { data: sd, error: se } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken ?? '',
-    });
-    if (se || !sd.user) {
-      Alert.alert('Sign-in failed', se?.message ?? 'Unknown error');
-      return;
-    }
-
-    await finalizeSignIn(sd.user.id, sd.user.email ?? '', { requireSchoolDomain: true });
   };
 
   const handleReviewSignIn = async () => {
@@ -255,24 +268,28 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
 
     Keyboard.dismiss();
     setLoading(true);
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: reviewEmail.trim(),
-      password: reviewPassword,
-    });
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: reviewEmail.trim(),
+        password: reviewPassword,
+      });
 
-    setLoading(false);
+      if (error || !data.user) {
+        Alert.alert('Sign-in failed', error?.message ?? 'Could not sign in with email and password.');
+        return;
+      }
 
-    if (error || !data.user) {
-      Alert.alert('Sign-in failed', error?.message ?? 'Could not sign in with email and password.');
-      return;
+      await finalizeSignIn(data.user.id, data.user.email ?? reviewEmail.trim(), {
+        requireSchoolDomain: false,
+        reviewAccount: true,
+      });
+    } catch (error: any) {
+      Alert.alert('Sign-in failed', error?.message ?? 'Please try again.');
+    } finally {
+      setLoading(false);
     }
-
-    await finalizeSignIn(data.user.id, data.user.email ?? reviewEmail.trim(), {
-      requireSchoolDomain: false,
-      reviewAccount: true,
-    });
   };
 
   return (

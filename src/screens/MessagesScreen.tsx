@@ -108,7 +108,11 @@ function conversationLabel(kind: ChatKind) {
 }
 
 function messageTableMissing(error: any) {
-  return error?.code === 'PGRST205' || String(error?.message ?? '').includes('conversation');
+  // Only treat actual missing-table errors as "SQL not installed" — matching
+  // any message containing "conversation" also swallowed real errors (e.g.
+  // RLS denials mention the table name) behind a misleading developer alert.
+  if (error?.code === 'PGRST205' || error?.code === '42P01') return true;
+  return /could not find the table/i.test(String(error?.message ?? ''));
 }
 
 function truncateText(value: string | null | undefined, maxLength = 96) {
@@ -521,6 +525,30 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
       ];
     });
 
+    // The single global query above is limited, so one very active chat can
+    // starve quieter ones of rows entirely — and a conversation with no rows
+    // here would silently vanish from the list. Fetch the starved ones' recent
+    // messages separately.
+    const starvedConversationIds = scopedConversationIds.filter((id) => !messagesByConversation[id]);
+    if (starvedConversationIds.length > 0) {
+      const { data: starvedData, error: starvedError } = await supabase
+        .from('conversation_messages')
+        .select('id, conversation_id, sender_id, content, created_at, deleted_at')
+        .in('conversation_id', starvedConversationIds)
+        .order('created_at', { ascending: false })
+        .limit(Math.max(200, starvedConversationIds.length * 20));
+      if (starvedError) {
+        console.error('Failed to load quiet conversation previews:', starvedError);
+      } else {
+        ((starvedData ?? []) as ConversationMessageRow[]).forEach((message) => {
+          messagesByConversation[message.conversation_id] = [
+            ...(messagesByConversation[message.conversation_id] ?? []),
+            message,
+          ];
+        });
+      }
+    }
+
     const previews = conversationsRows
       .map((conversation) => {
         const myParticipant = myParticipantByConversation[conversation.id];
@@ -726,7 +754,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
 
     try {
       const conversationId = target.conversationId ?? await findExistingConversationId(target);
-      if (selectedChatRef.current && conversationIdentityKey(selectedChatRef.current) !== requestKey) return;
+      // Stale if the user opened a different chat OR backed out entirely while
+      // the lookup was in flight — don't re-open a dismissed conversation.
+      if (!selectedChatRef.current || conversationIdentityKey(selectedChatRef.current) !== requestKey) return;
       const name = target.kind === 'board_anonymous'
         ? campusAliasForId(target.id, school)
         : target.name?.trim() || campusAliasForId(target.id, school);
@@ -783,7 +813,14 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
   useEffect(() => {
     if (!hasValidUserId) return;
     supabase.from('blocks').select('blocked_id').eq('blocker_id', userId).then(({ data }) => {
-      if (data) blockedPartnerIdsRef.current = new Set(data.map((r: any) => r.blocked_id as string));
+      if (data) {
+        blockedPartnerIdsRef.current = new Set(data.map((r: any) => r.blocked_id as string));
+        // The first conversations fetch may have resolved before the block list
+        // loaded — re-filter so blocked partners don't linger until the next poll.
+        if (blockedPartnerIdsRef.current.size > 0) {
+          setConversations((prev) => prev.filter((c) => !blockedPartnerIdsRef.current.has(c.partnerId)));
+        }
+      }
     });
   }, [hasValidUserId, userId]);
 
@@ -829,6 +866,9 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
 
   useEffect(() => {
     if (!selectedChat || messages.length === 0) return;
+    // Respect the user's scroll position: don't yank the view to the bottom
+    // when they've scrolled up to read history and a new message arrives.
+    if (!shouldStickToMessageEndRef.current) return;
     settleMessagesAtEnd(true);
   }, [messages.length, selectedChat, settleMessagesAtEnd]);
 
@@ -847,6 +887,10 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
         },
         (payload) => {
           const row = payload.new as ConversationMessageRow;
+          // Channel teardown is async — an in-flight event for the previous
+          // conversation can fire after the user switched chats. Never merge a
+          // message into a different conversation's thread.
+          if (selectedChatRef.current?.conversationId !== row.conversation_id) return;
           mergeServerMessage(row);
           void markThreadRead(selectedConversationId);
           void fetchConversations({ silent: true });
@@ -865,6 +909,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
         },
         (payload) => {
           const row = payload.new as ConversationMessageRow;
+          if (selectedChatRef.current?.conversationId !== row.conversation_id) return;
           setMessages((current) => current.map((message) => (
             message.id === row.id ? mapMessageRow(row) : message
           )));
@@ -1012,10 +1057,17 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
       const partnerId = selectedChat.partnerId;
       const source = isAnonymous ? 'board' : 'friend';
       setBlockingUser(true);
-      await supabase.from('blocks').upsert(
+      const { error: blockError } = await supabase.from('blocks').upsert(
         { blocker_id: userId, blocked_id: partnerId, source },
         { onConflict: 'blocker_id,blocked_id' }
       );
+      if (blockError) {
+        // Don't hide the conversation while making the user believe the block
+        // succeeded — it would reappear on next launch and they could still message.
+        setBlockingUser(false);
+        Alert.alert('Could not block', 'Please check your connection and try again.');
+        return;
+      }
       if (!isAnonymous) {
         await Promise.all([
           supabase.from('friend_requests').delete().eq('sender_id', userId).eq('receiver_id', partnerId),
@@ -1078,6 +1130,11 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
 
   async function submitMessageReport() {
     if (!selectedChat || submittingReport) return;
+    // A draft chat (never messaged) has no conversation row to report against.
+    if (!selectedChat.conversationId) {
+      Alert.alert('Nothing to report yet', 'This conversation has no messages.');
+      return;
+    }
     Keyboard.dismiss();
     setSubmittingReport(true);
     const { error } = await supabase.from('reports').insert({

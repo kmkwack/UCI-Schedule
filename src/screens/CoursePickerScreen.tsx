@@ -375,7 +375,11 @@ async function fetchSectionRowsForTerm(school: string, quarterKeyValue: string, 
       .select(SECTION_SELECT_COLUMNS)
       .eq('school', school)
       .eq('quarter_key', quarterKeyValue)
+      // Secondary sort on the unique id makes the ordering total — .range()
+      // pagination over a non-unique ordering can duplicate or skip rows that
+      // share a code across a page boundary.
       .order('code', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, from + SECTION_QUERY_PAGE_SIZE - 1);
 
     if (departments?.length) query = query.in('department', departments);
@@ -654,6 +658,7 @@ function getDaysArray(daysString: string) {
 }
 
 function parseHour(time: string) {
+  if (!time) return NaN;
   const [h, m] = time.split(':');
   return Number(h) + Number(m) / 60;
 }
@@ -796,6 +801,20 @@ export default function CoursePickerScreen({
   const [enrollmentLoadingIds, setEnrollmentLoadingIds] = useState<Set<string>>(new Set());
   const [reviewSummaryCache, setReviewSummaryCache] = useState<Record<string, ReviewSummary>>({});
   const [savedCountCache, setSavedCountCache] = useState<Record<string, number>>({});
+
+  // Enrollment is keyed by bare section code (UCI reuses codes across quarters),
+  // so clear it whenever the quarter or school changes — otherwise a section
+  // shows another term's enrolled/capacity numbers.
+  useEffect(() => {
+    setEnrollmentCache({});
+  }, [school, selectedQuarter.year, selectedQuarter.quarter]);
+
+  // Review summaries are keyed by course+section only; they're school-scoped in
+  // the query, so a course code shared across schools would show the wrong
+  // school's rating until this clears on a school switch.
+  useEffect(() => {
+    setReviewSummaryCache({});
+  }, [school]);
   const [savedByCurrentUserSectionIds, setSavedByCurrentUserSectionIds] = useState<Set<string>>(new Set());
   const [reviewsCourse, setReviewsCourse] = useState<Course | null>(null);
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
@@ -982,6 +1001,17 @@ export default function CoursePickerScreen({
       let selectedTermDepartmentCount = 0;
       const selectedTermDepartmentsSet = new Set<string>();
 
+      // Preserve reference identity when contents didn't change — a fresh array
+      // here re-triggers the catalog effect, which blanks the course list and
+      // collapses the user's expanded course mid-browse.
+      const applyDepartments = (departments: string[]) => {
+        setAvailableDepartments((prev) => (
+          prev.length === departments.length && prev.every((value, index) => value === departments[index])
+            ? prev
+            : departments
+        ));
+      };
+
       async function scanSectionDepartments(queryQuarterKey?: string) {
         let from = 0;
         while (!cancelled) {
@@ -989,6 +1019,8 @@ export default function CoursePickerScreen({
             .from('sections')
             .select('department')
             .eq('school', school)
+            // Stable ordering — unordered .range() pages can skip departments.
+            .order('id', { ascending: true })
             .range(from, from + PAGE_SIZE - 1);
 
           if (queryQuarterKey) query = query.eq('quarter_key', queryQuarterKey);
@@ -1024,7 +1056,7 @@ export default function CoursePickerScreen({
           : selectedTermDepartmentsSet;
         const departments = [...sourceDepartments].sort((a, b) => a.localeCompare(b));
         departmentMemoryCache.set(school, departments);
-        setAvailableDepartments(departments);
+        applyDepartments(departments);
         return;
       }
 
@@ -1035,7 +1067,7 @@ export default function CoursePickerScreen({
         if (liveDepartments.length > 0) {
           const departments = [...departmentsSet].sort((a, b) => a.localeCompare(b));
           departmentMemoryCache.set(school, departments);
-          setAvailableDepartments(departments);
+          applyDepartments(departments);
           return;
         }
       }
@@ -1055,13 +1087,13 @@ export default function CoursePickerScreen({
       if (cancelled) return;
       if (departmentsSet.size === 0 && (departmentError || sectionError)) {
         console.warn('Failed to load departments:', departmentError ?? sectionError);
-        setAvailableDepartments([]);
+        applyDepartments([]);
         return;
       }
 
       const departments = [...departmentsSet].sort((a, b) => a.localeCompare(b));
       departmentMemoryCache.set(school, departments);
-      setAvailableDepartments(departments);
+      applyDepartments(departments);
     })();
 
     return () => {
@@ -1085,9 +1117,16 @@ export default function CoursePickerScreen({
     const timer = setTimeout(async () => {
       try {
         const qk = quarterKey(selectedQuarter);
-        const baseClauses = `code.ilike.%${q}%,title.ilike.%${q}%,professor.ilike.%${q}%,id.ilike.%${q}%`;
-        const orClause = qNorm !== q
-          ? `${baseClauses},code.ilike.%${qNorm}%,id.ilike.%${qNorm}%`
+        // Commas, parens and quotes are PostgREST .or() syntax — strip them so
+        // a search like "Smith, John" doesn't 400 and silently keep stale results.
+        // Also strip '%' — an ilike '%' is a wildcard, so a literal "100%" search
+        // would otherwise match every row.
+        const sanitize = (value: string) => value.replace(/[,()"'\\%]/g, ' ').replace(/\s+/g, ' ').trim();
+        const qSafe = sanitize(q);
+        const qNormSafe = sanitize(qNorm);
+        const baseClauses = `code.ilike.%${qSafe}%,title.ilike.%${qSafe}%,professor.ilike.%${qSafe}%,id.ilike.%${qSafe}%`;
+        const orClause = qNormSafe !== qSafe
+          ? `${baseClauses},code.ilike.%${qNormSafe}%,id.ilike.%${qNormSafe}%`
           : baseClauses;
         const { data, error } = await supabase
           .from('sections')
@@ -1611,7 +1650,9 @@ export default function CoursePickerScreen({
       ? selectedDepts[0]
       : `${selectedDepts.length} departments selected`
     : selectedGELabel || 'All Departments';
-  const isCourseListLoading = (catalogLoading && !selectedGE) || (globalSearchLoading && isGlobalSearch);
+  // The GE effect also drives catalogLoading — excluding selectedGE here made
+  // the list flash "No courses found" while a GE category was still fetching.
+  const isCourseListLoading = catalogLoading || (globalSearchLoading && isGlobalSearch);
   const courseLoadingTitle = isGlobalSearch ? 'Searching courses' : 'Loading courses';
   const courseLoadingSubtitle = isGlobalSearch
     ? `Checking ${termLabel(selectedQuarter, school)} for "${searchText.trim()}".`

@@ -56,6 +56,10 @@ const RESEND_API_URL = 'https://api.resend.com/emails';
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 const EXPO_ACCESS_TOKEN = Deno.env.get('EXPO_ACCESS_TOKEN');
 const FROM_EMAIL = Deno.env.get('NOTIFICATIONS_FROM_EMAIL') ?? 'ClassMate <notifications@classmate.app>';
+// Shared secret that proves a request came from our own database webhook and not
+// from a forged call. Set it with:  supabase secrets set WEBHOOK_SECRET=<random>
+// and add the same value as an "x-webhook-secret" header on each DB webhook.
+const WEBHOOK_SECRET = Deno.env.get('WEBHOOK_SECRET');
 
 const supabaseHeaders = {
   apikey: SUPABASE_SERVICE_ROLE_KEY,
@@ -68,6 +72,26 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+// Escape user-supplied text before putting it inside email HTML. Without this, a
+// message or post title like `<a href="https://phish">…</a>` would render as live
+// markup in the email — letting any user send attacker-authored HTML from the
+// official ClassMate address. Push notifications are plain text and don't need it.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Encode a value before interpolating it into a PostgREST query string. These
+// queries run with the service-role key (RLS bypassed), so an unencoded id like
+// `x&select=*` could otherwise tamper with the request.
+function q(value: unknown): string {
+  return encodeURIComponent(String(value ?? ''));
 }
 
 async function fetchRows<T>(path: string): Promise<T[]> {
@@ -98,10 +122,10 @@ async function updateRow(path: string, payload: Record<string, unknown>) {
 
 async function fetchRecipient(userId: string): Promise<Recipient | null> {
   const [settings] = await fetchRows<UserSettingsRow>(
-    `user_settings?user_id=eq.${userId}&select=user_id,expo_push_token,notification_settings&limit=1`
+    `user_settings?user_id=eq.${q(userId)}&select=user_id,expo_push_token,notification_settings&limit=1`
   );
   const [profile] = await fetchRows<ProfileRow>(
-    `profiles?id=eq.${userId}&select=id,email&limit=1`
+    `profiles?id=eq.${q(userId)}&select=id,email&limit=1`
   );
 
   if (!profile) return null;
@@ -141,7 +165,7 @@ async function sendPush(recipient: Recipient, title: string, body: string, data:
   const result = await response.json();
   const ticket = Array.isArray(result?.data) ? result.data[0] : result?.data;
   if (ticket?.details?.error === 'DeviceNotRegistered') {
-    await updateRow(`user_settings?user_id=eq.${recipient.userId}`, { expo_push_token: null });
+    await updateRow(`user_settings?user_id=eq.${q(recipient.userId)}`, { expo_push_token: null });
   }
 }
 
@@ -180,7 +204,14 @@ async function notifyRecipient(
 ) {
   const recipient = await fetchRecipient(userId);
   if (!recipient) return;
-  if (preferenceKey !== 'messages' && recipient.settings[preferenceKey] !== true) return;
+  // Honor the user's per-type preference. Messages default to ON when the key is
+  // unset (matching the app default) but are still suppressed if explicitly
+  // disabled; all other types require an explicit opt-in (=== true).
+  if (preferenceKey === 'messages') {
+    if (recipient.settings.messages === false) return;
+  } else if (recipient.settings[preferenceKey] !== true) {
+    return;
+  }
 
   await Promise.all([
     sendPush(recipient, title, body, data),
@@ -211,7 +242,7 @@ async function handleDirectMessage(record: Record<string, any>) {
     'New message',
     content,
     'New direct message on ClassMate',
-    `<p>You received a new direct message in ClassMate.</p><p>${content}</p>`,
+    `<p>You received a new direct message in ClassMate.</p><p>${escapeHtml(content)}</p>`,
     { type: 'direct-message', messageId: record.id, senderId: record.sender_id }
   );
 }
@@ -221,7 +252,7 @@ async function handleConversationMessage(record: Record<string, any>) {
     ? record.content.trim().slice(0, 120)
     : 'Open ClassMate to read it.';
   const participants = await fetchRows<ConversationParticipantRow>(
-    `conversation_participants?conversation_id=eq.${record.conversation_id}&select=user_id`
+    `conversation_participants?conversation_id=eq.${q(record.conversation_id)}&select=user_id`
   );
   const recipientIds = participants
     .map((participant) => participant.user_id)
@@ -234,7 +265,7 @@ async function handleConversationMessage(record: Record<string, any>) {
       'New message',
       content,
       'New message on ClassMate',
-      `<p>You received a new message in ClassMate.</p><p>${content}</p>`,
+      `<p>You received a new message in ClassMate.</p><p>${escapeHtml(content)}</p>`,
       {
         type: 'conversation-message',
         messageId: record.id,
@@ -247,32 +278,33 @@ async function handleConversationMessage(record: Record<string, any>) {
 
 async function handlePostComment(record: Record<string, any>) {
   const [post] = await fetchRows<PostRow>(
-    `posts?id=eq.${record.post_id}&select=id,user_id,title&limit=1`
+    `posts?id=eq.${q(record.post_id)}&select=id,user_id,title&limit=1`
   );
 
   const targets = new Map<string, { title: string; body: string; subject: string; html: string; data: Record<string, unknown> }>();
   const postTitle = post?.title?.trim() || 'your post';
+  const safePostTitle = escapeHtml(postTitle);
 
   if (post?.user_id && post.user_id !== record.user_id) {
     targets.set(post.user_id, {
       title: 'New comment on your post',
       body: `Someone commented on ${postTitle}.`,
       subject: 'New comment on your ClassMate post',
-      html: `<p>Someone commented on your post, <strong>${postTitle}</strong>.</p>`,
+      html: `<p>Someone commented on your post, <strong>${safePostTitle}</strong>.</p>`,
       data: { type: 'post-comment', postId: record.post_id, commentId: record.id },
     });
   }
 
   if (record.parent_comment_id) {
     const [parentComment] = await fetchRows<Pick<CommentRow, 'id' | 'user_id'>>(
-      `post_comments?id=eq.${record.parent_comment_id}&select=id,user_id&limit=1`
+      `post_comments?id=eq.${q(record.parent_comment_id)}&select=id,user_id&limit=1`
     );
     if (parentComment?.user_id && parentComment.user_id !== record.user_id) {
       targets.set(parentComment.user_id, {
         title: 'New reply to your comment',
         body: `Someone replied on ${postTitle}.`,
         subject: 'New reply to your ClassMate comment',
-        html: `<p>Someone replied to one of your comments on <strong>${postTitle}</strong>.</p>`,
+        html: `<p>Someone replied to one of your comments on <strong>${safePostTitle}</strong>.</p>`,
         data: { type: 'comment-reply', postId: record.post_id, commentId: record.id, parentCommentId: record.parent_comment_id },
       });
     }
@@ -295,7 +327,7 @@ async function handlePostComment(record: Record<string, any>) {
 
 async function handlePostLike(record: Record<string, any>) {
   const [post] = await fetchRows<PostRow>(
-    `posts?id=eq.${record.post_id}&select=id,user_id,title&limit=1`
+    `posts?id=eq.${q(record.post_id)}&select=id,user_id,title&limit=1`
   );
   if (!post?.user_id || post.user_id === record.user_id) return;
   const postTitle = post.title?.trim() || 'your post';
@@ -305,14 +337,14 @@ async function handlePostLike(record: Record<string, any>) {
     'New like on your post',
     `Someone liked ${postTitle}.`,
     'New like on your ClassMate post',
-    `<p>Someone liked your post, <strong>${postTitle}</strong>.</p>`,
+    `<p>Someone liked your post, <strong>${escapeHtml(postTitle)}</strong>.</p>`,
     { type: 'post-like', postId: record.post_id, actorId: record.user_id }
   );
 }
 
 async function handleCommentLike(record: Record<string, any>) {
   const [comment] = await fetchRows<CommentRow>(
-    `post_comments?id=eq.${record.comment_id}&select=id,user_id,post_id&limit=1`
+    `post_comments?id=eq.${q(record.comment_id)}&select=id,user_id,post_id&limit=1`
   );
   if (!comment?.user_id || comment.user_id === record.user_id) return;
   await notifyRecipient(
@@ -329,6 +361,14 @@ async function handleCommentLike(record: Record<string, any>) {
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405);
+  }
+
+  // Reject anything that doesn't present our shared webhook secret. This is the
+  // real caller check: the anon key that ships in the app is NOT sufficient to
+  // invoke this function and fan out push/email to arbitrary users. Fail closed —
+  // if WEBHOOK_SECRET isn't configured, refuse every request rather than run open.
+  if (!WEBHOOK_SECRET || req.headers.get('x-webhook-secret') !== WEBHOOK_SECRET) {
+    return jsonResponse({ error: 'Unauthorized' }, 401);
   }
 
   try {

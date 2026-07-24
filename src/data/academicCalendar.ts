@@ -219,9 +219,18 @@ export function dedupeAcademicEvents(events: AcademicEvent[]): AcademicEvent[] {
   return result;
 }
 
+/** Local calendar date (YYYY-MM-DD) — never use toISOString() for "today":
+ *  it returns the UTC date, which is tomorrow every evening in US timezones. */
+export function localDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 /** Days from today until event start (negative = past). */
 export function daysUntilEvent(event: AcademicEvent, now: Date): number {
-  const today = new Date(now.toISOString().slice(0, 10) + 'T00:00:00');
+  const today = new Date(localDateKey(now) + 'T00:00:00');
   const eventDate = new Date(event.date + 'T00:00:00');
   return Math.round((eventDate.getTime() - today.getTime()) / 86_400_000);
 }

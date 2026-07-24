@@ -48,65 +48,78 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
   const hd = expectedEmailDomain.replace(/^@/, '');
 
   const handleGoogleSignUp = async () => {
+    if (loading) return;
     setLoading(true);
-    await supabase.auth.signOut();
+    // try/finally: a throw anywhere in this flow (e.g. the auth browser failing
+    // to open) must not leave the button spinning/disabled forever. Keeping
+    // loading=true through the whole flow also prevents a second tap from
+    // calling signOut() mid-flow and killing the session being set up.
+    try {
+      await supabase.auth.signOut();
 
-    const redirectTo = getOAuthRedirectUrl();
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo, queryParams: { hd, prompt: 'select_account' }, skipBrowserRedirect: true },
-    });
+      const redirectTo = getOAuthRedirectUrl();
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo, queryParams: { hd, prompt: 'select_account' }, skipBrowserRedirect: true },
+      });
 
-    if (error || !data.url) {
+      if (error || !data.url) {
+        Alert.alert('Sign-up failed', error?.message ?? 'Could not start sign-up');
+        return;
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type !== 'success') return;
+
+      const url = result.url;
+      const params = new URLSearchParams(url.split('#')[1] ?? url.split('?')[1] ?? '');
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      if (!accessToken) {
+        Alert.alert('Sign-up failed', 'No token returned.');
+        return;
+      }
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken ?? '',
+      });
+
+      if (sessionError || !sessionData.user) {
+        Alert.alert('Sign-up failed', sessionError?.message ?? 'Unknown error');
+        return;
+      }
+
+      const email = sessionData.user.email ?? '';
+      // Accept departmental subdomains too (e.g. @ics.uci.edu for @uci.edu).
+      const domain = emailDomain(email);
+      const matchesSchoolDomain =
+        domain === expectedEmailDomain || domain.endsWith(`.${expectedEmailDomain.replace(/^@/, '')}`);
+      if (!matchesSchoolDomain) {
+        await supabase.auth.signOut();
+        Alert.alert('Wrong account', `Please sign in with your ${uni.domain} email.`);
+        return;
+      }
+
+      const { error: metadataError } = await supabase.auth.updateUser({
+        data: {
+          classmate_signup_started: true,
+          classmate_school: uni.name,
+        },
+      });
+
+      if (metadataError) {
+        await supabase.auth.signOut();
+        Alert.alert('Sign-up failed', metadataError.message);
+        return;
+      }
+
+      onSignedUp(sessionData.user.id, email, uni);
+    } catch (error: any) {
+      Alert.alert('Sign-up failed', error?.message ?? 'Please try again.');
+    } finally {
       setLoading(false);
-      Alert.alert('Sign-up failed', error?.message ?? 'Could not start sign-up');
-      return;
     }
-
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-    setLoading(false);
-    if (result.type !== 'success') return;
-
-    const url = result.url;
-    const params = new URLSearchParams(url.split('#')[1] ?? url.split('?')[1] ?? '');
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    if (!accessToken) {
-      Alert.alert('Sign-up failed', 'No token returned.');
-      return;
-    }
-
-    const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken ?? '',
-    });
-
-    if (sessionError || !sessionData.user) {
-      Alert.alert('Sign-up failed', sessionError?.message ?? 'Unknown error');
-      return;
-    }
-
-    const email = sessionData.user.email ?? '';
-    if (emailDomain(email) !== expectedEmailDomain) {
-      await supabase.auth.signOut();
-      Alert.alert('Wrong account', `Please sign in with your ${uni.domain} email.`);
-      return;
-    }
-
-    const { error: metadataError } = await supabase.auth.updateUser({
-      data: {
-        classmate_signup_started: true,
-        classmate_school: uni.name,
-      },
-    });
-
-    if (metadataError) {
-      await supabase.auth.signOut();
-      Alert.alert('Sign-up failed', metadataError.message);
-      return;
-    }
-
-    onSignedUp(sessionData.user.id, email, uni);
   };
 
   return (

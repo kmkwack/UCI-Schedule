@@ -51,6 +51,12 @@ async function fetchCoursePairs() {
     const { data, error } = await supabase
       .from('sections')
       .select('department, code')
+      // The Anteater API is UCI-only — without this filter every other
+      // school's courses are queried (wasted rate-limited calls) and colliding
+      // dept/number pairs store UCI history under another school's course.
+      .eq('school', 'UC Irvine')
+      // Stable ordering: unordered .range() pages can skip or repeat rows.
+      .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
 
     if (error) throw new Error(`Supabase fetch failed: ${error.message}`);

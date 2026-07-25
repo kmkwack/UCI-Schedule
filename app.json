@@ -50,7 +50,7 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-"plugins": [
+    "plugins": [
       [
         "expo-image-picker",
         {
@@ -75,7 +75,8 @@
       "expo-sharing",
       "expo-web-browser",
       "expo-font",
-      "expo-image"
+      "expo-image",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "eas": {

@@ -20,6 +20,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatMinutesAs24Hour, formatTimeOfDay12, parseTimeToMinutes, professorDisplayName, professorIsKnown, quarterKey } from '../data/courses';
 import { getSchoolConfig, termLabel } from '../data/schools';
@@ -670,6 +671,24 @@ function normalizeCustomTimeInput(value: string) {
   return value.replace(/\s+/g, ' ').toUpperCase().slice(0, 8);
 }
 
+// ─── Native time picker <-> draft string helpers ──────────────────────────────
+function timeStringToDate(value: string, fallbackMinutes: number): Date {
+  const minutes = parseTimeToMinutes(value, { allow24HourEnd: true });
+  const total = minutes == null ? fallbackMinutes : minutes;
+  const d = new Date();
+  d.setHours(Math.floor(total / 60) % 24, total % 60, 0, 0);
+  return d;
+}
+
+function dateToTime12(date: Date): string {
+  let h = date.getHours();
+  const m = date.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
 function isValidTimeInput(value: string, allow24Hour = false) {
   return parseTimeToMinutes(value, { allow24HourEnd: allow24Hour }) != null;
 }
@@ -819,6 +838,8 @@ export default function CoursePickerScreen({
   const [reviewsCourse, setReviewsCourse] = useState<Course | null>(null);
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
   const [customCourseDraft, setCustomCourseDraft] = useState<CustomCourseDraft>(EMPTY_CUSTOM_DRAFT);
+  // 어떤 시간 필드의 네이티브 피커가 열려있는지 ('start' | 'end' | null)
+  const [timePickerFor, setTimePickerFor] = useState<null | 'start' | 'end'>(null);
   const editingCourseIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -2457,33 +2478,98 @@ export default function CoursePickerScreen({
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <View style={{ flex: 1 }}>
                     <Text style={customFieldLabelStyle}>Start Time</Text>
-                    <TextInput
-                      value={customCourseDraft.startTime}
-                      onChangeText={(value) =>
-                        setCustomCourseDraft((prev) => ({ ...prev, startTime: normalizeCustomTimeInput(value) }))
-                      }
-                      placeholder="1:00 PM"
-	                      placeholderTextColor={colors.placeholder}
-                      autoCapitalize="characters"
-                      maxLength={8}
-                      style={customInputStyle}
-                    />
+                    <TouchableOpacity
+                      onPress={() => { Keyboard.dismiss(); setTimePickerFor('start'); }}
+                      activeOpacity={0.7}
+                      style={[customInputStyle, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                    >
+                      <Text style={{ fontSize: 15, color: customCourseDraft.startTime ? colors.text : colors.placeholder }}>
+                        {customCourseDraft.startTime || '1:00 PM'}
+                      </Text>
+                      <Ionicons name="time-outline" size={18} color={colors.textTertiary} />
+                    </TouchableOpacity>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={customFieldLabelStyle}>End Time</Text>
-                    <TextInput
-                      value={customCourseDraft.endTime}
-                      onChangeText={(value) =>
-                        setCustomCourseDraft((prev) => ({ ...prev, endTime: normalizeCustomTimeInput(value) }))
-                      }
-                      placeholder="2:20 PM"
-	                      placeholderTextColor={colors.placeholder}
-                      autoCapitalize="characters"
-                      maxLength={8}
-                      style={customInputStyle}
-                    />
+                    <TouchableOpacity
+                      onPress={() => { Keyboard.dismiss(); setTimePickerFor('end'); }}
+                      activeOpacity={0.7}
+                      style={[customInputStyle, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                    >
+                      <Text style={{ fontSize: 15, color: customCourseDraft.endTime ? colors.text : colors.placeholder }}>
+                        {customCourseDraft.endTime || '2:20 PM'}
+                      </Text>
+                      <Ionicons name="time-outline" size={18} color={colors.textTertiary} />
+                    </TouchableOpacity>
                   </View>
                 </View>
+
+                {/* 네이티브 시간 휠 피커 (탭하면 올라옴) */}
+                {timePickerFor !== null && (() => {
+                  const field = timePickerFor;
+                  const current = field === 'start' ? customCourseDraft.startTime : customCourseDraft.endTime;
+                  const pickerValue = timeStringToDate(current, field === 'start' ? 9 * 60 : 10 * 60);
+                  const applyDate = (date?: Date) => {
+                    if (!date) return;
+                    const v = dateToTime12(date);
+                    setCustomCourseDraft((prev) => ({ ...prev, [field === 'start' ? 'startTime' : 'endTime']: v }));
+                  };
+                  if (Platform.OS === 'android') {
+                    return (
+                      <DateTimePicker
+                        value={pickerValue}
+                        mode="time"
+                        display="spinner"
+                        minuteInterval={5}
+                        onChange={(e: DateTimePickerEvent, date?: Date) => {
+                          setTimePickerFor(null);
+                          if (e.type === 'set') applyDate(date);
+                        }}
+                      />
+                    );
+                  }
+                  return (
+                    <Modal transparent animationType="slide" visible onRequestClose={() => setTimePickerFor(null)}>
+                      <Pressable
+                        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.12)', justifyContent: 'flex-end' }}
+                        onPress={() => setTimePickerFor(null)}
+                      >
+                        <Pressable
+                          style={{
+                            backgroundColor: colors.card,
+                            borderTopLeftRadius: 20,
+                            borderTopRightRadius: 20,
+                            paddingBottom: 24,
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: -4 },
+                            shadowOpacity: 0.14,
+                            shadowRadius: 16,
+                            elevation: 12,
+                          }}
+                          onPress={(e) => e.stopPropagation()}
+                        >
+                          <View style={{ alignSelf: 'center', width: 40, height: 5, borderRadius: 999, backgroundColor: colors.border, marginTop: 8, marginBottom: 2 }} />
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
+                              {field === 'start' ? 'Start Time' : 'End Time'}
+                            </Text>
+                            <TouchableOpacity onPress={() => setTimePickerFor(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.brand }}>Done</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <DateTimePicker
+                            value={pickerValue}
+                            mode="time"
+                            display="spinner"
+                            minuteInterval={5}
+                            themeVariant={isDark ? 'dark' : 'light'}
+                            onChange={(_e: DateTimePickerEvent, date?: Date) => applyDate(date)}
+                          />
+                        </Pressable>
+                      </Pressable>
+                    </Modal>
+                  );
+                })()}
 
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <View style={{ flex: 1 }}>

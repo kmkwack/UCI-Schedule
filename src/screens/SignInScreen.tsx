@@ -371,6 +371,16 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
           <Text style={{ fontSize: 16, fontWeight: '500', color: '#111827' }}>Continue with Google</Text>
         </TouchableOpacity>
 
+        {/* App Store reviewers: this only works with a school-issued Google
+            account, so make the review-account alternative impossible to miss. */}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 4, paddingHorizontal: 4 }}>
+          <Ionicons name="alert-circle" size={14} color="#b45309" style={{ marginTop: 1 }} />
+          <Text style={{ flex: 1, fontSize: 12.5, lineHeight: 17, color: '#b45309', fontWeight: '600' }}>
+            App Store reviewers: this button requires a real university Google account and will not work for
+            you. Please scroll down and sign in with the Review access account instead.
+          </Text>
+        </View>
+
         {/* OR divider */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: '#e5e7eb' }} />
@@ -382,17 +392,18 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
           style={{
             marginBottom: 24,
             borderRadius: 18,
-            borderWidth: 1,
-            borderColor: '#e5e7eb',
-            backgroundColor: '#f8fafc',
+            borderWidth: 1.5,
+            borderColor: '#fbbf24',
+            backgroundColor: '#fffbeb',
             padding: 16,
             gap: 12,
           }}
         >
           <View style={{ gap: 4 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827' }}>Review access</Text>
-            <Text style={{ fontSize: 13, lineHeight: 19, color: '#6b7280' }}>
-              If your university sign-in uses Duo or another blocked step, use the review account credentials below.
+            <Text style={{ fontSize: 15, fontWeight: '800', color: '#92400e' }}>Review access (App Store reviewers)</Text>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: '#78350f' }}>
+              If your university sign-in uses Duo or another blocked step — or if you are reviewing this app for
+              the App Store — sign in here with the review account credentials instead.
             </Text>
           </View>
           <TextInput

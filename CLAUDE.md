@@ -398,3 +398,25 @@ const QUARTERS = [
 - `src/screens/CoursePickerScreen.tsx` — Removed RMP button from section rows. Reviews button moved directly beneath Add button. Star rating ("★ X.X · N ratings") moved beneath Reviews button in right column. `fetchReviewSummary(courseCode, sectionType)` cache keyed as `"ECON 100A::Lec"`. Early-return guard: `if (cache[key]?.count)` (not truthy check). `handleExpandCourse` fetches summaries for all unique section types in the course.
 - `src/screens/TimetableScreen.tsx` — Passes `sectionType` to ReviewsModal.
 
+
+### Session 96 (Auth rewritten: email-verification codes; fixed the real 2.1(a) RLS bug) — 2026-07-26
+**Context:** Builds 60 and 61 were both rejected for Guideline 4.8 (third-party login without an equivalent option) *and* Guideline 2.1(a) ("an error message was displayed when we tried to sign in"). Two replies arguing the education/enterprise-account exception to 4.8 were rejected, so that route was abandoned.
+
+**The real 2.1(a) cause (reproduced on a simulator):** the app showed *"Review setup failed — new row violates row-level security policy for table `profiles`"*. `production_readiness_p2.sql` was only **partially applied** to the live DB: the `profiles` policies exist and gate on `public.can_auth_email_use_school(school)`, but the two tables that function reads (`app_school_email_domains`, `app_review_accounts`) were **never created** (PostgREST returns `PGRST205` for both). With them missing the function can never return true, so **every** profile INSERT was rejected. Existing accounts kept working because they already have a row and take the UPDATE path — only a *first* insert fails, which is exactly what App Review hits after a fresh install. This was breaking **all new signups**, not just review.
+
+- **`supabase/sql/fix_profiles_rls_2026-07-26.sql`** (NEW — **must be run in the Supabase SQL editor**) — idempotent: creates the two lookup tables with their seed rows, recreates `can_auth_email_use_school()`, adds the read policies/grants. Also accepts departmental subdomains (`%.uci.edu`, e.g. `student@ics.uci.edu`) so the DB matches the client-side check.
+
+**4.8 fix — removed third-party login instead of adding Sign in with Apple.** 4.8 only applies to apps that use a third-party/social login service; with Google gone the app uses only its own account system, so the guideline doesn't apply and there's nothing left to dispute.
+
+**Auth rewritten around emailed verification codes (no passwords).** A password-based rewrite was built first but abandoned: it left every existing (Google-created) account unable to sign in, since those have no password, and "set a password" is a migration step users shouldn't have to discover. Verification codes remove the problem class entirely — nothing to forget, reset, or migrate — and email possession *is* the school verification this app is built on.
+
+- **`src/screens/SignInScreen.tsx`** — rewritten as a two-phase screen. Phase 1: school-email entry, domain-checked client-side (incl. departmental subdomains), then `signInWithOtp({ email, options: { shouldCreateUser: true } })`. Phase 2: 6-digit code entry → `verifyOtp({ type: 'email' })`, with a 30s resend cooldown and "use a different email". Sign-in and sign-up are now **one flow**; the screen tells new users apart afterwards by checking for an existing `profiles`/`user_settings` row and calls `onSignedUp` (→ onboarding) vs `onSignedIn`. The review account is special-cased: allowed past the domain check, and its profile/settings rows are seeded on first verify.
+- **`App.tsx`** — `AuthScreen` narrowed to `'welcome' | 'university' | 'signin'`; the `'signup'` route and `SignUpScreen` render are gone. Both auth callbacks funnel through a shared `enterApp()` helper; `onSignedUp` additionally sets `needsFeatureOnboarding`.
+- **Deleted:** `src/screens/SignUpScreen.tsx`, `src/screens/SetPasswordScreen.tsx`, `src/hooks/useAppleSchoolAuth.ts`. Also removed: `expo-apple-authentication`, the `ios.usesAppleSignIn` flag + plugin entry in `app.json`, the `expo-linking` deep-link handler and `PASSWORD_RECOVERY` branch in `App.tsx` (codes are entered in-app, so no auth redirect is involved).
+
+**⚠️ Follow-up needed before this can be tested or submitted:**
+1. **Run `supabase/sql/fix_profiles_rls_2026-07-26.sql`** — without it signups still fail with the RLS error.
+2. **Supabase → Authentication → Emails → Magic Link template:** it must include `{{ .Token }}` (the default template only has `{{ .ConfirmationURL }}`, so no code would be visible in the email).
+3. **Supabase → Authentication → Sign In / Providers → Email:** confirm email OTP is enabled, and add a **test OTP** entry for `review@classmate.app` (a fixed code) — App Review can't receive mail at that address.
+4. Existing TestFlight accounts: no migration needed — signing in with the same school email sends a code to that address and reuses the existing account.
+5. New build (62+) required, then verify end-to-end: new email → code → onboarding, returning email → code → home, and the review account's fixed code.

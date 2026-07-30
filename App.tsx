@@ -16,7 +16,6 @@ import MessagesScreen from './src/screens/MessagesScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import UniversitySelectionScreen from './src/screens/UniversitySelectionScreen';
 import SignInScreen from './src/screens/SignInScreen';
-import SignUpScreen from './src/screens/SignUpScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
@@ -117,7 +116,7 @@ type BoardPostTimestampRow = {
   created_at: string;
 };
 
-type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
+type AuthScreen = 'welcome' | 'university' | 'signin';
 type MainTab = 'home' | 'timetable' | 'grades' | 'board' | 'friends';
 type BoardPostOpenRequest = { postId: string; requestId: number };
 
@@ -794,6 +793,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const popAuth = () => setAuthStack((prev) => prev.length > 1 ? prev.slice(0, -1) : prev);
   const replaceAuth = (s: AuthScreen) =>
     setAuthStack((prev) => prev.length === 0 ? [s] : [...prev.slice(0, -1), s]);
+
   const handleAssignmentCalendarChange = useCallback(() => {
     setAssignmentCalendarRevision((revision) => revision + 1);
   }, []);
@@ -2916,56 +2916,42 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
               pendingAuthUniversityRef.current = uni;
               setSelectedUniversity(uni);
               setSelectedQuarter(getAcademicTermForDate(uni.name, new Date()));
-              pushAuth('signup');
+              pushAuth('signin');
             }}
           />
         );
       }
-      if (name === 'signup') {
-        const signupUniversity = selectedUniversity ?? DEFAULT_UNIVERSITY;
-        return (
-          <SignUpScreen
-            university={signupUniversity}
-            onBack={goBack}
-            onSignedUp={(id, email, university) => {
-              pendingAuthUniversityRef.current = university;
-              setSelectedUniversity(university);
-              setSelectedQuarter(getAcademicTermForDate(university.name, new Date()));
-              requestUserBootstrap();
-              setUserId(id);
-              setUserEmail(email);
-              setUserProfile(fallbackProfileFromEmail(email));
-              setNeedsProfileSetup(false);
-              setNeedsFeatureOnboarding(true);
-              setForceReviewOnboardingOnce(false);
-              setShowNotificationPermissionPrompt(false);
-              setShowBrandIntro(false);
-            }}
-            onGoToSignIn={() => replaceAuth('signin')}
-          />
-        );
-      }
+      // Sign-in and sign-up are one screen now (email → emailed code). The
+      // screen decides which callback to fire based on whether a profile
+      // already exists for this account.
       const signInUniversity = selectedUniversity ?? DEFAULT_UNIVERSITY;
+      const enterApp = (id: string, email: string, university: University) => {
+        pendingAuthUniversityRef.current = university;
+        setSelectedUniversity(university);
+        setSelectedQuarter(getAcademicTermForDate(university.name, new Date()));
+        requestUserBootstrap();
+        setUserId(id);
+        setUserEmail(email);
+        setUserProfile(fallbackProfileFromEmail(email));
+        setNeedsProfileSetup(false);
+        setShowNotificationPermissionPrompt(false);
+        setShowBrandIntro(false);
+      };
       return (
         <SignInScreen
           university={signInUniversity}
           onBack={goBack}
           onSignedIn={(id, email, university) => {
             const shouldForceReviewOnboarding = isReviewAccountEmail(email);
-            pendingAuthUniversityRef.current = university;
-            setSelectedUniversity(university);
-            setSelectedQuarter(getAcademicTermForDate(university.name, new Date()));
             setForceReviewOnboardingOnce(shouldForceReviewOnboarding);
             setNeedsFeatureOnboarding(shouldForceReviewOnboarding);
-            requestUserBootstrap();
-            setUserId(id);
-            setUserEmail(email);
-            setUserProfile(fallbackProfileFromEmail(email));
-            setNeedsProfileSetup(false);
-            setShowNotificationPermissionPrompt(false);
-            setShowBrandIntro(false);
+            enterApp(id, email, university);
           }}
-          onGoToSignUp={() => pushAuth('signup')}
+          onSignedUp={(id, email, university) => {
+            setForceReviewOnboardingOnce(false);
+            setNeedsFeatureOnboarding(true);
+            enterApp(id, email, university);
+          }}
         />
       );
     };

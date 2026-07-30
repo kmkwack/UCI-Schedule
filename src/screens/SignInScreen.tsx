@@ -1,40 +1,52 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+  TextInput,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path } from 'react-native-svg';
-import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../lib/supabase';
 import type { University } from './UniversitySelectionScreen';
 import LegalConsentText from '../components/LegalConsentText';
 import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalDocumentModal';
 import UniversityLogo from '../components/UniversityLogo';
 
-WebBrowser.maybeCompleteAuthSession();
+/**
+ * Email-verification sign-in.
+ *
+ * The app is scoped to verified university students, so the login mechanism IS
+ * the verification: enter a school email, receive a 6-digit code, enter it.
+ * There are no passwords — nothing to forget, reset, or migrate — and because
+ * no third-party login service is involved, App Store Guideline 4.8 (which
+ * requires an equivalent option like Sign in with Apple alongside Google et al.)
+ * doesn't apply.
+ *
+ * Sign-in and sign-up are the same flow: `shouldCreateUser: true` creates the
+ * account on first use, and we tell new users apart afterwards by checking for
+ * an existing profile row.
+ */
 
-const REQUIRED_REVIEW_ACCOUNT_EMAIL = 'review@classmate.app';
+// Apple's reviewers can't receive mail at this address, so Supabase is
+// configured with a fixed test OTP for it (Auth → Sign In / Providers → Email).
+const REVIEW_ACCOUNT_EMAIL = 'review@classmate.app';
 
-function getOAuthRedirectUrl() {
-  return 'com.parksihyun.classmate://auth/callback';
-}
+const CODE_LENGTH = 6;
+const RESEND_COOLDOWN_SECONDS = 30;
 
 type Props = {
   university: University;
   onBack: () => void;
   onSignedIn: (userId: string, email: string, university: University) => void;
-  onGoToSignUp: () => void;
+  onSignedUp: (userId: string, email: string, university: University) => void;
 };
-
-function GoogleIcon() {
-  return (
-    <Svg width={22} height={22} viewBox="0 0 24 24">
-      <Path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-      <Path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-      <Path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-      <Path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-    </Svg>
-  );
-}
 
 function emailDomain(email: string) {
   const normalized = email.trim().toLowerCase();
@@ -42,19 +54,22 @@ function emailDomain(email: string) {
   return atIndex >= 0 ? normalized.slice(atIndex) : '';
 }
 
-function isRequiredReviewAccount(email: string) {
-  return email.trim().toLowerCase() === REQUIRED_REVIEW_ACCOUNT_EMAIL;
+function isReviewAccount(email: string) {
+  return email.trim().toLowerCase() === REVIEW_ACCOUNT_EMAIL;
 }
 
-export default function SignInScreen({ university, onBack, onSignedIn, onGoToSignUp }: Props) {
+export default function SignInScreen({ university, onBack, onSignedIn, onSignedUp }: Props) {
   const scrollRef = useRef<ScrollView>(null);
+  const [phase, setPhase] = useState<'email' | 'code'>('email');
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
-  const [reviewEmail, setReviewEmail] = useState('');
-  const [reviewPassword, setReviewPassword] = useState('');
+  const [resendIn, setResendIn] = useState(0);
   const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
   const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
+
   const expectedEmailDomain = university.domain.trim().toLowerCase();
-  const hd = expectedEmailDomain.replace(/^@/, ''); // e.g. "uci.edu"
+  const bareDomain = expectedEmailDomain.replace(/^@/, '');
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -69,48 +84,81 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
     };
   }, []);
 
-  const finalizeSignIn = async (
-    userId: string,
-    email: string,
-    options: { requireSchoolDomain: boolean; reviewAccount?: boolean }
-  ) => {
-    // Accept departmental subdomains too (e.g. @ics.uci.edu for @uci.edu).
-    const domain = emailDomain(email);
-    const matchesSchoolDomain =
-      domain === expectedEmailDomain || domain.endsWith(`.${expectedEmailDomain.replace(/^@/, '')}`);
-    if (options.requireSchoolDomain && !matchesSchoolDomain) {
-      await supabase.auth.signOut();
-      Alert.alert('Wrong account', `Please sign in with your ${university.domain} email.`);
+  // Resend cooldown ticker.
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const id = setTimeout(() => setResendIn((n) => n - 1), 1000);
+    return () => clearTimeout(id);
+  }, [resendIn]);
+
+  // Accept departmental subdomains too (e.g. @ics.uci.edu for @uci.edu).
+  const isAllowedEmail = (value: string) => {
+    if (isReviewAccount(value)) return true;
+    const domain = emailDomain(value);
+    return domain === expectedEmailDomain || domain.endsWith(`.${bareDomain}`);
+  };
+
+  const sendCode = async (targetEmail: string, { isResend = false } = {}) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: targetEmail,
+        options: { shouldCreateUser: true },
+      });
+      if (error) {
+        Alert.alert('Could not send code', error.message);
+        return false;
+      }
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+      if (isResend) Alert.alert('Code sent', `We sent a new code to ${targetEmail}.`);
+      return true;
+    } catch (error: any) {
+      Alert.alert('Could not send code', error?.message ?? 'Please try again.');
       return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendCode = async () => {
+    if (loading) return;
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      Alert.alert('Enter your email', `Please enter your ${university.domain} email address.`);
+      return;
+    }
+    if (!isAllowedEmail(trimmedEmail)) {
+      Alert.alert(
+        'School email required',
+        `ClassMate is only for ${university.name} students. Please use your ${university.domain} email address.`
+      );
+      return;
     }
 
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError || !userData.user) {
-      await supabase.auth.signOut();
-      Alert.alert('Sign-in failed', userError?.message ?? 'Could not verify your session.');
-      return false;
+    Keyboard.dismiss();
+    // Clear any stale session so a failed verify can't leave the user half-signed-in.
+    await supabase.auth.signOut();
+    const sent = await sendCode(trimmedEmail);
+    if (sent) {
+      setEmail(trimmedEmail);
+      setCode('');
+      setPhase('code');
     }
+  };
 
-    const hasSignupMarker = userData.user.user_metadata?.classmate_signup_started === true;
-    const reviewAccount = options.reviewAccount === true && isRequiredReviewAccount(email);
-
-    if (options.reviewAccount && !reviewAccount) {
-      await supabase.auth.signOut();
-      Alert.alert('Review access only', `Use the ${REQUIRED_REVIEW_ACCOUNT_EMAIL} account for review access.`);
-      return false;
-    }
-
-    if (reviewAccount) {
-      const profilePayload = {
+  /** Seeds the profile/settings rows App Review needs, since that account skips onboarding. */
+  const seedReviewAccount = async (userId: string, accountEmail: string) => {
+    const [{ error: profileError }, { error: settingsError }] = await Promise.all([
+      supabase.from('profiles').upsert({
         id: userId,
-        email,
+        email: accountEmail,
         name: 'App Review',
         major: null,
         year: null,
         school: university.name,
         updated_at: new Date().toISOString(),
-      };
-      const settingsPayload = {
+      }),
+      supabase.from('user_settings').upsert({
         user_id: userId,
         timetable_visibility: 'friends',
         notification_settings: { pushNotifications: false },
@@ -124,167 +172,70 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
           boardProfileVisible: false,
         },
         updated_at: new Date().toISOString(),
-      };
-
-      const [{ error: reviewProfileError }, { error: reviewSettingsError }] = await Promise.all([
-        supabase.from('profiles').upsert(profilePayload),
-        supabase.from('user_settings').upsert(settingsPayload),
-      ]);
-
-      if (reviewProfileError || reviewSettingsError) {
-        await supabase.auth.signOut();
-        Alert.alert(
-          'Review setup failed',
-          reviewProfileError?.message ?? reviewSettingsError?.message ?? 'Could not prepare the review account.'
-        );
-        return false;
-      }
-    }
-
-    const [{ data: existingProfile, error: profileError }, { data: existingSettings, error: settingsError }] =
-      await Promise.all([
-        supabase.from('profiles').select('id, school').eq('id', userId).eq('school', university.name).maybeSingle(),
-        supabase.from('user_settings').select('user_id').eq('user_id', userId).maybeSingle(),
-      ]);
-
-    if (
-      (profileError && profileError.code !== 'PGRST116' && profileError.code !== 'PGRST205') ||
-      (settingsError && settingsError.code !== 'PGRST116' && settingsError.code !== 'PGRST205')
-    ) {
-      await supabase.auth.signOut();
-      Alert.alert('Sign-in failed', 'Could not verify your ClassMate account. Please try again.');
-      return;
-    }
-
-    if (!existingProfile && !reviewAccount) {
-      await supabase.auth.signOut();
-      Alert.alert(
-        'No ClassMate account found',
-        `It looks like this email has not signed up for ClassMate at ${university.name} yet. Please create a new account first.`,
-        [
-          {
-            text: 'Create account',
-            onPress: onGoToSignUp,
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
-      return false;
-    }
-
-    if (!reviewAccount && !hasSignupMarker && !existingSettings) {
-      await supabase.auth.signOut();
-      Alert.alert(
-        'ClassMate setup incomplete',
-        'This account does not have a saved ClassMate setup yet. Please create a new account first.',
-        [
-          {
-            text: 'Create account',
-            onPress: onGoToSignUp,
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
-      return false;
-    }
-
-    const { error: metadataError } = await supabase.auth.updateUser({
-      data: {
-        classmate_signup_started: true,
-        classmate_school: university.name,
-      },
-    });
-
-    if (metadataError) {
-      await supabase.auth.signOut();
-      Alert.alert('Sign-in failed', metadataError.message);
-      return false;
-    }
-
-    onSignedIn(userId, email, university);
-    return true;
+      }),
+    ]);
+    return profileError ?? settingsError ?? null;
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleVerifyCode = async () => {
     if (loading) return;
-    setLoading(true);
-    // try/finally: a throw anywhere in this flow (e.g. the auth browser failing
-    // to open) must not leave the button spinning/disabled forever. Keeping
-    // loading=true through finalizeSignIn also prevents a second tap from
-    // calling signOut() mid-finalize and killing the session being verified.
-    try {
-      // Always sign out first so there's no auto-login from a persisted session
-      await supabase.auth.signOut();
-
-      const redirectTo = getOAuthRedirectUrl();
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo, queryParams: { hd, prompt: 'select_account' }, skipBrowserRedirect: true },
-      });
-      if (error || !data.url) {
-        Alert.alert('Sign-in failed', error?.message ?? 'Could not start sign-in');
-        return;
-      }
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-      if (result.type !== 'success') return;
-
-      const url = result.url;
-      const params = new URLSearchParams(url.split('#')[1] ?? url.split('?')[1] ?? '');
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-      if (!accessToken) {
-        Alert.alert('Sign-in failed', 'No token returned.');
-        return;
-      }
-
-      const { data: sd, error: se } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken ?? '',
-      });
-      if (se || !sd.user) {
-        Alert.alert('Sign-in failed', se?.message ?? 'Unknown error');
-        return;
-      }
-
-      await finalizeSignIn(sd.user.id, sd.user.email ?? '', { requireSchoolDomain: true });
-    } catch (error: any) {
-      Alert.alert('Sign-in failed', error?.message ?? 'Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleReviewSignIn = async () => {
-    if (!reviewEmail.trim() || !reviewPassword) {
-      Alert.alert('Missing information', 'Enter the review account email and password first.');
+    const trimmedCode = code.trim();
+    if (trimmedCode.length !== CODE_LENGTH) {
+      Alert.alert('Enter the code', `Please enter the ${CODE_LENGTH}-digit code we emailed you.`);
       return;
     }
 
     Keyboard.dismiss();
     setLoading(true);
     try {
-      await supabase.auth.signOut();
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: reviewEmail.trim(),
-        password: reviewPassword,
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token: trimmedCode,
+        type: 'email',
       });
 
       if (error || !data.user) {
-        Alert.alert('Sign-in failed', error?.message ?? 'Could not sign in with email and password.');
+        Alert.alert(
+          'Incorrect code',
+          error?.message ?? 'That code is not valid. Check the email again or request a new code.'
+        );
         return;
       }
 
-      await finalizeSignIn(data.user.id, data.user.email ?? reviewEmail.trim(), {
-        requireSchoolDomain: false,
-        reviewAccount: true,
+      const userId = data.user.id;
+      const signedInEmail = data.user.email ?? email;
+
+      if (isReviewAccount(signedInEmail)) {
+        const seedError = await seedReviewAccount(userId, signedInEmail);
+        if (seedError) {
+          await supabase.auth.signOut();
+          Alert.alert('Review setup failed', seedError.message);
+          return;
+        }
+      }
+
+      // Distinguish a brand-new student from a returning one so App.tsx can
+      // route them into onboarding rather than straight to the home tabs.
+      const [{ data: existingProfile }, { data: existingSettings }] = await Promise.all([
+        supabase.from('profiles').select('id').eq('id', userId).eq('school', university.name).maybeSingle(),
+        supabase.from('user_settings').select('user_id').eq('user_id', userId).maybeSingle(),
+      ]);
+      const isNewUser = !existingProfile && !existingSettings;
+
+      const { error: metadataError } = await supabase.auth.updateUser({
+        data: {
+          classmate_signup_started: true,
+          classmate_school: university.name,
+        },
       });
+      if (metadataError) {
+        await supabase.auth.signOut();
+        Alert.alert('Sign-in failed', metadataError.message);
+        return;
+      }
+
+      if (isNewUser) onSignedUp(userId, signedInEmail, university);
+      else onSignedIn(userId, signedInEmail, university);
     } catch (error: any) {
       Alert.alert('Sign-in failed', error?.message ?? 'Please try again.');
     } finally {
@@ -292,194 +243,174 @@ export default function SignInScreen({ university, onBack, onSignedIn, onGoToSig
     }
   };
 
+  const inputStyle = {
+    borderWidth: 1,
+    borderColor: '#dbe2ea',
+    borderRadius: 12,
+    backgroundColor: 'white',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 15,
+    color: '#111827',
+  } as const;
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Header */}
         <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-          <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 4 }}>
+          <TouchableOpacity
+            onPress={() => (phase === 'code' ? setPhase('email') : onBack())}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{ padding: 4 }}
+          >
             <Ionicons name="arrow-back" size={22} color="#111827" />
           </TouchableOpacity>
         </View>
 
-      <ScrollView
-        ref={scrollRef}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 28, paddingBottom: Platform.OS === 'ios' ? 96 : androidKeyboardInset > 0 ? androidKeyboardInset + 72 : 72 }}
-      >
-        {/* University card */}
-        <View style={{
-          padding: 20, borderRadius: 20, marginBottom: 28,
-          backgroundColor: 'rgba(65,105,225,0.06)',
-          borderWidth: 1, borderColor: 'rgba(65,105,225,0.18)',
-        }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-            <UniversityLogo university={university} width={168} height={48} marginRight={14} />
-            <View style={{ flex: 1 }}>
-              <Text numberOfLines={2} style={{ fontSize: 17, fontWeight: '700', color: '#111827' }}>{university.name}</Text>
-              <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{university.location}</Text>
+        <ScrollView
+          ref={scrollRef}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingHorizontal: 24,
+            paddingTop: 28,
+            paddingBottom: Platform.OS === 'ios' ? 96 : androidKeyboardInset > 0 ? androidKeyboardInset + 72 : 72,
+          }}
+        >
+          {/* University card */}
+          <View style={{
+            padding: 20, borderRadius: 20, marginBottom: 28,
+            backgroundColor: 'rgba(65,105,225,0.06)',
+            borderWidth: 1, borderColor: 'rgba(65,105,225,0.18)',
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <UniversityLogo university={university} width={168} height={48} marginRight={14} />
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={2} style={{ fontSize: 17, fontWeight: '700', color: '#111827' }}>{university.name}</Text>
+                <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{university.location}</Text>
+              </View>
             </View>
           </View>
-          <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 8,
-            backgroundColor: 'white', borderRadius: 10,
-            paddingHorizontal: 12, paddingVertical: 10,
-          }}>
-            <Ionicons name="mail-outline" size={16} color="#6b7280" />
-            <Text style={{ fontSize: 14, color: '#6b7280' }}>{university.domain}</Text>
+
+          {phase === 'email' ? (
+            <View>
+              <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginBottom: 8 }}>
+                Continue with your{'\n'}school email
+              </Text>
+              <Text style={{ fontSize: 15, lineHeight: 22, color: '#6b7280', textAlign: 'center', marginBottom: 24 }}>
+                We'll email you a {CODE_LENGTH}-digit code to verify you're a {university.name} student.
+              </Text>
+
+              <View style={{ gap: 6, marginBottom: 20 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>School email</Text>
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder={university.domain}
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  returnKeyType="go"
+                  onSubmitEditing={handleSendCode}
+                  onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
+                  style={inputStyle}
+                />
+              </View>
+
+              <TouchableOpacity
+                onPress={handleSendCode}
+                disabled={loading}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  backgroundColor: '#4169E1', borderRadius: 16, paddingVertical: 16,
+                  marginBottom: 20, opacity: loading ? 0.6 : 1,
+                }}
+              >
+                {loading && <ActivityIndicator size="small" color="white" />}
+                <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>Send code</Text>
+              </TouchableOpacity>
+
+              <View style={{
+                flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+                borderRadius: 14, borderWidth: 1, borderColor: '#e5e7eb',
+                backgroundColor: '#f9fafb', padding: 14,
+              }}>
+                <Ionicons name="shield-checkmark-outline" size={18} color="#6b7280" style={{ marginTop: 1 }} />
+                <Text style={{ flex: 1, fontSize: 13, lineHeight: 19, color: '#4b5563' }}>
+                  New here? Entering your {university.domain} email creates your account — no separate sign-up needed.
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View>
+              <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginBottom: 8 }}>
+                Enter your code
+              </Text>
+              <Text style={{ fontSize: 15, lineHeight: 22, color: '#6b7280', textAlign: 'center', marginBottom: 24 }}>
+                We sent a {CODE_LENGTH}-digit code to{'\n'}
+                <Text style={{ fontWeight: '700', color: '#111827' }}>{email}</Text>
+              </Text>
+
+              <TextInput
+                value={code}
+                onChangeText={(value) => setCode(value.replace(/[^0-9]/g, '').slice(0, CODE_LENGTH))}
+                placeholder="000000"
+                placeholderTextColor="#d1d5db"
+                keyboardType="number-pad"
+                autoComplete="one-time-code"
+                textContentType="oneTimeCode"
+                maxLength={CODE_LENGTH}
+                autoFocus
+                style={[inputStyle, {
+                  fontSize: 30, fontWeight: '700', textAlign: 'center',
+                  letterSpacing: 10, paddingVertical: 16, marginBottom: 20,
+                }]}
+              />
+
+              <TouchableOpacity
+                onPress={handleVerifyCode}
+                disabled={loading || code.length !== CODE_LENGTH}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  backgroundColor: '#4169E1', borderRadius: 16, paddingVertical: 16,
+                  marginBottom: 16, opacity: loading || code.length !== CODE_LENGTH ? 0.5 : 1,
+                }}
+              >
+                {loading && <ActivityIndicator size="small" color="white" />}
+                <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>Verify and continue</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => { void sendCode(email, { isResend: true }); }}
+                disabled={loading || resendIn > 0}
+                style={{ paddingVertical: 12, alignItems: 'center' }}
+              >
+                <Text style={{ fontSize: 14, color: resendIn > 0 ? '#9ca3af' : '#4169E1', fontWeight: '600' }}>
+                  {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => setPhase('email')} style={{ paddingVertical: 8, alignItems: 'center' }}>
+                <Text style={{ fontSize: 14, color: '#6b7280' }}>Use a different email</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={{ marginTop: 'auto', paddingTop: 28 }}>
+            <LegalConsentText
+              onOpenDocument={setActiveDocument}
+              color="#9ca3af"
+              linkColor="#4169E1"
+              fontSize={11}
+              lineHeight={16}
+            />
           </View>
-        </View>
-
-        {/* Title */}
-        <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginBottom: 8 }}>
-          Sign In to ClassMate
-        </Text>
-        <Text style={{ fontSize: 15, color: '#6b7280', textAlign: 'center', marginBottom: 20 }}>
-          Welcome back! Continue your campus journey
-        </Text>
-
-        {/* Info pill */}
-        <View style={{ alignItems: 'center', marginBottom: 24 }}>
-          <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 6,
-            backgroundColor: '#eff3ff', borderRadius: 10,
-            paddingHorizontal: 14, paddingVertical: 9,
-          }}>
-            <Ionicons name="information-circle-outline" size={16} color="#4169E1" />
-            <Text style={{ fontSize: 13, color: '#4169E1', fontWeight: '500' }}>
-              Use your university Google account
-            </Text>
-          </View>
-        </View>
-
-        {/* Continue with Google */}
-        <TouchableOpacity
-          onPress={handleGoogleSignIn}
-          disabled={loading}
-          style={{
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-            backgroundColor: 'white', borderRadius: 16,
-            paddingVertical: 16, marginBottom: 24,
-            borderWidth: 1.5, borderColor: '#e5e7eb',
-            shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
-          {loading ? <ActivityIndicator size="small" color="#4169E1" /> : <GoogleIcon />}
-          <Text style={{ fontSize: 16, fontWeight: '500', color: '#111827' }}>Continue with Google</Text>
-        </TouchableOpacity>
-
-        {/* App Store reviewers: this only works with a school-issued Google
-            account, so make the review-account alternative impossible to miss. */}
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 4, paddingHorizontal: 4 }}>
-          <Ionicons name="alert-circle" size={14} color="#b45309" style={{ marginTop: 1 }} />
-          <Text style={{ flex: 1, fontSize: 12.5, lineHeight: 17, color: '#b45309', fontWeight: '600' }}>
-            App Store reviewers: this button requires a real university Google account and will not work for
-            you. Please scroll down and sign in with the Review access account instead.
-          </Text>
-        </View>
-
-        {/* OR divider */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-          <View style={{ flex: 1, height: 1, backgroundColor: '#e5e7eb' }} />
-          <Text style={{ fontSize: 13, color: '#9ca3af' }}>or</Text>
-          <View style={{ flex: 1, height: 1, backgroundColor: '#e5e7eb' }} />
-        </View>
-
-        <View
-          style={{
-            marginBottom: 24,
-            borderRadius: 18,
-            borderWidth: 1.5,
-            borderColor: '#fbbf24',
-            backgroundColor: '#fffbeb',
-            padding: 16,
-            gap: 12,
-          }}
-        >
-          <View style={{ gap: 4 }}>
-            <Text style={{ fontSize: 15, fontWeight: '800', color: '#92400e' }}>Review access (App Store reviewers)</Text>
-            <Text style={{ fontSize: 13, lineHeight: 19, color: '#78350f' }}>
-              If your university sign-in uses Duo or another blocked step — or if you are reviewing this app for
-              the App Store — sign in here with the review account credentials instead.
-            </Text>
-          </View>
-          <TextInput
-            value={reviewEmail}
-            onChangeText={setReviewEmail}
-            placeholder="Review account email"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            textContentType="username"
-            onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
-            style={{
-              borderWidth: 1,
-              borderColor: '#dbe2ea',
-              borderRadius: 12,
-              backgroundColor: 'white',
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              fontSize: 15,
-              color: '#111827',
-            }}
-          />
-          <TextInput
-            value={reviewPassword}
-            onChangeText={setReviewPassword}
-            placeholder="Review account password"
-            autoCapitalize="none"
-            autoCorrect={false}
-            textContentType="password"
-            secureTextEntry
-            onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
-            style={{
-              borderWidth: 1,
-              borderColor: '#dbe2ea',
-              borderRadius: 12,
-              backgroundColor: 'white',
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              fontSize: 15,
-              color: '#111827',
-            }}
-          />
-          <TouchableOpacity
-            onPress={handleReviewSignIn}
-            disabled={loading}
-            style={{
-              borderRadius: 14,
-              backgroundColor: '#111827',
-              alignItems: 'center',
-              justifyContent: 'center',
-              paddingVertical: 14,
-              opacity: loading ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ fontSize: 15, fontWeight: '700', color: 'white' }}>Sign in with email</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Create account link */}
-        <View style={{ alignItems: 'center', marginBottom: 28 }}>
-          <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 6 }}>Don't have an account yet?</Text>
-          <TouchableOpacity onPress={onGoToSignUp}>
-            <Text style={{ fontSize: 15, color: '#4169E1', fontWeight: '600' }}>Create a new account →</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ marginTop: 'auto', paddingTop: 28 }}>
-          <LegalConsentText
-            onOpenDocument={setActiveDocument}
-            color="#9ca3af"
-            linkColor="#4169E1"
-            fontSize={11}
-            lineHeight={16}
-          />
-        </View>
-      </ScrollView>
+        </ScrollView>
       </KeyboardAvoidingView>
       <LegalDocumentModal
         visible={!!activeDocument}

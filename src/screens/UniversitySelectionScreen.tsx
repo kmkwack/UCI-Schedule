@@ -12,7 +12,11 @@ type Props = {
 
 export default function UniversitySelectionScreen({ onBack, onContinue }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selected, setSelected] = useState<University | null>(null);
+  // With a single supported school there's nothing to choose — preselect it so
+  // the user only has to tap Continue.
+  const [selected, setSelected] = useState<University | null>(
+    SUPPORTED_UNIVERSITIES.length === 1 ? SUPPORTED_UNIVERSITIES[0] : null
+  );
 
   const filtered = SUPPORTED_UNIVERSITIES.filter(
     (u) =>
@@ -39,7 +43,9 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
           Select Your University
         </Text>
         <Text style={{ fontSize: 15, color: '#6b7280', marginBottom: 24, lineHeight: 22 }}>
-          Choose your school to get started with ClassMate.
+          {SUPPORTED_UNIVERSITIES.length === 1
+            ? `ClassMate is live at ${SUPPORTED_UNIVERSITIES[0].name}, with more campuses coming soon.`
+            : 'Choose your school to get started with ClassMate.'}
         </Text>
 
         {/* Search bar */}
@@ -53,9 +59,10 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search universities..."
+            placeholder="Search universities"
             placeholderTextColor="#9ca3af"
             autoCorrect={false}
+            numberOfLines={1}
             style={{ flex: 1, fontSize: 15, color: '#111827' }}
           />
         </View>

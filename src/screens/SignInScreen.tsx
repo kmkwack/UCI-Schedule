@@ -20,56 +20,62 @@ import LegalDocumentModal, { type LegalDocumentType } from '../components/LegalD
 import UniversityLogo from '../components/UniversityLogo';
 
 /**
- * Email-verification sign-in.
+ * Password sign-in. School ownership was already proven by the emailed code at
+ * sign-up (see SignUpScreen), so returning students never wait on email again.
  *
- * The app is scoped to verified university students, so the login mechanism IS
- * the verification: enter a school email, receive a 6-digit code, enter it.
- * There are no passwords — nothing to forget, reset, or migrate — and because
- * no third-party login service is involved, App Store Guideline 4.8 (which
- * requires an equivalent option like Sign in with Apple alongside Google et al.)
- * doesn't apply.
- *
- * Sign-in and sign-up are the same flow: `shouldCreateUser: true` creates the
- * account on first use, and we tell new users apart afterwards by checking for
- * an existing profile row.
+ * "Forgot password?" also uses a one-time code rather than a reset link: the
+ * code is verified in-app, which avoids depending on deep links / redirect
+ * allow-lists, and then the user picks a new password on the spot.
  */
 
-// Apple's reviewers can't receive mail at this address, so Supabase is
-// configured with a fixed test OTP for it (Auth → Sign In / Providers → Email).
+// App Review can't receive mail at this address, so it signs in with the
+// password we supply in the review notes and skips the school-domain rule.
 const REVIEW_ACCOUNT_EMAIL = 'review@classmate.app';
 
-const CODE_LENGTH = 6;
-const RESEND_COOLDOWN_SECONDS = 30;
+const MIN_PASSWORD_LENGTH = 8;
+// Supabase's "Email OTP Length" is configurable (6–10, default 6), so accept
+// the whole range rather than hard-coding one length and breaking if it changes.
+const CODE_MIN_LENGTH = 6;
+const CODE_MAX_LENGTH = 10;
+// Length actually issued by this project — keep in sync with Supabase's
+// Authentication → Email OTP Length setting so the placeholder matches.
+const CODE_LENGTH_HINT = 8;
+const CODE_PLACEHOLDER = '0'.repeat(CODE_LENGTH_HINT);
+// Supabase enforces a 60s minimum between sends to the same address.
+const RESEND_COOLDOWN_SECONDS = 60;
+
+type Phase = 'password' | 'reset-email' | 'reset-code' | 'reset-password';
 
 type Props = {
   university: University;
   onBack: () => void;
   onSignedIn: (userId: string, email: string, university: University) => void;
-  onSignedUp: (userId: string, email: string, university: University) => void;
+  /**
+   * Verifying a reset code creates a real session, which the app would
+   * otherwise treat as a completed sign-in and navigate away on — before the
+   * user has picked a new password. Raised for the duration of that flow.
+   */
+  onSuspendAutoSignIn: (suspended: boolean) => void;
+  onGoToSignUp: () => void;
 };
-
-function emailDomain(email: string) {
-  const normalized = email.trim().toLowerCase();
-  const atIndex = normalized.lastIndexOf('@');
-  return atIndex >= 0 ? normalized.slice(atIndex) : '';
-}
 
 function isReviewAccount(email: string) {
   return email.trim().toLowerCase() === REVIEW_ACCOUNT_EMAIL;
 }
 
-export default function SignInScreen({ university, onBack, onSignedIn, onSignedUp }: Props) {
+export default function SignInScreen({ university, onBack, onSignedIn, onSuspendAutoSignIn, onGoToSignUp }: Props) {
   const scrollRef = useRef<ScrollView>(null);
-  const [phase, setPhase] = useState<'email' | 'code'>('email');
+  const [phase, setPhase] = useState<Phase>('password');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [code, setCode] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [resendIn, setResendIn] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [activeDocument, setActiveDocument] = useState<LegalDocumentType | null>(null);
   const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
-
-  const expectedEmailDomain = university.domain.trim().toLowerCase();
-  const bareDomain = expectedEmailDomain.replace(/^@/, '');
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -84,67 +90,11 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSignedU
     };
   }, []);
 
-  // Resend cooldown ticker.
   useEffect(() => {
     if (resendIn <= 0) return;
     const id = setTimeout(() => setResendIn((n) => n - 1), 1000);
     return () => clearTimeout(id);
   }, [resendIn]);
-
-  // Accept departmental subdomains too (e.g. @ics.uci.edu for @uci.edu).
-  const isAllowedEmail = (value: string) => {
-    if (isReviewAccount(value)) return true;
-    const domain = emailDomain(value);
-    return domain === expectedEmailDomain || domain.endsWith(`.${bareDomain}`);
-  };
-
-  const sendCode = async (targetEmail: string, { isResend = false } = {}) => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: targetEmail,
-        options: { shouldCreateUser: true },
-      });
-      if (error) {
-        Alert.alert('Could not send code', error.message);
-        return false;
-      }
-      setResendIn(RESEND_COOLDOWN_SECONDS);
-      if (isResend) Alert.alert('Code sent', `We sent a new code to ${targetEmail}.`);
-      return true;
-    } catch (error: any) {
-      Alert.alert('Could not send code', error?.message ?? 'Please try again.');
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSendCode = async () => {
-    if (loading) return;
-    const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedEmail) {
-      Alert.alert('Enter your email', `Please enter your ${university.domain} email address.`);
-      return;
-    }
-    if (!isAllowedEmail(trimmedEmail)) {
-      Alert.alert(
-        'School email required',
-        `ClassMate is only for ${university.name} students. Please use your ${university.domain} email address.`
-      );
-      return;
-    }
-
-    Keyboard.dismiss();
-    // Clear any stale session so a failed verify can't leave the user half-signed-in.
-    await supabase.auth.signOut();
-    const sent = await sendCode(trimmedEmail);
-    if (sent) {
-      setEmail(trimmedEmail);
-      setCode('');
-      setPhase('code');
-    }
-  };
 
   /** Seeds the profile/settings rows App Review needs, since that account skips onboarding. */
   const seedReviewAccount = async (userId: string, accountEmail: string) => {
@@ -177,70 +127,207 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSignedU
     return profileError ?? settingsError ?? null;
   };
 
-  const handleVerifyCode = async () => {
+  const finishSignIn = async (userId: string, signedInEmail: string) => {
+    if (isReviewAccount(signedInEmail)) {
+      const seedError = await seedReviewAccount(userId, signedInEmail);
+      if (seedError) {
+        await supabase.auth.signOut();
+        Alert.alert('Review setup failed', seedError.message);
+        return;
+      }
+    }
+
+    const { error: metadataError } = await supabase.auth.updateUser({
+      data: {
+        classmate_signup_started: true,
+        classmate_school: university.name,
+      },
+    });
+    if (metadataError) {
+      await supabase.auth.signOut();
+      Alert.alert('Sign-in failed', metadataError.message);
+      return;
+    }
+
+    onSignedIn(userId, signedInEmail, university);
+  };
+
+  const handleSignIn = async () => {
     if (loading) return;
-    const trimmedCode = code.trim();
-    if (trimmedCode.length !== CODE_LENGTH) {
-      Alert.alert('Enter the code', `Please enter the ${CODE_LENGTH}-digit code we emailed you.`);
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !password) {
+      Alert.alert('Missing information', 'Enter your email and password.');
       return;
     }
 
     Keyboard.dismiss();
     setLoading(true);
     try {
+      await supabase.auth.signOut();
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+
+      if (error || !data.user) {
+        const message = error?.message ?? 'Could not sign in.';
+        if (message.toLowerCase().includes('email not confirmed')) {
+          Alert.alert(
+            'Email not verified',
+            'Finish creating your account first — we emailed you a verification code.',
+            [
+              { text: 'Create account', onPress: onGoToSignUp },
+              { text: 'Cancel', style: 'cancel' },
+            ]
+          );
+          return;
+        }
+        if (message.toLowerCase().includes('invalid login credentials')) {
+          Alert.alert(
+            'Could not sign in',
+            'Double-check your email and password. If you forgot your password, tap "Forgot password?".'
+          );
+          return;
+        }
+        Alert.alert('Sign-in failed', message);
+        return;
+      }
+
+      await finishSignIn(data.user.id, data.user.email ?? trimmedEmail);
+    } catch (error: any) {
+      Alert.alert('Sign-in failed', error?.message ?? 'Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** Sends a one-time code for the password-reset flow. */
+  const sendResetCode = async (targetEmail: string, { isResend = false } = {}) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: targetEmail,
+        // Never create an account from the reset flow — that would let a typo
+        // silently register a new, unverified user.
+        options: { shouldCreateUser: false },
+      });
+      if (error) {
+        Alert.alert('Could not send code', error.message);
+        return false;
+      }
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+      if (isResend) Alert.alert('Code sent', `We sent a new code to ${targetEmail}.`);
+      return true;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Opens the reset flow on its own email step rather than requiring the user
+   * to have already filled the sign-in field — whatever they typed carries over.
+   */
+  const handleForgotPassword = () => {
+    Keyboard.dismiss();
+    setPhase('reset-email');
+  };
+
+  const handleSendResetCode = async () => {
+    if (loading) return;
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      Alert.alert('Enter your email', `Enter the ${university.domain} email you signed up with.`);
+      return;
+    }
+    Keyboard.dismiss();
+    const sent = await sendResetCode(trimmedEmail);
+    if (sent) {
+      setEmail(trimmedEmail);
+      setCode('');
+      setPhase('reset-code');
+    }
+  };
+
+  const handleVerifyResetCode = async () => {
+    if (loading) return;
+    const trimmedCode = code.trim();
+    if (trimmedCode.length < CODE_MIN_LENGTH) {
+      Alert.alert('Enter the code', 'Please enter the verification code we emailed you.');
+      return;
+    }
+
+    Keyboard.dismiss();
+    setLoading(true);
+    // Raise before verifying: the session appears the moment verifyOtp resolves.
+    onSuspendAutoSignIn(true);
+    try {
       const { data, error } = await supabase.auth.verifyOtp({
         email,
         token: trimmedCode,
         type: 'email',
       });
-
       if (error || !data.user) {
+        onSuspendAutoSignIn(false);
         Alert.alert(
           'Incorrect code',
           error?.message ?? 'That code is not valid. Check the email again or request a new code.'
         );
         return;
       }
-
-      const userId = data.user.id;
-      const signedInEmail = data.user.email ?? email;
-
-      if (isReviewAccount(signedInEmail)) {
-        const seedError = await seedReviewAccount(userId, signedInEmail);
-        if (seedError) {
-          await supabase.auth.signOut();
-          Alert.alert('Review setup failed', seedError.message);
-          return;
-        }
-      }
-
-      // Distinguish a brand-new student from a returning one so App.tsx can
-      // route them into onboarding rather than straight to the home tabs.
-      const [{ data: existingProfile }, { data: existingSettings }] = await Promise.all([
-        supabase.from('profiles').select('id').eq('id', userId).eq('school', university.name).maybeSingle(),
-        supabase.from('user_settings').select('user_id').eq('user_id', userId).maybeSingle(),
-      ]);
-      const isNewUser = !existingProfile && !existingSettings;
-
-      const { error: metadataError } = await supabase.auth.updateUser({
-        data: {
-          classmate_signup_started: true,
-          classmate_school: university.name,
-        },
-      });
-      if (metadataError) {
-        await supabase.auth.signOut();
-        Alert.alert('Sign-in failed', metadataError.message);
-        return;
-      }
-
-      if (isNewUser) onSignedUp(userId, signedInEmail, university);
-      else onSignedIn(userId, signedInEmail, university);
+      // Verified — the user now has a session, so they can set a new password.
+      // The session must not be treated as a finished sign-in until they do.
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPhase('reset-password');
     } catch (error: any) {
-      Alert.alert('Sign-in failed', error?.message ?? 'Please try again.');
+      onSuspendAutoSignIn(false);
+      Alert.alert('Verification failed', error?.message ?? 'Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveNewPassword = async () => {
+    if (loading) return;
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      Alert.alert('Password too short', `Please use at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      Alert.alert('Passwords do not match', 'Please re-enter your password.');
+      return;
+    }
+
+    Keyboard.dismiss();
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error || !data.user) {
+        Alert.alert('Could not set password', error?.message ?? 'Please try again.');
+        return;
+      }
+      // Password is saved — the session is now a legitimate sign-in.
+      onSuspendAutoSignIn(false);
+      await finishSignIn(data.user.id, data.user.email ?? email);
+    } catch (error: any) {
+      Alert.alert('Could not set password', error?.message ?? 'Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const goBackFromPhase = () => {
+    if (phase === 'password') return onBack();
+    if (phase === 'reset-email') return setPhase('password');
+    if (phase === 'reset-code') {
+      onSuspendAutoSignIn(false);
+      return setPhase('reset-email');
+    }
+    // Leaving mid-reset would strand a session whose password wasn't changed.
+    void supabase.auth.signOut();
+    onSuspendAutoSignIn(false);
+    setPhase('password');
   };
 
   const inputStyle = {
@@ -254,16 +341,17 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSignedU
     color: '#111827',
   } as const;
 
+  const codeInputStyle = [inputStyle, {
+    fontSize: 30, fontWeight: '700' as const, textAlign: 'center' as const,
+    letterSpacing: 10, paddingVertical: 16, marginBottom: 20,
+  }];
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Header */}
         <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-          <TouchableOpacity
-            onPress={() => (phase === 'code' ? setPhase('email') : onBack())}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={{ padding: 4 }}
-          >
+          <TouchableOpacity onPress={goBackFromPhase} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 4 }}>
             <Ionicons name="arrow-back" size={22} color="#111827" />
           </TouchableOpacity>
         </View>
@@ -294,14 +382,103 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSignedU
             </View>
           </View>
 
-          {phase === 'email' ? (
+          {phase === 'password' && (
             <View>
               <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginBottom: 8 }}>
-                Continue with your{'\n'}school email
+                Sign In to ClassMate
               </Text>
-              <Text style={{ fontSize: 15, lineHeight: 22, color: '#6b7280', textAlign: 'center', marginBottom: 24 }}>
-                We'll email you a {CODE_LENGTH}-digit code to verify you're a {university.name} student.
+              <Text style={{ fontSize: 15, color: '#6b7280', textAlign: 'center', marginBottom: 24 }}>
+                Welcome back! Continue your campus journey
               </Text>
+
+              <View style={{ gap: 12, marginBottom: 8 }}>
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>Email</Text>
+                  <TextInput
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder={university.domain}
+                    placeholderTextColor="#9ca3af"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="email"
+                    keyboardType="email-address"
+                    textContentType="emailAddress"
+                    onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
+                    style={inputStyle}
+                  />
+                </View>
+
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>Password</Text>
+                  <View style={{ position: 'relative', justifyContent: 'center' }}>
+                    <TextInput
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder="Your password"
+                      placeholderTextColor="#9ca3af"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      secureTextEntry={!showPassword}
+                      textContentType="password"
+                      returnKeyType="go"
+                      onSubmitEditing={handleSignIn}
+                      onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
+                      style={[inputStyle, { paddingRight: 46 }]}
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowPassword((v) => !v)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ position: 'absolute', right: 14 }}
+                    >
+                      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={19} color="#9ca3af" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              <TouchableOpacity onPress={handleForgotPassword} disabled={loading} style={{ alignSelf: 'flex-end', paddingVertical: 10 }}>
+                <Text style={{ fontSize: 13, color: '#4169E1', fontWeight: '600' }}>Forgot password?</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleSignIn}
+                disabled={loading}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  backgroundColor: '#4169E1', borderRadius: 16, paddingVertical: 16,
+                  marginTop: 6, marginBottom: 24, opacity: loading ? 0.6 : 1,
+                }}
+              >
+                {loading && <ActivityIndicator size="small" color="white" />}
+                <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>Sign in</Text>
+              </TouchableOpacity>
+
+              <View style={{ alignItems: 'center', marginBottom: 28 }}>
+                <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 6 }}>Don't have an account yet?</Text>
+                <TouchableOpacity onPress={onGoToSignUp}>
+                  <Text style={{ fontSize: 15, color: '#4169E1', fontWeight: '600' }}>Create a new account →</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {phase === 'reset-email' && (
+            <View>
+              <View style={{ alignItems: 'center', marginBottom: 24 }}>
+                <View style={{
+                  width: 64, height: 64, borderRadius: 32, backgroundColor: '#eff3ff',
+                  alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+                }}>
+                  <Ionicons name="lock-open-outline" size={30} color="#4169E1" />
+                </View>
+                <Text style={{ fontSize: 26, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginBottom: 8 }}>
+                  Reset your password
+                </Text>
+                <Text style={{ fontSize: 15, lineHeight: 22, color: '#6b7280', textAlign: 'center' }}>
+                  Enter your school email and we'll send you a verification code.
+                </Text>
+              </View>
 
               <View style={{ gap: 6, marginBottom: 20 }}>
                 <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>School email</Text>
@@ -316,19 +493,19 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSignedU
                   keyboardType="email-address"
                   textContentType="emailAddress"
                   returnKeyType="go"
-                  onSubmitEditing={handleSendCode}
-                  onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
+                  onSubmitEditing={handleSendResetCode}
+                  autoFocus
                   style={inputStyle}
                 />
               </View>
 
               <TouchableOpacity
-                onPress={handleSendCode}
+                onPress={handleSendResetCode}
                 disabled={loading}
                 style={{
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
                   backgroundColor: '#4169E1', borderRadius: 16, paddingVertical: 16,
-                  marginBottom: 20, opacity: loading ? 0.6 : 1,
+                  marginBottom: 16, opacity: loading ? 0.6 : 1,
                 }}
               >
                 {loading && <ActivityIndicator size="small" color="white" />}
@@ -340,53 +517,60 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSignedU
                 borderRadius: 14, borderWidth: 1, borderColor: '#e5e7eb',
                 backgroundColor: '#f9fafb', padding: 14,
               }}>
-                <Ionicons name="shield-checkmark-outline" size={18} color="#6b7280" style={{ marginTop: 1 }} />
+                <Ionicons name="information-circle-outline" size={18} color="#6b7280" style={{ marginTop: 1 }} />
                 <Text style={{ flex: 1, fontSize: 13, lineHeight: 19, color: '#4b5563' }}>
-                  New here? Entering your {university.domain} email creates your account — no separate sign-up needed.
+                  Joined an earlier version of ClassMate? Your account doesn't have a password yet — use this to set one.
                 </Text>
               </View>
             </View>
-          ) : (
+          )}
+
+          {phase === 'reset-code' && (
             <View>
-              <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginBottom: 8 }}>
-                Enter your code
-              </Text>
-              <Text style={{ fontSize: 15, lineHeight: 22, color: '#6b7280', textAlign: 'center', marginBottom: 24 }}>
-                We sent a {CODE_LENGTH}-digit code to{'\n'}
-                <Text style={{ fontWeight: '700', color: '#111827' }}>{email}</Text>
-              </Text>
+              <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                <View style={{
+                  width: 64, height: 64, borderRadius: 32, backgroundColor: '#eff3ff',
+                  alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+                }}>
+                  <Ionicons name="mail-open-outline" size={30} color="#4169E1" />
+                </View>
+                <Text style={{ fontSize: 26, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginBottom: 8 }}>
+                  Enter your code
+                </Text>
+                <Text style={{ fontSize: 15, lineHeight: 22, color: '#6b7280', textAlign: 'center' }}>
+                  We sent a verification code to{'\n'}
+                  <Text style={{ fontWeight: '700', color: '#111827' }}>{email}</Text>
+                </Text>
+              </View>
 
               <TextInput
                 value={code}
-                onChangeText={(value) => setCode(value.replace(/[^0-9]/g, '').slice(0, CODE_LENGTH))}
-                placeholder="000000"
+                onChangeText={(value) => setCode(value.replace(/[^0-9]/g, '').slice(0, CODE_MAX_LENGTH))}
+                placeholder={CODE_PLACEHOLDER}
                 placeholderTextColor="#d1d5db"
                 keyboardType="number-pad"
                 autoComplete="one-time-code"
                 textContentType="oneTimeCode"
-                maxLength={CODE_LENGTH}
+                maxLength={CODE_MAX_LENGTH}
                 autoFocus
-                style={[inputStyle, {
-                  fontSize: 30, fontWeight: '700', textAlign: 'center',
-                  letterSpacing: 10, paddingVertical: 16, marginBottom: 20,
-                }]}
+                style={codeInputStyle}
               />
 
               <TouchableOpacity
-                onPress={handleVerifyCode}
-                disabled={loading || code.length !== CODE_LENGTH}
+                onPress={handleVerifyResetCode}
+                disabled={loading || code.length < CODE_MIN_LENGTH}
                 style={{
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
                   backgroundColor: '#4169E1', borderRadius: 16, paddingVertical: 16,
-                  marginBottom: 16, opacity: loading || code.length !== CODE_LENGTH ? 0.5 : 1,
+                  marginBottom: 16, opacity: loading || code.length < CODE_MIN_LENGTH ? 0.5 : 1,
                 }}
               >
                 {loading && <ActivityIndicator size="small" color="white" />}
-                <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>Verify and continue</Text>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>Verify code</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => { void sendCode(email, { isResend: true }); }}
+                onPress={() => { void sendResetCode(email, { isResend: true }); }}
                 disabled={loading || resendIn > 0}
                 style={{ paddingVertical: 12, alignItems: 'center' }}
               >
@@ -394,9 +578,80 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSignedU
                   {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
                 </Text>
               </TouchableOpacity>
+            </View>
+          )}
 
-              <TouchableOpacity onPress={() => setPhase('email')} style={{ paddingVertical: 8, alignItems: 'center' }}>
-                <Text style={{ fontSize: 14, color: '#6b7280' }}>Use a different email</Text>
+          {phase === 'reset-password' && (
+            <View>
+              <View style={{ alignItems: 'center', marginBottom: 24 }}>
+                <View style={{
+                  width: 64, height: 64, borderRadius: 32, backgroundColor: '#eff3ff',
+                  alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+                }}>
+                  <Ionicons name="key-outline" size={30} color="#4169E1" />
+                </View>
+                <Text style={{ fontSize: 26, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginBottom: 8 }}>
+                  Set a new password
+                </Text>
+                <Text style={{ fontSize: 15, lineHeight: 22, color: '#6b7280', textAlign: 'center' }}>
+                  Email verified. Choose a new password for{'\n'}
+                  <Text style={{ fontWeight: '700', color: '#111827' }}>{email}</Text>
+                </Text>
+              </View>
+
+              <View style={{ gap: 12, marginBottom: 24 }}>
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>New password</Text>
+                  <View style={{ position: 'relative', justifyContent: 'center' }}>
+                    <TextInput
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                      placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                      placeholderTextColor="#9ca3af"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      secureTextEntry={!showPassword}
+                      textContentType="newPassword"
+                      autoFocus
+                      style={[inputStyle, { paddingRight: 46 }]}
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowPassword((v) => !v)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ position: 'absolute', right: 14 }}
+                    >
+                      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={19} color="#9ca3af" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>Confirm password</Text>
+                  <TextInput
+                    value={confirmNewPassword}
+                    onChangeText={setConfirmNewPassword}
+                    placeholder="Re-enter your password"
+                    placeholderTextColor="#9ca3af"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    secureTextEntry={!showPassword}
+                    textContentType="newPassword"
+                    style={inputStyle}
+                  />
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={handleSaveNewPassword}
+                disabled={loading}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  backgroundColor: '#4169E1', borderRadius: 16, paddingVertical: 16,
+                  opacity: loading ? 0.6 : 1,
+                }}
+              >
+                {loading && <ActivityIndicator size="small" color="white" />}
+                <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>Save and continue</Text>
               </TouchableOpacity>
             </View>
           )}

@@ -16,6 +16,7 @@ import MessagesScreen from './src/screens/MessagesScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import UniversitySelectionScreen from './src/screens/UniversitySelectionScreen';
 import SignInScreen from './src/screens/SignInScreen';
+import SignUpScreen from './src/screens/SignUpScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
@@ -116,7 +117,7 @@ type BoardPostTimestampRow = {
   created_at: string;
 };
 
-type AuthScreen = 'welcome' | 'university' | 'signin';
+type AuthScreen = 'welcome' | 'university' | 'signin' | 'signup';
 type MainTab = 'home' | 'timetable' | 'grades' | 'board' | 'friends';
 type BoardPostOpenRequest = { postId: string; requestId: number };
 
@@ -615,6 +616,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   userIdRef.current = userId;
   const returnToUniversityAfterSignOutRef = useRef(false);
   const suppressNextSignedOutClearRef = useRef(false);
+  // Verifying a password-reset code creates a real session, which would
+  // otherwise drop the user straight into the app before they've chosen a new
+  // password. SignInScreen raises this for the duration of that flow.
+  const suspendAutoSignInRef = useRef(false);
   const pendingAuthUniversityRef = useRef<University | null>(null);
 
   const requestUserBootstrap = () => {
@@ -753,6 +758,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+        // Mid password-reset: the code-verification session must not count as a
+        // completed sign-in, or the user never gets to set a new password.
+        if (suspendAutoSignInRef.current) return;
         // Defer out of the auth callback: supabase-js holds its auth lock while
         // this callback runs, so awaiting getUser()/signOut() inside it can
         // deadlock until the timeout. Run validation on the next tick instead.
@@ -2921,10 +2929,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
           />
         );
       }
-      // Sign-in and sign-up are one screen now (email → emailed code). The
-      // screen decides which callback to fire based on whether a profile
-      // already exists for this account.
-      const signInUniversity = selectedUniversity ?? DEFAULT_UNIVERSITY;
+      const authUniversity = selectedUniversity ?? DEFAULT_UNIVERSITY;
       const enterApp = (id: string, email: string, university: University) => {
         pendingAuthUniversityRef.current = university;
         setSelectedUniversity(university);
@@ -2937,9 +2942,27 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         setShowNotificationPermissionPrompt(false);
         setShowBrandIntro(false);
       };
+
+      if (name === 'signup') {
+        return (
+          <SignUpScreen
+            university={authUniversity}
+            onBack={goBack}
+            onSignedUp={(id, email, university) => {
+              setForceReviewOnboardingOnce(false);
+              setNeedsFeatureOnboarding(true);
+              enterApp(id, email, university);
+            }}
+            // Sign-up is only ever pushed from sign-in, so go back to it rather
+            // than replacing (which would leave two 'signin' entries stacked).
+            onGoToSignIn={goBack}
+          />
+        );
+      }
+
       return (
         <SignInScreen
-          university={signInUniversity}
+          university={authUniversity}
           onBack={goBack}
           onSignedIn={(id, email, university) => {
             const shouldForceReviewOnboarding = isReviewAccountEmail(email);
@@ -2947,11 +2970,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
             setNeedsFeatureOnboarding(shouldForceReviewOnboarding);
             enterApp(id, email, university);
           }}
-          onSignedUp={(id, email, university) => {
-            setForceReviewOnboardingOnce(false);
-            setNeedsFeatureOnboarding(true);
-            enterApp(id, email, university);
-          }}
+          onSuspendAutoSignIn={(suspended) => { suspendAutoSignInRef.current = suspended; }}
+          onGoToSignUp={() => pushAuth('signup')}
         />
       );
     };

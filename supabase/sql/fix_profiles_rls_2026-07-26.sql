@@ -41,7 +41,7 @@ create table if not exists public.app_review_accounts (
 );
 
 insert into public.app_review_accounts (email, school) values
-  ('review@classmate.app', '*')
+  ('review@theseans.app', '*')
 on conflict do nothing;
 
 -- 2. Recreate the gate function ───────────────────────────────────────────────

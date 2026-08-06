@@ -55,7 +55,7 @@ const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const RESEND_API_URL = 'https://api.resend.com/emails';
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 const EXPO_ACCESS_TOKEN = Deno.env.get('EXPO_ACCESS_TOKEN');
-const FROM_EMAIL = Deno.env.get('NOTIFICATIONS_FROM_EMAIL') ?? 'ClassMate <notifications@classmate.app>';
+const FROM_EMAIL = Deno.env.get('NOTIFICATIONS_FROM_EMAIL') ?? 'ClassMate <notifications@theseans.app>';
 // Shared secret that proves a request came from our own database webhook and not
 // from a forged call. Set it with:  supabase secrets set WEBHOOK_SECRET=<random>
 // and add the same value as an "x-webhook-secret" header on each DB webhook.

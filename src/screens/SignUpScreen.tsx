@@ -63,6 +63,7 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [code, setCode] = useState('');
   const [resendIn, setResendIn] = useState(0);
 
@@ -211,6 +212,16 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
     color: '#111827',
   } as const;
 
+  // iOS draws native placeholders of secure/password-adjacent fields with the
+  // dot-font's wide kerning (and RN can't restyle placeholders on iOS), so
+  // password fields render this overlay Text instead of a native placeholder.
+  const placeholderOverlayStyle = {
+    position: 'absolute' as const,
+    left: 15,
+    fontSize: 15,
+    color: '#9ca3af',
+  } as const;
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -257,18 +268,21 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
               <View style={{ gap: 12, marginBottom: 20 }}>
                 <View style={{ gap: 6 }}>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>School email</Text>
-                  <TextInput
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder={uni.domain}
-                    placeholderTextColor="#9ca3af"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="email"
-                    keyboardType="email-address"
-                    textContentType="emailAddress"
-                    style={inputStyle}
-                  />
+                  <View style={{ position: 'relative', justifyContent: 'center' }}>
+                    <TextInput
+                      value={email}
+                      onChangeText={setEmail}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="email"
+                      keyboardType="email-address"
+                      textContentType="emailAddress"
+                      style={inputStyle}
+                    />
+                    {email.length === 0 && (
+                      <Text pointerEvents="none" style={placeholderOverlayStyle}>{uni.domain}</Text>
+                    )}
+                  </View>
                 </View>
 
                 <View style={{ gap: 6 }}>
@@ -277,14 +291,15 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
                     <TextInput
                       value={password}
                       onChangeText={setPassword}
-                      placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
-                      placeholderTextColor="#9ca3af"
                       autoCapitalize="none"
                       autoCorrect={false}
                       secureTextEntry={!showPassword}
-                      textContentType="newPassword"
+                      textContentType="oneTimeCode"
                       style={[inputStyle, { paddingRight: 46 }]}
                     />
+                    {password.length === 0 && (
+                      <Text pointerEvents="none" style={placeholderOverlayStyle}>{`At least ${MIN_PASSWORD_LENGTH} characters`}</Text>
+                    )}
                     <TouchableOpacity
                       onPress={() => setShowPassword((v) => !v)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -297,17 +312,27 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
 
                 <View style={{ gap: 6 }}>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>Confirm password</Text>
-                  <TextInput
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    placeholder="Re-enter your password"
-                    placeholderTextColor="#9ca3af"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    secureTextEntry={!showPassword}
-                    textContentType="newPassword"
-                    style={inputStyle}
-                  />
+                  <View style={{ position: 'relative', justifyContent: 'center' }}>
+                    <TextInput
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      secureTextEntry={!showConfirmPassword}
+                      textContentType="oneTimeCode"
+                      style={[inputStyle, { paddingRight: 46 }]}
+                    />
+                    {confirmPassword.length === 0 && (
+                      <Text pointerEvents="none" style={placeholderOverlayStyle}>Re-enter your password</Text>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => setShowConfirmPassword((v) => !v)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ position: 'absolute', right: 14 }}
+                    >
+                      <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={19} color="#9ca3af" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
 

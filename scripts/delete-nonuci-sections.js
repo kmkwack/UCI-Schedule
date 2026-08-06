@@ -16,7 +16,10 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
 }
 
 const KEEP = 'UC Irvine';
-const BATCH = 2000;
+// The delete sends every id in the request URL; the Supabase gateway rejects
+// URLs past ~25KB (verified: 750 ids of ~25 chars pass, 800 fail). 500 keeps
+// the URL near 16KB, comfortably under the limit.
+const BATCH = 500;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
   auth: { persistSession: false },

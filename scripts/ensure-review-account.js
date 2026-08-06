@@ -6,7 +6,7 @@
 //
 // HOW TO RUN:
 //   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... REVIEW_PASSWORD='...' node scripts/ensure-review-account.js
-//   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... REVIEW_EMAIL='qa@classmate.app' REVIEW_PASSWORD='...' node scripts/ensure-review-account.js
+//   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... REVIEW_EMAIL='qa@theseans.app' REVIEW_PASSWORD='...' node scripts/ensure-review-account.js
 //
 // AFTER RUNNING:
 //   1. Open the app.
@@ -19,7 +19,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
-const REVIEW_EMAIL = process.env.REVIEW_EMAIL || 'review@classmate.app';
+const REVIEW_EMAIL = process.env.REVIEW_EMAIL || 'review@theseans.app';
 const REVIEW_PASSWORD = process.env.REVIEW_PASSWORD;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !REVIEW_PASSWORD) {

@@ -30,7 +30,7 @@ import UniversityLogo from '../components/UniversityLogo';
 
 // App Review can't receive mail at this address, so it signs in with the
 // password we supply in the review notes and skips the school-domain rule.
-const REVIEW_ACCOUNT_EMAIL = 'review@classmate.app';
+const REVIEW_ACCOUNT_EMAIL = 'review@theseans.app';
 
 const MIN_PASSWORD_LENGTH = 8;
 // Supabase's "Email OTP Length" is configurable (6–10, default 6), so accept
@@ -69,6 +69,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -341,6 +342,16 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
     color: '#111827',
   } as const;
 
+  // iOS draws native placeholders of secure/password-adjacent fields with the
+  // dot-font's wide kerning (and RN can't restyle placeholders on iOS), so
+  // password fields render this overlay Text instead of a native placeholder.
+  const placeholderOverlayStyle = {
+    position: 'absolute' as const,
+    left: 15,
+    fontSize: 15,
+    color: '#9ca3af',
+  } as const;
+
   const codeInputStyle = [inputStyle, {
     fontSize: 30, fontWeight: '700' as const, textAlign: 'center' as const,
     letterSpacing: 10, paddingVertical: 16, marginBottom: 20,
@@ -360,16 +371,22 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
           ref={scrollRef}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          // The sign-in phase fits one screen, so user scrolling/bouncing is off
+          // there (programmatic keyboard scroll assists still work); the reset
+          // phases keep normal scrolling for small screens.
+          scrollEnabled={phase !== 'password'}
+          bounces={phase !== 'password'}
           contentContainerStyle={{
             flexGrow: 1,
             paddingHorizontal: 24,
-            paddingTop: 28,
-            paddingBottom: Platform.OS === 'ios' ? 96 : androidKeyboardInset > 0 ? androidKeyboardInset + 72 : 72,
+            paddingTop: phase === 'password' ? 16 : 28,
+            paddingBottom: phase === 'password' ? 16
+              : Platform.OS === 'ios' ? 96 : androidKeyboardInset > 0 ? androidKeyboardInset + 72 : 72,
           }}
         >
           {/* University card */}
           <View style={{
-            padding: 20, borderRadius: 20, marginBottom: 28,
+            padding: 20, borderRadius: 20, marginBottom: phase === 'password' ? 18 : 28,
             backgroundColor: 'rgba(65,105,225,0.06)',
             borderWidth: 1, borderColor: 'rgba(65,105,225,0.18)',
           }}>
@@ -387,26 +404,29 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
               <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginBottom: 8 }}>
                 Sign In to ClassMate
               </Text>
-              <Text style={{ fontSize: 15, color: '#6b7280', textAlign: 'center', marginBottom: 24 }}>
+              <Text style={{ fontSize: 15, color: '#6b7280', textAlign: 'center', marginBottom: 16 }}>
                 Welcome back! Continue your campus journey
               </Text>
 
               <View style={{ gap: 12, marginBottom: 8 }}>
                 <View style={{ gap: 6 }}>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>Email</Text>
-                  <TextInput
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder={university.domain}
-                    placeholderTextColor="#9ca3af"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="email"
-                    keyboardType="email-address"
-                    textContentType="emailAddress"
-                    onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
-                    style={inputStyle}
-                  />
+                  <View style={{ position: 'relative', justifyContent: 'center' }}>
+                    <TextInput
+                      value={email}
+                      onChangeText={setEmail}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="email"
+                      keyboardType="email-address"
+                      textContentType="emailAddress"
+                      onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
+                      style={inputStyle}
+                    />
+                    {email.length === 0 && (
+                      <Text pointerEvents="none" style={placeholderOverlayStyle}>{university.domain}</Text>
+                    )}
+                  </View>
                 </View>
 
                 <View style={{ gap: 6 }}>
@@ -415,8 +435,6 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
                     <TextInput
                       value={password}
                       onChangeText={setPassword}
-                      placeholder="Your password"
-                      placeholderTextColor="#9ca3af"
                       autoCapitalize="none"
                       autoCorrect={false}
                       secureTextEntry={!showPassword}
@@ -426,6 +444,9 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
                       onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
                       style={[inputStyle, { paddingRight: 46 }]}
                     />
+                    {password.length === 0 && (
+                      <Text pointerEvents="none" style={placeholderOverlayStyle}>Your password</Text>
+                    )}
                     <TouchableOpacity
                       onPress={() => setShowPassword((v) => !v)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -447,14 +468,27 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
                 style={{
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
                   backgroundColor: '#4169E1', borderRadius: 16, paddingVertical: 16,
-                  marginTop: 6, marginBottom: 24, opacity: loading ? 0.6 : 1,
+                  marginTop: 6, marginBottom: 14, opacity: loading ? 0.6 : 1,
                 }}
               >
                 {loading && <ActivityIndicator size="small" color="white" />}
                 <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>Sign in</Text>
               </TouchableOpacity>
 
-              <View style={{ alignItems: 'center', marginBottom: 28 }}>
+              <View style={{
+                flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+                backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#f3f4f6',
+                borderRadius: 12, padding: 12, marginBottom: 14,
+              }}>
+                <Ionicons name="information-circle-outline" size={17} color="#6b7280" style={{ marginTop: 1 }} />
+                <Text style={{ flex: 1, fontSize: 13, lineHeight: 18, color: '#6b7280' }}>
+                  Used to sign in with Google? Your account now uses a password — tap{' '}
+                  <Text style={{ color: '#4169E1', fontWeight: '600' }} onPress={handleForgotPassword}>Forgot password?</Text>
+                  {' '}to set one with your school email.
+                </Text>
+              </View>
+
+              <View style={{ alignItems: 'center' }}>
                 <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 6 }}>Don't have an account yet?</Text>
                 <TouchableOpacity onPress={onGoToSignUp}>
                   <Text style={{ fontSize: 15, color: '#4169E1', fontWeight: '600' }}>Create a new account →</Text>
@@ -482,21 +516,24 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
 
               <View style={{ gap: 6, marginBottom: 20 }}>
                 <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>School email</Text>
-                <TextInput
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder={university.domain}
-                  placeholderTextColor="#9ca3af"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="email"
-                  keyboardType="email-address"
-                  textContentType="emailAddress"
-                  returnKeyType="go"
-                  onSubmitEditing={handleSendResetCode}
-                  autoFocus
-                  style={inputStyle}
-                />
+                <View style={{ position: 'relative', justifyContent: 'center' }}>
+                  <TextInput
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="email"
+                    keyboardType="email-address"
+                    textContentType="emailAddress"
+                    returnKeyType="go"
+                    onSubmitEditing={handleSendResetCode}
+                    autoFocus
+                    style={inputStyle}
+                  />
+                  {email.length === 0 && (
+                    <Text pointerEvents="none" style={placeholderOverlayStyle}>{university.domain}</Text>
+                  )}
+                </View>
               </View>
 
               <TouchableOpacity
@@ -519,7 +556,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
               }}>
                 <Ionicons name="information-circle-outline" size={18} color="#6b7280" style={{ marginTop: 1 }} />
                 <Text style={{ flex: 1, fontSize: 13, lineHeight: 19, color: '#4b5563' }}>
-                  Joined an earlier version of ClassMate? Your account doesn't have a password yet — use this to set one.
+                  Used to sign in with Google? Your account now uses a password — enter your school email above to set one.
                 </Text>
               </View>
             </View>
@@ -606,15 +643,16 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
                     <TextInput
                       value={newPassword}
                       onChangeText={setNewPassword}
-                      placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
-                      placeholderTextColor="#9ca3af"
                       autoCapitalize="none"
                       autoCorrect={false}
                       secureTextEntry={!showPassword}
-                      textContentType="newPassword"
+                      textContentType="oneTimeCode"
                       autoFocus
                       style={[inputStyle, { paddingRight: 46 }]}
                     />
+                    {newPassword.length === 0 && (
+                      <Text pointerEvents="none" style={placeholderOverlayStyle}>{`At least ${MIN_PASSWORD_LENGTH} characters`}</Text>
+                    )}
                     <TouchableOpacity
                       onPress={() => setShowPassword((v) => !v)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -627,17 +665,27 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
 
                 <View style={{ gap: 6 }}>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>Confirm password</Text>
-                  <TextInput
-                    value={confirmNewPassword}
-                    onChangeText={setConfirmNewPassword}
-                    placeholder="Re-enter your password"
-                    placeholderTextColor="#9ca3af"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    secureTextEntry={!showPassword}
-                    textContentType="newPassword"
-                    style={inputStyle}
-                  />
+                  <View style={{ position: 'relative', justifyContent: 'center' }}>
+                    <TextInput
+                      value={confirmNewPassword}
+                      onChangeText={setConfirmNewPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      secureTextEntry={!showConfirmPassword}
+                      textContentType="oneTimeCode"
+                      style={[inputStyle, { paddingRight: 46 }]}
+                    />
+                    {confirmNewPassword.length === 0 && (
+                      <Text pointerEvents="none" style={placeholderOverlayStyle}>Re-enter your password</Text>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => setShowConfirmPassword((v) => !v)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ position: 'absolute', right: 14 }}
+                    >
+                      <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={19} color="#9ca3af" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
 
@@ -656,7 +704,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
             </View>
           )}
 
-          <View style={{ marginTop: 'auto', paddingTop: 28 }}>
+          <View style={{ marginTop: 'auto', paddingTop: 16 }}>
             <LegalConsentText
               onOpenDocument={setActiveDocument}
               color="#9ca3af"

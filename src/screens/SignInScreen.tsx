@@ -184,10 +184,19 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
           );
           return;
         }
+        // Supabase returns the same "invalid login credentials" for a wrong
+        // password AND for an account that has none — which is every account
+        // made before this update. Point those users at the one-time setup.
         if (message.toLowerCase().includes('invalid login credentials')) {
           Alert.alert(
             'Could not sign in',
-            'Double-check your email and password. If you forgot your password, tap "Forgot password?".'
+            "If you've used ClassMate before, your account doesn't have a password yet — sign-in has changed.\n\n" +
+              'Tap "Forgot password?" to set one. You only need to do this once.\n\n' +
+              'Otherwise, double-check your email and password.',
+            [
+              { text: 'Set a password', onPress: () => setPhase('reset-email') },
+              { text: 'Try again', style: 'cancel' },
+            ]
           );
           return;
         }

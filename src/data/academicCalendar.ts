@@ -74,7 +74,10 @@ const LOCAL_FALLBACK: Record<string, Record<string, AcademicEvent[]>> = {
       { id: 'uci-sp26-commencement',title: 'Commencement',             date: '2026-06-13', category: 'graduation' },
     ],
     '2026-Fall': [
-      { id: 'uci-fa26-start',        title: 'Instruction Begins',       date: '2026-09-21', category: 'instruction' },
+      // The quarter opens on the 21st, but classes don't meet until the 24th —
+      // two separate dates, so they need distinct titles.
+      { id: 'uci-fa26-start',        title: 'Quarter Begins',           date: '2026-09-21', category: 'instruction' },
+      { id: 'uci-fa26-instruction',  title: 'Instruction Begins',       date: '2026-09-24', category: 'instruction' },
       { id: 'uci-fa26-adddrop',      title: 'Add/Drop Deadline',        subtitle: 'No dean\'s approval needed (5 PM)', date: '2026-10-09', category: 'enrollment',  url: 'https://reg.uci.edu/calendars/quarterly/2026-2027/quarterly26-27.html' },
       { id: 'uci-fa26-pnp',          title: 'P/NP Change Deadline',     subtitle: 'Last drop without W grade (5 PM)',  date: '2026-11-06', category: 'passnopass',  url: 'https://reg.uci.edu/enrollment/grading/passnopass.html' },
       { id: 'uci-fa26-veterans',     title: 'Veterans Day',             subtitle: 'No classes',                     date: '2026-11-11', category: 'holiday' },

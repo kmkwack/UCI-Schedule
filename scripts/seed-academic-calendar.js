@@ -79,6 +79,38 @@ function isoDate(month, day, year) {
   return `${year}-${m}-${String(parseInt(day, 10)).padStart(2, '0')}`;
 }
 
+// ─── Holiday date sanity checks ───────────────────────────────────────────────
+// The holiday rules scan a whole table row for dates, so a row that mentions
+// several holidays (or carries an unrelated date) can hand a rule the wrong
+// one — this is how Thanksgiving 2026 was seeded as Nov 11 (Veterans Day).
+// These federal/UC holidays all fall on a fixed date or a fixed weekday-of-month,
+// so a title-specific check rejects an implausible date outright.
+const HOLIDAY_DATE_CHECKS = {
+  'Labor Day':        { month: 9,  nth: 1, weekday: 1 },   // 1st Monday of September
+  'Veterans Day':     { month: 11, day: 11 },
+  'Thanksgiving':     { month: 11, nth: 4, weekday: 4 },   // 4th Thursday of November
+  'MLK Day':          { month: 1,  nth: 3, weekday: 1 },   // 3rd Monday of January
+  "Presidents' Day":  { month: 2,  nth: 3, weekday: 1 },   // 3rd Monday of February
+  'Memorial Day':     { month: 5,  last: true, weekday: 1 }, // last Monday of May
+  'Juneteenth':       { month: 6,  day: 19 },
+};
+
+/** True if `date` (YYYY-MM-DD) is plausible for the given holiday title. */
+function holidayDateLooksRight(title, date) {
+  const check = HOLIDAY_DATE_CHECKS[title];
+  if (!check || !date) return true; // no rule defined → don't block it
+
+  const [y, m, d] = date.split('-').map(Number);
+  if (m !== check.month) return false;
+  if (check.day !== undefined) return d === check.day;
+
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  if (weekday !== check.weekday) return false;
+  if (check.last) return d > new Date(Date.UTC(y, m, 0)).getUTCDate() - 7;
+  if (check.nth !== undefined) return Math.ceil(d / 7) === check.nth;
+  return true;
+}
+
 // Parse "Oct 10" or "October 10" → { date, endDate }
 // Also handles "Dec 6–12" or "Mar 14-20", "Mar 14 - Mar 20"
 function parseDateCell(raw, year) {
@@ -156,7 +188,10 @@ async function scrapeUci(academicYear) {
   const colRules = [
     { re: /instruction begins/i,              title: 'Instruction Begins',      category: 'instruction' },
     { re: /drop.*without dean.*approval/i,    title: 'Add/Drop Deadline',       category: 'enrollment',  subtitle: "No dean's approval needed (5 PM)", url },
-    { re: /grading option.*dean.*required/i,  title: 'P/NP Change Deadline',    category: 'passnopass',  subtitle: 'Last drop without W grade (5 PM)', url: 'https://reg.uci.edu/enrollment/grading/passnopass.html' },
+    // UCI lists two grading-option rows: the week-6 one that needs no dean's
+    // approval, and a later one that does (which lands on the last day of
+    // instruction). The old pattern matched the latter, seeding P/NP as Dec 4.
+    { re: /grading option.*without.*dean/i,   title: 'P/NP Change Deadline',    category: 'passnopass',  subtitle: 'Last drop without W grade (5 PM)', url: 'https://reg.uci.edu/enrollment/grading/passnopass.html' },
     { re: /withdraw.*W grade assigned/i,      title: 'Withdrawal Deadline',     category: 'withdrawal',  subtitle: 'W grade assigned (5 PM)', url },
     { re: /instruction ends/i,                title: 'Last Day of Instruction', category: 'instruction' },
     { re: /final exam/i,                      title: 'Finals Week',             category: 'finals', url },
@@ -226,6 +261,9 @@ async function scrapeUci(academicYear) {
         for (const yr of [y1, y2]) {
           const parsed = parseDateCell(dm[0], yr);
           if (!parsed) continue;
+          // Reject dates that can't belong to this holiday — rows often carry
+          // several dates and the first match is not necessarily the right one.
+          if (!holidayDateLooksRight(rule.title, parsed.date)) continue;
           const qKey = uciQuarterForDate(parsed.date, y1, y2);
           if (!qKey || !quarterByKey[qKey]) continue;
           const key = `${qKey}::${rule.title}`;

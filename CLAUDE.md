@@ -449,3 +449,28 @@ const QUARTERS = [
 3. **Supabase → Authentication → Sign In / Providers → Email:** confirm email OTP is enabled, and add a **test OTP** entry for `review@classmate.app` (a fixed code) — App Review can't receive mail at that address.
 4. Existing TestFlight accounts: no migration needed — signing in with the same school email sends a code to that address and reuses the existing account.
 5. New build (62+) required, then verify end-to-end: new email → code → onboarding, returning email → code → home, and the review account's fixed code.
+
+### Session 97 (Academic calendar auto-seeder — wrong holiday/deadline dates) — 2026-08-06
+**Symptom:** The home screen showed "Instruction Begins" twice for Fall 2026 (Sep 21 and Sep 24). Inspecting `academic_calendar` showed 18 rows for UC Irvine 2026-Fall — two overlapping sets: the curated `uci-fa26-*` seed and `auto-uci-2026-fall-*` rows written by `scripts/seed-academic-calendar.js`. The app's `dedupeAcademicEvents` only collapses entries sharing title+date, so any date disagreement surfaces as a visible duplicate.
+
+Three distinct problems, only one of which was a real duplicate:
+1. **Sep 21 vs Sep 24 wasn't a duplicate at all** — the quarter opens Sep 21 but classes start Sep 24. The curated row had mislabeled Sep 21 as "Instruction Begins"; the scraper's Sep 24 was correct.
+2. **`Thanksgiving` seeded as 2026-11-11** (that's Veterans Day). The holiday rules join every cell in a table row and take the first parseable date, so a row mentioning multiple holidays hands a rule the wrong one.
+3. **`P/NP Change Deadline` seeded as 2026-12-04** (the last day of instruction). UCI lists two grading-option rows — the week-6 one needing no dean's approval, and a later one that does. The pattern `/grading option.*dean.*required/i` matched the latter.
+
+- **`src/data/academicCalendar.ts`** — Fall 2026 local fallback: `uci-fa26-start` retitled to "Quarter Begins" (Sep 21) and a new `uci-fa26-instruction` added for "Instruction Begins" (Sep 24), so the two dates carry distinct titles.
+- **`scripts/seed-academic-calendar.js`** — added `HOLIDAY_DATE_CHECKS` + `holidayDateLooksRight()`, a per-holiday date validator (fixed date, nth-weekday, or last-weekday of month) applied inside the UCI date-rule loop; dates that can't belong to the holiday are skipped instead of accepted. Also tightened the P/NP pattern to `/grading option.*without.*dean/i` so it can only match the no-dean's-approval row. Verified against known 2025/2026 dates: Thanksgiving 11/11 now rejected, 11/26 accepted; Labor Day, MLK, Memorial Day, Juneteenth, Veterans Day all validate correctly; titles without a rule (Winter Break, etc.) pass through untouched.
+
+**⚠️ Why the DB cleanup alone wasn't enough:** `.github/workflows/seed-academic-calendar.yml` runs this scraper **daily at 04:00 UTC** and upserts on `id`, so deleting the bad `auto-*` rows without fixing the script would have recreated them the next morning.
+
+**Still to run in Supabase** (after this fix is on `main` so the cron picks it up):
+```sql
+update academic_calendar set title = 'Quarter Begins'
+where school = 'UC Irvine' and id = 'uci-fa26-start';
+
+delete from academic_calendar where school = 'UC Irvine' and id in (
+  'auto-uci-2026-fall-add-drop-deadline', 'auto-uci-2026-fall-withdrawal-deadline',
+  'auto-uci-2026-fall-last-day-of-instruction', 'auto-uci-2026-fall-finals-week',
+  'auto-uci-2026-fall-thanksgiving', 'auto-uci-2026-fall-p-np-change-deadline'
+);
+```

@@ -185,14 +185,21 @@ async function scrapeUci(academicYear) {
   const quarterByKey = Object.fromEntries(quarters.map((q) => [q.key, q]));
 
   // Rules for column-based parsing (academic deadlines have clear column layout)
+  // Patterns below are matched against the row labels on
+  // reg.uci.edu/calendars/quarterly — several rows differ only by whether a
+  // dean's approval is needed, so each pattern has to pin that clause down.
+  //   "Drop a course without dean's approval"                        → Oct 9
+  //   "Drop a course without receiving a W grade; dean's approval …"  → Nov 6
+  //   "Change the grading option … without dean's approval"           → Oct 9
+  //   "Change the grading option …; dean's approval required"         → Dec 4
+  //   "Withdraw from a course; W grade assigned; dean's approval …"   → Dec 4
   const colRules = [
+    { re: /quarter begins/i,                  title: 'Quarter Begins',          category: 'instruction' },
     { re: /instruction begins/i,              title: 'Instruction Begins',      category: 'instruction' },
-    { re: /drop.*without dean.*approval/i,    title: 'Add/Drop Deadline',       category: 'enrollment',  subtitle: "No dean's approval needed (5 PM)", url },
-    // UCI lists two grading-option rows: the week-6 one that needs no dean's
-    // approval, and a later one that does (which lands on the last day of
-    // instruction). The old pattern matched the latter, seeding P/NP as Dec 4.
-    { re: /grading option.*without.*dean/i,   title: 'P/NP Change Deadline',    category: 'passnopass',  subtitle: 'Last drop without W grade (5 PM)', url: 'https://reg.uci.edu/enrollment/grading/passnopass.html' },
-    { re: /withdraw.*W grade assigned/i,      title: 'Withdrawal Deadline',     category: 'withdrawal',  subtitle: 'W grade assigned (5 PM)', url },
+    // Must be tested before the plain drop rule, which would otherwise swallow it.
+    { re: /drop.*without receiving a w grade/i, title: 'P/NP Change Deadline',  category: 'passnopass',  subtitle: 'Last drop without W grade (5 PM)', url: 'https://reg.uci.edu/enrollment/grading/passnopass.html' },
+    { re: /drop a course without dean.{0,3}s approval/i, title: 'Add/Drop Deadline', category: 'enrollment', subtitle: "No dean's approval needed (5 PM)", url },
+    { re: /withdraw from a course.*w grade assigned/i,   title: 'Withdrawal Deadline', category: 'withdrawal', subtitle: 'W grade assigned (5 PM)', url },
     { re: /instruction ends/i,                title: 'Last Day of Instruction', category: 'instruction' },
     { re: /final exam/i,                      title: 'Finals Week',             category: 'finals', url },
     { re: /deadline.*submit.*final grades/i,  title: 'Final Grades Due',        category: 'deadline', subtitle: 'Grades available 10 PM' },

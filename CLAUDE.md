@@ -479,3 +479,16 @@ delete from academic_calendar where school = 'UC Irvine' and id in (
 `academic_calendar` holds two rows for most events: a curated `uci-*` row and a nightly-scraped `auto-*` row. `dedupeAcademicEvents` matched on title+date, so the pair collapsed only when the dates agreed — any scraper mis-parse rendered the event twice (seen with "P/NP Change Deadline" at both 10/09 and 11/06). Since the nightly cron re-upserts the `auto-*` rows, deleting them in SQL only fixes it until the next morning.
 
 - **`src/data/academicCalendar.ts`** — `dedupeAcademicEvents` now dedupes by **title** within a term (callers already pass one term's events) and, on conflict, keeps the curated row over the `auto-*` one via a new `isAutoSeededEvent` helper. A repeated title inside one term is always a data error, so this holds regardless of what the scraper writes. Verified against the live 2026-Fall rows: 9 events → 6, no duplicates, curated dates preserved.
+
+### Session 97c (UCI scraper — patterns matched against the real registrar table)
+The earlier P/NP fix was guesswork and still wrong (it seeded Oct 9). Checking the actual table at reg.uci.edu/calendars/quarterly shows why: several rows differ only in their dean's-approval clause, and the one we want isn't the grading-option row at all.
+
+| row label | Fall 2026 |
+|---|---|
+| Drop a course **without dean's approval** | Oct 9 ← Add/Drop |
+| Change the grading option … **without dean's approval** | Oct 9 |
+| Drop a course **without receiving a W grade**; dean's approval required | **Nov 6 ← P/NP** |
+| Change the grading option …; dean's approval required | Dec 4 |
+| Withdraw from a course; W grade assigned | Dec 4 ← Withdrawal |
+
+- **`scripts/seed-academic-calendar.js`** — P/NP now keys off `/drop.*without receiving a w grade/i` (the actual no-W drop deadline) and is ordered **before** the add/drop rule, which would otherwise swallow it since `colRules` breaks on first match. Add/Drop and Withdrawal patterns tightened to their full row labels, and a `Quarter Begins` rule added so Sep 21 is captured with the right title instead of colliding with Instruction Begins. Verified by replaying all 17 row labels from the live table through the rule list: all 8 events resolve to the correct date, with no unintended matches.

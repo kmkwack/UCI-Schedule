@@ -200,25 +200,48 @@ export function isTermInSession(school: string, quarterKey: string, now: Date = 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Rows written by the nightly scraper; curated rows win over these on conflict. */
+function isAutoSeededEvent(event: AcademicEvent) {
+  return event.id.startsWith('auto-');
+}
+
 /**
  * Remove duplicate events from a merged (official + custom) list.
- * Dedupes first by `id`, then by a content fingerprint (title+date+endDate),
- * which catches cases where the same event was seeded twice with different ids
- * (e.g. duplicate rows in the academic_calendar table) or a user re-added an
- * event that already exists officially.
+ *
+ * Deduped by `id` first, then by **title** — the same deadline must appear once
+ * per term. Matching on title+date isn't enough: `academic_calendar` holds both
+ * a curated row and a nightly-scraped `auto-*` row for each event, and when the
+ * scraper mis-parses a date the two disagree and *both* render (this is how
+ * "P/NP Change Deadline" showed up twice). A repeated title within one term is
+ * always a data error, so the curated row wins and the scraped one is dropped.
+ *
+ * Callers pass a single term's events, so titles are only compared within it.
  */
 export function dedupeAcademicEvents(events: AcademicEvent[]): AcademicEvent[] {
   const seenIds = new Set<string>();
-  const seenFingerprints = new Set<string>();
+  const byTitle = new Map<string, number>(); // title → index in result
   const result: AcademicEvent[] = [];
+
   for (const event of events) {
     if (seenIds.has(event.id)) continue;
-    const fingerprint = `${event.title.trim().toLowerCase()}|${event.date}|${event.endDate ?? ''}`;
-    if (seenFingerprints.has(fingerprint)) continue;
     seenIds.add(event.id);
-    seenFingerprints.add(fingerprint);
-    result.push(event);
+
+    const titleKey = event.title.trim().toLowerCase();
+    const existingIndex = byTitle.get(titleKey);
+
+    if (existingIndex === undefined) {
+      byTitle.set(titleKey, result.length);
+      result.push(event);
+      continue;
+    }
+
+    // Same title already present — keep whichever is curated rather than scraped.
+    const existing = result[existingIndex];
+    if (isAutoSeededEvent(existing) && !isAutoSeededEvent(event)) {
+      result[existingIndex] = event;
+    }
   }
+
   return result;
 }
 

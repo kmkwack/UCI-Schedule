@@ -474,3 +474,8 @@ delete from academic_calendar where school = 'UC Irvine' and id in (
   'auto-uci-2026-fall-thanksgiving', 'auto-uci-2026-fall-p-np-change-deadline'
 );
 ```
+
+### Session 97b (Academic calendar — dedupe by title so scraper/curated conflicts can't double-render)
+`academic_calendar` holds two rows for most events: a curated `uci-*` row and a nightly-scraped `auto-*` row. `dedupeAcademicEvents` matched on title+date, so the pair collapsed only when the dates agreed — any scraper mis-parse rendered the event twice (seen with "P/NP Change Deadline" at both 10/09 and 11/06). Since the nightly cron re-upserts the `auto-*` rows, deleting them in SQL only fixes it until the next morning.
+
+- **`src/data/academicCalendar.ts`** — `dedupeAcademicEvents` now dedupes by **title** within a term (callers already pass one term's events) and, on conflict, keeps the curated row over the `auto-*` one via a new `isAutoSeededEvent` helper. A repeated title inside one term is always a data error, so this holds regardless of what the scraper writes. Verified against the live 2026-Fall rows: 9 events → 6, no duplicates, curated dates preserved.

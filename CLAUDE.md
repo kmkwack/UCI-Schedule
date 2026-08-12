@@ -492,3 +492,16 @@ The earlier P/NP fix was guesswork and still wrong (it seeded Oct 9). Checking t
 | Withdraw from a course; W grade assigned | Dec 4 ← Withdrawal |
 
 - **`scripts/seed-academic-calendar.js`** — P/NP now keys off `/drop.*without receiving a w grade/i` (the actual no-W drop deadline) and is ordered **before** the add/drop rule, which would otherwise swallow it since `colRules` breaks on first match. Add/Drop and Withdrawal patterns tightened to their full row labels, and a `Quarter Begins` rule added so Sep 21 is captured with the right title instead of colliding with Instruction Begins. Verified by replaying all 17 row labels from the live table through the rule list: all 8 events resolve to the correct date, with no unintended matches.
+
+### Session 98 (Guideline 4 — sign-in screen unreachable content on iPad) — 2026-08-12
+**Rejection:** build 62, reviewed on iPad Air 11-inch (M3)/iPadOS 26.6 — "the app included non-visible sections (unable to scroll down)." Note this build cleared 4.8 and 2.1(a); the auth rewrite held.
+
+An iPhone-only app (`TARGETED_DEVICE_FAMILY = 1`) still installs on iPad and runs in the iPhone-compatibility window, which is a **short** canvas (~375×667pt). Reproduced exactly by installing the app on an iPad Air 11-inch simulator: the sign-in screen clipped at "Don't have an account yet?" and would not scroll.
+
+Two causes, both fixed:
+1. **`SignInScreen` disabled scrolling on the password phase** — `scrollEnabled={phase !== 'password'}` / `bounces={...}`, added on the assumption that phase "fits one screen". It does on a tall iPhone; on the compat canvas the footer (create-account link, legal text) was rendered but unreachable. Scrolling is now always on — a ScrollView whose content fits doesn't scroll anyway, so there's no cost.
+2. **Neither auth ScrollView set `style={{ flex: 1 }}`** — without it a ScrollView grows to fit its content instead of being bounded by its parent, so it never scrolls and the overflow is simply clipped. `UniversitySelectionScreen` already had `flex: 1`, which is why that screen was unaffected. Added to `SignInScreen` and `SignUpScreen`.
+
+- **`app.json` + `ios/ClassMate/Info.plist`** — removed `UIApplicationSceneManifest` (`UIApplicationSupportsMultipleScenes: false` with an **empty** `UISceneConfigurations: {}`), added in Apr's "fixed keyboard" commit. The app has no `SceneDelegate`, so declaring scene support with no configuration left iPadOS sizing the compatibility window incorrectly. Removing it restores the standard AppDelegate window path (RN's default) and the compat window now fills the screen properly. This alone did **not** fix scrolling — verified on-device before and after — but it was a real defect.
+
+Verified on the iPad Air 11-inch simulator after the fix: the sign-in screen scrolls and the create-account link and legal text are fully reachable.

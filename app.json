@@ -23,11 +23,7 @@
         "LSApplicationQueriesSchemes": [
           "instagram",
           "instagram-stories"
-        ],
-        "UIApplicationSceneManifest": {
-          "UIApplicationSupportsMultipleScenes": false,
-          "UISceneConfigurations": {}
-        }
+        ]
       }
     },
     "android": {

@@ -239,6 +239,9 @@ export default function SignUpScreen({ university, onBack, onSignedUp, onGoToSig
         <ScrollView
           ref={scrollRef}
           keyboardShouldPersistTaps="handled"
+          // Without an explicit flex the ScrollView grows to fit its content and
+          // stops scrolling, which hides the bottom of the form on short screens.
+          style={{ flex: 1 }}
           contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 28, paddingBottom: 48 }}
         >
           {/* University card */}

@@ -380,11 +380,13 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
           ref={scrollRef}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-          // The sign-in phase fits one screen, so user scrolling/bouncing is off
-          // there (programmatic keyboard scroll assists still work); the reset
-          // phases keep normal scrolling for small screens.
-          scrollEnabled={phase !== 'password'}
-          bounces={phase !== 'password'}
+          // Scrolling stays enabled on every phase. It used to be switched off
+          // for 'password' on the assumption that phase always fits one screen,
+          // but it doesn't on short canvases — notably the iPhone-compatibility
+          // window an iPad runs this app in, where the footer became unreachable
+          // (App Review, Guideline 4). A ScrollView with content that fits
+          // doesn't scroll anyway, so leaving it on costs nothing.
+          style={{ flex: 1 }}
           contentContainerStyle={{
             flexGrow: 1,
             paddingHorizontal: 24,

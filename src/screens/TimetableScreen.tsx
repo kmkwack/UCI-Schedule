@@ -2068,13 +2068,21 @@ export default function TimetableScreen({
         <View style={{ paddingHorizontal: 18, paddingBottom: 10, paddingTop: topInset + 6 }}>
           {/* Row 1: Title + Quarter picker + three-dots */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <Text style={{ flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: 0 }}>
+            <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: 0 }}>
               Timetable
             </Text>
-            <View style={{ maxWidth: Math.max(128, screenWidth * 0.48), flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            {/* flexShrink is required here: RN defaults it to 0, so without it this
+                group keeps its full width and pushes the ⋮ button off-screen on
+                narrow canvases — notably the ~380pt iPhone-compatibility window an
+                iPad runs this app in, where a long term label like
+                "Summer10wk 2026" overflows the row by a few points. Letting the
+                group shrink is what finally lets the label's own ellipsizeMode fire. */}
+            <View style={{ flexShrink: 1, minWidth: 0, maxWidth: Math.max(128, screenWidth * 0.48), flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <TouchableOpacity
                 onPress={openQuarterDropdown}
                 style={{
+                  flexShrink: 1,
+                  minWidth: 0,
                   flexDirection: 'row',
                   alignItems: 'center',
                   borderWidth: 1,
@@ -2091,7 +2099,17 @@ export default function TimetableScreen({
                   elevation: 3,
                 }}
               >
-                <Text numberOfLines={1} ellipsizeMode="tail" style={{ flexShrink: 1, minWidth: 0, fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>
+                {/* Long term names ("Summer10wk 2026") exceed this group's
+                    maxWidth on narrow canvases. Scaling the type down a few
+                    percent keeps the whole label readable, where ellipsizing
+                    would clip the year off the end. */}
+                <Text
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  style={{ flexShrink: 1, minWidth: 0, fontSize: 13, fontWeight: '600', color: colors.textSecondary }}
+                >
                   {timetables.length === 0 ? '--' : pickerTermLabel(selectedQuarter)}
                 </Text>
                 <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
@@ -2099,6 +2117,7 @@ export default function TimetableScreen({
               <TouchableOpacity
                 onPress={openSettings}
                 style={{
+                  flexShrink: 0,
                   width: 36,
                   height: 36,
                   borderRadius: 18,

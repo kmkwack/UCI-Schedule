@@ -1,0 +1,52 @@
+<!--
+  Supabase → Authentication → Emails → "Confirm signup"
+  Subject heading: Your ClassMate verification code
+
+  Sent when a NEW account is created. {{ .Token }} is the 8-digit code —
+  do not remove it, it is the only thing the user actually needs.
+
+  Table layout + inline CSS on purpose: Gmail, Outlook and most native
+  clients strip <style> blocks and ignore flexbox/grid.
+-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:40px 16px;background-color:#f7f8fa;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;background-color:#ffffff;border:1px solid #eceef2;border-radius:20px;">
+        <tr>
+          <td style="padding:40px 40px 36px 40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+            <p style="margin:0 0 28px 0;font-size:12px;font-weight:700;letter-spacing:1.4px;color:#4169e1;">CLASSMATE</p>
+
+            <h1 style="margin:0 0 12px 0;font-size:26px;line-height:1.25;font-weight:800;color:#111827;">Verify your school email</h1>
+
+            <p style="margin:0 0 28px 0;font-size:15px;line-height:1.65;color:#4b5563;">
+              Enter this code in the app to finish creating your account.
+            </p>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px 0;">
+              <tr>
+                <td align="center" style="background-color:#f0f4ff;border-radius:14px;padding:24px 16px;">
+                  <span style="font-family:'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;font-size:30px;font-weight:700;letter-spacing:7px;color:#1b2a5b;">{{ .Token }}</span>
+                </td>
+              </tr>
+            </table>
+
+            <p style="margin:0 0 8px 0;font-size:14px;line-height:1.6;color:#6b7280;">
+              This code expires in 1 hour and can only be used once.
+            </p>
+            <p style="margin:0;font-size:14px;line-height:1.6;color:#6b7280;">
+              Didn't try to sign up? You can ignore this email — no account will be created.
+            </p>
+
+            <div style="margin:32px 0 0 0;border-top:1px solid #eef0f4;"></div>
+
+            <p style="margin:20px 0 0 0;font-size:12px;line-height:1.6;color:#9ca3af;">
+              ClassMate — campus life, all in one app.
+            </p>
+
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>

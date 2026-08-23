@@ -350,6 +350,24 @@ function truncateNotificationText(value: string, maxLength = 64) {
   return `${value.slice(0, maxLength - 1)}…`;
 }
 
+// Only these mean "this session is genuinely no longer valid". Anything else —
+// a 5xx from the auth server, a 429, a captive-portal HTML body, a parse error —
+// is ambiguous, and treating ambiguity as "signed out" silently destroys a
+// working session and drops the user back on the welcome screen (Guideline
+// 2.1(a), build 65). A session that really is dead will fail the next request
+// anyway, so failing open here costs nothing.
+function isDefinitiveAuthFailure(error: unknown) {
+  const status = Number((error as { status?: unknown } | null | undefined)?.status ?? NaN);
+  if (status === 401 || status === 403) return true;
+  const message = String((error as { message?: unknown } | null | undefined)?.message ?? '').toLowerCase();
+  return (
+    message.includes('session_not_found') ||
+    message.includes('user_not_found') ||
+    message.includes('session from session_id claim in jwt does not exist') ||
+    (message.includes('invalid') && (message.includes('jwt') || message.includes('token')))
+  );
+}
+
 function isNetworkRequestError(error: unknown) {
   const message = String((error as { message?: unknown } | null | undefined)?.message ?? error ?? '').toLowerCase();
   return (
@@ -701,12 +719,19 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       // instead of destroying it and kicking the user back to the welcome screen.
       const errorMessage = String((error as { message?: unknown } | null | undefined)?.message ?? '');
       const errorName = String((error as { name?: unknown } | null | undefined)?.name ?? '');
-      const isTransient =
-        isNetworkRequestError(error) ||
-        errorMessage.includes('timed out') ||
-        errorName === 'AuthRetryableFetchError';
       const identityMismatch = !!verifiedUser && verifiedUser.id !== sessionUser.id;
-      if (isTransient && !identityMismatch) {
+      // The session is only abandoned when the server actually says it is dead,
+      // or when it belongs to someone else. Every other failure — including the
+      // transient shapes below, and anything unrecognised — keeps the user
+      // signed in rather than silently ejecting them.
+      const sessionIsDead =
+        identityMismatch ||
+        isDefinitiveAuthFailure(error) ||
+        (!verifiedUser && !error);
+      if (!sessionIsDead) {
+        if (!isNetworkRequestError(error) && !errorMessage.includes('timed out') && errorName !== 'AuthRetryableFetchError') {
+          console.warn('Auth validation failed with an ambiguous error; keeping session:', error);
+        }
         hydrateUserFromSession(sessionUser);
         setAuthInitializing(false);
         return;
@@ -761,10 +786,21 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         // Mid password-reset: the code-verification session must not count as a
         // completed sign-in, or the user never gets to set a new password.
         if (suspendAutoSignInRef.current) return;
+        const sessionUser = session.user;
+        // An interactive sign-in just authenticated against the auth server, so
+        // there is nothing left to verify. Re-checking it added no safety and
+        // gave every hiccup on that extra round-trip a chance to sign the user
+        // back out mid-onboarding (Guideline 2.1(a), build 65). Validation is
+        // for *stored* sessions restored at launch, which is what the other two
+        // events cover.
+        if (event === 'SIGNED_IN') {
+          if (userIdRef.current !== sessionUser.id) hydrateUserFromSession(sessionUser);
+          setAuthInitializing(false);
+          return;
+        }
         // Defer out of the auth callback: supabase-js holds its auth lock while
         // this callback runs, so awaiting getUser()/signOut() inside it can
         // deadlock until the timeout. Run validation on the next tick instead.
-        const sessionUser = session.user;
         setTimeout(() => { void validateAndHydrateSession(sessionUser); }, 0);
         return;
       }

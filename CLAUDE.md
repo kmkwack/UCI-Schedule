@@ -514,3 +514,11 @@ Build 64 on a physical iPad surfaced two overflow defects the earlier scroll-foc
 2. **`LegalConsentText` wrapped to two lines** on the Welcome/Sign-In/Sign-Up screens. Added `numberOfLines={1}` + `adjustsFontSizeToFit` + `minimumFontScale={0.6}`. The low floor is deliberate: it prevents iOS from truncating (which would hide the Privacy Policy link) and the text only shrinks as far as needed. `adjustsFontSizeToFit` is iOS-only — Android still wraps.
 
 **Audit note for future agents:** the Session 98 audit checked vertical scrolling only and cleared the app. Horizontal overflow is a separate class — it needs a width-constrained parent (`maxWidth`/`width`/`overflow:hidden`) plus children that cannot shrink. Only two `maxWidth` values in the codebase scale with the canvas (`TimetableScreen:2080`, `App.tsx:3183`); the rest are fixed pixels and therefore behave the same on iPhone, so they cannot be iPad-specific regressions. `App.tsx:3183` (tab label) is safe — it already has `numberOfLines`/`ellipsizeMode`.
+
+### Session 99 (Onboarding — button label overflow + major suggestions hidden by keyboard) — 2026-08-23
+Two TestFlight feedback reports on the "03 · About You" onboarding slide.
+
+1. **`PrimaryButton` label spilled past the button.** The button had no `paddingHorizontal` and its `Text` had no shrink behaviour, so the longest label ("Choose year and major", shown while the step is incomplete) ran edge to edge — and on this slide the button is only ~62% of the row because a Back button sits beside it. Added `paddingHorizontal: 14`, plus `numberOfLines={1}` / `adjustsFontSizeToFit` / `minimumFontScale={0.75}` / `flexShrink: 1` on the label and `flexShrink: 0` on the arrow icon.
+2. **Major suggestion chips were invisible behind the keyboard.** They render below the Major input inside the scroll content; with the keyboard up they sit off-screen, so users typing a major never learned suggestions existed. Added a `contentScrollRef` on the slide's `Animated.ScrollView` and a `revealFieldSuggestions` callback (`scrollToEnd`, 60ms after layout) passed down through `PreviewForSlide` to `ProfileFitForm`, which fires it whenever the suggestion list becomes non-empty.
+
+Also added `useCallback` to the React import.

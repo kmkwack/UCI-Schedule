@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -259,6 +259,10 @@ function PrimaryButton({
         justifyContent: 'center',
         flexDirection: 'row',
         gap: 8,
+        // Without horizontal padding a long label ("Choose year and major")
+        // runs to the very edge of the button and reads as overflowing —
+        // this button is only ~62% of the row when a Back button sits beside it.
+        paddingHorizontal: 14,
         shadowColor: accent,
         shadowOffset: { width: 0, height: compact ? 8 : 14 },
         shadowOpacity: disabled ? 0 : compact ? 0.18 : 0.26,
@@ -268,10 +272,18 @@ function PrimaryButton({
       }}
     >
       {loading ? <ActivityIndicator size="small" color="white" /> : null}
-      <Text style={{ color: 'white', fontSize: compact ? 15 : 16, fontWeight: '800', letterSpacing: 0 }}>
+      {/* Labels vary a lot in length ("Continue" vs "Choose year and major").
+          Let the text shrink and scale instead of spilling past the button, and
+          pin the arrow so it never gets squeezed out. */}
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+        style={{ flexShrink: 1, color: 'white', fontSize: compact ? 15 : 16, fontWeight: '800', letterSpacing: 0 }}
+      >
         {children}
       </Text>
-      {!loading ? <Ionicons name="arrow-forward" size={compact ? 16 : 17} color="white" /> : null}
+      {!loading ? <Ionicons name="arrow-forward" size={compact ? 16 : 17} color="white" style={{ flexShrink: 0 }} /> : null}
     </TouchableOpacity>
   );
 }
@@ -364,18 +376,27 @@ function NamesForm({
 function ProfileFitForm({
   profile,
   updateProfile,
+  onRevealSuggestions,
 }: {
   profile: EditableProfile;
   updateProfile: (patch: Partial<EditableProfile>) => void;
+  onRevealSuggestions: () => void;
 }) {
   const [majorQuery, setMajorQuery] = useState(profile.major || '');
   const suggestions = COMMON_MAJORS
     .filter((major) => major.toLowerCase().includes(majorQuery.trim().toLowerCase()))
     .slice(0, 8);
+  const hasSuggestions = majorQuery.trim().length > 0 && suggestions.length > 0;
 
   useEffect(() => {
     setMajorQuery(profile.major || '');
   }, [profile.major]);
+
+  // The chips sit below the input, which the on-screen keyboard covers, so users
+  // never learned they were there. Bring them into view as soon as they exist.
+  useEffect(() => {
+    if (hasSuggestions) onRevealSuggestions();
+  }, [hasSuggestions, suggestions.length, onRevealSuggestions]);
 
   return (
     <View style={{ marginTop: 22 }}>
@@ -830,16 +851,18 @@ function PreviewForSlide({
   updateProfile,
   tourScrollY,
   isDark,
+  onRevealSuggestions,
 }: {
   slide: Slide;
   profile: EditableProfile;
   updateProfile: (patch: Partial<EditableProfile>) => void;
   tourScrollY: Animated.Value;
   isDark: boolean;
+  onRevealSuggestions: () => void;
 }) {
   if (slide.kind === 'arrival') return null;
   if (slide.kind === 'names') return <NamesForm profile={profile} updateProfile={updateProfile} />;
-  if (slide.kind === 'profile') return <ProfileFitForm profile={profile} updateProfile={updateProfile} />;
+  if (slide.kind === 'profile') return <ProfileFitForm profile={profile} updateProfile={updateProfile} onRevealSuggestions={onRevealSuggestions} />;
   if (slide.kind === 'personal') return <PersonalDetailsForm profile={profile} updateProfile={updateProfile} />;
   if (slide.kind === 'tour') return <AppTourSequence scrollY={tourScrollY} />;
   if (slide.kind === 'notifications') return <NotificationsStepContent isDark={isDark} />;
@@ -865,6 +888,12 @@ export default function FeatureOnboardingScreen({
   const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
   const anim = useRef(new Animated.Value(1)).current;
   const tourScrollY = useRef(new Animated.Value(0)).current;
+  const contentScrollRef = useRef<any>(null);
+  // The major suggestions render below the input, which the keyboard covers —
+  // users reported not knowing they existed. Scroll them into view when they appear.
+  const revealFieldSuggestions = useCallback(() => {
+    setTimeout(() => contentScrollRef.current?.scrollToEnd({ animated: true }), 60);
+  }, []);
   const slide = SLIDES[index];
   const schoolBrand = useMemo(() => getOnboardingSchoolBrand(schoolName), [schoolName]);
   const slideAccent = slide.kind === 'arrival' ? schoolBrand.accent : slide.accent;
@@ -1024,6 +1053,7 @@ export default function FeatureOnboardingScreen({
         </View>
 
         <Animated.ScrollView
+          ref={contentScrollRef}
           style={{ flex: 1 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -1080,7 +1110,7 @@ export default function FeatureOnboardingScreen({
                 <Text style={{ fontSize: 15, lineHeight: 23, color: colors.textSecondary, marginTop: 12 }}>
                   {slideBody}
                 </Text>
-                <PreviewForSlide slide={slide} profile={profile} updateProfile={updateProfile} tourScrollY={tourScrollY} isDark={isDark} />
+                <PreviewForSlide slide={slide} profile={profile} updateProfile={updateProfile} tourScrollY={tourScrollY} isDark={isDark} onRevealSuggestions={revealFieldSuggestions} />
               </>
             )}
           </Animated.View>

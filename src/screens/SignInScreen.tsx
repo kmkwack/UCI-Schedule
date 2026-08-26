@@ -129,13 +129,17 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
   };
 
   const finishSignIn = async (userId: string, signedInEmail: string) => {
+    // Everything below is convenience work that happens *after* the password has
+    // already been accepted. None of it may abort the sign-in: the two failure
+    // paths that used to signOut() here have now caused two separate Guideline
+    // 2.1(a) rejections — first an RLS policy error, then "JWT issued at future"
+    // (clock skew on the review device, which is not something the app controls).
+    // A user who authenticated successfully gets into the app; if the seeding or
+    // the metadata write fails, the app's normal bootstrap handles the missing
+    // rows on its own.
     if (isReviewAccount(signedInEmail)) {
       const seedError = await seedReviewAccount(userId, signedInEmail);
-      if (seedError) {
-        await supabase.auth.signOut();
-        Alert.alert('Review setup failed', seedError.message);
-        return;
-      }
+      if (seedError) console.warn('Review account seeding failed (continuing):', seedError.message);
     }
 
     const { error: metadataError } = await supabase.auth.updateUser({
@@ -144,11 +148,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
         classmate_school: university.name,
       },
     });
-    if (metadataError) {
-      await supabase.auth.signOut();
-      Alert.alert('Sign-in failed', metadataError.message);
-      return;
-    }
+    if (metadataError) console.warn('Sign-in metadata write failed (continuing):', metadataError.message);
 
     onSignedIn(userId, signedInEmail, university);
   };
@@ -164,7 +164,11 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
     Keyboard.dismiss();
     setLoading(true);
     try {
-      await supabase.auth.signOut();
+      // Best-effort cleanup of any stale session. signInWithPassword replaces the
+      // session anyway, so a failure here must not prevent the sign-in attempt —
+      // letting it throw would surface as "could not sign in" without the
+      // password ever having been tried.
+      await supabase.auth.signOut().catch(() => {});
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,

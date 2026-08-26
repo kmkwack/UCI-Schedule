@@ -522,3 +522,19 @@ Two TestFlight feedback reports on the "03 · About You" onboarding slide.
 2. **Major suggestion chips were invisible behind the keyboard.** They render below the Major input inside the scroll content; with the keyboard up they sit off-screen, so users typing a major never learned suggestions existed. Added a `contentScrollRef` on the slide's `Animated.ScrollView` and a `revealFieldSuggestions` callback (`scrollToEnd`, 60ms after layout) passed down through `PreviewForSlide` to `ProfileFitForm`, which fires it whenever the suggestion list becomes non-empty.
 
 Also added `useCallback` to the React import.
+
+### Session 99 (Guideline 2.1(a) — sign-in aborted by non-essential side work) — 2026-08-26
+**Rejection:** build 68, iPhone 17 Pro Max — "App gives an error at login." A TestFlight screenshot showed the app's own alert: **"Review setup failed — JWT issued at future"**.
+
+`JWT issued at future` is clock skew: the access token's `iat` looked like the future to whatever validated it. That is a Supabase-side/environmental condition the app cannot prevent.
+
+**The defect was not the error — it was treating it as fatal.** `finishSignIn` in `SignInScreen.tsx` ran two convenience operations *after* the password had already been accepted, and signed the user out if either failed:
+1. `seedReviewAccount()` — pre-writes `profiles`/`user_settings` so the review account can skip onboarding.
+2. `supabase.auth.updateUser({ data })` — sets `classmate_signup_started` / `classmate_school` metadata flags.
+
+Neither is required to use the app, yet a failure in either rolled back a successful authentication. **This same alert has now caused two separate 2.1(a) rejections** — Session 96's was `new row violates row-level security policy`, this one was the JWT error. Session 96 fixed that instance's root cause (the missing RLS lookup tables) but left the fail-closed structure intact, so the next unrelated failure reproduced the rejection.
+
+- **`src/screens/SignInScreen.tsx`** — both failure paths now `console.warn` and continue; `onSignedIn` always runs once the password is accepted. Verified the fallback is real, not assumed: `App.tsx:1323` sets `needsFeatureOnboarding` when the profile/settings rows are absent, so a reviewer without seeded rows is routed through onboarding (which writes them) rather than into a broken state. Also made the pre-sign-in `signOut()` non-throwing — it sits inside the same `try` as `signInWithPassword`, so a network failure on that vestigial OAuth-era cleanup surfaced as "could not sign in" without the password ever being tried.
+- **`scripts/ensure-review-account.js`** — run against production so the review account's `profiles`/`user_settings` rows already exist and its password matches App Store Connect. With the rows pre-seeded the runtime seeding path is a no-op, so the code that failed here no longer executes at all.
+
+**Note for future agents:** nothing between "password accepted" and "user is in the app" may be fail-closed. Analytics, metadata, profile pre-fill, and push-token writes are all best-effort; if one of them can sign the user out, App Review will eventually hit it.

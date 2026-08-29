@@ -2,6 +2,9 @@
 .expo/
 builds/
 node_modules/
+# Marketing site (theseans.app) — deployed separately to Netlify, never part
+# of the app bundle.
+the-seans-site/
 ios/Pods/
 ios/build/
 ios/**/*.xcuserstate

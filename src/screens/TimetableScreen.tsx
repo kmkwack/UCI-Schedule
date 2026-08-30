@@ -2474,37 +2474,36 @@ export default function TimetableScreen({
             overflow: 'hidden',
           }}
         >
+          {/* The school leads, not the app. People post a timetable to say where
+              they go — that identity is the reason the image gets shared at all.
+              This also replaces a duplicated CLASSMATE badge and term label that
+              both already appear on the card below, which is what freed the room
+              for it on the taller story canvas. */}
           {exportFormat !== 'clean' && (
             <View style={{ marginBottom: exportFormat === 'square' ? 9 : 14 }}>
-              <View
-                style={{
-                  alignSelf: 'flex-start',
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 999,
-                  backgroundColor: isDark ? 'rgba(65,105,225,0.22)' : '#ffffff',
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.10)' : '#dbe4ff',
-                }}
-              >
-                <Text style={{ fontSize: 10, fontWeight: '800', color: colors.brand, letterSpacing: 1 }}>
-                  CLASSMATE
-                </Text>
-              </View>
               <Text
                 style={{
-                  marginTop: exportFormat === 'square' ? 7 : 12,
-                  fontSize: exportFormat === 'square' ? 22 : 28,
-                  lineHeight: exportFormat === 'square' ? 26 : 33,
+                  fontSize: exportFormat === 'square' ? 26 : 36,
+                  lineHeight: exportFormat === 'square' ? 30 : 41,
                   fontWeight: '900',
                   color: colors.text,
-                  letterSpacing: 0,
+                  letterSpacing: -0.5,
                 }}
               >
-                My {termLabel(selectedQuarter, school)} schedule
+                {getSchoolConfig(school).name.toUpperCase()}
               </Text>
-              <Text style={{ marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>
-                {activeTimetable?.name ?? 'My Schedule'} · {scheduledCourses.length} class{scheduledCourses.length === 1 ? '' : 'es'}
+              <Text
+                style={{
+                  marginTop: exportFormat === 'square' ? 3 : 6,
+                  fontSize: exportFormat === 'square' ? 13 : 15,
+                  fontWeight: '800',
+                  color: colors.brand,
+                }}
+              >
+                {termLabel(selectedQuarter, school)} · {scheduledCourses.length} class{scheduledCourses.length === 1 ? '' : 'es'}
+              </Text>
+              <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>
+                {getSchoolConfig(school).location}
               </Text>
             </View>
           )}
@@ -2766,8 +2765,12 @@ export default function TimetableScreen({
               <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>
                 Built with ClassMate
               </Text>
+              {/* The domain, not a feature list: someone seeing this on a story has
+                  24 hours and no easy way to find the app otherwise — "ClassMate"
+                  is a common word and the store listing is "ClassMate(CM)". The
+                  site links straight to the App Store. */}
               <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand }}>
-                Schedule · Classmates · Boards
+                theseans.app
               </Text>
             </View>
           )}

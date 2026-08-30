@@ -1,7 +1,16 @@
 .DS_Store
 .expo/
 node_modules/
-ios/
+# The native iOS project is tracked: EAS builds from the ios/ directory on
+# disk, so the App Store binary's native configuration lived only on one
+# machine while this was ignored. Generated output stays out.
+ios/Pods/
+ios/build/
+ios/DerivedData/
+ios/Podfile.lock
+ios/.xcode.env.local
+ios/**/*.xcuserstate
+ios/**/xcuserdata/
 android/
 npm-debug.log*
 yarn-debug.log*

@@ -432,3 +432,32 @@ export function getBlockColors(course: Course, themeInput: TimetableTheme | stri
       return pastelForCourse(blockColorKey(course));
   }
 }
+
+/**
+ * Splits a WebSoc-style day string ("MWF", "TuTh", "MTuWThF") into tokens.
+ *
+ * Two-letter tokens are matched before single letters so "Th" isn't read as
+ * "T" + "h". Returns [] for "TBA" or anything unrecognised.
+ *
+ * Note: TimetableScreen and CoursePickerScreen each carry their own local copy
+ * of this. They are left alone deliberately — this is the canonical one for new
+ * code, and consolidating the screens is a separate, testable change.
+ */
+export function parseCourseDays(daysString: string | undefined): string[] {
+  if (!daysString || daysString === 'TBA') return [];
+  const result: string[] = [];
+  let i = 0;
+  while (i < daysString.length) {
+    const two = daysString.slice(i, i + 2);
+    if (two === 'Th' || two === 'Sa' || two === 'Su') { result.push(two); i += 2; continue; }
+    const one = daysString[i];
+    if (one === 'M' || one === 'T' || one === 'W' || one === 'F') result.push(one);
+    i += 1;
+  }
+  return result;
+}
+
+/** Day token -> JS getDay() index (Sunday = 0), matching Date and WidgetKit. */
+export const DAY_TOKEN_TO_WEEKDAY: Record<string, number> = {
+  Su: 0, M: 1, T: 2, W: 3, Th: 4, F: 5, Sa: 6,
+};

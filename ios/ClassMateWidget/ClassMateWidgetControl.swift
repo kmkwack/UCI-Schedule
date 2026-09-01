@@ -2,53 +2,16 @@
 //  ClassMateWidgetControl.swift
 //  ClassMateWidget
 //
-//  Created by 박시현 on 8/30/26.
+//  Intentionally empty.
+//
+//  Xcode's Widget Extension template generates a Control Center widget here.
+//  We don't ship one — there is no ClassMate action worth a Control Center
+//  slot — and its ControlWidgetConfiguration API requires iOS 18, which fails
+//  to compile against this extension's iOS 17 deployment target.
+//
+//  The file is kept rather than deleted so the Xcode project reference stays
+//  valid. If a control widget is ever wanted, it needs @available(iOS 18.0, *)
+//  and a matching availability guard in ClassMateWidgetBundle.
 //
 
-import AppIntents
-import SwiftUI
-import WidgetKit
-
-struct ClassMateWidgetControl: ControlWidget {
-    var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(
-            kind: "com.parksihyun.classmate.ClassMateWidget",
-            provider: Provider()
-        ) { value in
-            ControlWidgetToggle(
-                "Start Timer",
-                isOn: value,
-                action: StartTimerIntent()
-            ) { isRunning in
-                Label(isRunning ? "On" : "Off", systemImage: "timer")
-            }
-        }
-        .displayName("Timer")
-        .description("A an example control that runs a timer.")
-    }
-}
-
-extension ClassMateWidgetControl {
-    struct Provider: ControlValueProvider {
-        var previewValue: Bool {
-            false
-        }
-
-        func currentValue() async throws -> Bool {
-            let isRunning = true // Check if the timer is running
-            return isRunning
-        }
-    }
-}
-
-struct StartTimerIntent: SetValueIntent {
-    static let title: LocalizedStringResource = "Start a timer"
-
-    @Parameter(title: "Timer is running")
-    var value: Bool
-
-    func perform() async throws -> some IntentResult {
-        // Start / stop the timer based on `value`.
-        return .result()
-    }
-}
+import Foundation

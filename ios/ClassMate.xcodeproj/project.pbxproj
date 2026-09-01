@@ -16,6 +16,8 @@
 		CBA1F3B030452389001629E9 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CBA1F3AF30452389001629E9 /* WidgetKit.framework */; };
 		CBA1F3B230452389001629E9 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CBA1F3B130452389001629E9 /* SwiftUI.framework */; };
 		CBA1F3BF3045238A001629E9 /* ClassMateWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CBA1F3AE30452389001629E9 /* ClassMateWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CBA1F3D630468E74001629E9 /* WidgetBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = CBA1F3D430468E74001629E9 /* WidgetBridge.m */; };
+		CBA1F3D730468E74001629E9 /* WidgetBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBA1F3D530468E74001629E9 /* WidgetBridge.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
@@ -57,6 +59,8 @@
 		CBA1F3AF30452389001629E9 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		CBA1F3B130452389001629E9 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		CBA1F3C530452407001629E9 /* ClassMateWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClassMateWidgetExtension.entitlements; sourceTree = "<group>"; };
+		CBA1F3D430468E74001629E9 /* WidgetBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = WidgetBridge.m; path = ClassMate/WidgetBridge.m; sourceTree = "<group>"; };
+		CBA1F3D530468E74001629E9 /* WidgetBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WidgetBridge.swift; path = ClassMate/WidgetBridge.swift; sourceTree = "<group>"; };
 		D87DBFD783631A8F418AB6FA /* Pods-ClassMate.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ClassMate.debug.xcconfig"; path = "Target Support Files/Pods-ClassMate/Pods-ClassMate.debug.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ClassMate/AppDelegate.swift; sourceTree = "<group>"; };
@@ -101,6 +105,8 @@
 		13B07FAE1A68108700A75B9A /* ClassMate */ = {
 			isa = PBXGroup;
 			children = (
+				CBA1F3D430468E74001629E9 /* WidgetBridge.m */,
+				CBA1F3D530468E74001629E9 /* WidgetBridge.swift */,
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
 				F11748442D0722820044C1D9 /* ClassMate-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
@@ -429,6 +435,8 @@
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
 				B7F87A06445071D10611710A /* ExpoModulesProvider.swift in Sources */,
+				CBA1F3D630468E74001629E9 /* WidgetBridge.m in Sources */,
+				CBA1F3D730468E74001629E9 /* WidgetBridge.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

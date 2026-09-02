@@ -43,6 +43,10 @@ struct SchedulePayload: Codable {
     let termLabel: String     // "Fall 2026"
     /// End of the term (ISO date, "2026-12-12"). Past this the widget stops
     /// showing classes rather than advertising a schedule that has ended.
+    /// Instruction start. Classes exist in the payload well before the term
+    /// begins — students plan next quarter early — so without this the widget
+    /// would show an unstarted schedule as "today".
+    let termStartDate: String?
     let termEndDate: String?
     let classes: [ScheduleClass]
 }
@@ -67,17 +71,38 @@ enum ScheduleStore {
 extension SchedulePayload {
     /// True once the term's last day has passed. Dates are compared as plain
     /// calendar days, so a class on the final day still shows all day.
-    var isTermOver: Bool {
-        guard let termEndDate else { return false }
+    private static func day(from iso: String?) -> Date? {
+        guard let iso else { return nil }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = .current
-        guard let end = formatter.date(from: termEndDate) else { return false }
+        return formatter.date(from: iso)
+    }
+
+    var isTermOver: Bool {
+        guard let end = Self.day(from: termEndDate) else { return false }
         return Calendar.current.startOfDay(for: Date()) > Calendar.current.startOfDay(for: end)
     }
 
+    /// True before instruction begins. The schedule is real but not yet in
+    /// effect, so "today" and "this week" must not draw from it.
+    var hasNotStarted: Bool {
+        guard let start = Self.day(from: termStartDate) else { return false }
+        return Calendar.current.startOfDay(for: Date()) < Calendar.current.startOfDay(for: start)
+    }
+
+    var isInSession: Bool { !isTermOver && !hasNotStarted }
+
+    /// Days until instruction begins, for the pre-term state.
+    var daysUntilStart: Int? {
+        guard let start = Self.day(from: termStartDate), hasNotStarted else { return nil }
+        return Calendar.current.dateComponents(
+            [.day], from: Calendar.current.startOfDay(for: Date()), to: Calendar.current.startOfDay(for: start)
+        ).day
+    }
+
     func classes(onWeekday weekday: Int) -> [ScheduleClass] {
-        guard !isTermOver else { return [] }
+        guard isInSession else { return [] }
         return classes
             .filter { $0.weekday == weekday }
             .sorted { $0.startMinutes < $1.startMinutes }
@@ -90,7 +115,7 @@ extension SchedulePayload {
     /// The next class starting from `now`, searching forward up to a week so
     /// Friday afternoon correctly rolls over to Monday morning.
     func nextClass(now: Date = Date()) -> (course: ScheduleClass, date: Date)? {
-        guard !isTermOver else { return nil }
+        guard isInSession else { return nil }
 
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: now)

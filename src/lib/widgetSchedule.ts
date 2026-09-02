@@ -12,7 +12,7 @@
  */
 
 import { Course, parseTimeToMinutes, parseCourseDays, DAY_TOKEN_TO_WEEKDAY } from '../data/courses';
-import { getTermEndDate } from '../data/academicCalendar';
+import { getTermEndDate, getTermStartDate } from '../data/academicCalendar';
 import { pastelForCourse, blockColorKey } from '../data/courses';
 
 export const WIDGET_SCHEDULE_VERSION = 1;
@@ -38,6 +38,9 @@ export type WidgetSchedulePayload = {
   updatedAt: string;
   school: string;
   termLabel: string;
+  /** Instruction start. Without it the widget can't tell "term hasn't begun"
+   *  from "term is running", and would present next term's grid as today. */
+  termStartDate: string | null;
   termEndDate: string | null;
   classes: WidgetClass[];
 };
@@ -95,6 +98,7 @@ export function buildWidgetSchedule(params: {
     }
   }
 
+  const termStart = getTermStartDate(school, quarterKey);
   const termEnd = getTermEndDate(school, quarterKey);
 
   return {
@@ -102,6 +106,7 @@ export function buildWidgetSchedule(params: {
     updatedAt: new Date().toISOString(),
     school,
     termLabel,
+    termStartDate: termStart ? toIsoDate(termStart) : null,
     termEndDate: termEnd ? toIsoDate(termEnd) : null,
     classes,
   };

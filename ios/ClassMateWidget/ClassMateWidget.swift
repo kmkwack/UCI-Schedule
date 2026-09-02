@@ -304,13 +304,17 @@ struct NextClassView: View {
         let upcoming = payload?.nextClass(now: entry.date)
 
         return VStack(alignment: .leading, spacing: 0) {
-            Text(payload == nil ? "CLASSMATE" : (payload?.isTermOver == true ? "TERM OVER" : "ALL DONE"))
+            Text(payload == nil ? "CLASSMATE"
+                 : payload?.hasNotStarted == true ? (payload?.termLabel.uppercased() ?? "UPCOMING")
+                 : payload?.isTermOver == true ? "TERM OVER" : "ALL DONE")
                 .font(.system(size: 8.5, weight: .heavy))
                 .tracking(0.85)
                 .foregroundStyle(.secondary)
 
             Text(payload == nil ? "Open ClassMate to set up your schedule"
-                 : (payload?.isTermOver == true ? "Enjoy the break" : "No more classes today"))
+                 : payload?.hasNotStarted == true
+                     ? (payload?.daysUntilStart).map { "Classes start in \($0) day\($0 == 1 ? "" : "s")" } ?? "Classes haven't started"
+                 : payload?.isTermOver == true ? "Enjoy the break" : "No more classes today")
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(.primary)
                 .lineLimit(3)
@@ -495,7 +499,10 @@ struct TodayView: View {
         let upcoming = payload?.nextClass(now: entry.date)
 
         return VStack(alignment: .leading, spacing: 3) {
-            Text(payload == nil ? "Open ClassMate to set up your schedule" : "No classes today")
+            Text(payload == nil ? "Open ClassMate to set up your schedule"
+                 : payload?.hasNotStarted == true
+                     ? (payload?.daysUntilStart).map { "Classes start in \($0) day\($0 == 1 ? "" : "s")" } ?? "Term hasn't started"
+                 : "No classes today")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(.primary)
             if let upcoming {
@@ -549,13 +556,18 @@ struct WeekView: View {
 
     var body: some View {
         let payload = entry.payload
+        // Before the term starts the grid is still worth showing — planning next
+        // quarter is exactly when people look — but it must not claim to be
+        // "this week".
         let all = payload?.isTermOver == true ? [] : (payload?.classes ?? [])
+        let upcoming = payload?.hasNotStarted == true
         let weekClasses = all
-        let today = Calendar.current.component(.weekday, from: entry.date) - 1
+        // No "today" column highlight before the term begins.
+        let today = (payload?.hasNotStarted == true) ? -1 : Calendar.current.component(.weekday, from: entry.date) - 1
 
         VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Text("THIS WEEK")
+                Text(upcoming ? "UPCOMING" : "THIS WEEK")
                     .font(.system(size: 10, weight: .heavy))
                     .tracking(1.2)
                     .foregroundStyle(Color.brand)
@@ -717,7 +729,7 @@ struct WeekView: View {
                 .foregroundStyle(.primary)
             Text(payload == nil
                  ? "Open ClassMate to add your classes"
-                 : "No classes this week.")
+                 : (payload?.daysUntilStart).map { "Classes start in \($0) day\($0 == 1 ? "" : "s")" } ?? "No classes this week.")
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

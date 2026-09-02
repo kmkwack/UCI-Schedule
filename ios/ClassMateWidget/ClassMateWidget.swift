@@ -41,41 +41,16 @@ extension ScheduleClass {
     }
 }
 
-/// The design's dark-mode rule: pastel backgrounds don't survive on near-black,
-/// so each triple is remapped rather than dimmed. Text becomes the triple's
-/// *border* colour — enough chroma to identify the course without going neon —
-/// and the card becomes a 12%-toward-black mix of the pastel.
+/// The course's colours, taken straight from the app's pastel triple.
 private struct CoursePalette {
     let background: Color
     let ink: Color
     let edge: Color
 
-    init(_ course: ScheduleClass, dark: Bool, insideGrid: Bool = false) {
-        if dark {
-            background = insideGrid
-                ? Color(hex: course.bgHex, fallback: .black).mix(toward: .black, amount: 0.88)
-                : Color(red: 0.067, green: 0.094, blue: 0.153)   // #111827
-            ink = Color(hex: course.borderHex, fallback: .white)
-            edge = Color(hex: course.borderHex, fallback: .white).opacity(0.55)
-        } else {
-            background = Color(hex: course.bgHex, fallback: Color(uiColor: .secondarySystemBackground))
-            ink = Color(hex: course.textHex, fallback: .primary)
-            edge = Color(hex: course.borderHex)
-        }
-    }
-}
-
-private extension Color {
-    func mix(toward other: Color, amount: Double) -> Color {
-        let a = UIColor(self), b = UIColor(other)
-        var ar: CGFloat = 0, ag: CGFloat = 0, ab: CGFloat = 0, aa: CGFloat = 0
-        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
-        a.getRed(&ar, green: &ag, blue: &ab, alpha: &aa)
-        b.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
-        let t = CGFloat(amount)
-        return Color(red: Double(ar + (br - ar) * t),
-                     green: Double(ag + (bg - ag) * t),
-                     blue: Double(ab + (bb - ab) * t))
+    init(_ course: ScheduleClass) {
+        background = Color(hex: course.bgHex, fallback: Color(white: 0.96))
+        ink = Color(hex: course.textHex, fallback: .black)
+        edge = Color(hex: course.borderHex)
     }
 }
 
@@ -198,15 +173,14 @@ private struct ClassRow: View {
 /// "in class" pill and its progress fill — the one thing that is genuinely
 /// happening now.
 struct NextClassView: View {
-    @Environment(\.colorScheme) private var scheme
     let entry: ScheduleEntry
 
     /// The pastel the whole widget should be washed in, so the colour reaches
     /// the widget's own edges instead of a card inset within it.
-    static func backgroundTint(for entry: ScheduleEntry, dark: Bool) -> Color? {
+    static func backgroundTint(for entry: ScheduleEntry) -> Color? {
         let course = entry.payload?.currentClass(now: entry.date) ?? entry.payload?.nextClass(now: entry.date)?.course
         guard let course else { return nil }
-        return CoursePalette(course, dark: dark).background
+        return CoursePalette(course).background
     }
 
     var body: some View {
@@ -222,7 +196,7 @@ struct NextClassView: View {
     }
 
     private func card(course: ScheduleClass, isNow: Bool, startsAt: Date?) -> some View {
-        let ink = CoursePalette(course, dark: scheme == .dark).ink
+        let ink = CoursePalette(course).ink
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 4) {
@@ -348,7 +322,6 @@ struct NextClassView: View {
 /// always full. Taller rows spend the extra space on the title and location;
 /// the four-class row drops the location line first, then truncates the title.
 struct TodayView: View {
-    @Environment(\.colorScheme) private var scheme
     let entry: ScheduleEntry
 
     private let timeGutter: CGFloat = 40
@@ -358,13 +331,13 @@ struct TodayView: View {
         let today = payload?.classesToday(now: entry.date) ?? []
         let shown = Array(today.prefix(4))
 
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 9) {
             header(count: today.count)
 
             if shown.isEmpty {
                 emptyCard(payload: payload)
             } else {
-                VStack(spacing: shown.count >= 4 ? 4 : 5) {
+                VStack(spacing: shown.count >= 4 ? 6 : 9) {
                     ForEach(shown) { course in
                         row(course: course, tall: shown.count <= 3)
                     }
@@ -403,7 +376,7 @@ struct TodayView: View {
     }
 
     private func row(course: ScheduleClass, tall: Bool) -> some View {
-        let palette = CoursePalette(course, dark: scheme == .dark)
+        let palette = CoursePalette(course)
         let isNow = course.startMinutes <= minutesNow && minutesNow < course.endMinutes
 
         return HStack(spacing: 0) {
@@ -481,13 +454,13 @@ struct TodayView: View {
                 }
             }
             .padding(.leading, 7)
-            .padding(.vertical, tall ? 4 : 2)
+            .padding(.vertical, tall ? 5 : 3)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
         // min-height 0 lets the fixed widget frame govern: content never pushes
         // past 170pt, and rows share whatever is left equally — up to a cap, so
         // a single class doesn't become one enormous row.
-        .frame(maxHeight: tall ? 44 : 34)
+        .frame(maxHeight: tall ? 52 : 36)
     }
 
     private var minutesNow: Int {
@@ -514,7 +487,7 @@ struct TodayView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.brand.opacity(scheme == .dark ? 0.16 : 0.08))
+        .background(Color.brand.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 11))
     }
 }
@@ -526,7 +499,6 @@ struct TodayView: View {
 /// background bands carry the time reference, so no horizontal hairlines are
 /// needed inside it. Today gets a solid brand header cell and a tinted column.
 struct WeekView: View {
-    @Environment(\.colorScheme) private var scheme
     let entry: ScheduleEntry
 
     private static let allLabels = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
@@ -594,10 +566,8 @@ struct WeekView: View {
         let range = plotRange(weekClasses)
         let plotStartHour = range.start
         let plotEndHour = range.end
-        let dark = scheme == .dark
-        let hairline = Color(uiColor: .separator).opacity(dark ? 0.35 : 0.6)
-        let band = dark ? Color(red: 0.067, green: 0.094, blue: 0.153)     // #111827
-                        : Color(red: 0.976, green: 0.980, blue: 0.984)     // #f9fafb
+        let hairline = Color.black.opacity(0.12)
+        let band = Color(red: 0.976, green: 0.980, blue: 0.984)            // #f9fafb
 
         return GeometryReader { geo in
             let dayWidth = (geo.size.width - timeGutter) / CGFloat(weekdays.count)
@@ -621,7 +591,7 @@ struct WeekView: View {
                 // Today's column wash
                 if let todayIndex = weekdays.firstIndex(of: today) {
                     Rectangle()
-                        .fill(Color.brand.opacity(dark ? 0.12 : 0.06))
+                        .fill(Color.brand.opacity(0.06))
                         .frame(width: dayWidth)
                         .offset(x: timeGutter + CGFloat(todayIndex) * dayWidth, y: headerHeight)
                 }
@@ -661,7 +631,7 @@ struct WeekView: View {
                 ForEach(weekClasses) { course in
                     let dayIndex = weekdays.firstIndex(of: course.weekday) ?? 0
                     let isToday = course.weekday == today
-                    let palette = CoursePalette(course, dark: dark, insideGrid: true)
+                    let palette = CoursePalette(course)
                     let top = CGFloat(course.startMinutes - plotStartHour * 60) * perMinute
                     // A 50-minute class should look like 50 minutes. The old
                     // floor of 18pt inflated short classes into chunky bricks.
@@ -747,7 +717,6 @@ struct WeekView: View {
 
 struct ClassMateWidgetEntryView: View {
     @Environment(\.widgetFamily) var family
-    @Environment(\.colorScheme) private var scheme
     var entry: Provider.Entry
 
     var body: some View {
@@ -764,14 +733,15 @@ struct ClassMateWidgetEntryView: View {
     }
 
     /// Small washes the whole widget in the course's pastel — that is what
-    /// removes the card-inside-a-card. The other sizes keep a plain ground so
+    /// removes the card-inside-a-card. The other sizes keep a white ground so
     /// their own content provides the colour.
+    ///
+    /// Light only, deliberately: the pastel triples are built for a white
+    /// ground, and a second dark palette was more surface area than the widget
+    /// warranted.
     private var background: Color {
-        let plain = scheme == .dark
-            ? Color(red: 0.059, green: 0.090, blue: 0.165)   // #0f172a
-            : Color.white
-        guard family == .systemSmall else { return plain }
-        return NextClassView.backgroundTint(for: entry, dark: scheme == .dark) ?? plain
+        guard family == .systemSmall else { return .white }
+        return NextClassView.backgroundTint(for: entry) ?? .white
     }
 }
 

@@ -570,3 +570,29 @@ Three widget sizes backed by the term's weekly pattern in a shared App Group.
 - `WidgetBridge.swift` couldn't see `RCTPromiseResolveBlock`: those typedefs are Objective-C and `ClassMate-Bridging-Header.h` was still Expo's empty stub. Added `#import <React/RCTBridgeModule.h>`.
 
 Also lowered the extension's deployment target from **26.5** (whatever SDK Xcode generated against) to **17.0** — 26.5 would have limited the widget to effectively nobody.
+
+### Session 101b (App Store metadata — brand-first naming) — 2026-09-02
+The listing was `ClassMate(CM)`, which searched badly: `cm` pulls in rulers and
+weight scales, `(CM)` carries no search value, and nothing in the name or
+subtitle matched what students actually type (`uci`, `schedule`, `timetable`).
+Verified against the iTunes search API — the app ranked for `classmate cm` and
+for nothing else.
+
+Decided **brand over short-term search**: the name is the thing that compounds,
+and keywords can be revised at any time.
+
+```
+Name:     ClassMate — Campus Life
+Subtitle: Class schedule, grades & more
+Keywords: UCI,UC Irvine,anteater,schedule,timetable,class,course,GPA,grades,college,student,planner
+```
+
+Division of labour: the name carries the brand, the subtitle says what the app
+does (and `schedule`/`grades` are indexed there), and the keyword field — which
+users never see — carries the school-specific terms. Putting `UCI` in the
+keywords rather than the name keeps the listing neutral for other campuses as
+they're added; only the keyword field needs revisiting then.
+
+**Note:** name, subtitle and keywords only change on a new version submission —
+they are not editable in place. Promotional text is the only field that updates
+without review, and it isn't indexed.

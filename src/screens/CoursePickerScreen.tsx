@@ -2160,7 +2160,11 @@ export default function CoursePickerScreen({
                   activeOpacity={0.85}
                   onPress={() => handleExpandCourse(item)}
                   style={{
-                    paddingVertical: 14,
+                    // Tightened from 14: during enrollment the list is scanned,
+                    // and every point here costs a fraction of a visible course.
+                    // The title stays at two lines — truncating it would save
+                    // more, but the title is what identifies an unfamiliar course.
+                    paddingVertical: 11,
                     borderBottomWidth: 1,
 	                    borderBottomColor: colors.borderSubtle,
                   }}

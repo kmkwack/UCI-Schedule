@@ -15,8 +15,12 @@ const DEFAULT_START_HOUR = 8;
 const DEFAULT_END_HOUR = 17;
 
 const TIME_LABEL_WIDTH = 52;
-const PREVIEW_HEIGHT = 250;
-const HOUR_HEIGHT = 76;
+// Sized for the course picker, where the list is the main work surface: during
+// enrollment students scan and compare many courses, and the preview only
+// matters at the moment of adding one. At 250 with a 76pt hour the preview took
+// a third of the screen and only ~3 courses were visible at a time.
+const PREVIEW_HEIGHT = 195;
+const HOUR_HEIGHT = 56;
 const TIMETABLE_CARD_PADDING = 12;
 
 function parseHour(time: string) {

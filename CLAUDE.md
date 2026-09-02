@@ -552,3 +552,21 @@ Instagram sharing of a timetable is the app's most natural growth loop, so the e
 - **Footer** — `Schedule · Classmates · Boards` (a feature list, no value to a viewer) → **`theseans.app`**. A story lasts 24 hours; "Built with ClassMate" alone gives a viewer nothing actionable, since *ClassMate* is a common word and the listing is actually `ClassMate(CM)`. The site already links to the App Store in four places.
 
 Also added **`supabase/sql/metrics.sql`** — read-only operational queries (signups by day, verification funnel, weekly retention, timetable-creation reach, daily email volume vs Resend's 100/day free cap). Note the app has no event tracking, so every "active" figure there is inferred from `auth.users.last_sign_in_at` and write activity; opening the app and reading a timetable leaves no trace.
+
+### Session 101 (Home-screen widget) — 2026-08-31
+Three widget sizes backed by the term's weekly pattern in a shared App Group.
+
+**Why a recurring pattern, not dated occurrences.** Widgets have no network access, so they can only show what the app last handed over. Storing "today's classes" goes stale the moment it is written; storing the weekly pattern plus the term end date lets the widget derive today/next itself and stay correct for the whole term even if the app isn't reopened for weeks.
+
+- **`ios/ClassMateWidget/ScheduleData.swift`** — the payload contract plus `classesToday` / `nextClass` / `currentClass` / `isTermOver`. `nextClass` searches forward seven days so Friday evening rolls over to Monday.
+- **`ios/ClassMate/WidgetBridge.{swift,m}`** — writes the payload into `group.com.parksihyun.classmate` and calls `WidgetCenter.reloadAllTimelines()`. JSON is passed as a string so the structure is defined once (TypeScript) and decoded once (Swift) rather than being reassembled at the bridge.
+- **`src/lib/widgetSchedule.ts` / `widgetSync.ts`** — builds the payload; `syncWidgetSchedule` never throws and no-ops when the native module is absent, so Android, Expo Go, and builds predating the widget are unaffected.
+- **`App.tsx`** — one `useEffect` watching the derived `homeQuarterCourses`, rather than hooking each of the nine `setTimetables` call sites, so every path that changes a schedule is covered. Driven off the **home** quarter (what the Today screen uses), not the Timetable tab's selection: someone planning next winter should still see this term on their home screen. `clearWidgetSchedule()` on sign-out so the next person to pick up the device doesn't see the previous account's classes.
+- **Sizes** — small: next/current class. medium: today's list (4 rows, then "+N more"). large: the week as code chips, today's row highlighted; times are dropped at that density because they are unreadable.
+- **Timeline** — entries at each class boundary and midnight instead of a fixed interval. WidgetKit budgets refreshes; spending them on moments where nothing changes leaves the widget stale exactly when it matters.
+
+**Two build failures worth recording:**
+- The Xcode template's `ClassMateWidgetControl` uses `ControlWidgetConfiguration` (iOS 18) and broke the iOS 17 deployment target. Emptied rather than deleted, to keep the project reference valid.
+- `WidgetBridge.swift` couldn't see `RCTPromiseResolveBlock`: those typedefs are Objective-C and `ClassMate-Bridging-Header.h` was still Expo's empty stub. Added `#import <React/RCTBridgeModule.h>`.
+
+Also lowered the extension's deployment target from **26.5** (whatever SDK Xcode generated against) to **17.0** — 26.5 would have limited the widget to effectively nobody.

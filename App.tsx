@@ -24,7 +24,8 @@ import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
 import { FullScreenLoader } from './src/components/ScheduleLoader';
 import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, quarterKey } from './src/data/courses';
-import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, resolveCurrentTerm, schoolFeatureEnabled, universityForName, type University } from './src/data/schools';
+import { clearWidgetSchedule, syncWidgetSchedule } from './src/lib/widgetSync';
+import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, resolveCurrentTerm, schoolFeatureEnabled, termLabel, universityForName, type University } from './src/data/schools';
 import { isTermInSession } from './src/data/academicCalendar';
 import {
   buildDisplayName,
@@ -984,6 +985,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const academicQuarter = getAcademicTermForDate(currentSchool, new Date());
   const academicQuarterKey = quarterKey(academicQuarter);
   const homeQuarterKey = timetables.some((t) => t.quarterKey === academicQuarterKey) ? academicQuarterKey : activeKey;
+  const homeQuarter = homeQuarterKey === academicQuarterKey ? academicQuarter : selectedQuarter;
   const homeQuarterTimetables = timetables.filter((t) => t.quarterKey === homeQuarterKey);
   const homeTimetable =
     homeQuarterTimetables.find((t) => t.name === 'My Schedule')
@@ -991,6 +993,26 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     ?? homeQuarterTimetables[0]
     ?? null;
   const homeQuarterCourses = homeTimetable?.courses ?? [];
+
+  // Keep the home-screen widget in step with the schedule.
+  //
+  // Deliberately driven off the *home* quarter rather than the one selected in
+  // the Timetable tab: someone planning next winter should still see this term
+  // on their home screen. It's the same term the Today screen uses.
+  //
+  // Watching the derived courses rather than hooking each setTimetables() call
+  // means every path that changes a schedule — load, add, edit, delete, school
+  // switch — is covered without having to remember this exists. syncWidget
+  // never throws and no-ops when the native module is absent.
+  useEffect(() => {
+    if (!userId) return;
+    void syncWidgetSchedule({
+      courses: homeQuarterCourses,
+      school: currentSchool,
+      termLabel: termLabel(homeQuarter, currentSchool),
+      quarterKey: homeQuarterKey,
+    });
+  }, [userId, homeQuarterCourses, currentSchool, homeQuarter, homeQuarterKey]);
 
   const USER_ID = userId ?? '';
   const displayUserName = buildDisplayName({ ...userProfile, email: userEmail || userProfile.email });
@@ -2347,6 +2369,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       }
     })();
     void Notifications.cancelAllScheduledNotificationsAsync();
+    // Wipe the home-screen widget too, so the next person to pick up this
+    // device doesn't see the previous account's classes.
+    void clearWidgetSchedule();
     clearSignedOutState();
   };
 
@@ -2359,6 +2384,9 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       }, 1000);
     });
     void Notifications.cancelAllScheduledNotificationsAsync();
+    // Wipe the home-screen widget too, so the next person to pick up this
+    // device doesn't see the previous account's classes.
+    void clearWidgetSchedule();
     clearSignedOutState();
   };
 

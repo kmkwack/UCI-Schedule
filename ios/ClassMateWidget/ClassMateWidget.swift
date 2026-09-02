@@ -114,14 +114,19 @@ private struct ClassRow: View {
                 .frame(width: 3)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(course.code)
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(course.code)
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .lineLimit(1)
+                    Text(course.timeRangeLabel)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
 
-                Text(showsLocation && course.location != nil
-                     ? "\(course.startLabel) · \(course.location!)"
-                     : course.timeRangeLabel)
+                Text([course.title, course.location].compactMap { $0 }.joined(separator: " · "))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -156,10 +161,15 @@ struct NextClassView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
+                Text(course.title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
                 Text(course.timeRangeLabel)
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
 
                 if let location = course.location {
@@ -287,7 +297,7 @@ struct WeekView: View {
                     ZStack(alignment: .topLeading) {
                         // Header band
                         Rectangle()
-                            .fill(Color.secondary.opacity(0.10))
+                            .fill(Color(uiColor: .tertiarySystemFill))
                             .frame(height: headerHeight)
 
                         ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
@@ -362,7 +372,7 @@ struct WeekView: View {
                         }
                     }
                 }
-                .background(Color.primary.opacity(0.03))
+                .background(Color(uiColor: .secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
@@ -395,7 +405,10 @@ struct ClassMateWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             ClassMateWidgetEntryView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                // The template's .fill.tertiary is a translucent grey; the app's
+                // timetable sits on a white card, and the pale pastel blocks are
+                // designed for that. On grey they lose all contrast.
+                .containerBackground(Color(uiColor: .systemBackground), for: .widget)
         }
         .configurationDisplayName("Schedule")
         .description("Your next class, today's timetable, or the whole week.")

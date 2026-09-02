@@ -71,6 +71,16 @@ export function quarterLabel(q: Quarter): string {
   return `${q.quarter} ${q.year}`;
 }
 
+/** Inverse of quarterKey: "2026-Fall" -> { year: '2026', quarter: 'Fall' }. */
+export function parseQuarterKey(key: string): Quarter | null {
+  const separator = key.indexOf('-');
+  if (separator <= 0) return null;
+  const year = key.slice(0, separator);
+  const quarter = key.slice(separator + 1);
+  if (!year || !quarter) return null;
+  return { year, quarter };
+}
+
 export function parseTimeToMinutes(value: string | undefined, options: { allow24HourEnd?: boolean } = {}) {
   const raw = (value ?? '').trim();
   if (!raw || raw.toUpperCase() === 'TBA') return null;

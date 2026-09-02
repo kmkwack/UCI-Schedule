@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, Alert, Animated, BackHandler, LogBox, Modal, PanResponder, Platform, StyleSheet, View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,9 +23,9 @@ import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
 import { FullScreenLoader } from './src/components/ScheduleLoader';
-import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, quarterKey } from './src/data/courses';
+import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, parseQuarterKey, quarterKey } from './src/data/courses';
 import { clearWidgetSchedule, syncWidgetSchedule } from './src/lib/widgetSync';
-import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, resolveCurrentTerm, schoolFeatureEnabled, termLabel, universityForName, type University } from './src/data/schools';
+import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, resolveCurrentTerm, schoolFeatureEnabled, termLabel, termOrderValue, universityForName, type University } from './src/data/schools';
 import { isTermInSession } from './src/data/academicCalendar';
 import {
   buildDisplayName,
@@ -985,7 +985,6 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const academicQuarter = getAcademicTermForDate(currentSchool, new Date());
   const academicQuarterKey = quarterKey(academicQuarter);
   const homeQuarterKey = timetables.some((t) => t.quarterKey === academicQuarterKey) ? academicQuarterKey : activeKey;
-  const homeQuarter = homeQuarterKey === academicQuarterKey ? academicQuarter : selectedQuarter;
   const homeQuarterTimetables = timetables.filter((t) => t.quarterKey === homeQuarterKey);
   const homeTimetable =
     homeQuarterTimetables.find((t) => t.name === 'My Schedule')
@@ -994,25 +993,58 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     ?? null;
   const homeQuarterCourses = homeTimetable?.courses ?? [];
 
-  // Keep the home-screen widget in step with the schedule.
+  // Which term the home-screen widget should show.
   //
-  // Deliberately driven off the *home* quarter rather than the one selected in
-  // the Timetable tab: someone planning next winter should still see this term
-  // on their home screen. It's the same term the Today screen uses.
+  // Not simply "today's term": between quarters that term is over or hasn't
+  // been planned yet, and the widget would sit empty for weeks — which is
+  // exactly when a student is looking at next term's schedule. So we pick the
+  // nearest term that actually has classes, preferring the current one, then
+  // upcoming, then the most recent past.
   //
-  // Watching the derived courses rather than hooking each setTimetables() call
+  // A term with a timetable but no courses counts as empty; an untouched plan
+  // shouldn't win over a real schedule.
+  const widgetTerm = useMemo(() => {
+    const scheduled = timetables
+      .filter((t) => (t.courses?.length ?? 0) > 0)
+      .map((t) => ({ key: t.quarterKey, quarter: parseQuarterKey(t.quarterKey), courses: t.courses }))
+      .filter((t): t is { key: string; quarter: Quarter; courses: Course[] } => t.quarter != null);
+
+    if (scheduled.length === 0) return null;
+
+    const rank = (q: Quarter) => Number(q.year) * 100 + termOrderValue(q.quarter, currentSchool);
+    const todayRank = rank(academicQuarter);
+
+    // Current term first, then the closest upcoming, then the closest past.
+    const sorted = [...scheduled].sort((a, b) => {
+      const da = rank(a.quarter) - todayRank;
+      const db = rank(b.quarter) - todayRank;
+      if (da === 0) return -1;
+      if (db === 0) return 1;
+      if (da >= 0 && db < 0) return -1;
+      if (db >= 0 && da < 0) return 1;
+      return Math.abs(da) - Math.abs(db);
+    });
+
+    return sorted[0];
+  }, [timetables, currentSchool, academicQuarter]);
+
+  // Watching the derived term rather than hooking each setTimetables() call
   // means every path that changes a schedule — load, add, edit, delete, school
   // switch — is covered without having to remember this exists. syncWidget
   // never throws and no-ops when the native module is absent.
   useEffect(() => {
     if (!userId) return;
+    if (!widgetTerm) {
+      void clearWidgetSchedule();
+      return;
+    }
     void syncWidgetSchedule({
-      courses: homeQuarterCourses,
+      courses: widgetTerm.courses,
       school: currentSchool,
-      termLabel: termLabel(homeQuarter, currentSchool),
-      quarterKey: homeQuarterKey,
+      termLabel: termLabel(widgetTerm.quarter, currentSchool),
+      quarterKey: widgetTerm.key,
     });
-  }, [userId, homeQuarterCourses, currentSchool, homeQuarter, homeQuarterKey]);
+  }, [userId, widgetTerm, currentSchool]);
 
   const USER_ID = userId ?? '';
   const displayUserName = buildDisplayName({ ...userProfile, email: userEmail || userProfile.email });

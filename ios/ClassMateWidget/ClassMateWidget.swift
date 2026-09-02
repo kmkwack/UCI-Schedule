@@ -354,16 +354,19 @@ struct TodayView: View {
         let today = payload?.classesToday(now: entry.date) ?? []
         let shown = Array(today.prefix(4))
 
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             header(count: today.count)
 
             if shown.isEmpty {
                 emptyCard(payload: payload)
             } else {
-                VStack(spacing: shown.count >= 4 ? 5 : 6) {
+                VStack(spacing: shown.count >= 4 ? 4 : 5) {
                     ForEach(shown) { course in
                         row(course: course, tall: shown.count <= 3)
                     }
+                    // One or two classes shouldn't stretch into slabs; cap the
+                    // growth and let the leftover sit at the bottom instead.
+                    if shown.count <= 2 { Spacer(minLength: 0) }
                     if today.count > shown.count {
                         Text("+\(today.count - shown.count) more")
                             .font(.system(size: 9.5, weight: .semibold))
@@ -418,6 +421,14 @@ struct TodayView: View {
             .frame(width: timeGutter, alignment: .leading)
             .padding(.trailing, 6)
 
+            // A colour bar rather than a filled card: on a white widget the
+            // pastel fills read as stacked boxes, and the bar carries the same
+            // course identity with far less weight.
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(palette.edge)
+                .frame(width: 3)
+                .padding(.vertical, 1)
+
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
@@ -465,17 +476,14 @@ struct TodayView: View {
                         .lineLimit(1)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, tall ? 8 : 6)
+            .padding(.leading, 7)
+            .padding(.vertical, tall ? 4 : 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            // Fill only, no stroke: the widget is already a card, and outlining
-            // every row inside it produced a box-in-a-box.
-            .background(palette.background)
-            .clipShape(RoundedRectangle(cornerRadius: tall ? 11 : 9))
         }
         // min-height 0 lets the fixed widget frame govern: content never pushes
-        // past 170pt, and rows share whatever is left equally.
-        .frame(maxHeight: .infinity)
+        // past 170pt, and rows share whatever is left equally — up to a cap, so
+        // a single class doesn't become one enormous row.
+        .frame(maxHeight: tall ? 44 : 34)
     }
 
     private var minutesNow: Int {

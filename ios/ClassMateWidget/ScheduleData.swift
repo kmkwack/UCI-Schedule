@@ -138,3 +138,49 @@ extension ScheduleClass {
     var endLabel: String { Self.formatMinutes(endMinutes) }
     var timeRangeLabel: String { "\(startLabel) – \(endLabel)" }
 }
+
+// MARK: - Countdown wording
+
+extension ScheduleClass {
+    /// How far off the next class reads on a widget.
+    ///
+    /// A relative countdown is only useful when it is short. "in 13 hr" for
+    /// tomorrow morning is technically true and completely useless, so past 90
+    /// minutes this switches to a plain day-and-time stamp.
+    static func countdownLabel(to date: Date, now: Date = Date()) -> String {
+        let minutes = Int(date.timeIntervalSince(now) / 60)
+        if minutes < 90 {
+            return minutes <= 1 ? "starting now" : "in \(minutes) min"
+        }
+
+        let calendar = Calendar.current
+        let dayDelta = calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: now),
+            to: calendar.startOfDay(for: date)
+        ).day ?? 0
+
+        let time = formatMinutes(calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date))
+        switch dayDelta {
+        case 0: return time
+        case 1: return "Tomorrow · \(time)"
+        default:
+            let weekday = DateFormatter().weekdaySymbols[calendar.component(.weekday, from: date) - 1]
+            return "\(weekday) · \(time)"
+        }
+    }
+
+    /// 0–1 through the class, for the in-progress bar.
+    func progress(now: Date = Date()) -> Double {
+        let calendar = Calendar.current
+        let minutesNow = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
+        let span = max(1, endMinutes - startMinutes)
+        return min(1, max(0, Double(minutesNow - startMinutes) / Double(span)))
+    }
+
+    func minutesRemaining(now: Date = Date()) -> Int {
+        let calendar = Calendar.current
+        let minutesNow = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
+        return max(0, endMinutes - minutesNow)
+    }
+}

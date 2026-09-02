@@ -139,6 +139,13 @@ private struct ClassRow: View {
 
 // MARK: - Small — the next class
 
+/// A pastel card filling the widget, per the design spec.
+///
+/// Colour roles are deliberate: the course's pastel triple carries the card and
+/// the course identity (code + title), while time and location stay in system
+/// text so they read as facts rather than branding. #4169E1 is reserved for the
+/// "in class" pill and its progress fill — the one thing that is genuinely
+/// happening now.
 struct NextClassView: View {
     let entry: ScheduleEntry
 
@@ -147,55 +154,130 @@ struct NextClassView: View {
         let current = payload?.currentClass(now: entry.date)
         let next = payload?.nextClass(now: entry.date)
 
-        VStack(alignment: .leading, spacing: 0) {
-            Text(current != nil ? "IN CLASS" : "NEXT CLASS")
-                .font(.caption2)
-                .fontWeight(.heavy)
-                .foregroundStyle(Color.brand)
+        if let course = current ?? next?.course {
+            card(course: course, isNow: current != nil, startsAt: next?.date)
+        } else {
+            allDoneCard(payload: payload)
+        }
+    }
 
-            Spacer(minLength: 4)
+    private func card(course: ScheduleClass, isNow: Bool, startsAt: Date?) -> some View {
+        let bg = Color(hex: course.bgHex, fallback: Color(uiColor: .secondarySystemBackground))
+        let ink = Color(hex: course.textHex, fallback: .primary)
+        let edge = Color(hex: course.borderHex)
 
-            if let course = current ?? next?.course {
-                Text(course.code)
-                    .font(.system(size: 20, weight: .heavy))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 4) {
+                Text(isNow ? "IN CLASS" : "NEXT UP")
+                    .font(.system(size: 8.5, weight: .heavy))
+                    .tracking(0.85)
+                    .foregroundStyle(isNow ? .white : ink)
+                    .padding(.horizontal, isNow ? 6 : 0)
+                    .padding(.vertical, isNow ? 3 : 0)
+                    .background(isNow ? Color.brand : .clear)
+                    .clipShape(Capsule())
 
-                Text(course.title)
-                    .font(.system(size: 10, weight: .semibold))
+                Spacer(minLength: 2)
+
+                Text(isNow
+                     ? "\(course.minutesRemaining(now: entry.date)) min left"
+                     : (startsAt.map { ScheduleClass.countdownLabel(to: $0, now: entry.date) } ?? ""))
+                    .font(.system(size: 9.5, weight: .bold))
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
-
-                Text(course.timeRangeLabel)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.primary)
                     .lineLimit(1)
-
-                if let location = course.location {
-                    Text(location)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-
-                // Only meaningful for a future class; a class already running
-                // would render as "in 0 minutes".
-                if current == nil, let date = next?.date {
-                    Spacer(minLength: 4)
-                    Text(date, style: .relative)
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(Color.brand)
-                        .lineLimit(1)
-                }
-            } else {
-                EmptyStateView(payload: payload, compact: true)
+                    .minimumScaleFactor(0.8)
             }
 
-            Spacer(minLength: 0)
+            Text(course.code)
+                .font(.system(size: 19, weight: .black))
+                .tracking(-0.38)
+                .foregroundStyle(ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.top, 8)
+
+            Text(course.title)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(ink)
+                .lineLimit(2)
+                .padding(.top, 2)
+
+            Spacer(minLength: 6)
+
+            Text(course.timeRangeLabel)
+                .font(.system(size: 11.5, weight: .bold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            if let location = course.location {
+                Text(location)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .padding(.top, 1)
+            }
+
+            if isNow {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.brand.opacity(0.18))
+                        Capsule()
+                            .fill(Color.brand)
+                            .frame(width: geo.size.width * course.progress(now: entry.date))
+                    }
+                }
+                .frame(height: 3)
+                .padding(.top, 7)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(bg)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(edge, lineWidth: 1))
+    }
+
+    private func allDoneCard(payload: SchedulePayload?) -> some View {
+        let upcoming = payload?.nextClass(now: entry.date)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(payload == nil ? "CLASSMATE" : (payload?.isTermOver == true ? "TERM OVER" : "ALL DONE"))
+                .font(.system(size: 8.5, weight: .heavy))
+                .tracking(0.85)
+                .foregroundStyle(.secondary)
+
+            Text(payload == nil ? "Open ClassMate to set up your schedule"
+                 : (payload?.isTermOver == true ? "Enjoy the break" : "No more classes today"))
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+                .padding(.top, 6)
+
+            Spacer(minLength: 6)
+
+            // The point of an empty widget is what comes next, not the emptiness.
+            if let upcoming {
+                Divider()
+                Text(ScheduleClass.countdownLabel(to: upcoming.date, now: entry.date).uppercased())
+                    .font(.system(size: 8.5, weight: .heavy))
+                    .tracking(0.85)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 7)
+                Text("\(upcoming.course.code) · \(upcoming.course.startLabel)")
+                    .font(.system(size: 11.5, weight: .bold))
+                    .foregroundStyle(Color.brand)
+                    .lineLimit(2)
+                    .padding(.top, 1)
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 1))
     }
 }
 

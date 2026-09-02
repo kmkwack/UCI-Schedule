@@ -28,6 +28,19 @@ private extension Color {
     }
 }
 
+/// Location as it should read on a widget. The app's data carries "TBA" and
+/// online-course placeholders that are noise in a two-word slot, so they become
+/// a short word or nothing rather than shouting "TBA".
+extension ScheduleClass {
+    var displayLocation: String? {
+        guard let raw = location?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        let lowered = raw.lowercased()
+        if lowered.contains("online") || lowered.contains("remote") { return "Online" }
+        if lowered == "tba" || lowered == "n/a" { return nil }
+        return raw
+    }
+}
+
 /// The design's dark-mode rule: pastel backgrounds don't survive on near-black,
 /// so each triple is remapped rather than dimmed. Text becomes the triple's
 /// *border* colour — enough chroma to identify the course without going neon —
@@ -248,7 +261,7 @@ struct NextClassView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
 
-            if let location = course.location {
+            if let location = course.displayLocation {
                 Text(location)
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -367,6 +380,7 @@ struct TodayView: View {
             Text(entry.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
             Spacer(minLength: 2)
             if count > 0 {
                 Text("\(count) class\(count == 1 ? "" : "es")")
@@ -413,7 +427,7 @@ struct TodayView: View {
                             .font(.system(size: 10.5, weight: .semibold))
                             .foregroundStyle(palette.ink.opacity(0.85))
                             .lineLimit(1)
-                        if let location = course.location {
+                        if let location = course.displayLocation {
                             Text(isNow
                                  ? "\(location) · \(course.minutesRemaining(now: entry.date)) min left"
                                  : location)
@@ -433,7 +447,7 @@ struct TodayView: View {
                         .padding(.vertical, 2.5)
                         .background(Color.brand)
                         .clipShape(Capsule())
-                } else if !tall, let location = course.location {
+                } else if !tall, let location = course.displayLocation {
                     Text(location)
                         .font(.system(size: 9.5, weight: .medium))
                         .foregroundStyle(palette.ink.opacity(0.65))
@@ -488,17 +502,35 @@ struct WeekView: View {
     @Environment(\.colorScheme) private var scheme
     let entry: ScheduleEntry
 
-    private let weekdays = [1, 2, 3, 4, 5]
-    private let labels = ["MON", "TUE", "WED", "THU", "FRI"]
+    private static let allLabels = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+
+    /// Mon–Fri, plus a weekend column only when something actually meets then —
+    /// matching how the app's grid decides its columns.
+    private func visibleDays(_ classes: [ScheduleClass]) -> [Int] {
+        var days = [1, 2, 3, 4, 5]
+        let used = Set(classes.map(\.weekday))
+        if used.contains(6) { days.append(6) }
+        if used.contains(0) { days.insert(0, at: 0) }
+        return days
+    }
     private let timeGutter: CGFloat = 30
     private let headerHeight: CGFloat = 22
-    private let plotStartHour = 8
-    private let plotEndHour = 18          // 8 AM – 6 PM = 600 minutes
+
+    // The app's timetable defaults to 8–17 but widens when a class falls
+    // outside it (TimetableScreen's displayStartHour/displayEndHour). The
+    // design's fixed 8 AM–6 PM window would silently drop a 7 PM class, so the
+    // same rule is used here.
+    private func plotRange(_ classes: [ScheduleClass]) -> (start: Int, end: Int) {
+        guard !classes.isEmpty else { return (8, 17) }
+        let earliest = classes.map { $0.startMinutes / 60 }.min() ?? 8
+        let latest = classes.map { Int(ceil(Double($0.endMinutes) / 60)) }.max() ?? 17
+        return (min(8, earliest), max(17, latest))
+    }
 
     var body: some View {
         let payload = entry.payload
         let all = payload?.isTermOver == true ? [] : (payload?.classes ?? [])
-        let weekClasses = all.filter { weekdays.contains($0.weekday) }
+        let weekClasses = all
         let today = Calendar.current.component(.weekday, from: entry.date) - 1
 
         VStack(alignment: .leading, spacing: 7) {
@@ -525,6 +557,11 @@ struct WeekView: View {
     }
 
     private func plot(weekClasses: [ScheduleClass], today: Int) -> some View {
+        let weekdays = visibleDays(weekClasses)
+        let labels = weekdays.map { Self.allLabels[$0] }
+        let range = plotRange(weekClasses)
+        let plotStartHour = range.start
+        let plotEndHour = range.end
         let dark = scheme == .dark
         let hairline = Color(uiColor: .separator).opacity(dark ? 0.35 : 0.6)
         let band = dark ? Color(red: 0.067, green: 0.094, blue: 0.153)     // #111827
@@ -538,12 +575,13 @@ struct WeekView: View {
             ZStack(alignment: .topLeading) {
                 // Two-hour bands replace horizontal rules, so the plot reads as
                 // mass rather than a wire grid.
-                ForEach(Array(stride(from: plotStartHour, to: plotEndHour, by: 2)), id: \.self) { hour in
-                    let index = (hour - plotStartHour) / 2
+                let bandStep = (plotEndHour - plotStartHour) > 12 ? 3 : 2
+                ForEach(Array(stride(from: plotStartHour, to: plotEndHour, by: bandStep)), id: \.self) { hour in
+                    let index = (hour - plotStartHour) / bandStep
                     if index % 2 == 0 {
                         Rectangle()
                             .fill(band)
-                            .frame(height: CGFloat(120) * perMinute)
+                            .frame(height: CGFloat(bandStep * 60) * perMinute)
                             .offset(y: headerHeight + CGFloat((hour - plotStartHour) * 60) * perMinute)
                     }
                 }
@@ -571,7 +609,7 @@ struct WeekView: View {
                 }
 
                 // Hour labels every two hours
-                ForEach(Array(stride(from: plotStartHour, to: plotEndHour, by: 2)), id: \.self) { hour in
+                ForEach(Array(stride(from: plotStartHour, to: plotEndHour, by: bandStep)), id: \.self) { hour in
                     Text("\(hour % 12 == 0 ? 12 : hour % 12)")
                         .font(.system(size: 8.5, weight: .bold))
                         .foregroundStyle(.tertiary)
@@ -629,6 +667,8 @@ struct WeekView: View {
     }
 
     private func footer(weekClasses: [ScheduleClass]) -> some View {
+        let weekdays = visibleDays(weekClasses)
+        let labels = weekdays.map { Self.allLabels[$0] }
         let courses = Set(weekClasses.map(\.code)).count
         let busiest = weekdays
             .map { day in (day, weekClasses.filter { $0.weekday == day }.count) }

@@ -28,6 +28,44 @@ private extension Color {
     }
 }
 
+/// The design's dark-mode rule: pastel backgrounds don't survive on near-black,
+/// so each triple is remapped rather than dimmed. Text becomes the triple's
+/// *border* colour — enough chroma to identify the course without going neon —
+/// and the card becomes a 12%-toward-black mix of the pastel.
+private struct CoursePalette {
+    let background: Color
+    let ink: Color
+    let edge: Color
+
+    init(_ course: ScheduleClass, dark: Bool, insideGrid: Bool = false) {
+        if dark {
+            background = insideGrid
+                ? Color(hex: course.bgHex, fallback: .black).mix(toward: .black, amount: 0.88)
+                : Color(red: 0.067, green: 0.094, blue: 0.153)   // #111827
+            ink = Color(hex: course.borderHex, fallback: .white)
+            edge = Color(hex: course.borderHex, fallback: .white).opacity(0.55)
+        } else {
+            background = Color(hex: course.bgHex, fallback: Color(uiColor: .secondarySystemBackground))
+            ink = Color(hex: course.textHex, fallback: .primary)
+            edge = Color(hex: course.borderHex)
+        }
+    }
+}
+
+private extension Color {
+    func mix(toward other: Color, amount: Double) -> Color {
+        let a = UIColor(self), b = UIColor(other)
+        var ar: CGFloat = 0, ag: CGFloat = 0, ab: CGFloat = 0, aa: CGFloat = 0
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        a.getRed(&ar, green: &ag, blue: &ab, alpha: &aa)
+        b.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        let t = CGFloat(amount)
+        return Color(red: Double(ar + (br - ar) * t),
+                     green: Double(ag + (bg - ag) * t),
+                     blue: Double(ab + (bb - ab) * t))
+    }
+}
+
 // MARK: - Timeline
 
 struct ScheduleEntry: TimelineEntry {
@@ -283,186 +321,351 @@ struct NextClassView: View {
 
 // MARK: - Medium — today
 
+/// Rows divide the available height rather than taking a fixed one, so two
+/// classes give two tall rows and four give four compact ones — the widget is
+/// always full. Taller rows spend the extra space on the title and location;
+/// the four-class row drops the location line first, then truncates the title.
 struct TodayView: View {
+    @Environment(\.colorScheme) private var scheme
     let entry: ScheduleEntry
+
+    private let timeGutter: CGFloat = 52
 
     var body: some View {
         let payload = entry.payload
         let today = payload?.classesToday(now: entry.date) ?? []
         let shown = Array(today.prefix(4))
 
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("TODAY'S CLASSES")
-                    .font(.caption2)
-                    .fontWeight(.heavy)
-                    .foregroundStyle(Color.brand)
-                Spacer()
-                if !today.isEmpty {
-                    Text("\(today.count) class\(today.count == 1 ? "" : "es")")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-                }
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            header(count: today.count)
 
-            if today.isEmpty {
-                EmptyStateView(payload: payload)
+            if shown.isEmpty {
+                emptyCard(payload: payload)
             } else {
-                GeometryReader { geo in
-                    // Divide the available height between the rows instead of
-                    // stacking fixed-height ones, so two classes fill the widget
-                    // the same way four do. Capped so a single class doesn't
-                    // become one enormous row.
-                    let spacing: CGFloat = 4
-                    let total = geo.size.height - spacing * CGFloat(max(0, shown.count - 1))
-                    let rowHeight = min(56, max(26, total / CGFloat(shown.count)))
-
-                    VStack(alignment: .leading, spacing: spacing) {
-                        ForEach(shown) { ClassRow(course: $0, height: rowHeight) }
-                        if today.count > shown.count {
-                            Text("+\(today.count - shown.count) more")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 0)
+                VStack(spacing: shown.count >= 4 ? 5 : 6) {
+                    ForEach(shown) { course in
+                        row(course: course, tall: shown.count <= 3)
+                    }
+                    if today.count > shown.count {
+                        Text("+\(today.count - shown.count) more")
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
+
+    private func header(count: Int) -> some View {
+        HStack(spacing: 6) {
+            Text("TODAY")
+                .font(.system(size: 10, weight: .heavy))
+                .tracking(1.2)
+                .foregroundStyle(Color.brand)
+            Text(entry.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 2)
+            if count > 0 {
+                Text("\(count) class\(count == 1 ? "" : "es")")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func row(course: ScheduleClass, tall: Bool) -> some View {
+        let palette = CoursePalette(course, dark: scheme == .dark)
+        let isNow = course.startMinutes <= minutesNow && minutesNow < course.endMinutes
+
+        return HStack(spacing: 0) {
+            // Fixed, right-aligned time gutter so every start time lines up.
+            VStack(alignment: .trailing, spacing: 0) {
+                Text(course.startLabel)
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundStyle(.primary)
+                Text(course.endLabel)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(width: timeGutter, alignment: .trailing)
+            .padding(.trailing, 8)
+
+            HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(course.code)
+                            .font(.system(size: tall ? 14 : 12.5, weight: .black))
+                            .foregroundStyle(palette.ink)
+                            .lineLimit(1)
+                        if !tall {
+                            Text(course.title)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(palette.ink.opacity(0.85))
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    if tall {
+                        Text(course.title)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(palette.ink.opacity(0.85))
+                            .lineLimit(1)
+                        if let location = course.location {
+                            Text(isNow
+                                 ? "\(location) · \(course.minutesRemaining(now: entry.date)) min left"
+                                 : location)
+                                .font(.system(size: 9.5, weight: .medium))
+                                .foregroundStyle(palette.ink.opacity(0.65))
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
+                if isNow {
+                    Text("NOW")
+                        .font(.system(size: 8.5, weight: .heavy))
+                        .tracking(0.6)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2.5)
+                        .background(Color.brand)
+                        .clipShape(Capsule())
+                } else if !tall, let location = course.location {
+                    Text(location)
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundStyle(palette.ink.opacity(0.65))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, tall ? 8 : 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(palette.background)
+            .clipShape(RoundedRectangle(cornerRadius: tall ? 11 : 9))
+            .overlay(RoundedRectangle(cornerRadius: tall ? 11 : 9).stroke(palette.edge, lineWidth: 1))
+        }
+        // min-height 0 lets the fixed widget frame govern: content never pushes
+        // past 170pt, and rows share whatever is left equally.
+        .frame(maxHeight: .infinity)
+    }
+
+    private var minutesNow: Int {
+        let calendar = Calendar.current
+        return calendar.component(.hour, from: entry.date) * 60 + calendar.component(.minute, from: entry.date)
+    }
+
+    private func emptyCard(payload: SchedulePayload?) -> some View {
+        let upcoming = payload?.nextClass(now: entry.date)
+
+        return VStack(alignment: .leading, spacing: 3) {
+            Text(payload == nil ? "Open ClassMate to set up your schedule" : "No classes today")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.primary)
+            if let upcoming {
+                Text("Next: \(ScheduleClass.countdownLabel(to: upcoming.date, now: entry.date)) · \(upcoming.course.code)")
+                    .font(.system(size: 11.5, weight: .bold))
+                    .foregroundStyle(Color.brand)
+                    .lineLimit(2)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.brand.opacity(scheme == .dark ? 0.16 : 0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 11))
+    }
 }
 
-// MARK: - Large — the week as a timetable grid
+// MARK: - Large — the week
 
-/// Mirrors the app's timetable: a bordered, clipped frame with a tinted header
-/// row, a time gutter, ruled columns, and pastel blocks. Matching that
-/// structure is the point — a bare chart of floating rectangles doesn't read as
-/// the same product.
+/// The app's bordered-card grammar: tinted header row, time gutter, ruled day
+/// columns. The plot reads as *mass* rather than a wire grid — two-hour
+/// background bands carry the time reference, so no horizontal hairlines are
+/// needed inside it. Today gets a solid brand header cell and a tinted column.
 struct WeekView: View {
+    @Environment(\.colorScheme) private var scheme
     let entry: ScheduleEntry
 
     private let weekdays = [1, 2, 3, 4, 5]
     private let labels = ["MON", "TUE", "WED", "THU", "FRI"]
     private let timeGutter: CGFloat = 30
-    private let headerHeight: CGFloat = 20
-
-    private var line: Color { Color.secondary.opacity(0.18) }
+    private let headerHeight: CGFloat = 22
+    private let plotStartHour = 8
+    private let plotEndHour = 18          // 8 AM – 6 PM = 600 minutes
 
     var body: some View {
         let payload = entry.payload
         let all = payload?.isTermOver == true ? [] : (payload?.classes ?? [])
         let weekClasses = all.filter { weekdays.contains($0.weekday) }
-        let todayIndex = Calendar.current.component(.weekday, from: entry.date) - 1
+        let today = Calendar.current.component(.weekday, from: entry.date) - 1
 
-        VStack(alignment: .leading, spacing: 6) {
-            Text(payload?.termLabel.uppercased() ?? "CLASSMATE")
-                .font(.caption2)
-                .fontWeight(.heavy)
-                .foregroundStyle(Color.brand)
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text("THIS WEEK")
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(1.2)
+                    .foregroundStyle(Color.brand)
+                Spacer()
+                Text([payload?.termLabel, payload?.school].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
 
             if weekClasses.isEmpty {
-                EmptyStateView(payload: payload)
+                emptyPlot(payload: payload)
             } else {
-                // Only the hours that actually contain class, so an
-                // afternoon-only schedule fills the frame instead of floating in
-                // a mostly empty 8am–10pm chart.
-                let startHour = (weekClasses.map(\.startMinutes).min() ?? 480) / 60
-                let endHour = Int(ceil(Double(weekClasses.map(\.endMinutes).max() ?? 1080) / 60))
-                let hours = max(1, endHour - startHour)
-
-                GeometryReader { geo in
-                    let dayWidth = (geo.size.width - timeGutter) / CGFloat(weekdays.count)
-                    let hourHeight = max(0, geo.size.height - headerHeight) / CGFloat(hours)
-
-                    ZStack(alignment: .topLeading) {
-                        // Header band
-                        Rectangle()
-                            .fill(Color(uiColor: .tertiarySystemFill))
-                            .frame(height: headerHeight)
-
-                        ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
-                            Text(label)
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(weekdays[index] == todayIndex ? Color.brand : .secondary)
-                                .frame(width: dayWidth, height: headerHeight)
-                                .offset(x: timeGutter + CGFloat(index) * dayWidth)
-                        }
-
-                        // Column rules
-                        ForEach(0...weekdays.count, id: \.self) { index in
-                            Rectangle()
-                                .fill(line)
-                                .frame(width: 0.5)
-                                .offset(x: timeGutter + CGFloat(index) * dayWidth)
-                        }
-
-                        // Hour rules + gutter labels
-                        ForEach(0...hours, id: \.self) { offset in
-                            let y = headerHeight + CGFloat(offset) * hourHeight
-                            Rectangle()
-                                .fill(line)
-                                .frame(height: 0.5)
-                                .offset(y: y)
-
-                            if offset < hours {
-                                Text(ScheduleClass.formatMinutes((startHour + offset) * 60))
-                                    .font(.system(size: 7, weight: .medium))
-                                    .foregroundStyle(.tertiary)
-                                    .frame(width: timeGutter - 4, alignment: .trailing)
-                                    .offset(y: y + 2)
-                            }
-                        }
-
-                        // Class blocks
-                        ForEach(weekClasses) { course in
-                            let dayIndex = weekdays.firstIndex(of: course.weekday) ?? 0
-                            let top = CGFloat(course.startMinutes - startHour * 60) / 60 * hourHeight
-                            let height = max(14, CGFloat(course.endMinutes - course.startMinutes) / 60 * hourHeight)
-                            let background = Color(hex: course.bgHex, fallback: Color.brand.opacity(0.12))
-                            let ink = Color(hex: course.textHex)
-                            let edge = Color(hex: course.borderHex)
-
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(course.code)
-                                    .font(.system(size: 8, weight: .heavy))
-                                    .foregroundStyle(ink)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.65)
-                                if height > 26, let location = course.location {
-                                    Text(location)
-                                        .font(.system(size: 6.5, weight: .semibold))
-                                        .foregroundStyle(ink.opacity(0.72))
-                                        .lineLimit(1)
-                                }
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, 2)
-                            .padding(.vertical, 2)
-                            .frame(width: dayWidth - 3, height: height, alignment: .topLeading)
-                            .background(background)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(edge, lineWidth: 0.5)
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .offset(
-                                x: timeGutter + CGFloat(dayIndex) * dayWidth + 1.5,
-                                y: headerHeight + top
-                            )
-                        }
-                    }
-                }
-                .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(line, lineWidth: 0.5)
-                )
+                plot(weekClasses: weekClasses, today: today)
+                footer(weekClasses: weekClasses)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func plot(weekClasses: [ScheduleClass], today: Int) -> some View {
+        let dark = scheme == .dark
+        let hairline = Color(uiColor: .separator).opacity(dark ? 0.35 : 0.6)
+        let band = dark ? Color(red: 0.067, green: 0.094, blue: 0.153)     // #111827
+                        : Color(red: 0.976, green: 0.980, blue: 0.984)     // #f9fafb
+
+        return GeometryReader { geo in
+            let dayWidth = (geo.size.width - timeGutter) / CGFloat(weekdays.count)
+            let plotHeight = geo.size.height - headerHeight
+            let perMinute = plotHeight / CGFloat((plotEndHour - plotStartHour) * 60)
+
+            ZStack(alignment: .topLeading) {
+                // Two-hour bands replace horizontal rules, so the plot reads as
+                // mass rather than a wire grid.
+                ForEach(Array(stride(from: plotStartHour, to: plotEndHour, by: 2)), id: \.self) { hour in
+                    let index = (hour - plotStartHour) / 2
+                    if index % 2 == 0 {
+                        Rectangle()
+                            .fill(band)
+                            .frame(height: CGFloat(120) * perMinute)
+                            .offset(y: headerHeight + CGFloat((hour - plotStartHour) * 60) * perMinute)
+                    }
+                }
+
+                // Today's column wash
+                if let todayIndex = weekdays.firstIndex(of: today) {
+                    Rectangle()
+                        .fill(Color.brand.opacity(dark ? 0.12 : 0.06))
+                        .frame(width: dayWidth)
+                        .offset(x: timeGutter + CGFloat(todayIndex) * dayWidth, y: headerHeight)
+                }
+
+                // Header cells
+                ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
+                    let isToday = weekdays[index] == today
+                    ZStack {
+                        Rectangle().fill(isToday ? Color.brand : Color(uiColor: .tertiarySystemFill))
+                        Text(label)
+                            .font(.system(size: 9.5, weight: .heavy))
+                            .tracking(0.55)
+                            .foregroundStyle(isToday ? .white : Color.secondary)
+                    }
+                    .frame(width: dayWidth, height: headerHeight)
+                    .offset(x: timeGutter + CGFloat(index) * dayWidth)
+                }
+
+                // Hour labels every two hours
+                ForEach(Array(stride(from: plotStartHour, to: plotEndHour, by: 2)), id: \.self) { hour in
+                    Text("\(hour % 12 == 0 ? 12 : hour % 12)")
+                        .font(.system(size: 8.5, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: timeGutter - 5, alignment: .trailing)
+                        .offset(y: headerHeight + CGFloat((hour - plotStartHour) * 60) * perMinute - 4)
+                }
+
+                // Column rules
+                ForEach(0...weekdays.count, id: \.self) { index in
+                    Rectangle()
+                        .fill(hairline)
+                        .frame(width: 1)
+                        .offset(x: timeGutter + CGFloat(index) * dayWidth)
+                }
+
+                // Blocks
+                ForEach(weekClasses) { course in
+                    let dayIndex = weekdays.firstIndex(of: course.weekday) ?? 0
+                    let isToday = course.weekday == today
+                    let palette = CoursePalette(course, dark: dark, insideGrid: true)
+                    let top = CGFloat(course.startMinutes - plotStartHour * 60) * perMinute
+                    let height = max(18, CGFloat(course.endMinutes - course.startMinutes) * perMinute)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(course.code)
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundStyle(palette.ink)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
+                        // The start time only earns its place on a tall block.
+                        if height >= 32 {
+                            Text(course.startLabel.replacingOccurrences(of: " AM", with: "")
+                                                   .replacingOccurrences(of: " PM", with: ""))
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(palette.ink.opacity(0.7))
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 3)
+                    .padding(.vertical, 2)
+                    .frame(width: dayWidth - 4, height: height, alignment: .topLeading)
+                    .background(palette.background)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(palette.edge, lineWidth: isToday ? 1.4 : 1)
+                    )
+                    .offset(x: timeGutter + CGFloat(dayIndex) * dayWidth + 2, y: headerHeight + top)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(hairline, lineWidth: 1))
+        }
+    }
+
+    private func footer(weekClasses: [ScheduleClass]) -> some View {
+        let courses = Set(weekClasses.map(\.code)).count
+        let busiest = weekdays
+            .map { day in (day, weekClasses.filter { $0.weekday == day }.count) }
+            .max { $0.1 < $1.1 }
+
+        return HStack {
+            Text("\(weekClasses.count) meetings · \(courses) course\(courses == 1 ? "" : "s")")
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundStyle(.secondary)
+            Spacer()
+            if let busiest, busiest.1 > 0, let index = weekdays.firstIndex(of: busiest.0) {
+                Text("Busiest: \(labels[index].capitalized)")
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundStyle(Color.brand)
+            }
+        }
+    }
+
+    private func emptyPlot(payload: SchedulePayload?) -> some View {
+        VStack(spacing: 5) {
+            Spacer()
+            Text(payload == nil ? "No schedule yet" : "Nothing scheduled")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.primary)
+            Text(payload == nil
+                 ? "Open ClassMate to add your classes"
+                 : "No classes this week.")
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(uiColor: .separator).opacity(0.6), lineWidth: 1)
+        )
     }
 }
 
@@ -487,10 +690,14 @@ struct ClassMateWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             ClassMateWidgetEntryView(entry: entry)
-                // The template's .fill.tertiary is a translucent grey; the app's
-                // timetable sits on a white card, and the pale pastel blocks are
-                // designed for that. On grey they lose all contrast.
-                .containerBackground(Color(uiColor: .systemBackground), for: .widget)
+                // Never translucent grey: the pale pastels need a solid ground.
+                // White in light, the app's #0f172a in dark.
+                .containerBackground(
+                    Color(uiColor: UIColor { $0.userInterfaceStyle == .dark
+                        ? UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1)   // #0f172a
+                        : .white }),
+                    for: .widget
+                )
         }
         .configurationDisplayName("Schedule")
         .description("Your next class, today's timetable, or the whole week.")

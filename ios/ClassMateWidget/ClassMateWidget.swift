@@ -103,6 +103,9 @@ private struct EmptyStateView: View {
 private struct ClassRow: View {
     let course: ScheduleClass
     var showsLocation: Bool = true
+    /// Rows stretch to fill the widget rather than sitting at a fixed height:
+    /// with two classes a fixed row leaves the bottom half of the widget empty.
+    var height: CGFloat = 30
 
     var body: some View {
         HStack(spacing: 8) {
@@ -125,7 +128,7 @@ private struct ClassRow: View {
             }
             Spacer(minLength: 0)
         }
-        .frame(height: 30)
+        .frame(height: height)
     }
 }
 
@@ -194,6 +197,7 @@ struct TodayView: View {
     var body: some View {
         let payload = entry.payload
         let today = payload?.classesToday(now: entry.date) ?? []
+        let shown = Array(today.prefix(4))
 
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -213,15 +217,25 @@ struct TodayView: View {
             if today.isEmpty {
                 EmptyStateView(payload: payload)
             } else {
-                // Four rows is what fits; anything beyond that is summarised
-                // rather than clipped mid-row.
-                ForEach(today.prefix(4)) { ClassRow(course: $0) }
-                if today.count > 4 {
-                    Text("+\(today.count - 4) more")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                GeometryReader { geo in
+                    // Divide the available height between the rows instead of
+                    // stacking fixed-height ones, so two classes fill the widget
+                    // the same way four do. Capped so a single class doesn't
+                    // become one enormous row.
+                    let spacing: CGFloat = 4
+                    let total = geo.size.height - spacing * CGFloat(max(0, shown.count - 1))
+                    let rowHeight = min(56, max(26, total / CGFloat(shown.count)))
+
+                    VStack(alignment: .leading, spacing: spacing) {
+                        ForEach(shown) { ClassRow(course: $0, height: rowHeight) }
+                        if today.count > shown.count {
+                            Text("+\(today.count - shown.count) more")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
-                Spacer(minLength: 0)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -230,69 +244,82 @@ struct TodayView: View {
 
 // MARK: - Large — the week as a timetable grid
 
+/// Mirrors the app's timetable: a bordered, clipped frame with a tinted header
+/// row, a time gutter, ruled columns, and pastel blocks. Matching that
+/// structure is the point — a bare chart of floating rectangles doesn't read as
+/// the same product.
 struct WeekView: View {
     let entry: ScheduleEntry
 
-    private let weekdays = [1, 2, 3, 4, 5]           // Mon–Fri
-    private let labels = ["M", "T", "W", "T", "F"]
-    private let timeColumnWidth: CGFloat = 26
+    private let weekdays = [1, 2, 3, 4, 5]
+    private let labels = ["MON", "TUE", "WED", "THU", "FRI"]
+    private let timeGutter: CGFloat = 30
+    private let headerHeight: CGFloat = 20
+
+    private var line: Color { Color.secondary.opacity(0.18) }
 
     var body: some View {
         let payload = entry.payload
-        let classes = payload?.isTermOver == true ? [] : (payload?.classes ?? [])
-        let weekClasses = classes.filter { weekdays.contains($0.weekday) }
+        let all = payload?.isTermOver == true ? [] : (payload?.classes ?? [])
+        let weekClasses = all.filter { weekdays.contains($0.weekday) }
         let todayIndex = Calendar.current.component(.weekday, from: entry.date) - 1
 
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(payload?.termLabel.uppercased() ?? "CLASSMATE")
-                    .font(.caption2)
-                    .fontWeight(.heavy)
-                    .foregroundStyle(Color.brand)
-                Spacer()
-            }
+            Text(payload?.termLabel.uppercased() ?? "CLASSMATE")
+                .font(.caption2)
+                .fontWeight(.heavy)
+                .foregroundStyle(Color.brand)
 
             if weekClasses.isEmpty {
                 EmptyStateView(payload: payload)
             } else {
-                // The grid spans only the hours that actually have class, so a
-                // schedule packed into one afternoon fills the widget instead of
-                // being squeezed into a sliver of a 7am–10pm chart.
-                let startHour = max(0, (weekClasses.map(\.startMinutes).min() ?? 480) / 60)
-                let endHour = min(24, Int(ceil(Double(weekClasses.map(\.endMinutes).max() ?? 1080) / 60)))
+                // Only the hours that actually contain class, so an
+                // afternoon-only schedule fills the frame instead of floating in
+                // a mostly empty 8am–10pm chart.
+                let startHour = (weekClasses.map(\.startMinutes).min() ?? 480) / 60
+                let endHour = Int(ceil(Double(weekClasses.map(\.endMinutes).max() ?? 1080) / 60))
                 let hours = max(1, endHour - startHour)
 
                 GeometryReader { geo in
-                    let gridWidth = geo.size.width - timeColumnWidth
-                    let dayWidth = gridWidth / CGFloat(weekdays.count)
-                    let headerHeight: CGFloat = 14
-                    let bodyHeight = max(0, geo.size.height - headerHeight)
-                    let hourHeight = bodyHeight / CGFloat(hours)
+                    let dayWidth = (geo.size.width - timeGutter) / CGFloat(weekdays.count)
+                    let hourHeight = max(0, geo.size.height - headerHeight) / CGFloat(hours)
 
                     ZStack(alignment: .topLeading) {
-                        // Day headers
-                        ForEach(Array(zip(weekdays, labels).enumerated()), id: \.offset) { index, pair in
-                            Text(pair.1)
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(pair.0 == todayIndex ? Color.brand : .secondary)
+                        // Header band
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.10))
+                            .frame(height: headerHeight)
+
+                        ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
+                            Text(label)
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(weekdays[index] == todayIndex ? Color.brand : .secondary)
                                 .frame(width: dayWidth, height: headerHeight)
-                                .offset(x: timeColumnWidth + CGFloat(index) * dayWidth, y: 0)
+                                .offset(x: timeGutter + CGFloat(index) * dayWidth)
                         }
 
-                        // Hour lines + labels
+                        // Column rules
+                        ForEach(0...weekdays.count, id: \.self) { index in
+                            Rectangle()
+                                .fill(line)
+                                .frame(width: 0.5)
+                                .offset(x: timeGutter + CGFloat(index) * dayWidth)
+                        }
+
+                        // Hour rules + gutter labels
                         ForEach(0...hours, id: \.self) { offset in
                             let y = headerHeight + CGFloat(offset) * hourHeight
                             Rectangle()
-                                .fill(Color.secondary.opacity(0.15))
+                                .fill(line)
                                 .frame(height: 0.5)
-                                .offset(x: timeColumnWidth, y: y)
+                                .offset(y: y)
 
                             if offset < hours {
                                 Text(ScheduleClass.formatMinutes((startHour + offset) * 60))
-                                    .font(.system(size: 7))
+                                    .font(.system(size: 7, weight: .medium))
                                     .foregroundStyle(.tertiary)
-                                    .frame(width: timeColumnWidth, alignment: .leading)
-                                    .offset(x: 0, y: y + 1)
+                                    .frame(width: timeGutter - 4, alignment: .trailing)
+                                    .offset(y: y + 2)
                             }
                         }
 
@@ -300,24 +327,45 @@ struct WeekView: View {
                         ForEach(weekClasses) { course in
                             let dayIndex = weekdays.firstIndex(of: course.weekday) ?? 0
                             let top = CGFloat(course.startMinutes - startHour * 60) / 60 * hourHeight
-                            let height = max(10, CGFloat(course.endMinutes - course.startMinutes) / 60 * hourHeight)
+                            let height = max(14, CGFloat(course.endMinutes - course.startMinutes) / 60 * hourHeight)
+                            let tint = Color(hex: course.colorHex)
 
-                            Text(course.code)
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(Color(hex: course.colorHex))
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.7)
-                                .padding(.horizontal, 2)
-                                .frame(width: dayWidth - 2, height: height, alignment: .topLeading)
-                                .background(Color(hex: course.colorHex).opacity(0.18))
-                                .clipShape(RoundedRectangle(cornerRadius: 3))
-                                .offset(
-                                    x: timeColumnWidth + CGFloat(dayIndex) * dayWidth + 1,
-                                    y: headerHeight + top
-                                )
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(course.code)
+                                    .font(.system(size: 8, weight: .heavy))
+                                    .foregroundStyle(tint)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.65)
+                                if height > 26, let location = course.location {
+                                    Text(location)
+                                        .font(.system(size: 6.5, weight: .semibold))
+                                        .foregroundStyle(tint.opacity(0.7))
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 2)
+                            .padding(.vertical, 2)
+                            .frame(width: dayWidth - 3, height: height, alignment: .topLeading)
+                            .background(tint.opacity(0.16))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(tint.opacity(0.35), lineWidth: 0.5)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .offset(
+                                x: timeGutter + CGFloat(dayIndex) * dayWidth + 1.5,
+                                y: headerHeight + top
+                            )
                         }
                     }
                 }
+                .background(Color.primary.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(line, lineWidth: 0.5)
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

@@ -13,7 +13,7 @@
 
 import { Course, parseTimeToMinutes, parseCourseDays, DAY_TOKEN_TO_WEEKDAY } from '../data/courses';
 import { getTermEndDate } from '../data/academicCalendar';
-import { colorForCourse, blockColorKey } from '../data/courses';
+import { pastelForCourse, blockColorKey } from '../data/courses';
 
 export const WIDGET_SCHEDULE_VERSION = 1;
 
@@ -26,7 +26,11 @@ export type WidgetClass = {
   startMinutes: number;
   endMinutes: number;
   location: string | null;
-  colorHex: string | null;
+  /** The app's pastel triple, so the widget renders identical colours rather
+   *  than re-deriving a tint from a solid hex (which came out neon). */
+  bgHex: string;
+  textHex: string;
+  borderHex: string;
 };
 
 export type WidgetSchedulePayload = {
@@ -70,6 +74,8 @@ export function buildWidgetSchedule(params: {
     const endMinutes = parseTimeToMinutes(endRaw, { allow24HourEnd: true });
     if (startMinutes == null || endMinutes == null) continue;
 
+    const palette = pastelForCourse(blockColorKey(course));
+
     for (const token of days) {
       const weekday = DAY_TOKEN_TO_WEEKDAY[token];
       if (weekday == null) continue;
@@ -82,7 +88,9 @@ export function buildWidgetSchedule(params: {
         startMinutes,
         endMinutes,
         location: course.location?.trim() || null,
-        colorHex: course.customColor ?? colorForCourse(blockColorKey(course)) ?? null,
+        bgHex: palette.bg,
+        textHex: palette.text,
+        borderHex: palette.border,
       });
     }
   }

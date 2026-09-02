@@ -11,14 +11,14 @@ import SwiftUI
 private extension Color {
     static let brand = Color(red: 0.255, green: 0.412, blue: 0.882)   // #4169E1
 
-    /// Parses "#RRGGBB". Falls back to the brand colour so a malformed value
+    /// Parses "#RRGGBB". Falls back to the supplied colour so a malformed value
     /// from the app can never blank out a row.
-    init(hex: String?) {
+    init(hex: String?, fallback: Color = .brand) {
         guard
             let hex,
             let value = Int(hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16),
             hex.count >= 6
-        else { self = .brand; return }
+        else { self = fallback; return }
 
         self.init(
             red: Double((value >> 16) & 0xFF) / 255,
@@ -110,7 +110,7 @@ private struct ClassRow: View {
     var body: some View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(Color(hex: course.colorHex))
+                .fill(Color(hex: course.borderHex))
                 .frame(width: 3)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -328,18 +328,20 @@ struct WeekView: View {
                             let dayIndex = weekdays.firstIndex(of: course.weekday) ?? 0
                             let top = CGFloat(course.startMinutes - startHour * 60) / 60 * hourHeight
                             let height = max(14, CGFloat(course.endMinutes - course.startMinutes) / 60 * hourHeight)
-                            let tint = Color(hex: course.colorHex)
+                            let background = Color(hex: course.bgHex, fallback: Color.brand.opacity(0.12))
+                            let ink = Color(hex: course.textHex)
+                            let edge = Color(hex: course.borderHex)
 
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(course.code)
                                     .font(.system(size: 8, weight: .heavy))
-                                    .foregroundStyle(tint)
+                                    .foregroundStyle(ink)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.65)
                                 if height > 26, let location = course.location {
                                     Text(location)
                                         .font(.system(size: 6.5, weight: .semibold))
-                                        .foregroundStyle(tint.opacity(0.7))
+                                        .foregroundStyle(ink.opacity(0.72))
                                         .lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
@@ -347,10 +349,10 @@ struct WeekView: View {
                             .padding(.horizontal, 2)
                             .padding(.vertical, 2)
                             .frame(width: dayWidth - 3, height: height, alignment: .topLeading)
-                            .background(tint.opacity(0.16))
+                            .background(background)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 4)
-                                    .stroke(tint.opacity(0.35), lineWidth: 0.5)
+                                    .stroke(edge, lineWidth: 0.5)
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                             .offset(

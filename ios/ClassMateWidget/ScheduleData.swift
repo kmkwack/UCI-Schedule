@@ -28,7 +28,12 @@ struct ScheduleClass: Codable, Identifiable {
     let startMinutes: Int     // minutes past local midnight
     let endMinutes: Int
     let location: String?
-    let colorHex: String?     // "#4169E1"; nil falls back to the brand colour
+    // The app's pastel triple (background / text / border), sent verbatim so the
+    // widget renders the same colours the timetable does. Deriving a tint from a
+    // single solid hex here produced neon blocks that fought for attention.
+    let bgHex: String?
+    let textHex: String?
+    let borderHex: String?
 }
 
 struct SchedulePayload: Codable {

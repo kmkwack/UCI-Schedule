@@ -198,7 +198,16 @@ private struct ClassRow: View {
 /// "in class" pill and its progress fill — the one thing that is genuinely
 /// happening now.
 struct NextClassView: View {
+    @Environment(\.colorScheme) private var scheme
     let entry: ScheduleEntry
+
+    /// The pastel the whole widget should be washed in, so the colour reaches
+    /// the widget's own edges instead of a card inset within it.
+    static func backgroundTint(for entry: ScheduleEntry, dark: Bool) -> Color? {
+        let course = entry.payload?.currentClass(now: entry.date) ?? entry.payload?.nextClass(now: entry.date)?.course
+        guard let course else { return nil }
+        return CoursePalette(course, dark: dark).background
+    }
 
     var body: some View {
         let payload = entry.payload
@@ -213,9 +222,7 @@ struct NextClassView: View {
     }
 
     private func card(course: ScheduleClass, isNow: Bool, startsAt: Date?) -> some View {
-        let bg = Color(hex: course.bgHex, fallback: Color(uiColor: .secondarySystemBackground))
-        let ink = Color(hex: course.textHex, fallback: .primary)
-        let edge = Color(hex: course.borderHex)
+        let ink = CoursePalette(course, dark: scheme == .dark).ink
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 4) {
@@ -282,12 +289,11 @@ struct NextClassView: View {
                 .padding(.top, 7)
             }
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 12)
+        // No card here: the widget itself is already a rounded card, so drawing
+        // another one inside it reads as a box in a box. The pastel goes on the
+        // widget's own background instead (see .containerBackground below) and
+        // the content simply fills the space.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(bg)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(edge, lineWidth: 1))
     }
 
     private func allDoneCard(payload: SchedulePayload?) -> some View {
@@ -323,12 +329,7 @@ struct NextClassView: View {
                     .padding(.top, 1)
             }
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 1))
     }
 }
 
@@ -457,9 +458,10 @@ struct TodayView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, tall ? 8 : 6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            // Fill only, no stroke: the widget is already a card, and outlining
+            // every row inside it produced a box-in-a-box.
             .background(palette.background)
             .clipShape(RoundedRectangle(cornerRadius: tall ? 11 : 9))
-            .overlay(RoundedRectangle(cornerRadius: tall ? 11 : 9).stroke(palette.edge, lineWidth: 1))
         }
         // min-height 0 lets the fixed widget frame govern: content never pushes
         // past 170pt, and rows share whatever is left equally.
@@ -631,27 +633,29 @@ struct WeekView: View {
                     let isToday = course.weekday == today
                     let palette = CoursePalette(course, dark: dark, insideGrid: true)
                     let top = CGFloat(course.startMinutes - plotStartHour * 60) * perMinute
-                    let height = max(18, CGFloat(course.endMinutes - course.startMinutes) * perMinute)
+                    // A 50-minute class should look like 50 minutes. The old
+                    // floor of 18pt inflated short classes into chunky bricks.
+                    let height = max(13, CGFloat(course.endMinutes - course.startMinutes) * perMinute)
 
                     VStack(alignment: .leading, spacing: 0) {
                         Text(course.code)
-                            .font(.system(size: 9, weight: .black))
+                            .font(.system(size: 8, weight: .black))
                             .foregroundStyle(palette.ink)
                             .lineLimit(2)
-                            .minimumScaleFactor(0.75)
+                            .minimumScaleFactor(0.7)
                         // The start time only earns its place on a tall block.
-                        if height >= 32 {
+                        if height >= 34 {
                             Text(course.startLabel.replacingOccurrences(of: " AM", with: "")
                                                    .replacingOccurrences(of: " PM", with: ""))
-                                .font(.system(size: 8, weight: .semibold))
+                                .font(.system(size: 7, weight: .semibold))
                                 .foregroundStyle(palette.ink.opacity(0.7))
                                 .lineLimit(1)
                         }
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 3)
-                    .padding(.vertical, 2)
-                    .frame(width: dayWidth - 4, height: height, alignment: .topLeading)
+                    .padding(.horizontal, 2.5)
+                    .padding(.vertical, 1.5)
+                    .frame(width: dayWidth - 3, height: height, alignment: .topLeading)
                     .background(palette.background)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .overlay(
@@ -713,14 +717,31 @@ struct WeekView: View {
 
 struct ClassMateWidgetEntryView: View {
     @Environment(\.widgetFamily) var family
+    @Environment(\.colorScheme) private var scheme
     var entry: Provider.Entry
 
     var body: some View {
+        content
+            .containerBackground(for: .widget) { background }
+    }
+
+    @ViewBuilder private var content: some View {
         switch family {
         case .systemSmall:  NextClassView(entry: entry)
         case .systemLarge:  WeekView(entry: entry)
         default:            TodayView(entry: entry)
         }
+    }
+
+    /// Small washes the whole widget in the course's pastel — that is what
+    /// removes the card-inside-a-card. The other sizes keep a plain ground so
+    /// their own content provides the colour.
+    private var background: Color {
+        let plain = scheme == .dark
+            ? Color(red: 0.059, green: 0.090, blue: 0.165)   // #0f172a
+            : Color.white
+        guard family == .systemSmall else { return plain }
+        return NextClassView.backgroundTint(for: entry, dark: scheme == .dark) ?? plain
     }
 }
 
@@ -730,14 +751,6 @@ struct ClassMateWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             ClassMateWidgetEntryView(entry: entry)
-                // Never translucent grey: the pale pastels need a solid ground.
-                // White in light, the app's #0f172a in dark.
-                .containerBackground(
-                    Color(uiColor: UIColor { $0.userInterfaceStyle == .dark
-                        ? UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1)   // #0f172a
-                        : .white }),
-                    for: .widget
-                )
         }
         .configurationDisplayName("Schedule")
         .description("Your next class, today's timetable, or the whole week.")

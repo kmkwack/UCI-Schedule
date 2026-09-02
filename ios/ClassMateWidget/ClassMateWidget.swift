@@ -226,16 +226,20 @@ struct NextClassView: View {
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 4) {
+                // fixedSize keeps the pill on one line: at 170pt wide it was
+                // wrapping to "IN / CLASS" and the capsule grew into a blob.
                 Text(isNow ? "IN CLASS" : "NEXT UP")
                     .font(.system(size: 8.5, weight: .heavy))
-                    .tracking(0.85)
+                    .tracking(0.7)
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(isNow ? .white : ink)
                     .padding(.horizontal, isNow ? 6 : 0)
-                    .padding(.vertical, isNow ? 3 : 0)
+                    .padding(.vertical, isNow ? 2.5 : 0)
                     .background(isNow ? Color.brand : .clear)
                     .clipShape(Capsule())
 
-                Spacer(minLength: 2)
+                Spacer(minLength: 3)
 
                 Text(isNow
                      ? "\(course.minutesRemaining(now: entry.date)) min left"
@@ -343,7 +347,7 @@ struct TodayView: View {
     @Environment(\.colorScheme) private var scheme
     let entry: ScheduleEntry
 
-    private let timeGutter: CGFloat = 52
+    private let timeGutter: CGFloat = 40
 
     var body: some View {
         let payload = entry.payload
@@ -396,17 +400,23 @@ struct TodayView: View {
         let isNow = course.startMinutes <= minutesNow && minutesNow < course.endMinutes
 
         return HStack(spacing: 0) {
-            // Fixed, right-aligned time gutter so every start time lines up.
-            VStack(alignment: .trailing, spacing: 0) {
+            // Left-aligned and narrower than the spec's 52pt: right-aligning it
+            // left a visible gap down the left edge and pushed every card
+            // rightward, so the widget read as indented rather than full.
+            VStack(alignment: .leading, spacing: 0) {
                 Text(course.startLabel)
                     .font(.system(size: 11, weight: .heavy))
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Text(course.endLabel)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            .frame(width: timeGutter, alignment: .trailing)
-            .padding(.trailing, 8)
+            .frame(width: timeGutter, alignment: .leading)
+            .padding(.trailing, 6)
 
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 1) {

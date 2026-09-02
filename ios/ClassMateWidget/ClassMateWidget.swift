@@ -140,7 +140,7 @@ struct NextClassView: View {
         let next = payload?.nextClass(now: entry.date)
 
         VStack(alignment: .leading, spacing: 0) {
-            Text(current != nil ? "NOW" : "NEXT")
+            Text(current != nil ? "IN CLASS" : "NEXT CLASS")
                 .font(.caption2)
                 .fontWeight(.heavy)
                 .foregroundStyle(Color.brand)
@@ -197,7 +197,7 @@ struct TodayView: View {
 
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("TODAY")
+                Text("TODAY'S CLASSES")
                     .font(.caption2)
                     .fontWeight(.heavy)
                     .foregroundStyle(Color.brand)
@@ -228,19 +228,22 @@ struct TodayView: View {
     }
 }
 
-// MARK: - Large — the week
+// MARK: - Large — the week as a timetable grid
 
 struct WeekView: View {
     let entry: ScheduleEntry
 
     private let weekdays = [1, 2, 3, 4, 5]           // Mon–Fri
-    private let labels = ["MON", "TUE", "WED", "THU", "FRI"]
+    private let labels = ["M", "T", "W", "T", "F"]
+    private let timeColumnWidth: CGFloat = 26
 
     var body: some View {
         let payload = entry.payload
+        let classes = payload?.isTermOver == true ? [] : (payload?.classes ?? [])
+        let weekClasses = classes.filter { weekdays.contains($0.weekday) }
         let todayIndex = Calendar.current.component(.weekday, from: entry.date) - 1
 
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(payload?.termLabel.uppercased() ?? "CLASSMATE")
                     .font(.caption2)
@@ -249,44 +252,72 @@ struct WeekView: View {
                 Spacer()
             }
 
-            if payload == nil || payload!.classes.isEmpty {
+            if weekClasses.isEmpty {
                 EmptyStateView(payload: payload)
             } else {
-                ForEach(Array(zip(weekdays, labels)), id: \.0) { weekday, label in
-                    let classes = payload!.classes(onWeekday: weekday)
+                // The grid spans only the hours that actually have class, so a
+                // schedule packed into one afternoon fills the widget instead of
+                // being squeezed into a sliver of a 7am–10pm chart.
+                let startHour = max(0, (weekClasses.map(\.startMinutes).min() ?? 480) / 60)
+                let endHour = min(24, Int(ceil(Double(weekClasses.map(\.endMinutes).max() ?? 1080) / 60)))
+                let hours = max(1, endHour - startHour)
 
-                    HStack(alignment: .top, spacing: 8) {
-                        Text(label)
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            // Today's column is highlighted so the eye lands on
-                            // the row that matters without reading the labels.
-                            .foregroundStyle(weekday == todayIndex ? Color.brand : .secondary)
-                            .frame(width: 34, alignment: .leading)
+                GeometryReader { geo in
+                    let gridWidth = geo.size.width - timeColumnWidth
+                    let dayWidth = gridWidth / CGFloat(weekdays.count)
+                    let headerHeight: CGFloat = 14
+                    let bodyHeight = max(0, geo.size.height - headerHeight)
+                    let hourHeight = bodyHeight / CGFloat(hours)
 
-                        if classes.isEmpty {
-                            Text("—")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        } else {
-                            // Codes only: the week view answers "what days am I
-                            // busy", and times at this density are unreadable.
-                            HStack(spacing: 4) {
-                                ForEach(classes.prefix(4)) { course in
-                                    Text(course.code)
-                                        .font(.system(size: 10, weight: .bold))
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 2)
-                                        .background(Color(hex: course.colorHex).opacity(0.18))
-                                        .clipShape(RoundedRectangle(cornerRadius: 5))
-                                        .lineLimit(1)
-                                }
+                    ZStack(alignment: .topLeading) {
+                        // Day headers
+                        ForEach(Array(zip(weekdays, labels).enumerated()), id: \.offset) { index, pair in
+                            Text(pair.1)
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(pair.0 == todayIndex ? Color.brand : .secondary)
+                                .frame(width: dayWidth, height: headerHeight)
+                                .offset(x: timeColumnWidth + CGFloat(index) * dayWidth, y: 0)
+                        }
+
+                        // Hour lines + labels
+                        ForEach(0...hours, id: \.self) { offset in
+                            let y = headerHeight + CGFloat(offset) * hourHeight
+                            Rectangle()
+                                .fill(Color.secondary.opacity(0.15))
+                                .frame(height: 0.5)
+                                .offset(x: timeColumnWidth, y: y)
+
+                            if offset < hours {
+                                Text(ScheduleClass.formatMinutes((startHour + offset) * 60))
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: timeColumnWidth, alignment: .leading)
+                                    .offset(x: 0, y: y + 1)
                             }
                         }
-                        Spacer(minLength: 0)
+
+                        // Class blocks
+                        ForEach(weekClasses) { course in
+                            let dayIndex = weekdays.firstIndex(of: course.weekday) ?? 0
+                            let top = CGFloat(course.startMinutes - startHour * 60) / 60 * hourHeight
+                            let height = max(10, CGFloat(course.endMinutes - course.startMinutes) / 60 * hourHeight)
+
+                            Text(course.code)
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(Color(hex: course.colorHex))
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.7)
+                                .padding(.horizontal, 2)
+                                .frame(width: dayWidth - 2, height: height, alignment: .topLeading)
+                                .background(Color(hex: course.colorHex).opacity(0.18))
+                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                                .offset(
+                                    x: timeColumnWidth + CGFloat(dayIndex) * dayWidth + 1,
+                                    y: headerHeight + top
+                                )
+                        }
                     }
                 }
-                Spacer(minLength: 0)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

@@ -596,3 +596,35 @@ they're added; only the keyword field needs revisiting then.
 **Note:** name, subtitle and keywords only change on a new version submission —
 they are not editable in place. Promotional text is the only field that updates
 without review, and it isn't indexed.
+
+### Session 101c (Version bump to 1.0.2 — three failed uploads before reading Apple's message) — 2026-09-02
+Builds 72 and 73 both uploaded and then failed Apple's processing. The actual
+error, once read:
+
+```
+90062: CFBundleShortVersionString [1.0.1] must contain a higher version than
+       the previously approved version [1.0.1]
+90186: The train version '1.0.1' is closed for new build submissions
+```
+
+**1.0.1 was already approved and released**, so no further builds can attach to
+it — the version had to move to 1.0.2. Nothing to do with the widget.
+
+`app.json` already said 1.0.2, but a bare project's `ios/` directory wins, and
+`ios/ClassMate/Info.plist` still read 1.0.1. Both are now 1.0.2.
+
+**Process note, worth more than the fix:** two builds (≈40 min each) were spent
+on hypotheses — widget version mismatch, then a Podfile sync — without once
+opening the failure detail in App Store Connect. Read the error first.
+
+Two real problems were found along the way and are still worth keeping:
+- **`ios/ClassMate.xcodeproj`** — adding the widget target bumped `objectVersion`
+  to 70, which CocoaPods can't parse ("Unable to find compatibility version
+  string for object version `70`"), failing the Install pods phase. Lowered to 56.
+- **`ios/Podfile`** — `post_install` now copies the app's
+  `CFBundleShortVersionString`/`CFBundleVersion` into the widget's Info.plist.
+  Apple requires an extension's version to match its host app, and EAS bumps
+  only the app's. Pods install on every EAS build, after EAS has set the
+  version, so the two can't drift. Writes the plist rather than the project
+  file — editing build settings via Xcodeproj tripped over an existing
+  shell-script phase on save.

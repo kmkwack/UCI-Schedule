@@ -59,5 +59,29 @@ target 'ClassMate' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    # Keep the widget extension's version in lockstep with the app.
+    #
+    # Apple rejects an upload whose extension version doesn't match the host
+    # app's ("must match the value ... of the main bundle"), and EAS bumps only
+    # the app's Info.plist — the widget target kept Xcode's default 1.0/1, which
+    # is what failed build 72 in processing. Writing the values into the
+    # widget's own Info.plist (rather than the project file) keeps this to a
+    # plist edit that runs on every build, after EAS has set the app's version.
+    app_plist = File.join(__dir__, 'ClassMate', 'Info.plist')
+    widget_plist = File.join(__dir__, 'ClassMateWidget', 'Info.plist')
+
+    if File.exist?(app_plist) && File.exist?(widget_plist)
+      short = `/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "#{app_plist}" 2>/dev/null`.strip
+      build = `/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "#{app_plist}" 2>/dev/null`.strip
+
+      unless short.empty? || build.empty?
+        [['CFBundleShortVersionString', short], ['CFBundleVersion', build]].each do |key, value|
+          system(%(/usr/libexec/PlistBuddy -c "Set :#{key} #{value}" "#{widget_plist}" 2>/dev/null)) ||
+            system(%(/usr/libexec/PlistBuddy -c "Add :#{key} string #{value}" "#{widget_plist}"))
+        end
+        Pod::UI.puts "[ClassMate] Widget version synced to #{short} (#{build})"
+      end
+    end
   end
 end

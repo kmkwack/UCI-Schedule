@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 70;
+	objectVersion = 56;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -68,7 +68,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		CBA1F3C33045238A001629E9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		CBA1F3C33045238A001629E9 /* Exceptions for "ClassMateWidget" folder in "ClassMateWidgetExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -78,7 +78,18 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		CBA1F3B330452389001629E9 /* ClassMateWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (CBA1F3C33045238A001629E9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = ClassMateWidget; sourceTree = "<group>"; };
+		CBA1F3B330452389001629E9 /* ClassMateWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CBA1F3C33045238A001629E9 /* Exceptions for "ClassMateWidget" folder in "ClassMateWidgetExtension" target */,
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = ClassMateWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -239,8 +250,6 @@
 				CBA1F3B330452389001629E9 /* ClassMateWidget */,
 			);
 			name = ClassMateWidgetExtension;
-			packageProductDependencies = (
-			);
 			productName = ClassMateWidgetExtension;
 			productReference = CBA1F3AE30452389001629E9 /* ClassMateWidgetExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -682,6 +691,7 @@
 				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
 				PRODUCT_BUNDLE_IDENTIFIER = com.parksihyun.classmate.ClassMateWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -730,6 +740,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MARKETING_VERSION = 1.0;
 				MTL_FAST_MATH = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
 				PRODUCT_BUNDLE_IDENTIFIER = com.parksihyun.classmate.ClassMateWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

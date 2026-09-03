@@ -225,34 +225,31 @@ struct NextClassView: View {
             }
 
             Text(course.code)
-                .font(.system(size: 19, weight: .black))
-                .tracking(-0.38)
+                .font(.system(size: 17, weight: .black))
+                .tracking(-0.3)
                 .foregroundStyle(ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .padding(.top, 8)
 
             Text(course.title)
-                .font(.system(size: 10.5, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(ink)
-                .lineLimit(2)
-                .padding(.top, 2)
+                .lineLimit(1)
+                .padding(.top, 1)
 
-            Spacer(minLength: 6)
+            Spacer(minLength: 4)
 
-            Text(course.timeRangeLabel)
-                .font(.system(size: 11.5, weight: .bold))
+            // Time and room share a line rather than taking two: at 170pt square
+            // this card has five things to say and room for about four lines, and
+            // dropping the room outright would cost real information.
+            Text([course.timeRangeLabel, course.displayLocation]
+                    .compactMap { $0 }
+                    .joined(separator: " · "))
+                .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            if let location = course.displayLocation {
-                Text(location)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .padding(.top, 1)
-            }
+                .minimumScaleFactor(0.7)
 
             if isNow {
                 GeometryReader { geo in
@@ -397,6 +394,7 @@ struct TodayView: View {
             }
             .frame(width: timeGutter, alignment: .leading)
             .padding(.trailing, 6)
+            .fixedSize(horizontal: true, vertical: false)
 
             // A colour bar rather than a filled card: on a white widget the
             // pastel fills read as stacked boxes, and the bar carries the same
@@ -460,7 +458,7 @@ struct TodayView: View {
         // min-height 0 lets the fixed widget frame govern: content never pushes
         // past 170pt, and rows share whatever is left equally — up to a cap, so
         // a single class doesn't become one enormous row.
-        .frame(maxHeight: tall ? 52 : 36)
+        .frame(maxHeight: tall ? 46 : 32)
     }
 
     private var minutesNow: Int {
@@ -721,6 +719,8 @@ struct ClassMateWidgetEntryView: View {
 
     var body: some View {
         content
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
             .containerBackground(for: .widget) { background }
     }
 

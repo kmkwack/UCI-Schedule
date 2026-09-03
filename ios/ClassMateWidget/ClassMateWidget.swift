@@ -731,6 +731,11 @@ struct ClassMateWidgetEntryView: View {
                 .frame(width: geo.size.width, height: geo.size.height)
         }
         .containerBackground(for: .widget) { background }
+        // The widget is deliberately light-only — the pastels are built for a
+        // white ground. The backgrounds were pinned light but .primary and
+        // .secondary still followed the system, so in dark mode every label
+        // turned white on white. Pin the scheme, not just the backgrounds.
+        .environment(\.colorScheme, .light)
     }
 
     @ViewBuilder private var content: some View {

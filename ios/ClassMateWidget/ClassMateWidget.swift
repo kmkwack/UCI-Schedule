@@ -236,6 +236,7 @@ struct NextClassView: View {
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(ink)
                 .lineLimit(1)
+                .minimumScaleFactor(0.75)
                 .padding(.top, 1)
 
             Spacer(minLength: 4)
@@ -249,7 +250,7 @@ struct NextClassView: View {
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.6)
 
             if isNow {
                 GeometryReader { geo in
@@ -718,10 +719,18 @@ struct ClassMateWidgetEntryView: View {
     var entry: Provider.Entry
 
     var body: some View {
-        content
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .containerBackground(for: .widget) { background }
+        // containerBackground opts out of the default content margins, so the
+        // inset is ours to supply. It scales with the widget instead of being a
+        // fixed number: a small widget is 155pt wide on an SE and 170 on a Pro
+        // Max, and the same 14pt that fits one crowds the other.
+        GeometryReader { geo in
+            let inset = min(max(min(geo.size.width, geo.size.height) * 0.075, 10), 16)
+            content
+                .padding(.horizontal, inset)
+                .padding(.vertical, inset * 0.85)
+                .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .containerBackground(for: .widget) { background }
     }
 
     @ViewBuilder private var content: some View {

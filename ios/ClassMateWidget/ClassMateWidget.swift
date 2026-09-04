@@ -724,7 +724,7 @@ struct ClassMateWidgetEntryView: View {
         // fixed number: a small widget is 155pt wide on an SE and 170 on a Pro
         // Max, and the same 14pt that fits one crowds the other.
         GeometryReader { geo in
-            let inset = min(max(min(geo.size.width, geo.size.height) * 0.075, 10), 16)
+            let inset = min(max(min(geo.size.width, geo.size.height) * 0.055, 7), 12)
             content
                 .padding(.horizontal, inset)
                 .padding(.vertical, inset * 0.85)

@@ -15,6 +15,7 @@ import * as Sharing from 'expo-sharing';
 import * as Linking from 'expo-linking';
 import MapView, { Marker } from 'react-native-maps';
 import { triggerSuccessHaptic } from '../utils/haptics';
+import { recordGoodMoment } from '../lib/reviewPrompt';
 import {
   HORIZONTAL_SWIPE_ACTIVATION_DX,
   HORIZONTAL_SWIPE_DOMINANCE_RATIO,
@@ -1085,6 +1086,7 @@ export default function TimetableScreen({
       await MediaLibrary.saveToLibraryAsync(uri);
       triggerSuccessHaptic();
       Alert.alert('Saved!', 'Your schedule has been saved to your photo library.');
+      recordGoodMoment();
     } catch {
       Alert.alert('Error', 'Could not save the schedule. Please try again.');
     }
@@ -1129,6 +1131,7 @@ export default function TimetableScreen({
       mimeType: 'image/png',
       dialogTitle: `${termLabel(selectedQuarter, school)} schedule · ${SHARE_FORMATS.find((item) => item.key === format)?.label ?? 'Share'}`,
     });
+    recordGoodMoment();
   }
 
   function canUseNativeShareModule() {

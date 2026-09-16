@@ -1,4 +1,4 @@
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -57,7 +57,16 @@ export default function NotificationPermissionScreen({ onEnable, onSkip, saving 
       />
 
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24 }}>
-        <View style={{ flex: 1, justifyContent: 'center' }}>
+        {/* Scrolls rather than centring in a fixed box. The content runs to
+            roughly 560pt, which fits a 667pt SE only until someone raises their
+            text size — and an unreachable button on a short canvas is what got
+            builds 62 and 64 rejected under Guideline 4. flexGrow keeps it
+            centred wherever there is room, so nothing changes on a tall phone. */}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+          showsVerticalScrollIndicator={false}
+        >
           <View
             style={{
               alignSelf: 'center',
@@ -125,7 +134,7 @@ export default function NotificationPermissionScreen({ onEnable, onSkip, saving 
               </View>
             ))}
           </View>
-        </View>
+        </ScrollView>
 
         <View>
           <TouchableOpacity

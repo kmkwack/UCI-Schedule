@@ -20,6 +20,7 @@ import SignUpScreen from './src/screens/SignUpScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import OfflineBanner from './src/components/OfflineBanner';
+import { useIsOffline } from './src/lib/network';
 import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
@@ -256,6 +257,23 @@ async function readLastThemePreference() {
 
 function isReviewAccountEmail(email: string | null | undefined) {
   return REVIEW_ACCOUNT_EMAILS.has((email ?? '').trim().toLowerCase());
+}
+
+/** Scoped per user and school so one account never reads another's schedule. */
+const TIMETABLE_CACHE_PREFIX = 'timetables_cache_v1:';
+
+function timetableCacheKey(userId: string, school: string) {
+  return `${TIMETABLE_CACHE_PREFIX}${userId}:${school}`;
+}
+
+async function clearTimetableCaches() {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const cacheKeys = keys.filter((key) => key.startsWith(TIMETABLE_CACHE_PREFIX));
+    if (cacheKeys.length > 0) await AsyncStorage.multiRemove(cacheKeys);
+  } catch (error) {
+    console.warn('Failed to clear timetable caches:', error);
+  }
 }
 
 function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
@@ -665,6 +683,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 
   const clearSignedOutState = () => {
     pendingAuthUniversityRef.current = null;
+    // Here rather than at each sign-out call site, so the SIGNED_OUT event path
+    // is covered too. The cache is keyed per user and never shown to another
+    // account, but a shared device still shouldn't keep someone's schedule.
+    // Cleared by prefix because the user id may already be gone by now.
+    timetableCacheOwnerRef.current = null;
+    void clearTimetableCaches();
     setUserId(null);
     setUserEmail('');
     setSelectedUniversity(null);
@@ -980,6 +1004,11 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   const [editingCustomCourse, setEditingCustomCourse] = useState<Course | null>(null);
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter>(getAcademicTermForDate(DEFAULT_UNIVERSITY.name, new Date()));
   const [timetables, setTimetables] = useState<Timetable[]>([]);
+  const [timetableReloadPending, setTimetableReloadPending] = useState(false);
+  const [timetableReloadNonce, setTimetableReloadNonce] = useState(0);
+  // Which user+school the in-memory timetables belong to; see the cache writer.
+  const timetableCacheOwnerRef = useRef<string | null>(null);
+  const isOffline = useIsOffline();
   const [selectedTimetableId, setSelectedTimetableId] = useState<string | null>(null);
   const [focusedCourseId, setFocusedCourseId] = useState<string | null>(null);
   const [timetableSettings, setTimetableSettings] = useState<TimetableSettings>(DEFAULT_TIMETABLE_SETTINGS);
@@ -2039,10 +2068,29 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
+    const cacheKey = timetableCacheKey(USER_ID, currentSchool);
 
     async function load() {
       // Don't clear timetables immediately — wait for new data to avoid flash of empty state
       setSelectedTimetableId(null);
+
+      // Paint the last known timetables before asking the server. Without this
+      // an offline launch showed an empty schedule under a banner promising
+      // saved data, and even online the grid waited on a round-trip it had
+      // already made last time.
+      let hadCache = false;
+      try {
+        const raw = await AsyncStorage.getItem(cacheKey);
+        const cached = raw ? JSON.parse(raw) : null;
+        if (!cancelled && Array.isArray(cached)) {
+          timetableCacheOwnerRef.current = cacheKey;
+          setTimetables(cached as Timetable[]);
+          hadCache = true;
+        }
+      } catch (cacheError) {
+        console.warn('Ignoring unreadable timetable cache:', cacheError);
+      }
+      if (cancelled) return;
 
       let { data, error } = await supabase
         .from('timetables')
@@ -2066,9 +2114,14 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         } else {
           console.warn('Failed to load timetables:', error);
         }
-        setTimetables([]);
+        // A failed fetch says nothing about what the user has. Keep the cached
+        // copy on screen; only fall back to empty when there was none. Either
+        // way, try again once the connection comes back.
+        if (!hadCache) setTimetables([]);
+        setTimetableReloadPending(true);
         return;
       }
+      setTimetableReloadPending(false);
 
       const loaded: Timetable[] = (data ?? [])
         .map((row: any, i: number) => ({
@@ -2080,6 +2133,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
         }))
         .sort((a: Timetable, b: Timetable) => a.order - b.order);
 
+      timetableCacheOwnerRef.current = cacheKey;
       setTimetables(loaded);
 
       const preferredQuarter = await fetchPreferredSeededQuarter(currentSchool, activeKey);
@@ -2107,7 +2161,30 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       cancelled = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, currentSchool]);
+  }, [userId, currentSchool, timetableReloadNonce]);
+
+  // Retry the load when the connection returns, but only if the last attempt
+  // failed — reconnecting mid-session must not reset a schedule that loaded.
+  useEffect(() => {
+    if (!isOffline && timetableReloadPending) {
+      setTimetableReloadNonce((n) => n + 1);
+    }
+  }, [isOffline, timetableReloadPending]);
+
+  // Mirror every change into the cache, so offline shows the latest edit rather
+  // than whatever the last launch fetched. One effect covers all the call sites
+  // that mutate timetables. The owner check matters: on a school switch the old
+  // school's timetables stay on screen until the new ones load, and without it
+  // they would be written under the new school's key.
+  useEffect(() => {
+    if (!userId) return;
+    const cacheKey = timetableCacheKey(USER_ID, currentSchool);
+    if (timetableCacheOwnerRef.current !== cacheKey) return;
+    void AsyncStorage.setItem(cacheKey, JSON.stringify(timetables)).catch((error) => {
+      console.warn('Failed to cache timetables:', error);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timetables, userId, currentSchool]);
 
   async function saveTimetable(t: Timetable) {
     let { error } = await supabase.from('timetables').upsert({

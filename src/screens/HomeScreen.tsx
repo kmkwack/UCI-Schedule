@@ -1072,9 +1072,10 @@ async function openSportsVenueInMaps(venue: SportsVenue, school: string) {
   try {
     await Linking.openURL(appleMapsUrl);
   } catch (error) {
-    // Swallowing this made the tap look like a dead button.
+    // The button only renders for a venue with real coordinates, and Maps is a
+    // system app, so there is no reachable failure here to tell the user about.
+    // Logged rather than alerted: if this ever does fire, it is our bug.
     console.warn('Failed to open venue in Maps:', error);
-    Alert.alert('Could not open Maps', `${venue.name} could not be opened in Maps right now.`);
   }
 }
 

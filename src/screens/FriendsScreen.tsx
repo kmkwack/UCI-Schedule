@@ -1034,7 +1034,12 @@ export default function FriendsScreen({
               pointerEvents="box-none"
             >
               <View style={{
-                backgroundColor: colors.card, borderRadius: 18, padding: 24, width: 300,
+                // Width, not a fixed 300: that left 10pt of margin on a 320pt
+                // SE and nothing at all on anything narrower. Cap it instead so
+                // the card stays 300 wherever there is room and shrinks where
+                // there isn't.
+                backgroundColor: colors.card, borderRadius: 18, padding: 24,
+                width: '100%', maxWidth: 300, marginHorizontal: 24,
                 maxHeight: Math.max(360, screenHeight - 64),
                 shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
                 shadowOpacity: 0.18, shadowRadius: 16, elevation: 10,

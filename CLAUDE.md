@@ -628,3 +628,57 @@ Two real problems were found along the way and are still worth keeping:
   version, so the two can't drift. Writes the plist rather than the project
   file — editing build settings via Xcodeproj tripped over an existing
   shell-script phase on save.
+
+### Session 102 (Widget legibility — insets, light-only, one-line time+room) — 2026-09-03
+Build 74 on a real device showed every widget clipping its own text.
+
+**Cause:** `.containerBackground(for: .widget)` opts the view out of WidgetKit's
+default content margins. The widget painted its own background and never
+replaced the padding it had just given up, so content ran to the bezel.
+
+- **`ios/ClassMateWidget/ClassMateWidget.swift`**
+  - Padding is derived from the widget's own size (`min(w,h) * 0.055`, clamped
+    7–12) rather than a fixed number: a small widget is 155pt wide on an SE and
+    170 on a Pro Max, and one constant cannot suit both.
+  - Small: time and room share a line (`1 PM – 2:20 PM · ICS 180`). At 170pt
+    square the card has five things to say and room for about four lines;
+    dropping the room outright would have cost real information.
+  - **Light scheme pinned** (`.environment(\.colorScheme, .light)`). Removing the
+    dark palette in Session 101 pinned the *backgrounds* light but left all 18
+    labels on `.primary`/`.secondary`, which still follow the system — so in
+    dark mode every one of them rendered white on white. Grepping for "dark"
+    could not find this; the guidance is that pinning a background commits you
+    to pinning the scheme.
+
+### Session 102b (Rating prompt) — 2026-09-13
+Zero ratings at 50 downloads, which is a direct drag on search ranking.
+
+- **`src/lib/reviewPrompt.ts`** (NEW) + **`src/screens/TimetableScreen.tsx`** —
+  `recordGoodMoment()` fires only after a schedule is saved or shared, and only
+  from the third such moment. iOS shows the sheet at most three times a year per
+  user, so one spent on an annoyed user is both wasted and a likely one-star.
+  Every failure is swallowed — a rating prompt must never surface an error.
+
+### Session 102c (Offline: boot hang, banner, silent failures, VoiceOver) — 2026-09-15
+Reported symptom: with no network the app did not launch at all.
+
+- **`App.tsx`** — `restoreSession()` awaited `supabase.auth.getSession()` bare.
+  That call normally reads AsyncStorage, but an expired token makes it refresh
+  over the network first; with no connection it hung, and nothing below it ran —
+  including `setAuthInitializing(false)`. Now bounded by the existing
+  `withTimeout` + try/catch, and a failure boots the app rather than blocking it.
+  `validateAndHydrateSession` was already hardened this way; only the restore
+  path was missed.
+- **`src/lib/network.ts`** + **`src/components/OfflineBanner.tsx`** (NEW) —
+  `useIsOffline()` treats a null `isInternetReachable` as online so a cold launch
+  never flashes at a connected user, and requires reachability (not just
+  `isConnected`) because a captive portal — what campus wifi looks like before
+  you accept its terms — reports a live connection carrying no traffic. The
+  banner is non-blocking: cached timetables and grades stay readable.
+- **Silent failures** — 12 of 14 empty `catch {}` blocks now log
+  (`HomeScreen`, `BoardScreen`, `academicCalendar`). The two left are genuine
+  fallback loops that try the next candidate. `openSportsVenueInMaps` also
+  alerts now; swallowing there made the tap look like a dead button.
+- **Accessibility** — 653 touchables had zero labels. The 30 icon-only buttons
+  (close / back / profile / overflow) now carry `accessibilityRole` +
+  `accessibilityLabel`; without them VoiceOver announces only "button".

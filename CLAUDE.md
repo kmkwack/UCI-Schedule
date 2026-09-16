@@ -682,3 +682,45 @@ Reported symptom: with no network the app did not launch at all.
 - **Accessibility** — 653 touchables had zero labels. The 30 icon-only buttons
   (close / back / profile / overflow) now carry `accessibilityRole` +
   `accessibilityLabel`; without them VoiceOver announces only "button".
+
+### Session 102d (Short-canvas audit, offline timetables, crash on missing module) — 2026-09-16
+Driven by the iPhone Duo: folded it is **466 × 678pt**, unfolded **669 × 951pt**
+with regular size classes both ways (iPad-like), so an iPhone-only app runs in a
+compatibility window when opened. No Duo simulator on Xcode 26.6; verified on an
+**iPhone SE (375 × 667)** instead, which is narrower *and* shorter than the folded
+Duo, so passing there covers it. The user checked every main screen on SE: no
+clipping. `Dimensions.get` appears nowhere (all 26 reads are
+`useWindowDimensions`), so fold/unfold resizes are already followed.
+
+- **`src/lib/reviewPrompt.ts`** — `expo-store-review` now loaded with a guarded
+  `require` instead of a top-level import. The import resolves the native module
+  at init, so the SE build (pods predating the package) **crashed before
+  rendering**. A binary without the module now simply skips the prompt.
+  Also: new native deps need `pod install`, and on this Mac CocoaPods must run
+  with `LANG=en_US.UTF-8` or its own error reporter dies on encoding and hides
+  the real error.
+- **`src/components/NotificationPermissionScreen.tsx`** — content (~560pt) was in
+  a fixed centred box with no scroll; wrapped in a `ScrollView` with
+  `flexGrow: 1, justifyContent: 'center'` so large text sizes can't push the
+  buttons off a short canvas (the Guideline 4 pattern from builds 62/64).
+- **`src/screens/FriendsScreen.tsx`** — Add Friend card `width: 300` →
+  `width: '100%', maxWidth: 300` (10pt margin on a 320pt screen before).
+- **`src/screens/HomeScreen.tsx`** — reverted the Maps-open alert added in 102c.
+  The button only renders for a venue with real coordinates and Maps is a system
+  app, so there is no reachable failure; alerting described a problem the user
+  doesn't have. Logs only.
+- **`App.tsx` — timetables are now cached** (`timetables_cache_v1:{user}:{school}`).
+  Before, they were only read from Supabase: offline the fetch failed and state
+  was set to `[]` under a banner claiming saved data was shown, with no retry on
+  reconnect. Now: cache painted before the fetch; kept on a failed fetch; reload
+  retried on reconnect only if the last attempt failed; every change mirrored via
+  one effect guarded by `timetableCacheOwnerRef` (on a school switch the old
+  school's timetables stay on screen until the new load, and would otherwise be
+  written under the new key); all caches cleared by prefix in
+  `clearSignedOutState`. **Not yet device-tested offline.**
+  Known gap: an offline edit still alerts "Could not sync" on each save, and a
+  reconnect reload replaces it with the server copy — honest, but an outbox
+  queue would be the native-quality fix.
+- Deliberately **not** doing iPad support: every screen is designed at ~390pt,
+  and declaring `supportsTablet` makes Apple review the full iPad canvas.
+  Revisit only if App Store Connect shows real iPad installs.

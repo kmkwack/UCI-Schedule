@@ -1,5 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as StoreReview from 'expo-store-review';
+
+/**
+ * Loaded lazily rather than imported at the top. `expo-store-review` resolves
+ * its native module the moment it is imported, so a binary built before the
+ * dependency was added — Expo Go, or any install predating this release —
+ * throws during module init and takes the whole app down before it renders.
+ * A rating prompt must never be able to do that.
+ */
+type StoreReviewModule = typeof import('expo-store-review');
+let storeReview: StoreReviewModule | null | undefined;
+
+function loadStoreReview(): StoreReviewModule | null {
+  if (storeReview !== undefined) return storeReview;
+  try {
+    storeReview = require('expo-store-review') as StoreReviewModule;
+  } catch {
+    storeReview = null;
+  }
+  return storeReview;
+}
 
 /**
  * Asking for a rating is a one-shot resource: iOS shows the system sheet at
@@ -48,13 +67,15 @@ export async function recordGoodMoment(): Promise<void> {
     const daysSince = (Date.now() - lastAsked) / 86_400_000;
     if (lastAsked && daysSince < MIN_DAYS_BETWEEN_ASKS) return;
 
-    if (!(await StoreReview.hasAction())) return;
+    const reviewModule = loadStoreReview();
+    if (!reviewModule) return;
+    if (!(await reviewModule.hasAction())) return;
 
     await AsyncStorage.setItem(ASKED_KEY, String(Date.now()));
     // Let the success alert or share sheet finish dismissing first; two
     // system dialogs racing each other means neither gets read.
     setTimeout(() => {
-      StoreReview.requestReview().catch(() => {});
+      reviewModule.requestReview().catch(() => {});
     }, 1200);
   } catch {
     // Never surface a failure here.

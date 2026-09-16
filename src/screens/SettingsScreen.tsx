@@ -174,7 +174,7 @@ function SubHeader({ title, onBack }: { title: string; onBack: () => void }) {
       paddingHorizontal: 20, paddingTop: Math.max(20, insets.top + 8), paddingBottom: 16,
       borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, backgroundColor: colors.card,
     }}>
-      <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
         <Ionicons name="arrow-back" size={22} color={colors.text} />
       </TouchableOpacity>
       <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 22, fontWeight: '700', color: colors.text }}>{title}</Text>
@@ -261,7 +261,7 @@ function DropdownPicker({ label, required, value, options, onSelect, searchable 
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{label}</Text>
-            <TouchableOpacity onPress={closePicker}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={closePicker}>
               <Ionicons name="close" size={22} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -2444,7 +2444,7 @@ export default function SettingsScreen({
           backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
         }}>
           <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text }}>Settings</Text>
-          <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="close" size={24} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>

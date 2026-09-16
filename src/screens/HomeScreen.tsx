@@ -1071,7 +1071,11 @@ async function openSportsVenueInMaps(venue: SportsVenue, school: string) {
   const appleMapsUrl = `https://maps.apple.com/?ll=${venue.latitude},${venue.longitude}&q=${query}`;
   try {
     await Linking.openURL(appleMapsUrl);
-  } catch {}
+  } catch (error) {
+    // Swallowing this made the tap look like a dead button.
+    console.warn('Failed to open venue in Maps:', error);
+    Alert.alert('Could not open Maps', `${venue.name} could not be opened in Maps right now.`);
+  }
 }
 
 function getTodayDayCode(now: Date, timeZone: string): string | null {
@@ -1705,7 +1709,9 @@ export default function HomeScreen({
             )));
             setSportsLoading(false);
           }
-        } catch {}
+        } catch (error) {
+          console.warn('Discarding unreadable cached sports events:', error);
+        }
       }
 
       refreshTimer = setTimeout(() => {
@@ -1716,7 +1722,9 @@ export default function HomeScreen({
             if (cancelled) return;
             setSportsEvents(normalizedEvents);
             void AsyncStorage.setItem(sportsCacheKey, JSON.stringify({ date: sportsCacheDate, events: normalizedEvents }));
-          } catch {}
+          } catch (error) {
+            console.warn('Failed to refresh sports events:', error);
+          }
           if (!cancelled) setSportsLoading(false);
         })();
       }, HOME_SPORTS_FETCH_DELAY_MS);
@@ -1751,7 +1759,9 @@ export default function HomeScreen({
             setDiningMenus(parsed.menus);
             setDiningLoading(false);
           }
-        } catch {}
+        } catch (error) {
+          console.warn('Discarding unreadable cached dining menus:', error);
+        }
       }
 
       refreshTimer = setTimeout(() => {
@@ -1813,7 +1823,9 @@ export default function HomeScreen({
       if (cached && !cancelled) {
         try {
           setClassmateMatches(JSON.parse(cached) as ClassmateMatch[]);
-        } catch {}
+        } catch (error) {
+          console.warn('Discarding unreadable cached classmate matches:', error);
+        }
       }
 
       let { data: requestRows, error: requestError } = await supabase
@@ -3164,7 +3176,7 @@ export default function HomeScreen({
           <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: 0 }}>
             {schoolHomeLabel(school)}
           </Text>
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Profile"
             onPress={onOpenSettings}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={{
@@ -3696,7 +3708,7 @@ export default function HomeScreen({
                       <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 4 }}>{event.subtitle}</Text>
                     ) : null}
                   </View>
-                  <TouchableOpacity
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
                     onPress={closeAcademicSheet}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' }}
@@ -3983,7 +3995,7 @@ export default function HomeScreen({
               <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>
                 {openHeroSheet === 'dining' ? 'Today\'s Dining' : openHeroSheet === 'sports' ? 'Sports Events' : 'Campus'}
               </Text>
-              <TouchableOpacity onPress={closeHeroSheet} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={closeHeroSheet} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.bgSecondary, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="close" size={17} color={colors.textSecondary} />
               </TouchableOpacity>
@@ -4661,7 +4673,7 @@ export default function HomeScreen({
                   Completed
                 </Text>
               </View>
-              <TouchableOpacity
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
                 onPress={closePastAssignments}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{
@@ -4821,7 +4833,7 @@ export default function HomeScreen({
                       Pick your LMS and paste its .ics or iCal feed link. ClassMate imports deadlines only, not class meetings.
                     </Text>
                   </View>
-                  <TouchableOpacity
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
                     onPress={closeCalendarSetup}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={{
@@ -5086,7 +5098,7 @@ export default function HomeScreen({
                       </Text>
                     </View>
                   </View>
-                  <TouchableOpacity
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
                     onPress={closeSportsEvent}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={{

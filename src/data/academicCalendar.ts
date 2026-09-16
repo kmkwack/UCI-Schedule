@@ -121,7 +121,9 @@ export async function fetchAcademicEvents(school: string, quarterKey: string): P
         return entry.events;
       }
     }
-  } catch {}
+  } catch (error) {
+    console.warn('Ignoring unreadable academic calendar cache:', error);
+  }
 
   // 2. Try Supabase
   try {
@@ -139,7 +141,9 @@ export async function fetchAcademicEvents(school: string, quarterKey: string): P
       void AsyncStorage.setItem(key, JSON.stringify(entry));
       return events;
     }
-  } catch {}
+  } catch (error) {
+    console.warn('Failed to load academic calendar; falling back to built-in dates:', error);
+  }
 
   // 3. Local fallback
   return (LOCAL_FALLBACK[school]?.[quarterKey] ?? [])
@@ -287,7 +291,9 @@ export async function fetchUserAcademicEvents(userId: string, school: string, qu
       .order('date', { ascending: true });
 
     if (!error && data) return data.map(rowToCustomEvent);
-  } catch {}
+  } catch (error) {
+    console.warn('Failed to load custom academic events:', error);
+  }
   return [];
 }
 
@@ -315,7 +321,9 @@ export async function addUserAcademicEvent(
       .single();
 
     if (!error && data) return rowToCustomEvent(data);
-  } catch {}
+  } catch (error) {
+    console.warn('Failed to save custom academic event:', error);
+  }
   return null;
 }
 
@@ -336,5 +344,7 @@ export async function deleteUserAcademicEvent(eventId: string): Promise<boolean>
 export async function invalidateAcademicCalendarCache(school: string, quarterKey: string) {
   try {
     await AsyncStorage.removeItem(cacheKey(school, quarterKey));
-  } catch {}
+  } catch (error) {
+    console.warn('Failed to clear academic calendar cache:', error);
+  }
 }

@@ -1711,7 +1711,7 @@ export default function FriendsScreen({
           <View style={{ paddingHorizontal: 16, paddingTop: topInset + 8, paddingBottom: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, marginRight: 8 }}>
-                <TouchableOpacity onPress={closeFriendTimetable} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back" onPress={closeFriendTimetable} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Ionicons name="chevron-back" size={24} color={colors.brand} />
                 </TouchableOpacity>
                 <View style={{

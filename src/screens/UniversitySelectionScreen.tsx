@@ -29,7 +29,7 @@ export default function UniversitySelectionScreen({ onBack, onContinue }: Props)
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
       {/* Header */}
       <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-        <TouchableOpacity
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back"
           onPress={onBack}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={{ padding: 4 }}

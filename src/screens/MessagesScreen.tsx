@@ -1320,7 +1320,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ paddingHorizontal: 18, paddingTop: insets.top + 10, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back" onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
           <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text }}>Messages</Text>
@@ -1586,7 +1586,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
                 <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: '700', color: colors.brand }}>
                   Editing message
                 </Text>
-                <TouchableOpacity onPress={cancelMessageEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={cancelMessageEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Ionicons name="close" size={17} color={colors.brand} />
                 </TouchableOpacity>
               </View>
@@ -1660,7 +1660,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                 <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Report</Text>
-                <TouchableOpacity onPress={closeReportModal}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={closeReportModal}>
                   <Ionicons name="close" size={22} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
@@ -1734,7 +1734,7 @@ export default function MessagesScreen({ onClose, openChatWith, userId, school, 
         borderBottomColor: colors.border,
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back" onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
           <Text style={{ fontSize: 30, fontWeight: '800', color: colors.text }}>Messages</Text>

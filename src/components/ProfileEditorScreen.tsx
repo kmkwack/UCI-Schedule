@@ -229,7 +229,7 @@ function ProfileDropdownPicker({
               }}
             >
               <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{label}</Text>
-              <TouchableOpacity onPress={closePicker}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={closePicker}>
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -623,7 +623,7 @@ export default function ProfileEditorScreen({
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 28 }}>
           {showBackButton && onBack ? (
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back"
               onPress={onBack}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{ marginRight: 10 }}

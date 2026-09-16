@@ -591,7 +591,7 @@ export default function ReviewsModal({
                       <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 }}>{courseCode}</Text>
                       <Text style={{ fontSize: 13, color: colors.textSecondary }}>{title}</Text>
                     </View>
-                    <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Ionicons name="close" size={22} color={colors.textSecondary} />
                     </TouchableOpacity>
                   </View>
@@ -931,7 +931,7 @@ export default function ReviewsModal({
                       <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>{courseCode}</Text>
                     </View>
                   </View>
-                  <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Ionicons name="close" size={22} color={colors.textSecondary} />
                   </TouchableOpacity>
                 </View>

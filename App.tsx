@@ -19,6 +19,7 @@ import SignInScreen from './src/screens/SignInScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
+import OfflineBanner from './src/components/OfflineBanner';
 import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
@@ -752,10 +753,28 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     let active = true;
 
     async function restoreSession() {
-      const { data, error } = await supabase.auth.getSession();
+      // getSession() usually just reads AsyncStorage, but an expired token
+      // makes it refresh over the network first. With no connection that call
+      // can hang, and nothing below it runs — including the line that clears
+      // the splash. That is how a launch with no signal left the app stuck on
+      // the loading screen forever. Bound it, and treat a failure as "no
+      // session we can confirm right now" rather than a reason not to boot.
+      let data: Awaited<ReturnType<typeof supabase.auth.getSession>>['data'] | null = null;
+      let error: unknown = null;
+      try {
+        const result = await withTimeout(
+          supabase.auth.getSession(),
+          AUTH_VALIDATION_TIMEOUT_MS,
+          'auth session restore'
+        );
+        data = result.data;
+        error = result.error;
+      } catch (caught) {
+        error = caught;
+      }
       if (!active) return;
 
-      if (error) {
+      if (error || !data) {
         console.warn('Failed to restore auth session:', error);
         setAuthInitializing(false);
         return;
@@ -3510,6 +3529,9 @@ export default function App() {
         <ThemeProvider preference={themePreference}>
           <AppErrorBoundary>
             <AppContent themePreference={themePreference} onThemeChange={handleThemeChange} />
+            {/* Above the error boundary's child so it still reports a dead
+                network on the screen that replaces a crashed tree. */}
+            <OfflineBanner />
           </AppErrorBoundary>
         </ThemeProvider>
       ) : (

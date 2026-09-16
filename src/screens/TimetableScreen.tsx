@@ -1336,7 +1336,7 @@ export default function TimetableScreen({
                 ) : (
                   <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>Select Year</Text>
                 )}
-                <TouchableOpacity onPress={closeAddQuarterModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={closeAddQuarterModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Ionicons name="close" size={24} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
@@ -1991,7 +1991,7 @@ export default function TimetableScreen({
                     {discordLinkCourse ? `${discordLinkCourse.code} · ${termLabel(selectedQuarter, school)}` : 'Paste a class invite link.'}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={closeDiscordLinkModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={closeDiscordLinkModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Ionicons name="close" size={22} color={colors.textTertiary} />
                 </TouchableOpacity>
               </View>
@@ -2117,7 +2117,7 @@ export default function TimetableScreen({
                 </Text>
                 <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
               </TouchableOpacity>
-              <TouchableOpacity
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="More options"
                 onPress={openSettings}
                 style={{
                   flexShrink: 0,

@@ -248,7 +248,7 @@ export default function LegalDocumentModal({
             <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text }}>{content.title}</Text>
             <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>{content.updatedLabel}</Text>
           </View>
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
             onPress={onClose}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center' }}

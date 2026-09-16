@@ -1212,7 +1212,9 @@ export default function BoardScreen({
           postsRef.current = cachedPosts;
           setPosts(cachedPosts);
           hydrateAttachmentUrlsForPosts(cachedPosts);
-        } catch {}
+        } catch (error) {
+          console.warn('Discarding unreadable cached board posts:', error);
+        }
       }
     } catch (error) {
       if (!isNetworkRequestError(error)) console.warn('Failed to read cached board posts:', error);
@@ -1294,7 +1296,9 @@ export default function BoardScreen({
           );
           setNewBoardCategories(newCats);
         }
-      } catch {}
+      } catch (error) {
+        console.warn('Failed to check for new board posts:', error);
+      }
 
     } catch (error) {
       if (!isNetworkRequestError(error)) console.warn('Failed to refresh board posts:', error);
@@ -3323,7 +3327,7 @@ export default function BoardScreen({
             <View style={{ flex: 1, backgroundColor: colors.bg }}>
               <View style={{ paddingTop: topInset + 14, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                  <TouchableOpacity onPress={closeBoard} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back" onPress={closeBoard} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Ionicons name="chevron-back" size={26} color={colors.text} />
                   </TouchableOpacity>
                   <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: themedIconBackground(selectedBoard.color, isDark, selectedBoard.iconBg), alignItems: 'center', justifyContent: 'center' }}>
@@ -3586,7 +3590,7 @@ function ImageViewerModal({
             justifyContent: 'space-between',
           }}
         >
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
             onPress={onClose}
             style={{
               width: 42,
@@ -3685,7 +3689,7 @@ function ReportModal({
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Report</Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={onClose}>
               <Ionicons name="close" size={22} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -3893,7 +3897,7 @@ function RequestBoardModal({
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Request New Board</Text>
-                <TouchableOpacity onPress={closeSheet}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={closeSheet}>
                   <Ionicons name="close" size={22} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
@@ -4068,7 +4072,7 @@ function NewPostModal({
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-          <TouchableOpacity onPress={onClose} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="close" size={22} color={colors.text} />
           </TouchableOpacity>
           <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: colors.text }}>

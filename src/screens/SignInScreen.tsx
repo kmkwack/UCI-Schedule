@@ -375,7 +375,7 @@ export default function SignInScreen({ university, onBack, onSignedIn, onSuspend
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Header */}
         <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-          <TouchableOpacity onPress={goBackFromPhase} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 4 }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back" onPress={goBackFromPhase} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 4 }}>
             <Ionicons name="arrow-back" size={22} color="#111827" />
           </TouchableOpacity>
         </View>

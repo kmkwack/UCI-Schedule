@@ -21,6 +21,12 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import OfflineBanner from './src/components/OfflineBanner';
 import { useIsOffline } from './src/lib/network';
+import {
+  clearTimetableOutboxes,
+  enqueueTimetableSave,
+  flushTimetableOutbox,
+  hasQueuedTimetableSaves,
+} from './src/lib/timetableOutbox';
 import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
@@ -44,7 +50,7 @@ import {
 import { fetchSportsEventsForSchool } from './src/data/sportsEvents';
 import { addZonedDays, getZonedDateParts, normalizeTimeZone, zonedDateFromParts, zonedWeekdayIndex } from './src/data/timeZone';
 import { supabase } from './src/lib/supabase';
-import { isMissingSchoolColumnError, isRlsError } from './src/lib/supabaseErrors';
+import { isMissingSchoolColumnError, isNetworkError, isRlsError } from './src/lib/supabaseErrors';
 import type { ChatTarget } from './src/data/messages';
 import { triggerLightHaptic, triggerSelectionHaptic, triggerSuccessHaptic } from './src/utils/haptics';
 import { MOTION } from './src/utils/motion';
@@ -689,6 +695,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     // Cleared by prefix because the user id may already be gone by now.
     timetableCacheOwnerRef.current = null;
     void clearTimetableCaches();
+    void clearTimetableOutboxes();
     setUserId(null);
     setUserEmail('');
     setSelectedUniversity(null);
@@ -2092,6 +2099,12 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       }
       if (cancelled) return;
 
+      // Before reading the server, push anything edited while offline. Fetching
+      // first would hand back the stale row and overwrite the queued edit with
+      // it — the exact loss this queue exists to prevent.
+      await flushTimetableOutbox(USER_ID, currentSchool, upsertTimetableRow);
+      if (cancelled) return;
+
       let { data, error } = await supabase
         .from('timetables')
         .select('id, name, quarter_key, courses, order')
@@ -2163,13 +2176,20 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, currentSchool, timetableReloadNonce]);
 
-  // Retry the load when the connection returns, but only if the last attempt
-  // failed — reconnecting mid-session must not reset a schedule that loaded.
+  // On reconnect, run the load again — it flushes the outbox first — but only
+  // when there is a reason: the last attempt failed, or edits are waiting.
+  // Reconnecting mid-session must not reset a schedule that loaded fine.
   useEffect(() => {
-    if (!isOffline && timetableReloadPending) {
-      setTimetableReloadNonce((n) => n + 1);
-    }
-  }, [isOffline, timetableReloadPending]);
+    if (isOffline || !userId) return;
+    let cancelled = false;
+    void (async () => {
+      const queued = await hasQueuedTimetableSaves(USER_ID, currentSchool);
+      if (cancelled) return;
+      if (timetableReloadPending || queued) setTimetableReloadNonce((n) => n + 1);
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOffline, timetableReloadPending, userId, currentSchool]);
 
   // Mirror every change into the cache, so offline shows the latest edit rather
   // than whatever the last launch fetched. One effect covers all the call sites
@@ -2186,7 +2206,8 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timetables, userId, currentSchool]);
 
-  async function saveTimetable(t: Timetable) {
+  /** The write itself, so the outbox replays exactly what failed. */
+  async function upsertTimetableRow(t: Timetable): Promise<{ error: unknown }> {
     let { error } = await supabase.from('timetables').upsert({
       id: t.id,
       user_id: USER_ID,
@@ -2209,12 +2230,24 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       });
       error = fallback.error;
     }
-    if (error) {
-      console.warn('Failed to save timetable:', error);
-      // The local UI already reflects the change — tell the user the server
-      // copy didn't update instead of silently losing it on next launch.
-      Alert.alert('Could not sync your schedule', 'The change was not saved to the server. Please check your connection and try again.');
+    return { error };
+  }
+
+  async function saveTimetable(t: Timetable) {
+    const { error } = await upsertTimetableRow(t);
+    if (!error) return;
+
+    console.warn('Failed to save timetable:', error);
+    // A dead network is not the user's problem to solve. Queue the edit and
+    // send it when the connection returns, rather than interrupting them and
+    // then overwriting the change on the next load.
+    if (isNetworkError(error) || isOffline) {
+      await enqueueTimetableSave(USER_ID, currentSchool, t);
+      return;
     }
+    // Anything else — permissions, a rejected row — will not fix itself by
+    // waiting, so it still has to be said out loud.
+    Alert.alert('Could not sync your schedule', 'The change was not saved to the server. Please check your connection and try again.');
   }
 
   async function createTimetable(qKey: string, name: string): Promise<Timetable | null> {

@@ -724,3 +724,28 @@ clipping. `Dimensions.get` appears nowhere (all 26 reads are
 - Deliberately **not** doing iPad support: every screen is designed at ~390pt,
   and declaring `supportsTablet` makes Apple review the full iPad canvas.
   Revisit only if App Store Connect shows real iPad installs.
+
+### Session 102e (Offline edit queue for timetables) — 2026-09-17
+Completes 102d. Caching made an offline schedule *visible*; this makes it
+*editable*. Before, every offline change alerted "could not sync" and was then
+replaced by the server copy on the next load — the user was told, but the work
+was still lost.
+
+- **`src/lib/timetableOutbox.ts`** (NEW) — entries are whole timetable rows keyed
+  by id, so re-editing replaces rather than stacks: the last state of a timetable
+  is the only one worth sending, and for one user editing their own schedule
+  last-write-wins loses only an older version of their own edit. Failed sends
+  stay queued, so a still-dead network costs nothing.
+- **`App.tsx`** — the upsert was split out as `upsertTimetableRow` so the queue
+  replays exactly what failed. `saveTimetable` queues on `isNetworkError` (or
+  while the offline banner is up) and keeps the alert for failures that waiting
+  cannot fix, such as a rejected row. **The flush runs before the fetch** in the
+  load effect — fetching first would hand back the stale row and overwrite the
+  queued edit, which is the loss this exists to prevent. Reconnect re-runs the
+  load when the last attempt failed *or* edits are waiting. Queues are cleared
+  by prefix in `clearSignedOutState`.
+
+Verified: tsc clean and `expo export` produces a 4.4MB bundle (no import cycle).
+**Not device-tested offline** — check on the 1.0.3 TestFlight build with airplane
+mode: schedule still visible, an edit survives a relaunch, and lands on the
+server once the connection returns.

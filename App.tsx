@@ -1046,7 +1046,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     ?? (homeQuarterKey === activeKey ? activeTimetable : null)
     ?? homeQuarterTimetables[0]
     ?? null;
-  const homeQuarterCourses = homeTimetable?.courses ?? [];
+  // The shared empty array, not a fresh `[]`: this is an effect dependency now
+  // (reminder scheduling), and a new literal each render would reschedule every
+  // notification on every render.
+  const homeQuarterCourses = homeTimetable?.courses ?? EMPTY_COURSES;
 
   // Which term the home-screen widget should show.
   //
@@ -1914,13 +1917,32 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       await cancelScheduledClassMateReminders(reminderUserId, currentSchool);
 
       const notifications = userSettings.notifications;
-      if (!notifications.pushNotifications || userSettings.pushPermissionStatus !== 'granted') return;
+      if (!notifications.pushNotifications) return;
 
-      const selectedQuarterKey = quarterKey(selectedQuarter);
+      // Ask the OS, don't trust the stored copy. push_permission_status is only
+      // written when the user walks our own permission flow, so someone who
+      // turned notifications on later in iOS Settings kept a stale 'denied'
+      // here and never got a single reminder again — the feature silently did
+      // not exist for them.
+      let permissionGranted = userSettings.pushPermissionStatus === 'granted';
+      try {
+        const live = await Notifications.getPermissionsAsync();
+        permissionGranted = live.status === 'granted';
+      } catch (error) {
+        console.warn('Could not read notification permission; using stored status:', error);
+      }
+      if (cancelled || !permissionGranted) return;
+
+      // Reminders follow the quarter the Today screen shows, not whatever the
+      // Timetable tab happens to be displaying. Keyed to the tab's selection,
+      // opening next winter to plan cancelled every reminder for the term
+      // actually in progress. The widget already works this way.
+      const selectedQuarterKey = homeQuarterKey;
       const currentQuarter = getAcademicTermForDate(currentSchool, new Date());
+      const homeQuarter = parseQuarterKey(homeQuarterKey) ?? selectedQuarter;
       const quarterMatchesCurrent =
-        currentQuarter.year === selectedQuarter.year &&
-        currentQuarter.quarter === selectedQuarter.quarter &&
+        currentQuarter.year === homeQuarter.year &&
+        currentQuarter.quarter === homeQuarter.quarter &&
         // 월 경계가 아니라 실제 학사일정 종료일 기준 — 파이널이 끝난 학기는
         // "현재 학기"로 잡혀도 수업 알림을 보내지 않는다 (끝난 수업 알림 방지)
         isTermInSession(currentSchool, selectedQuarterKey, new Date());
@@ -1930,7 +1952,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
 	        // timezone — a user timezone override would shift reminders to the
 	        // wrong absolute time (e.g. a 10:00 PT class reminded at 10:00 ET).
 	        const dailySummaries = buildDailyScheduleSummaryDates(
-	          activeCourses,
+	          homeQuarterCourses,
 	          schoolTimeZone,
 	          14,
 	          normalizeDailyScheduleSummaryHour(notifications.dailyScheduleSummaryHour)
@@ -1960,7 +1982,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       }
 
       if (notifications.classReminders && quarterMatchesCurrent) {
-	        const classReminders = buildUpcomingClassReminderDates(activeCourses, notifications.classReminderMinutes, schoolTimeZone);
+	        const classReminders = buildUpcomingClassReminderDates(homeQuarterCourses, notifications.classReminderMinutes, schoolTimeZone);
         for (const reminder of classReminders) {
           if (cancelled) return;
           await Notifications.scheduleNotificationAsync({
@@ -2070,7 +2092,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       cancelled = true;
       if (rescheduleTimerId) clearTimeout(rescheduleTimerId);
     };
-  }, [activeCourses, assignmentCalendarRevision, currentSchool, schoolTimeZone, selectedQuarter.quarter, selectedQuarter.year, userId, userSettings]);
+  }, [homeQuarterCourses, homeQuarterKey, assignmentCalendarRevision, currentSchool, schoolTimeZone, userId, userSettings]);
 
   useEffect(() => {
     if (!userId) return;

@@ -44,8 +44,17 @@ function appleMapsUrl(location: string, school: string) {
   return `maps://?q=${encodeURIComponent(`${campusHint} ${location}`)}`;
 }
 
-function appleMapsCoordinateUrl(location: CampusMapLocation) {
-  return `maps://?ll=${location.latitude},${location.longitude}&q=${encodeURIComponent(location.name)}`;
+/**
+ * Search by name, deliberately without `ll`.
+ *
+ * Passing `ll` pins the map at our own coordinate and overrides whatever Apple
+ * knows, so a stale entry in CLASSROOM_LOCATIONS sent people to the wrong
+ * building — with a pin that looked authoritative. Apple maintains UCI's
+ * buildings; we do not. The campus label keeps the search on the right campus.
+ */
+function appleMapsCoordinateUrl(location: CampusMapLocation, school: string) {
+  const campusHint = schoolCampusLabel(school);
+  return `maps://?q=${encodeURIComponent(`${campusHint} ${location.name}`)}`;
 }
 
 function cleanLocationText(value: string | null | undefined) {
@@ -165,7 +174,7 @@ function getTimetableBlockColors(course: Course, themeInput: TimetableTheme | st
 }
 
 async function openMaps(location: string, school: string, mappedLocation?: CampusMapLocation | null) {
-  const appleUrl = mappedLocation ? appleMapsCoordinateUrl(mappedLocation) : appleMapsUrl(location, school);
+  const appleUrl = mappedLocation ? appleMapsCoordinateUrl(mappedLocation, school) : appleMapsUrl(location, school);
   const fallbackUrl = mapSearchUrl(location, school);
 
   try {

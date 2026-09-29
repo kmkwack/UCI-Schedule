@@ -325,29 +325,56 @@ export function getCampusMapLocation(school: string, rawLocation?: string | null
   const compact = normalized.replace(/\s+/g, '');
   const noRoom = normalize(stripRoomSuffix(rawLocation ?? ''));
 
+  const aliasesFor = (location: LocationMatcher) =>
+    [location.code, location.name, ...location.aliases].map(normalize);
+
+  // Exact matches first, across every building — never mixed with the fuzzy
+  // pass. When both ran together the first building listed won, so a code that
+  // is the start of a longer one swallowed it: "ICS2 1100" matched ICS (Donald
+  // Bren Hall II sent to the ICS building), "SE2" matched SE, "SSLH" matched
+  // SSL. Wrong building, right-looking pin — someone walks in and hunts for a
+  // room that isn't there.
+  // Whole-string matches beat first-token ones, or "ICS 2 1100" would stop at
+  // ICS on its first token before ICS2's "ICS 2" alias ever got a chance.
   for (const location of schoolLocations) {
-    const aliases = [location.code, location.name, ...location.aliases].map(normalize);
-    // Exact/first-token matches are safe at any alias length. The fuzzy
-    // matches (prefix/substring) require length >= 3 and whole-word boundaries:
-    // bare substring matching let 2-letter codes fire inside unrelated names
-    // ("WILSON HALL" contains "ON" → pinned the Online placeholder at 0,0).
-    const matches = aliases.some((alias) => {
-      if (firstToken === alias || normalized === alias || noRoom === alias) return true;
-      const aliasCompact = alias.replace(/\s+/g, '');
-      if (aliasCompact.length >= 3 && compact.startsWith(aliasCompact)) return true;
-      if (alias.length >= 3 && new RegExp(`(^| )${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}( |$)`).test(normalized)) return true;
-      return false;
-    });
-    if (matches) {
-      // Placeholder entries (Online/Virtual) carry no real coordinates —
-      // treat them as unmappable instead of dropping a pin at (0, 0).
-      if (location.latitude === 0 && location.longitude === 0) return null;
-      const { aliases: _aliases, ...mapped } = location;
-      return mapped;
+    if (aliasesFor(location).some((alias) => normalized === alias || noRoom === alias)) {
+      return resolveLocation(location);
+    }
+  }
+  for (const location of schoolLocations) {
+    if (aliasesFor(location).some((alias) => firstToken === alias)) {
+      return resolveLocation(location);
     }
   }
 
+  // Fuzzy fallback, longest alias first so a more specific code still wins.
+  // Length >= 3 and whole-word boundaries: bare substring matching let
+  // 2-letter codes fire inside unrelated names ("WILSON HALL" contains "ON" →
+  // pinned the Online placeholder at 0,0).
+  const fuzzy: { location: LocationMatcher; length: number }[] = [];
+  for (const location of schoolLocations) {
+    for (const alias of aliasesFor(location)) {
+      const aliasCompact = alias.replace(/\s+/g, '');
+      const hit =
+        (aliasCompact.length >= 3 && compact.startsWith(aliasCompact))
+        || (alias.length >= 3 && new RegExp(`(^| )${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}( |$)`).test(normalized));
+      if (hit) fuzzy.push({ location, length: aliasCompact.length });
+    }
+  }
+  if (fuzzy.length > 0) {
+    fuzzy.sort((a, b) => b.length - a.length);
+    return resolveLocation(fuzzy[0].location);
+  }
+
   return null;
+}
+
+/** Placeholder entries (Online/Virtual) carry no real coordinates — treat them
+ *  as unmappable instead of dropping a pin at (0, 0). */
+function resolveLocation(location: LocationMatcher): CampusMapLocation | null {
+  if (location.latitude === 0 && location.longitude === 0) return null;
+  const { aliases: _aliases, ...mapped } = location;
+  return mapped;
 }
 
 export function getSportsVenueForEvent(school: string, event: SportsEvent): SportsVenue | null {

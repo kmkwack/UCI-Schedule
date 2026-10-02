@@ -78,7 +78,7 @@ const CLASSROOM_LOCATIONS: Record<string, LocationMatcher[]> = {
     { code: 'SB1', name: 'Merage School of Business', latitude: 33.646997, longitude: -117.838018, aliases: ['SB1', 'STUDENT CENTER'] },
     { code: 'SB2', name: 'Merage School of Business II', latitude: 33.646660, longitude: -117.838086, aliases: ['SB2', 'STUDENT CENTER'] },
     { code: 'SBSG', name: 'Social and Behavioral Sciences Gateway', latitude: 33.647377, longitude: -117.839065, aliases: ['SBSG', 'SOCIAL BEHAVIORAL SCIENCES GATEWAY'] },
-    { code: 'SCS', name: 'Sculpture and Ceramic Studios', latitude: 33.650318, longitude: -117.844467, aliases: ['SCS', 'SCULPTURE CERAMIC STUDIOS'] },
+    { code: 'SCS', name: 'Sculpture and Ceramic Studios', latitude: 33.650470, longitude: -117.844440, aliases: ['SCS', 'SCULPTURE CERAMIC STUDIOS'] },
     { code: 'NT', name: 'Robert B. Moore Theatre', latitude: 33.649700, longitude: -117.845100, aliases: ['NT', 'NIXON THEATRE', 'MOORE THEATRE', 'ROBERT B MOORE THEATRE'] },
     { code: 'SE', name: 'Social Ecology I', latitude: 33.646144, longitude: -117.838771, aliases: ['SE', 'SEI', 'SOCIAL ECOLOGY I'] },
     { code: 'SE2', name: 'Social Ecology II', latitude: 33.646578, longitude: -117.838972, aliases: ['SE2', 'SEII', 'SOCIAL ECOLOGY II'] },
@@ -90,7 +90,11 @@ const CLASSROOM_LOCATIONS: Record<string, LocationMatcher[]> = {
     { code: 'SSH', name: 'Social Science Hall', latitude: 33.646238, longitude: -117.840078, aliases: ['SSH', 'SOCIAL SCIENCE HALL'] },
     { code: 'SSL', name: 'Social Science Lab', latitude: 33.645913, longitude: -117.840022, aliases: ['SSL', 'SOCIAL SCIENCE LAB', 'SOCIAL SCIENCE LABORATORY'] },
     { code: 'SSLH', name: 'Social Science Lecture Hall', latitude: 33.647228, longitude: -117.839745, aliases: ['SSLH', 'SOCIAL SCIENCE LECTURE HALL'] },
-    { code: 'SST', name: 'Social Science Tower', latitude: 33.646465, longitude: -117.840275, aliases: ['SST', 'SSTR', 'SOCIAL SCIENCE TOWER'] },
+    { code: 'SST', name: 'Social Science Tower', latitude: 33.646465, longitude: -117.840275, aliases: ['SST', 'SOCIAL SCIENCE TOWER'] },
+    // SSTR is the Social Science Trailer, a separate building. It used to be an
+    // alias of the Tower, which sent 132 Fall 2026 sections to the wrong door.
+    { code: 'SSTR', name: 'Social Science Trailer', latitude: 33.646962, longitude: -117.840198, aliases: ['SSTR', 'SOCIAL SCIENCE TRAILER'] },
+    { code: 'CRH', name: 'Croul Hall', latitude: 33.643713, longitude: -117.844674, aliases: ['CRH', 'CROUL HALL'] },
     { code: 'STU4', name: 'Studio Four', latitude: 33.650153, longitude: -117.845692, aliases: ['STU4', 'STUDIO FOUR'] },
     { code: 'TSLB', name: 'Tamkin Student Lecture Building', latitude: 33.645505, longitude: -117.851978, aliases: ['TSLB', 'TAMKIN STUDENT LECTURE BUILDING'] },
     { code: 'ICS2', name: 'Information and Computer Science 2', latitude: 33.644017, longitude: -117.841734, aliases: ['ICS2', 'DONALD BREN HALL II', 'ICS 2'] },

@@ -92,7 +92,12 @@ const HOLIDAY_DATE_CHECKS = {
   'MLK Day':          { month: 1,  nth: 3, weekday: 1 },   // 3rd Monday of January
   "Presidents' Day":  { month: 2,  nth: 3, weekday: 1 },   // 3rd Monday of February
   'Memorial Day':     { month: 5,  last: true, weekday: 1 }, // last Monday of May
-  'Juneteenth':       { month: 6,  day: 19 },
+  // UC lists the observed weekday when the 19th falls on a weekend (Jun 18,
+  // 2026), so allow the 18th-21st rather than rejecting it.
+  'Juneteenth':       { month: 6,  minDay: 18, maxDay: 21 },
+  // Farmworkers Day has no fixed rule, but it is always late March; the month
+  // check alone stops it borrowing a neighbouring holiday's date.
+  'Farmworkers Day':  { month: 3 },
 };
 
 /** True if `date` (YYYY-MM-DD) is plausible for the given holiday title. */
@@ -103,6 +108,8 @@ function holidayDateLooksRight(title, date) {
   const [y, m, d] = date.split('-').map(Number);
   if (m !== check.month) return false;
   if (check.day !== undefined) return d === check.day;
+  if (check.minDay !== undefined) return d >= check.minDay && d <= check.maxDay;
+  if (check.weekday === undefined) return true;
 
   const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   if (weekday !== check.weekday) return false;
@@ -208,7 +215,7 @@ async function scrapeUci(academicYear) {
   // Rules for date-based parsing (holidays section has inconsistent columns)
   const dateRules = [
     { re: /labor day/i,                       title: 'Labor Day',               category: 'holiday', subtitle: 'No classes' },
-    { re: /veterans day/i,                    title: 'Veterans Day',            category: 'holiday', subtitle: 'No classes' },
+    { re: /veteran.{0,3}s day/i,             title: 'Veterans Day',            category: 'holiday', subtitle: 'No classes' },
     { re: /thanksgiving/i,                    title: 'Thanksgiving',            category: 'holiday', subtitle: 'No classes' },
     { re: /martin luther king|mlk/i,          title: 'MLK Day',                category: 'holiday', subtitle: 'No classes' },
     { re: /president.{0,3}s.*day/i,           title: "Presidents' Day",        category: 'holiday', subtitle: 'No classes' },
@@ -286,7 +293,11 @@ async function scrapeUci(academicYear) {
           break;
         }
       }
-      break;
+      // No `break` here: the registrar lists two holidays per row ("Martin
+      // Luther King, Jr. Day Presidents' Day | Jan 18 Feb 15"), so stopping at
+      // the first matching rule silently dropped the second — Presidents' Day,
+      // Veterans Day and Farmworkers Day never reached the app. Each rule's
+      // date check picks its own date out of the shared row.
     }
   }
 
@@ -645,6 +656,48 @@ async function upsertEvents(events) {
   return rows.length;
 }
 
+// A healthy UCI parse yields ~10 events per quarter; fewer suggests the page
+// changed shape, and pruning against a broken parse would delete good rows.
+const MIN_EVENTS_TO_PRUNE_QUARTER = 5;
+
+/**
+ * Delete auto-seeded rows this run did not produce.
+ *
+ * Upsert alone never removes anything, so a row written by an earlier, buggier
+ * version of this script survives every later run. That is how "Memorial Day,
+ * Mar 26 2027" (actually Farmworkers Day's date) and "Labor Day, Sep 6 2026"
+ * (actually 2027's) stayed on the home screen after the parser was fixed.
+ * Only `auto-*` ids are touched; curated rows are never deleted here.
+ */
+async function pruneStaleEvents(events) {
+  const produced = new Set(events.map((e) => e.id));
+  const quarters = new Map();
+  for (const e of events) {
+    const key = `${e.school}::${e.quarterKey}`;
+    quarters.set(key, (quarters.get(key) ?? 0) + 1);
+  }
+
+  let removed = 0;
+  for (const [key, count] of quarters) {
+    if (count < MIN_EVENTS_TO_PRUNE_QUARTER) continue;
+    const [school, quarterKey] = key.split('::');
+    const { data, error } = await supabase
+      .from('academic_calendar')
+      .select('id')
+      .eq('school', school)
+      .eq('quarter_key', quarterKey)
+      .like('id', 'auto-%');
+    if (error) throw error;
+    const stale = (data ?? []).map((r) => r.id).filter((id) => !produced.has(id));
+    if (!stale.length) continue;
+    const { error: delError } = await supabase.from('academic_calendar').delete().in('id', stale);
+    if (delError) throw delError;
+    for (const id of stale) console.log(`    − removed stale ${id}`);
+    removed += stale.length;
+  }
+  return removed;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const SCRAPERS = {
@@ -684,6 +737,8 @@ async function main() {
         }
         const n = await upsertEvents(events);
         console.log(`  ✓ Upserted ${n} rows`);
+        const pruned = await pruneStaleEvents(events);
+        if (pruned) console.log(`  ✓ Removed ${pruned} stale rows`);
         totalUpserted += n;
       } catch (err) {
         console.error(`  ✗ FAILED: ${err.message}`);

@@ -34,7 +34,7 @@ import { FullScreenLoader } from './src/components/ScheduleLoader';
 import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, parseQuarterKey, quarterKey } from './src/data/courses';
 import { clearWidgetSchedule, syncWidgetSchedule } from './src/lib/widgetSync';
 import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, resolveCurrentTerm, schoolFeatureEnabled, termLabel, termOrderValue, universityForName, type University } from './src/data/schools';
-import { isTermInSession } from './src/data/academicCalendar';
+import { isTermInSession, primeTermBoundaries } from './src/data/academicCalendar';
 import {
   buildDisplayName,
   DEFAULT_NOTIFICATION_PREFERENCES,
@@ -1084,7 +1084,26 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
     });
 
     return sorted[0];
-  }, [timetables, currentSchool, academicQuarter]);
+  // academicQuarterKey, not academicQuarter: the latter is a fresh object every
+  // render, which made this memo — and the widget sync below it — rerun on every
+  // render, calling reloadAllTimelines() and spending WidgetKit's refresh budget.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timetables, currentSchool, academicQuarterKey]);
+
+  // Term start/end dates come from the calendar the app loads, not a hardcoded
+  // table that ends at Fall 2026. Bumped once real dates arrive so the widget
+  // and the reminder scheduler recompute against them.
+  const [termCalendarRevision, setTermCalendarRevision] = useState(0);
+  const widgetTermKey = widgetTerm?.key ?? null;
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    const keys = Array.from(new Set([homeQuarterKey, widgetTermKey].filter((k): k is string => !!k)));
+    void primeTermBoundaries(currentSchool, keys).then((changed) => {
+      if (!cancelled && changed) setTermCalendarRevision((n) => n + 1);
+    });
+    return () => { cancelled = true; };
+  }, [userId, currentSchool, homeQuarterKey, widgetTermKey]);
 
   // Watching the derived term rather than hooking each setTimetables() call
   // means every path that changes a schedule — load, add, edit, delete, school
@@ -1102,7 +1121,10 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       termLabel: termLabel(widgetTerm.quarter, currentSchool),
       quarterKey: widgetTerm.key,
     });
-  }, [userId, widgetTerm, currentSchool]);
+  // Keyed on the term and its course list, not the widgetTerm object, so the
+  // widget is rewritten only when what it shows could have changed.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, widgetTermKey, widgetTerm?.courses, currentSchool, termCalendarRevision]);
 
   const USER_ID = userId ?? '';
   const displayUserName = buildDisplayName({ ...userProfile, email: userEmail || userProfile.email });
@@ -2092,7 +2114,7 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
       cancelled = true;
       if (rescheduleTimerId) clearTimeout(rescheduleTimerId);
     };
-  }, [homeQuarterCourses, homeQuarterKey, assignmentCalendarRevision, currentSchool, schoolTimeZone, userId, userSettings]);
+  }, [homeQuarterCourses, homeQuarterKey, assignmentCalendarRevision, currentSchool, schoolTimeZone, userId, userSettings, termCalendarRevision]);
 
   useEffect(() => {
     if (!userId) return;

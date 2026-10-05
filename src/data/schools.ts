@@ -410,6 +410,8 @@ export function resolveCurrentTerm(school: string, timetables: Timetable[]): Qua
   const current = getAcademicTermForDate(school, new Date());
   const existingKeys = new Set(timetables.map((t) => t.quarterKey));
   if (existingKeys.has(quarterKey(current))) return current;
-  const candidates = buildTermCandidates(school, 2020, 2027).reverse();
+  // Up to next year, derived from today: a fixed 2027 would have stopped
+  // finding anyone's timetable once 2028 terms existed.
+  const candidates = buildTermCandidates(school, 2020, new Date().getFullYear() + 1).reverse();
   return candidates.find((term) => existingKeys.has(quarterKey(term))) ?? current;
 }

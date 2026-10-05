@@ -108,6 +108,44 @@ function rowToEvent(row: any): AcademicEvent {
   };
 }
 
+/**
+ * Calendar events the app has actually loaded, kept in memory so the synchronous
+ * term-boundary helpers below can use them.
+ *
+ * Those helpers used to read LOCAL_FALLBACK only — a hand-written table that
+ * ends at Fall 2026. From Winter 2027 on they would have returned null, so the
+ * widget lost its start/end dates and isTermInSession() fell back to "always in
+ * session", firing class reminders through spring break. The nightly scraper
+ * already keeps the database current years ahead; this is how it reaches them.
+ */
+const loadedTermEvents = new Map<string, AcademicEvent[]>();
+
+function rememberTermEvents(school: string, quarterKey: string, events: AcademicEvent[]) {
+  if (events.length > 0) loadedTermEvents.set(cacheKey(school, quarterKey), events);
+}
+
+function termEventsFor(school: string, quarterKey: string): AcademicEvent[] {
+  return loadedTermEvents.get(cacheKey(school, quarterKey)) ?? LOCAL_FALLBACK[school]?.[quarterKey] ?? [];
+}
+
+/**
+ * Load the calendars for the given terms so their start and end dates are known.
+ * Resolves to whether any term gained data it did not have before, so callers
+ * know whether anything that depends on term boundaries needs recomputing.
+ */
+export async function primeTermBoundaries(school: string, quarterKeys: string[]): Promise<boolean> {
+  let changed = false;
+  for (const quarterKey of quarterKeys) {
+    const key = cacheKey(school, quarterKey);
+    // Compare presence, not identity: a cache read parses a fresh array every
+    // time, so identity would report a change on every call.
+    const hadData = loadedTermEvents.has(key);
+    await fetchAcademicEvents(school, quarterKey);
+    if (!hadData && loadedTermEvents.has(key)) changed = true;
+  }
+  return changed;
+}
+
 /** Fetch events from Supabase, with 24 h AsyncStorage cache. Falls back to local data. */
 export async function fetchAcademicEvents(school: string, quarterKey: string): Promise<AcademicEvent[]> {
   const key = cacheKey(school, quarterKey);
@@ -118,6 +156,7 @@ export async function fetchAcademicEvents(school: string, quarterKey: string): P
     if (raw) {
       const entry: CacheEntry = JSON.parse(raw);
       if (Date.now() - entry.fetchedAt < CACHE_TTL_MS) {
+        rememberTermEvents(school, quarterKey, entry.events);
         return entry.events;
       }
     }
@@ -139,6 +178,7 @@ export async function fetchAcademicEvents(school: string, quarterKey: string): P
       // Save to cache
       const entry: CacheEntry = { fetchedAt: Date.now(), events };
       void AsyncStorage.setItem(key, JSON.stringify(entry));
+      rememberTermEvents(school, quarterKey, events);
       return events;
     }
   } catch (error) {
@@ -164,8 +204,8 @@ export async function fetchAcademicEvents(school: string, quarterKey: string): P
  * firing for classes that already ended.
  */
 export function getTermEndDate(school: string, quarterKey: string): Date | null {
-  const events = LOCAL_FALLBACK[school]?.[quarterKey];
-  if (!events || events.length === 0) return null;
+  const events = termEventsFor(school, quarterKey);
+  if (events.length === 0) return null;
 
   const finals = events.find((e) => e.category === 'finals');
   const lastInstruction = events
@@ -181,11 +221,16 @@ export function getTermEndDate(school: string, quarterKey: string): Date | null 
 
 /** Start date of a term (Instruction Begins), or null if unknown. */
 export function getTermStartDate(school: string, quarterKey: string): Date | null {
-  const events = LOCAL_FALLBACK[school]?.[quarterKey];
-  if (!events || events.length === 0) return null;
-  const start = events
-    .filter((e) => e.category === 'instruction')
-    .sort((a, b) => a.date.localeCompare(b.date))[0];
+  const events = termEventsFor(school, quarterKey);
+  if (events.length === 0) return null;
+  // Classes start at "Instruction Begins", not "Quarter Begins" — UCI's quarter
+  // opens a few days earlier (Sep 21 vs Sep 24 for Fall 2026), and both carry
+  // the 'instruction' category, so taking the earliest would be days early.
+  const start =
+    events.find((e) => /instruction begins/i.test(e.title))
+    ?? events
+      .filter((e) => e.category === 'instruction')
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
   if (!start) return null;
   return new Date(`${start.date}T00:00:00`);
 }

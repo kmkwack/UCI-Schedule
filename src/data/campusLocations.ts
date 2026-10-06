@@ -221,13 +221,16 @@ const CLASSROOM_LOCATIONS: Record<string, LocationMatcher[]> = {
 };
 
 const SPORTS_VENUES: Record<string, Array<SportsVenue & { sports?: string[]; aliases: string[] }>> = {
+  // UCI coordinates from OpenStreetMap/Nominatim (Oct 2026). The hand-entered
+  // ones were 40-280m out and the ballpark sat on Anteater Stadium.
+  // Tennis Stadium is not in OSM and is unverified.
   'UC Irvine': [
-    { name: 'Bren Events Center', latitude: 33.64979, longitude: -117.84678, sports: ['basketball', 'volleyball'], aliases: ['bren'] },
-    { name: 'Cicerone Field at Anteater Ballpark', latitude: 33.65087, longitude: -117.85047, sports: ['baseball'], aliases: ['ballpark', 'cicerone'] },
-    { name: "Anteater Stadium & Vince O'Boyle Track", latitude: 33.64996, longitude: -117.84872, sports: ['soccer', 'track'], aliases: ['stadium', 'track'] },
-    { name: 'Anteater Aquatics Complex', latitude: 33.65027, longitude: -117.84633, sports: ['water polo'], aliases: ['aquatics', 'pool'] },
+    { name: 'Bren Events Center', latitude: 33.649457, longitude: -117.846905, sports: ['basketball', 'volleyball'], aliases: ['bren'] },
+    { name: 'Cicerone Field at Anteater Ballpark', latitude: 33.651333, longitude: -117.847713, sports: ['baseball'], aliases: ['ballpark', 'cicerone'] },
+    { name: "Anteater Stadium & Vince O'Boyle Track", latitude: 33.650222, longitude: -117.850766, sports: ['soccer', 'track'], aliases: ['stadium', 'track'] },
+    { name: 'Anteater Aquatics Complex', latitude: 33.648412, longitude: -117.847900, sports: ['water polo'], aliases: ['aquatics', 'pool'] },
     { name: 'Anteater Tennis Stadium', latitude: 33.65098, longitude: -117.84835, sports: ['tennis'], aliases: ['tennis'] },
-    { name: 'Crawford Court', latitude: 33.65035, longitude: -117.84676, aliases: ['crawford'] },
+    { name: 'Crawford Court', latitude: 33.648050, longitude: -117.848047, aliases: ['crawford'] },
   ],
   'University of Maryland, College Park': [
     { name: 'SECU Stadium', latitude: 38.9904, longitude: -76.9471, sports: ['football'], aliases: ['secu', 'stadium'] },

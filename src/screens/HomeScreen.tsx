@@ -9,7 +9,8 @@ import { addUserAcademicEvent, CATEGORY_CONFIG, daysUntilEvent, dedupeAcademicEv
 import { buildSectionMatchKey, getSharedClassMatch, normalizeCourseCode, type SharedClassMatch } from '../data/sharedClasses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
 import { fetchSportsEventsForSchool, formatSportsEventTime, type SportsEvent } from '../data/sportsEvents';
-import { fetchDiningMenusForSchool, schoolDiningMenusSupported, type DiningLocationMenu, type DiningMenuMeal } from '../data/diningMenus';
+import DiningMenuBrowser from '../components/DiningMenuBrowser';
+import { currentOrNextMeal, featuredDishes, fetchDiningMenusForSchool, schoolDiningMenusSupported, type DiningLocationMenu } from '../data/diningMenus';
 import { academicSystemNoun, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, schoolCampusLabel, schoolFeatureEnabled, schoolHomeLabel, termLabel } from '../data/schools';
 import type { TimetableVisibility } from '../data/userPreferences';
 import { formatDateInTimeZone, getZonedDateParts, normalizeTimeZone, zonedDateFromParts, zonedDateKey, zonedWeekdayIndex } from '../data/timeZone';
@@ -1053,17 +1054,11 @@ function flattenDiningItems(menu: DiningLocationMenu) {
   return menu.meals.flatMap((meal) => meal.stations.flatMap((station) => station.items));
 }
 
+// Dishes from the meal being served (or next), one per station. It used to take
+// the first items across every meal, so a lunchtime preview listed breakfast.
 function previewDiningItems(menu: DiningLocationMenu, limit = 3) {
-  return flattenDiningItems(menu).slice(0, limit).map((item) => item.name);
-}
-
-function mealItemCount(meal: DiningMenuMeal) {
-  return meal.stations.reduce((total, station) => total + station.items.length, 0);
-}
-
-function diningStationLabel(name: string, index: number) {
-  const label = String(name ?? '').trim();
-  return !label || label.toLowerCase() === 'menu' ? 'Items' : label;
+  const meal = currentOrNextMeal(menu);
+  return meal ? featuredDishes(meal, limit) : flattenDiningItems(menu).slice(0, limit).map((item) => item.name);
 }
 
 async function openSportsVenueInMaps(venue: SportsVenue, school: string) {
@@ -4368,127 +4363,11 @@ export default function HomeScreen({
               contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 22 }}
             >
               {diningMenus.length > 0 ? (
-                <View style={{ gap: 12 }}>
-                  {diningMenus.map((menu) => {
-                    const statusColor = menu.isOpen === true ? '#10B981' : menu.isOpen === false ? '#EF4444' : diningAccent;
-                    return (
-                    <View
-                      key={`dining-sheet-${menu.id}`}
-                      style={{
-                        borderRadius: 18,
-                        backgroundColor: colors.card,
-                        borderWidth: 1,
-                        borderColor: colors.borderSubtle,
-                        padding: 14,
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 11 }}>
-                        <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: themedIconBackground(diningAccent, isDark, '#fff7ed'), alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <Ionicons name="restaurant-outline" size={20} color={themedIconColor(diningAccent, isDark)} />
-                        </View>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: colors.text }}>
-                            {menu.name}
-                          </Text>
-                          <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 3 }}>
-                            {menu.isExternalLinkOnly ? 'Official menu link' : `${menu.itemCount} items today`}
-                          </Text>
-                        </View>
-                        {menu.statusLabel ? (
-                          <View style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: `${statusColor}16`, borderWidth: 1, borderColor: `${statusColor}30` }}>
-                            <Text style={{ fontSize: 10.5, lineHeight: 14, fontWeight: '900', color: statusColor }}>
-                              {menu.statusLabel}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      {menu.statusDetail ? (
-                        <View style={{ borderRadius: 14, backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.borderSubtle, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 }}>
-                          <Text style={{ fontSize: 13, lineHeight: 18, color: colors.textSecondary, fontWeight: '700' }}>
-                            {menu.statusDetail}
-                          </Text>
-                        </View>
-                      ) : null}
-
-                      {menu.meals.map((meal, mealIndex) => {
-                        return (
-                          <View
-                            key={`${menu.id}-${meal.id}-${mealIndex}`}
-                            style={{
-                              paddingTop: mealIndex === 0 ? 0 : 14,
-                              marginTop: mealIndex === 0 ? 0 : 14,
-                              borderTopWidth: mealIndex === 0 ? 0 : 1,
-                              borderTopColor: colors.borderSubtle,
-                            }}
-                          >
-                            <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
-                              <Text style={{ fontSize: 14, lineHeight: 18, fontWeight: '800', color: colors.text }}>
-                                {meal.name}
-                              </Text>
-                              <Text style={{ fontSize: 11, lineHeight: 15, fontWeight: '700', color: colors.textTertiary }}>
-                                {meal.timeLabel ?? `${mealItemCount(meal)} items`}
-                              </Text>
-                            </View>
-                            <View style={{ marginTop: 10, gap: 10 }}>
-                              {meal.stations.map((station, stationIndex) => (
-                                <View
-                                  key={`${menu.id}-${meal.id}-${station.id}-${stationIndex}`}
-                                  style={{
-                                    borderRadius: 14,
-                                    backgroundColor: colors.bgSecondary,
-                                    borderWidth: 1,
-                                    borderColor: colors.borderSubtle,
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 10,
-                                  }}
-                                >
-                                  <Text style={{ fontSize: 12, lineHeight: 16, fontWeight: '800', color: colors.textSecondary, marginBottom: 7 }}>
-                                    {diningStationLabel(station.name, stationIndex)}
-                                  </Text>
-                                  <View style={{ gap: 7 }}>
-                                    {station.items.map((food, foodIndex) => (
-                                      <View
-                                        key={`${menu.id}-${meal.id}-${station.id}-${food.id}-${foodIndex}`}
-                                        style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}
-                                      >
-                                        <Text style={{ fontSize: 15, lineHeight: 20, color: diningAccent, marginTop: -1 }}>
-                                          •
-                                        </Text>
-                                        <Text style={{ flex: 1, fontSize: 14, lineHeight: 20, color: colors.text }}>
-                                          {food.name}
-                                        </Text>
-                                      </View>
-                                    ))}
-                                  </View>
-                                </View>
-                              ))}
-                            </View>
-                          </View>
-                        );
-                      })}
-
-                      <TouchableOpacity
-                        onPress={() => openDiningOfficialMenu(menu.officialUrl)}
-                        activeOpacity={0.72}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          borderTopWidth: 1,
-                          borderTopColor: colors.borderSubtle,
-                          marginTop: 14,
-                          paddingTop: 13,
-                        }}
-                      >
-                        <Text style={{ fontSize: 12, fontWeight: '800', color: diningAccent }}>
-                          Open official menu
-                        </Text>
-                        <Ionicons name="open-outline" size={15} color={diningAccent} />
-                      </TouchableOpacity>
-                    </View>
-                    );
-                  })}
-                </View>
+                <DiningMenuBrowser
+                  menus={diningMenus}
+                  accent={diningAccent}
+                  onOpenOfficialMenu={openDiningOfficialMenu}
+                />
               ) : (
                 <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                   {diningLoading ? <ActivityIndicator size="small" color={diningAccent} /> : null}

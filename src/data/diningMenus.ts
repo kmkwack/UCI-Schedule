@@ -16,6 +16,9 @@ export type DiningMenuMeal = {
   id: string;
   name: string;
   timeLabel?: string;
+  /** Minutes after midnight, campus time — lets the UI open on the meal being served. */
+  startMinutes?: number;
+  endMinutes?: number;
   stations: DiningMenuStation[];
 };
 
@@ -323,29 +326,135 @@ async function fetchMyDiningHubLocationMenu(location: { id: string; name: string
   }]);
 }
 
+// MyDiningHub meal-period ids, from the site's own meal list. The opening-hours
+// feed labels each window with exactly these names.
+const UCI_MEAL_PERIOD_IDS: Record<string, number> = {
+  'Afternoon Snack': 1,
+  'All Day': 4,
+  Breakfast: 10,
+  Brunch: 13,
+  Dinner: 16,
+  'Evening Snack': 22,
+  Lunch: 25,
+};
+
+type StationInfo = { name: string; position: number };
+let uciStationNamesPromise: Promise<Map<string, Map<string, StationInfo>>> | null = null;
+
+/**
+ * Real station names ("Sizzle Grill", "The Twisted Root") per location. The
+ * recipe query returns station ids only, and the app used to label them
+ * "Station 1..5", which is most of why the menu read as an undifferentiated
+ * wall of items. Cached for the session; a failure is retried next time.
+ */
+function loadUciStationNames() {
+  if (!uciStationNamesPromise) {
+    const params = new URLSearchParams({
+      operationName: 'getLocations',
+      query: 'query getLocations($k: String!) { getLocations(campusUrlKey: $k) { commerceAttributes { url_key children { id name position } } } }',
+      variables: JSON.stringify({ k: 'campus' }),
+    });
+    uciStationNamesPromise = fetchJson(`${UCI_DINING_GRAPHQL_URL}?${params.toString()}`, { method: 'GET', headers: UCI_DINING_HEADERS })
+      .then((json) => {
+        const byLocation = new Map<string, Map<string, StationInfo>>();
+        for (const location of json?.data?.getLocations ?? []) {
+          const key = location?.commerceAttributes?.url_key;
+          if (!key) continue;
+          const stations = new Map<string, StationInfo>();
+          for (const child of location.commerceAttributes.children ?? []) {
+            stations.set(String(child.id), { name: compactText(child.name), position: Number(child.position) || 999 });
+          }
+          byLocation.set(key, stations);
+        }
+        return byLocation;
+      })
+      .catch((error) => {
+        console.warn('Could not load dining station names:', error);
+        uciStationNamesPromise = null;
+        return new Map<string, Map<string, StationInfo>>();
+      });
+  }
+  return uciStationNamesPromise;
+}
+
+function nameStations(stations: DiningMenuStation[], names: Map<string, StationInfo> | undefined) {
+  if (!names) return stations;
+  return stations
+    .map((station) => {
+      const info = names.get(String(station.id));
+      return { station: info ? { ...station, name: info.name } : station, position: info?.position ?? 999 };
+    })
+    .sort((a, b) => a.position - b.position)
+    .map(({ station }) => station);
+}
+
+function formatMealWindow(startMinutes: number, endMinutes: number) {
+  const fmt = (m: number) => {
+    const h24 = Math.floor(m / 60) % 24;
+    const min = m % 60;
+    const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    return { text: min ? `${h12}:${String(min).padStart(2, '0')}` : `${h12}`, period: h24 < 12 ? 'AM' : 'PM' };
+  };
+  const a = fmt(startMinutes);
+  const b = fmt(endMinutes);
+  return a.period === b.period ? `${a.text}–${b.text} ${b.period}` : `${a.text} ${a.period}–${b.text} ${b.period}`;
+}
+
 async function fetchUciDiningMenus(date: Date) {
   const { iso } = getDateParts(date, 'America/Los_Angeles');
-  const [menus, summaries] = await Promise.all([
-    Promise.all(UCI_DINING_LOCATIONS.map((location) => fetchMyDiningHubLocationMenu(location, iso, {
-      graphQlUrl: UCI_DINING_GRAPHQL_URL,
-      locationUrl: UCI_DINING_LOCATION_URL,
-      headers: UCI_DINING_HEADERS,
-    }).catch(() => null))),
+  const config = { graphQlUrl: UCI_DINING_GRAPHQL_URL, locationUrl: UCI_DINING_LOCATION_URL, headers: UCI_DINING_HEADERS };
+  const [summaries, stationNames] = await Promise.all([
     fetchUciDiningSummaries(date).catch(() => []),
+    loadUciStationNames(),
   ]);
   const summariesByKey = new Map(summaries.map((summary) => [summary.key, summary]));
-  return menus
-    .filter((menu): menu is DiningLocationMenu => Boolean(menu))
-    .map((menu) => {
-      const summary = summariesByKey.get(menu.id as any);
-      if (!summary) return menu;
-      return {
-        ...menu,
-        isOpen: summary.isOpen,
-        statusLabel: summary.statusLabel,
-        statusDetail: summary.statusDetail,
-      };
-    });
+
+  const menus = await Promise.all(UCI_DINING_LOCATIONS.map(async (location) => {
+    const summary = summariesByKey.get(location.id as any);
+    const names = stationNames.get(location.id);
+    // One request per meal actually served today. Without a meal period the
+    // API answers with breakfast, so the app showed the breakfast menu all day
+    // and lunch or dinner never appeared.
+    const windows = (summary?.todayMeals ?? [])
+      .map((window) => ({ window, id: UCI_MEAL_PERIOD_IDS[window.label] }))
+      .filter((entry): entry is { window: typeof entry.window; id: number } => entry.id != null);
+
+    let meals: DiningMenuMeal[];
+    if (windows.length > 0) {
+      const fetched = await Promise.all(windows.map(async ({ window, id }) => {
+        try {
+          const data = await fetchMyDiningHubRecipeData(location, iso, config, { id, name: window.label });
+          return {
+            id: String(id),
+            name: window.label,
+            timeLabel: formatMealWindow(window.startMinutes, window.endMinutes),
+            startMinutes: window.startMinutes,
+            endMinutes: window.endMinutes,
+            stations: nameStations(buildMyDiningHubStations(data), names),
+          } as DiningMenuMeal;
+        } catch (error) {
+          console.warn(`Could not load ${location.name} ${window.label} menu:`, error);
+          return null;
+        }
+      }));
+      meals = fetched.filter((meal): meal is DiningMenuMeal => meal !== null);
+    } else {
+      // No hours for today (closed, or the hours feed failed): fall back to
+      // the location's default menu rather than showing nothing.
+      try {
+        const data = await fetchMyDiningHubRecipeData(location, iso, config);
+        meals = [{ id: 'today', name: 'Today', stations: nameStations(buildMyDiningHubStations(data), names) }];
+      } catch {
+        return null;
+      }
+    }
+
+    const menu = buildLocationMenu(location.id, location.name, `${UCI_DINING_LOCATION_URL}/${location.id}`, meals);
+    if (!menu || !summary) return menu;
+    return { ...menu, isOpen: summary.isOpen, statusLabel: summary.statusLabel, statusDetail: summary.statusDetail };
+  }));
+
+  return menus.filter((menu): menu is DiningLocationMenu => Boolean(menu));
 }
 
 function cornellMealFromEvent(event: any): DiningMenuMeal | null {
@@ -616,4 +725,53 @@ export async function fetchDiningMenusForSchool(school: string, date = new Date(
     return [buildExternalDiningMenu(external.id, external.name, external.url, external.itemName)];
   }
   return [];
+}
+
+// ─── Choosing what to show ──────────────────────────────────────────────────
+
+function campusMinutesNow(date: Date, timeZone = 'America/Los_Angeles') {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date);
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+  return hour * 60 + minute;
+}
+
+/**
+ * The meal a student opening the app right now cares about: the one being
+ * served, else the next one today, else the last one (after closing, tonight's
+ * dinner is more useful than nothing). Meals without times fall back to the
+ * first one.
+ */
+export function currentOrNextMeal(menu: DiningLocationMenu, date = new Date()): DiningMenuMeal | null {
+  const meals = menu.meals.filter((meal) => meal.stations.some((station) => station.items.length > 0));
+  if (meals.length === 0) return null;
+  const timed = meals.filter((meal) => meal.startMinutes != null && meal.endMinutes != null);
+  if (timed.length === 0) return meals[0];
+  const now = campusMinutesNow(date);
+  return timed.find((meal) => now >= meal.startMinutes! && now < meal.endMinutes!)
+    ?? timed.find((meal) => now < meal.startMinutes!)
+    ?? timed[timed.length - 1];
+}
+
+/**
+ * Stations whose items are the same every day (salad bar, bakery, soup) —
+ * shown last and collapsed, so the day's actual dishes lead.
+ */
+export function isStapleStation(name: string) {
+  return /farmer'?s market|farm stand|salad|bakery|honeycakes|soups?\b|deli\b|beverage|condiment|cereal/i.test(name);
+}
+
+/** One dish per featured station, so a preview shows the range rather than the first station's list. */
+export function featuredDishes(meal: DiningMenuMeal, limit = 4) {
+  const ordered = [
+    ...meal.stations.filter((station) => !isStapleStation(station.name)),
+    ...meal.stations.filter((station) => isStapleStation(station.name)),
+  ];
+  const picks: string[] = [];
+  for (const station of ordered) {
+    const item = station.items[0];
+    if (item && !picks.includes(item.name)) picks.push(item.name);
+    if (picks.length >= limit) break;
+  }
+  return picks;
 }

@@ -137,7 +137,7 @@ const EMPTY_CUSTOM_DRAFT: CustomCourseDraft = {
 };
 
 type SectionEnrollment = {
-  status: string;          // "OPEN" | "Waitl" | "FULL" | "NewOnly"
+  status?: string;         // "OPEN" | "Waitl" | "FULL" | "NewOnly"; absent when the API omits it
   enrolled?: number;
   capacity?: number;
   waitlist?: number;
@@ -157,6 +157,8 @@ type BannerFallbackConfig = {
 
 const SECTION_SELECT_COLUMNS = 'id,code,title,department,professor,days,time,location,units,section_label,status';
 const SECTION_QUERY_PAGE_SIZE = 1000;
+const ENROLLMENT_TTL_MS = 60_000;
+const ENROLLMENT_TIMEOUT_MS = 10_000;
 const COURSE_PICKER_ACCENT_BORDER = '#C7D4FF';
 const departmentMemoryCache = new Map<string, string[]>();
 const bannerFallbackRowsCache = new Map<string, any[]>();
@@ -817,6 +819,7 @@ export default function CoursePickerScreen({
   const [sectionsMap, setSectionsMap] = useState<Record<string, Course[]>>({});
   const [previewCourse, setPreviewCourse] = useState<Course | null>(null);
   const [enrollmentCache, setEnrollmentCache] = useState<Record<string, SectionEnrollment>>({});
+  const enrollmentFetchedAtRef = useRef(new Map<string, number>());
   const [enrollmentLoadingIds, setEnrollmentLoadingIds] = useState<Set<string>>(new Set());
   const [reviewSummaryCache, setReviewSummaryCache] = useState<Record<string, ReviewSummary>>({});
   const [savedCountCache, setSavedCountCache] = useState<Record<string, number>>({});
@@ -826,6 +829,7 @@ export default function CoursePickerScreen({
   // shows another term's enrolled/capacity numbers.
   useEffect(() => {
     setEnrollmentCache({});
+    enrollmentFetchedAtRef.current.clear();
   }, [school, selectedQuarter.year, selectedQuarter.quarter]);
 
   // Review summaries are keyed by course+section only; they're school-scoped in
@@ -1317,15 +1321,24 @@ export default function CoursePickerScreen({
     if (schoolConfig.id !== 'uci') return;
     if (enrollmentLoadingIds.has(course.id)) return;
     const sections = (isGlobalSearch ? globalSectionsMap : sectionsMap)[course.id] ?? [];
-    if (sections.length > 0 && sections.every((s) => s.id in enrollmentCache)) return;
+    // Re-fetch once the numbers are a minute old. Without an expiry the first
+    // fetch stood for as long as the picker stayed open, and during enrollment
+    // seat counts move minute to minute.
+    const fetchedAt = enrollmentFetchedAtRef.current.get(course.id);
+    const fresh = fetchedAt !== undefined && Date.now() - fetchedAt < ENROLLMENT_TTL_MS;
+    if (fresh && sections.length > 0 && sections.every((s) => s.id in enrollmentCache)) return;
 
     setEnrollmentLoadingIds((prev) => new Set(prev).add(course.id));
+    const controller = new AbortController();
+    // Bounded, so a stalled API can't leave the row's spinner running forever.
+    const timeout = setTimeout(() => controller.abort(), ENROLLMENT_TIMEOUT_MS);
     try {
       const { year, quarter } = selectedQuarter;
       const url = `https://anteaterapi.com/v2/rest/websoc?department=${encodeURIComponent(course.department)}&courseNumber=${encodeURIComponent(course.courseNumber)}&year=${year}&quarter=${quarter}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
       const json = await res.json();
       if (!json.ok) return;
+      enrollmentFetchedAtRef.current.set(course.id, Date.now());
 
       const updates: Record<string, SectionEnrollment> = {};
       for (const school of json.data?.schools ?? []) {
@@ -1333,7 +1346,10 @@ export default function CoursePickerScreen({
           for (const c of dept.courses ?? []) {
             for (const s of c.sections ?? []) {
               updates[s.sectionCode] = {
-                status: s.status ?? 'OPEN',
+                // No default: claiming OPEN when the API omits a status could
+                // advertise a full class as open. Undefined falls back to the
+                // status seeded with the section.
+                status: s.status || undefined,
                 enrolled: optionalCount(s.numCurrentlyEnrolled?.totalEnrolled),
                 capacity: optionalCount(s.maxCapacity),
                 waitlist: optionalCount(s.numOnWaitlist),
@@ -1344,9 +1360,11 @@ export default function CoursePickerScreen({
         }
       }
       setEnrollmentCache((prev) => ({ ...prev, ...updates }));
-    } catch (_) {
-      // silently fail — section rows just won't show status
+    } catch (error) {
+      // Rows fall back to the seeded status; nothing to show the user.
+      console.warn('Live enrollment fetch failed:', error);
     } finally {
+      clearTimeout(timeout);
       setEnrollmentLoadingIds((prev) => { const s = new Set(prev); s.delete(course.id); return s; });
     }
   };

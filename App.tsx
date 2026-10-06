@@ -1048,8 +1048,17 @@ function AppContent({ themePreference, onThemeChange }: AppContentProps) {
   // A term with a timetable but no courses counts as empty; an untouched plan
   // shouldn't win over a real schedule.
   const widgetTerm = useMemo(() => {
-    const scheduled = timetables
-      .filter((t) => (t.courses?.length ?? 0) > 0)
+    // One timetable per term, chosen the way the Today screen chooses: 'My
+    // Schedule' when it has classes. Taking every timetable with courses let a
+    // draft (Plan B) reach the home-screen widget while the app itself showed
+    // My Schedule for the same term.
+    const byTerm = new Map<string, Timetable>();
+    for (const t of timetables) {
+      if ((t.courses?.length ?? 0) === 0) continue;
+      const current = byTerm.get(t.quarterKey);
+      if (!current || (t.name === 'My Schedule' && current.name !== 'My Schedule')) byTerm.set(t.quarterKey, t);
+    }
+    const scheduled = Array.from(byTerm.values())
       .map((t) => ({ key: t.quarterKey, quarter: parseQuarterKey(t.quarterKey), courses: t.courses }))
       .filter((t): t is { key: string; quarter: Quarter; courses: Course[] } => t.quarter != null);
 

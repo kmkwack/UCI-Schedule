@@ -90,8 +90,12 @@ export function parseTimeToMinutes(value: string | undefined, options: { allow24
     const hour = Number(twelveHour[1]);
     const minute = Number(twelveHour[2] ?? '0');
     if (hour < 1 || hour > 12 || minute < 0 || minute > 59) return null;
-    const period = twelveHour[3].toUpperCase();
-    const hour24 = period === 'AM' ? hour % 12 : (hour % 12) + 12;
+    // The capture is the single letter A or P. Comparing it to 'AM' was never
+    // true, so every morning time parsed as evening — "9:00 AM" became 21:00,
+    // and custom blocks from the time picker (which emits "9:00 AM") were
+    // saved twelve hours late.
+    const isAm = twelveHour[3].toUpperCase() === 'A';
+    const hour24 = isAm ? hour % 12 : (hour % 12) + 12;
     return hour24 * 60 + minute;
   }
 

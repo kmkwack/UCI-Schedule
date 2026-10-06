@@ -749,3 +749,77 @@ Verified: tsc clean and `expo export` produces a 4.4MB bundle (no import cycle).
 **Not device-tested offline** — check on the 1.0.3 TestFlight build with airplane
 mode: schedule still visible, an edit survives a relaunch, and lands on the
 server once the connection returns.
+
+### Session 103 (Data-integrity audit: maps, calendar, sports, time parsing) — 2026-09-29 → 10-06
+Triggered by a user arriving late after the in-app map sent them to the wrong
+building. Earlier audits were code reviews; none of these were findable without
+checking the data against an outside source, so every item below was verified
+against one (OpenStreetMap/Nominatim, the registrar's pages, Anteater API,
+ucirvinesports.com's JSON calendar, RateMyProfessors).
+
+**Maps** (`src/data/campusLocations.ts`, `src/screens/TimetableScreen.tsx`)
+- "Open in Maps" passed `ll=`, pinning Apple Maps to our own coordinate; now
+  searches by name so Apple's data wins.
+- Matching ran exact and prefix tests together, so ICS2→ICS, SE2→SE,
+  SSLH→SSL. Exact (whole-string, then first-token) now runs before fuzzy, which
+  prefers the longest alias.
+- 23 hand-entered UCI coordinates were >40m out; the whole Social Science
+  cluster sat 500–870m away. Rebuilt from OSM, joined on `short_name` = WebSoc
+  code. SSTR (Social Science Trailer) was an alias of SST — 132 Fall sections
+  opened the wrong building; now its own entry, plus CRH. Every code used by
+  Fall 2026 sections resolves to itself; 60/62 within 25m of OSM. **WSH and
+  AITR are not in OSM and remain unverified.** Sports venues were 40–280m off
+  (the ballpark pin sat on Anteater Stadium); Tennis Stadium unverified.
+- Only UC Irvine is live (`LIVE_SCHOOL_NAMES`); other schools' data was not audited.
+
+**Academic calendar** (`scripts/seed-academic-calendar.js`, `src/data/academicCalendar.ts`)
+- Holiday rows list two holidays each; the loop `break`ed after the first, so
+  Presidents' Day, Veterans Day and Farmworkers Day never appeared. Veterans
+  regex missed the apostrophe; Juneteenth check rejected the observed day.
+- The seeder only upserted, so rows from earlier buggy runs lived forever
+  ("Memorial Day Mar 26", "Labor Day Sep 6"). It now prunes `auto-*` rows a
+  healthy parse (≥5 events) of that quarter didn't produce.
+- **"P/NP Change Deadline" was the week-6 drop-without-W date (Nov 6).** Per
+  the registrar's add/drop policy the no-approval grading-option change ends
+  week 2 (Oct 9). Fixed in seeder + local fallback; Nov 6 kept as "Drop Without
+  W Deadline". Added "Fee Payment Deadline". Winter-column Dec dates were a year
+  late. **`supabase/sql/fix_pnp_deadline_2026-10-06.sql` must be run** — the
+  curated Fall row outranks scraped rows.
+- `getTermStartDate/EndDate` read only `LOCAL_FALLBACK`, which ends at Fall
+  2026: from Winter 2027 the widget would lose dates and reminders fire through
+  spring break. They now use events the app has loaded (`primeTermBoundaries`),
+  and App.tsx bumps `termCalendarRevision` when real dates arrive.
+
+**Sports** (`src/data/sportsEvents.ts`, `src/data/schools.ts`) — UCI scraped
+the HTML calendar: 5 of 38 events in two weeks, home volleyball/water
+polo/women's soccer all missing, wrong venues attached, a neutral site shown as
+home. Switched to the site's sidearm-responsive JSON feed (38/38, all home games
+on the right venue). Its dates are campus wall-clock time; now parsed in the
+school's zone (verified identical under TZ=Asia/Seoul).
+
+**Course data** — 1,824 live sections across five departments matched the DB
+exactly on times, days and section sets; finals matched (month is 0-indexed and
+displayed correctly); grade distributions and RMP id 1074 are correct. Seeder
+now stores the first *named* instructor instead of a leading "STAFF".
+Live seat counts in the picker never refreshed while it stayed open, defaulted a
+missing status to "OPEN", and had no timeout — all fixed. Variable-unit sections
+("2-4") still store `units = null`.
+
+**Time parsing** — `parseTimeToMinutes` compared the captured letter "A" to
+"AM", so every AM time parsed as PM: since the custom-block picker shipped
+(2026-07-25) morning custom blocks were saved 12 hours late. Fixed; existing
+blocks can't be repaired. Six copies of the day parser now alias
+`parseCourseDays` (five read "TBA" as Tuesday).
+
+**Notifications** (`App.tsx`) — permission came from a stored DB copy, so
+anyone who later enabled notifications in iOS Settings never got reminders;
+now asks the OS. Reminders followed the Timetable tab's term (planning next
+quarter cancelled this quarter's); now the home term. Widget chose any plan with
+courses; now prefers My Schedule like everything else, and no longer resyncs on
+every render.
+
+**Still outstanding (user action):** push commits so the nightly seeders pick up
+the fixes; run `fix_pnp_deadline_2026-10-06.sql`; deploy the hardened
+`social-notifier` (TODO.md §1, pending since July). git on this Mac currently
+needs `DEVELOPER_DIR=/Library/Developer/CommandLineTools` until
+`sudo xcodebuild -license` is accepted.

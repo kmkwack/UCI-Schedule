@@ -203,8 +203,15 @@ async function scrapeUci(academicYear) {
   const colRules = [
     { re: /quarter begins/i,                  title: 'Quarter Begins',          category: 'instruction' },
     { re: /instruction begins/i,              title: 'Instruction Begins',      category: 'instruction' },
-    // Must be tested before the plain drop rule, which would otherwise swallow it.
-    { re: /drop.*without receiving a w grade/i, title: 'P/NP Change Deadline',  category: 'passnopass',  subtitle: 'Last drop without W grade (5 PM)', url: 'https://reg.uci.edu/enrollment/grading/passnopass.html' },
+    // The grading-option row is the P/NP deadline. It used to key off the
+    // "drop without receiving a W grade" row instead, so the app labelled the
+    // week-6 drop deadline (Nov 6) as the P/NP deadline — while the real
+    // no-approval P/NP change closes at the end of week 2 (Oct 9). Per the
+    // registrar's add/drop policy, weeks 3-10 need the dean's approval.
+    { re: /change the grading option.*without dean/i, title: 'P/NP Change Deadline', category: 'passnopass', subtitle: "Change grading option without dean's approval (5 PM)", url: 'https://www.reg.uci.edu/enrollment/adc/adcpolicy.html' },
+    { re: /drop.*without receiving a w grade/i, title: 'Drop Without W Deadline', category: 'withdrawal', subtitle: "Dean's approval required (5 PM)", url: 'https://www.reg.uci.edu/enrollment/adc/adcpolicy.html' },
+    // Unpaid fees get every class dropped; worth a card of its own.
+    { re: /pay tuition and fees/i,           title: 'Fee Payment Deadline',    category: 'deadline', subtitle: 'Unpaid fees → classes dropped', url: 'https://zotaccount.uci.edu/' },
     { re: /drop a course without dean.{0,3}s approval/i, title: 'Add/Drop Deadline', category: 'enrollment', subtitle: "No dean's approval needed (5 PM)", url },
     { re: /withdraw from a course.*w grade assigned/i,   title: 'Withdrawal Deadline', category: 'withdrawal', subtitle: 'W grade assigned (5 PM)', url },
     { re: /instruction ends/i,                title: 'Last Day of Instruction', category: 'instruction' },
@@ -246,7 +253,14 @@ async function scrapeUci(academicYear) {
       for (const rule of colRules) {
         if (!rule.re.test(desc)) continue;
         for (let qi = 0; qi < 3; qi++) {
-          const parsed = parseDateCell(cells[qi + 1] ?? '', quarters[qi].year);
+          let parsed = parseDateCell(cells[qi + 1] ?? '', quarters[qi].year);
+          // Winter-column deadlines that fall before the quarter starts (fee
+          // payment "Dec 15", the unit limit lifting "Dec 18") belong to the
+          // previous calendar year; the column's own year put them 12 months
+          // late (2027-12-15 for Winter 2027).
+          if (parsed && qi === 1 && Number(parsed.date.slice(5, 7)) >= 9) {
+            parsed = parseDateCell(cells[qi + 1] ?? '', quarters[qi].year - 1);
+          }
           if (!parsed) continue;
           const key = `${quarters[qi].key}::${rule.title}`;
           if (seen.has(key)) continue;

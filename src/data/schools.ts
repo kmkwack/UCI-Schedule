@@ -190,7 +190,11 @@ export const SCHOOL_CONFIGS: Record<string, SchoolConfig> = {
     academicSystem: 'quarter',
     terms: ['Winter', 'Spring', 'Summer1', 'Summer10wk', 'Summer2', 'Fall'],
     features: { ...DEFAULT_FEATURES, sports: true },
-    sportsFeed: { kind: 'uci-calendar', url: 'https://ucirvinesports.com/calendar' },
+    // The structured JSON calendar, not the HTML calendar page. Scraping the
+    // page surfaced 5 of the 38 events in a two-week window — every home
+    // volleyball, water polo and women's soccer game was missing — and the
+    // venue enrichment attached other meets' locations to the ones it kept.
+    sportsFeed: { kind: 'sidearm-responsive', baseUrl: 'https://ucirvinesports.com' },
     gradeDistributionSource: 'anteaterapi',
     rmpSchoolId: '1074',
     gradeScale: STANDARD_40_SCALE,

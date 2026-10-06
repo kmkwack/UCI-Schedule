@@ -1,6 +1,7 @@
 import type { ComponentProps } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { sportsFeedForSchool, type SportsFeedConfig } from './schools';
+import { getSchoolConfig, sportsFeedForSchool, type SportsFeedConfig } from './schools';
+import { zonedDateFromParts } from './timeZone';
 
 export type SportsEvent = {
   id: string;
@@ -435,9 +436,27 @@ function parseSummary(raw: string): { sport: string; opponent: string; isHome: b
   return { sport, opponent, isHome };
 }
 
-function eventFromSidearmGame(game: any): SportsEvent | null {
-  const dateValue = game?.date_utc ?? game?.date;
-  const date = dateValue ? new Date(dateValue) : null;
+/**
+ * Sidearm's `date` is campus wall-clock time with no offset
+ * ("2026-10-07T18:00:00"). `new Date()` would read it in the phone's own zone,
+ * so a student abroad over break saw every game shifted. Read it in the
+ * campus zone instead; `date_utc`, when present, is already absolute.
+ */
+function parseSidearmDate(game: any, timeZone?: string): Date | null {
+  if (game?.date_utc) return new Date(game.date_utc);
+  const raw = typeof game?.date === 'string' ? game.date : '';
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (m && timeZone) {
+    return zonedDateFromParts({
+      year: Number(m[1]), month: Number(m[2]), day: Number(m[3]),
+      hour: Number(m[4]), minute: Number(m[5]), second: Number(m[6] ?? 0),
+    }, timeZone);
+  }
+  return raw ? new Date(raw) : null;
+}
+
+function eventFromSidearmGame(game: any, timeZone?: string): SportsEvent | null {
+  const date = parseSidearmDate(game, timeZone);
   if (!date || isNaN(date.getTime())) return null;
   const sport = game?.sport?.title ?? game?.sport?.short_display ?? 'Sports';
   const opponent = game?.opponent?.title ?? game?.opponent?.name ?? game?.opponent_name ?? 'Opponent TBA';
@@ -756,7 +775,7 @@ function parseSidearmComponentsEvents(text: string, options?: { maxDaysAhead?: n
   }
 }
 
-async function fetchSidearmResponsiveEvents(feed: Extract<SportsFeedConfig, { kind: 'sidearm-responsive' }>, options?: { maxDaysAhead?: number; includePastDays?: number }) {
+async function fetchSidearmResponsiveEvents(feed: Extract<SportsFeedConfig, { kind: 'sidearm-responsive' }>, options?: { maxDaysAhead?: number; includePastDays?: number }, timeZone?: string) {
   const now = new Date();
   const months = [new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 1)];
   const events: SportsEvent[] = [];
@@ -778,7 +797,7 @@ async function fetchSidearmResponsiveEvents(feed: Extract<SportsFeedConfig, { ki
       const days: unknown = await response.json();
       (Array.isArray(days) ? days : []).forEach((day: any) => {
         (day.events ?? []).forEach((game: any) => {
-          const event = eventFromSidearmGame(game);
+          const event = eventFromSidearmGame(game, timeZone);
           if (event) events.push(event);
         });
       });
@@ -960,7 +979,7 @@ export async function fetchSportsEventsForSchool(school: string, options?: { max
   if (!feed) return [];
 
   try {
-    if (feed.kind === 'sidearm-responsive') return await fetchSidearmResponsiveEvents(feed, options);
+    if (feed.kind === 'sidearm-responsive') return await fetchSidearmResponsiveEvents(feed, options, getSchoolConfig(school).timeZone);
     if (feed.kind === 'schedule-pages') return await fetchSchedulePageEvents(feed, options);
 
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;

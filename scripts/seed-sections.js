@@ -188,6 +188,38 @@ async function upsertSeedMetadata(departments, qKey, total, errors) {
   }
 }
 
+/**
+ * Remove sections WebSoc no longer lists for a department we just fetched.
+ *
+ * The seeder skips cancelled sections but only ever upserted, so a section
+ * cancelled after it was first seeded stayed in the table — and in the course
+ * picker, where students could still add it. Found by the nightly health check
+ * (MATH 2D discussions 44224/44225, among 140+ others).
+ *
+ * Scoped to the departments present in this fetch and only called with a
+ * non-empty result, so an API hiccup that returns nothing never wipes a
+ * department.
+ */
+async function pruneVanishedSections(rows, qKey) {
+  if (rows.length === 0) return 0;
+  const keep = new Set(rows.map((r) => r.id));
+  const departments = [...new Set(rows.map((r) => r.department))];
+  const { data, error } = await supabase
+    .from('sections')
+    .select('id')
+    .eq('school', SCHOOL)
+    .eq('quarter_key', qKey)
+    .in('department', departments);
+  if (error) throw new Error(`prune lookup failed: ${error.message}`);
+  const stale = (data ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+  // Ids go in the request URL; stay well under the gateway's ~25KB limit.
+  for (let i = 0; i < stale.length; i += 300) {
+    const { error: delError } = await supabase.from('sections').delete().in('id', stale.slice(i, i + 300));
+    if (delError) throw new Error(`prune delete failed: ${delError.message}`);
+  }
+  return stale.length;
+}
+
 // ─── run N tasks concurrently ─────────────────────────────────────────────────
 
 async function runConcurrent(items, worker, concurrency) {
@@ -312,7 +344,8 @@ async function seedQuarter(year, quarter, departments) {
       const rows = await fetchDepartment(year, quarter, dept);
       if (rows.length > 0) {
         await upsertRows(rows);
-        console.log(`  ✓ ${dept.padEnd(12)} ${rows.length} sections`);
+        const pruned = await pruneVanishedSections(rows, `${year}-${quarter}`);
+        console.log(`  ✓ ${dept.padEnd(12)} ${rows.length} sections${pruned ? `, removed ${pruned} cancelled` : ''}`);
         sections += rows.length;
         successfulDepartments.add(dept);
       }

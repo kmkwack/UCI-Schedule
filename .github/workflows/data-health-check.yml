@@ -1,0 +1,78 @@
+name: Data health check
+
+# Checks the data students see against its sources every night, after the
+# seeders (sections 03:00, calendar 04:00 UTC) have run. On failure it opens a
+# GitHub issue labelled `data-health`, or comments on the one already open, so
+# a drift is reported to us instead of discovered by a student.
+#
+# Read-only: uses the public anon key baked into the script. No secrets needed.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"     # 06:00 UTC = 11pm PT
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - uses: actions/setup-node@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies (JS only)
+        run: npm ci --ignore-scripts
+
+      - name: Run checks
+        id: run
+        continue-on-error: true
+        env:
+          # Campus time, so "today" and "next 14 days" match what students see.
+          TZ: America/Los_Angeles
+        run: node scripts/data-health-check.js --report health.md
+
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f health.md ]; then cat health.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Open or update the data-health issue
+        if: steps.run.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create data-health --color B60205 --description "Nightly data check failed" 2>/dev/null || true
+          body="$(cat health.md 2>/dev/null || echo 'The check crashed before writing a report.')
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          existing=$(gh issue list --label data-health --state open --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "Data health check failing" --label data-health --body "$body"
+          fi
+
+      - name: Close the issue once everything passes
+        if: steps.run.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --label data-health --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "All checks passing again. ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          done
+
+      - name: Fail the job when checks fail
+        if: steps.run.outcome == 'failure'
+        run: exit 1

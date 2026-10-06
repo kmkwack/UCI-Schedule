@@ -11,6 +11,13 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
+/** The first named instructor, falling back to whatever is listed (e.g. STAFF). */
+function primaryInstructor(instructors) {
+  const list = Array.isArray(instructors) ? instructors.filter(Boolean) : [];
+  return list.find((name) => name.trim().toUpperCase() !== 'STAFF') ?? list[0] ?? '';
+}
+
+
 const SUPABASE_URL         = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ANTEATER_API_KEY     = process.env.ANTEATER_API_KEY;
@@ -113,7 +120,10 @@ async function fetchDepartment(year, quarter, dept, retries = 3) {
             code,
             title:           course.courseTitle ?? '',
             section_label:   `${section.sectionType} ${section.sectionNum}`,
-            professor:       section.instructors?.[0] ?? '',
+            // First real name, not just the first entry: WebSoc often lists
+            // "STAFF" ahead of the actual instructor ("STAFF; RODRIGUEZ LOPE,
+            // J."), and taking [0] showed STAFF where a name was available.
+            professor:       primaryInstructor(section.instructors),
             instructors:     section.instructors ?? [],
             days,
             time,

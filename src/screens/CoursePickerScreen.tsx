@@ -22,7 +22,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatMinutesAs24Hour, formatTimeOfDay12, parseTimeToMinutes, professorDisplayName, professorIsKnown, quarterKey } from '../data/courses';
+import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatMinutesAs24Hour, formatTimeOfDay12, parseTimeToMinutes, professorDisplayName, professorIsKnown, quarterKey, parseCourseDays } from '../data/courses';
 import { getSchoolConfig, termLabel } from '../data/schools';
 import { departmentsForSchoolId } from '../data/schoolDepartments';
 import PreviewTimetable from '../components/PreviewTimetable';
@@ -642,23 +642,9 @@ async function fetchBannerDepartmentsForTerm(schoolId: string, selectedQuarter: 
   }
 }
 
-function getDaysArray(daysString: string) {
-  const result: string[] = [];
-  let i = 0;
-  while (i < daysString.length) {
-    const two = daysString.slice(i, i + 2);
-    if (two === 'Th') { result.push('Th'); i += 2; continue; }
-    if (two === 'Sa') { result.push('Sa'); i += 2; continue; }
-    if (two === 'Su') { result.push('Su'); i += 2; continue; }
-    const one = daysString[i];
-    if (one === 'M') result.push('M');
-    if (one === 'T') result.push('T');
-    if (one === 'W') result.push('W');
-    if (one === 'F') result.push('F');
-    i += 1;
-  }
-  return result;
-}
+// One shared parser (src/data/courses.ts). Five local copies had drifted
+// apart on "TBA", which most of them read as Tuesday.
+const getDaysArray = parseCourseDays;
 
 function parseHour(time: string) {
   if (!time) return NaN;

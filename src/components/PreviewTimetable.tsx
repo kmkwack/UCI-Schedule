@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
-import { Course, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatHourLabel12, getBlockColors, professorDisplayName } from '../data/courses';
+import { Course, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatHourLabel12, getBlockColors, professorDisplayName, parseCourseDays } from '../data/courses';
 import { useTheme } from '../context/ThemeContext';
 
 type Props = {
@@ -39,40 +39,9 @@ function getCourseEndHour(timeRange: string) {
   return parseHour(timeRange.split(' - ')[1]);
 }
 
-function getDaysArray(daysString: string) {
-  const result: string[] = [];
-  let i = 0;
-
-  while (i < daysString.length) {
-    const two = daysString.slice(i, i + 2);
-
-    if (two === 'Th') {
-      result.push('Th');
-      i += 2;
-      continue;
-    }
-    if (two === 'Sa') {
-      result.push('Sa');
-      i += 2;
-      continue;
-    }
-    if (two === 'Su') {
-      result.push('Su');
-      i += 2;
-      continue;
-    }
-
-    const one = daysString[i];
-    if (one === 'M') result.push('M');
-    if (one === 'T') result.push('T');
-    if (one === 'W') result.push('W');
-    if (one === 'F') result.push('F');
-
-    i += 1;
-  }
-
-  return result;
-}
+// One shared parser (src/data/courses.ts). Five local copies had drifted
+// apart on "TBA", which most of them read as Tuesday.
+const getDaysArray = parseCourseDays;
 
 function formatHourLabel(hour: number) {
   return formatHourLabel12(hour);

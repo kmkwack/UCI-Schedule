@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, ScrollView, Modal, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown, blockColorKey, colorForCourse, vividColorForCourse } from '../data/courses';
+import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown, blockColorKey, colorForCourse, vividColorForCourse, parseCourseDays } from '../data/courses';
 import { buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
 import { getCampusMapLocation, isUnmappableLocation, type CampusMapLocation } from '../data/campusLocations';
 import { useTheme } from '../context/ThemeContext';
@@ -334,23 +334,9 @@ function getCourseEndHour(timeRange: string) {
   return parseHour(timeRange.split(' - ')[1]);
 }
 
-function getDaysArray(daysString: string) {
-  const result: string[] = [];
-  let i = 0;
-  while (i < daysString.length) {
-    const two = daysString.slice(i, i + 2);
-    if (two === 'Th') { result.push('Th'); i += 2; continue; }
-    if (two === 'Sa') { result.push('Sa'); i += 2; continue; }
-    if (two === 'Su') { result.push('Su'); i += 2; continue; }
-    const one = daysString[i];
-    if (one === 'M') result.push('M');
-    if (one === 'T') result.push('T');
-    if (one === 'W') result.push('W');
-    if (one === 'F') result.push('F');
-    i += 1;
-  }
-  return result;
-}
+// One shared parser (src/data/courses.ts). Five local copies had drifted
+// apart on "TBA", which most of them read as Tuesday.
+const getDaysArray = parseCourseDays;
 
 function formatHourLabel(hour: number) {
   return formatHourLabel12(hour);

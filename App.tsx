@@ -31,7 +31,7 @@ import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
 import { FullScreenLoader } from './src/components/ScheduleLoader';
-import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, parseQuarterKey, quarterKey } from './src/data/courses';
+import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, parseQuarterKey, quarterKey, parseCourseDays } from './src/data/courses';
 import { clearWidgetSchedule, syncWidgetSchedule } from './src/lib/widgetSync';
 import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, resolveCurrentTerm, schoolFeatureEnabled, termLabel, termOrderValue, universityForName, type University } from './src/data/schools';
 import { isTermInSession, primeTermBoundaries } from './src/data/academicCalendar';
@@ -307,22 +307,8 @@ Notifications.setNotificationHandler({
 // token is invalid. We handle SIGNED_OUT in onAuthStateChange, so suppress the noise.
 LogBox.ignoreLogs(['Invalid Refresh Token', 'AuthApiError']);
 
-function parseCourseDays(daysString: string) {
-  const result: string[] = [];
-  let i = 0;
-  while (i < daysString.length) {
-    const two = daysString.slice(i, i + 2);
-    if (two === 'Th' || two === 'Sa' || two === 'Su') {
-      result.push(two);
-      i += 2;
-      continue;
-    }
-    const one = daysString[i];
-    if ('MTWF'.includes(one)) result.push(one);
-    i += 1;
-  }
-  return result;
-}
+// One shared parser (src/data/courses.ts). Five local copies had drifted
+// apart on "TBA", which most of them read as Tuesday.
 
 function parseTimeStart(timeRange: string) {
   const [hourStr, minuteStr] = timeRange.split(' - ')[0].split(':');

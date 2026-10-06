@@ -323,6 +323,27 @@ async function checkDining() {
   const withToday = summaries.filter((s) => (s.todayMeals ?? []).length > 0);
   const status = summaries.length === 0 ? 'FAIL' : ms > 8000 ? 'WARN' : 'PASS';
   record('Dining hours', status, `${summaries.length} locations, ${withToday.length} with today's meals, ${ms}ms`);
+
+  // Menus: every meal served today has its own menu, with real station names.
+  // Without a meal period the API returns breakfast, which the app once showed
+  // all day; unnamed stations are what made the menu unreadable.
+  const menusModule = app('src/data/diningMenus.ts');
+  const menuStarted = Date.now();
+  const menus = await menusModule.fetchDiningMenusForSchool(SCHOOL, now);
+  const menuMs = Date.now() - menuStarted;
+  const issues = [];
+  for (const summary of summaries) {
+    const menu = menus.find((m) => m.id === summary.key);
+    if (!menu) { issues.push(`${summary.key}: no menu`); continue; }
+    const served = (summary.todayMeals ?? []).map((w) => w.label);
+    const shown = menu.meals.map((m) => m.name);
+    const missingMeals = served.filter((label) => !shown.includes(label) && !/snack/i.test(label));
+    if (missingMeals.length) issues.push(`${menu.name}: no menu for ${missingMeals.join(', ')}`);
+    const unnamed = menu.meals.flatMap((m) => m.stations).filter((s) => /^station \d+$/i.test(s.name)).length;
+    if (unnamed) issues.push(`${menu.name}: ${unnamed} stations without names`);
+  }
+  record('Dining menus', issues.length ? 'FAIL' : menuMs > 8000 ? 'WARN' : 'PASS',
+    issues.length ? issues.join('; ') : `${menus.map((m) => `${m.name} ${m.meals.length} meals`).join(', ')}, ${menuMs}ms`);
 }
 
 // ─── 8. Latency of the queries users wait on ──────────────────────────────────

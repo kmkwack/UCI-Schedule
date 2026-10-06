@@ -12,8 +12,17 @@
     <meta property="og:description" content="Student-native software for academic life, campus communities, and the daily tools students use to understand where they belong." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="The Seans" />
-    <meta property="og:image" content="./assets/classmate-logo-approved-transparent.png" />
+    <!-- Absolute URL: link previews (Reddit, iMessage, Instagram) can't resolve
+         a relative image path. 1200x630 is the size they crop to. -->
+    <meta property="og:url" content="https://theseans.app/" />
+    <meta property="og:image" content="https://theseans.app/assets/og-classmate.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="ClassMate — your whole UCI week in one app" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://theseans.app/assets/og-classmate.png" />
+    <!-- Safari on iPhone shows a native Get / Open banner for the app. -->
+    <meta name="apple-itunes-app" content="app-id=6763340951" />
     <meta name="theme-color" content="#0a0c12" />
     <link rel="icon" href="./assets/favicon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -55,10 +64,7 @@
               <svg viewBox="0 0 814 1000" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-43.4-150.3-107.9C71.1 727.9 0 577.8 0 542c0-6.4.6-130.8 79-191.8 49.9-38.5 101-63.3 165.6-63.3 113.2 0 147.2 44.4 218.7 44.4 69.4 0 111.3-44.4 219.7-44.4 58.3 0 107.2 25.5 105.1 53.9zM545.9 85.5C578.5 47.4 601 0 601 0S415.7 11.9 357.4 156.4c-19.7 49.5-17.4 97.3-13.6 120.1 116.6-3.3 176.1-60.1 202.1-191z"/></svg>
               <span><small>Download on the</small><strong>App Store</strong></span>
             </a>
-            <a class="store-btn ghost" href="https://testflight.apple.com/join/9UjRhFmz" target="_blank" rel="noopener">
-              <span><small>Beta via</small><strong>TestFlight</strong></span>
-            </a>
-            <a class="store-btn ghost" href="https://expo.dev/accounts/parksihyun/projects/classmate/builds/a4497d2b-a8a7-4e61-8f8c-20f2243230da" target="_blank" rel="noopener">
+            <a class="store-btn ghost" href="https://expo.dev/accounts/parksihyun/projects/classmate/builds/bca67b48-65cb-4053-bf15-d40d56d6a295" target="_blank" rel="noopener">
               <span><small>Android</small><strong>APK</strong></span>
             </a>
           </div>
@@ -122,7 +128,6 @@
             </p>
             <div class="product-cta">
               <a class="button primary" href="https://apps.apple.com/us/app/classmate/id6763340951" target="_blank" rel="noopener">Download on App Store</a>
-              <a class="button ghost" href="https://testflight.apple.com/join/9UjRhFmz" target="_blank" rel="noopener">Join TestFlight Beta</a>
             </div>
           </div>
 
@@ -130,21 +135,21 @@
             <div class="phone reveal" aria-label="ClassMate Today screen preview">
               <div class="phone-notch"></div>
               <div class="phone-screen">
-                <div class="mock-top"><span>Today</span><strong>Spring 2026</strong></div>
+                <div class="mock-top"><span>Today</span><strong>Fall 2026 · Week 3</strong></div>
                 <div class="mock-current">
                   <div class="mock-card-head"><small>Current class</small><span>1/3 done</span></div>
                   <h3>Ends in 22 min</h3>
-                  <p>ECON 1120 · Microeconomics</p>
-                  <strong>Main Campus · 9:05–9:55 AM</strong>
+                  <p>MATH 2B · Calculus II</p>
+                  <strong>DBH 1100 · 10:00–10:50 AM</strong>
                   <div class="mock-progress"><span></span></div>
                 </div>
                 <div class="mock-mini-grid">
-                  <div><span>Weather</span><strong>19°</strong><small>Mainly clear</small></div>
-                  <div><span>Sunrise</span><strong>6:03</strong><small>6:03 AM · 7:34 PM</small></div>
+                  <div><span>Weather</span><strong>72°</strong><small>Sunny in Irvine</small></div>
+                  <div><span>Dining</span><strong>Lunch</strong><small>Anteatery · until 2:30 PM</small></div>
                 </div>
                 <div class="mock-list">
-                  <div><span>Next</span><strong>CMSC 131</strong><small>1:00 PM · Computer Science</small></div>
-                  <div><span>Sports</span><strong>Basketball vs Penn State</strong><small>Tonight · Home · 12 going</small></div>
+                  <div><span>Next</span><strong>COMPSCI 161</strong><small>Tomorrow · 8:00 AM · ELH 100</small></div>
+                  <div><span>Sports</span><strong>Volleyball vs Utah Valley</strong><small>Fri 6 PM · Home · Bren</small></div>
                 </div>
               </div>
             </div>
@@ -306,7 +311,7 @@
               <strong>Product</strong>
               <a href="https://apps.apple.com/us/app/classmate/id6763340951" target="_blank" rel="noopener">App Store</a>
               <a href="https://testflight.apple.com/join/9UjRhFmz" target="_blank" rel="noopener">TestFlight</a>
-              <a href="https://expo.dev/accounts/parksihyun/projects/classmate/builds/a4497d2b-a8a7-4e61-8f8c-20f2243230da" target="_blank" rel="noopener">Android APK</a>
+              <a href="https://expo.dev/accounts/parksihyun/projects/classmate/builds/bca67b48-65cb-4053-bf15-d40d56d6a295" target="_blank" rel="noopener">Android APK</a>
             </div>
             <div>
               <strong>Company</strong>

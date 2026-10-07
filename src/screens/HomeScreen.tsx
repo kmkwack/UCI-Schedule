@@ -2202,6 +2202,18 @@ export default function HomeScreen({
     () => sportsEvents.slice(0, 12),
     [sportsEvents]
   );
+  // The sheet groups games under one header per day, so a run of five games on
+  // Saturday reads as "Saturday" once instead of five repeated date lines.
+  const sportsEventDays = useMemo(() => {
+    const days: { key: string; label: string; events: SportsEvent[] }[] = [];
+    for (const event of visibleCampusEvents) {
+      const key = zonedDateKey(event.date, effectiveTimeZone);
+      const last = days[days.length - 1];
+      if (last?.key === key) last.events.push(event);
+      else days.push({ key, label: formatRelativeEventDayLabel(event.date, now, effectiveTimeZone), events: [event] });
+    }
+    return days;
+  }, [visibleCampusEvents, now, effectiveTimeZone]);
   const homeDiningMenus = diningMenus.slice(0, 2);
   const diningMenuItemCount = diningMenus.reduce((total, menu) => total + menu.itemCount, 0);
   const diningMenusExternalOnly = diningMenus.length > 0 && diningMenus.every((menu) => menu.isExternalLinkOnly);
@@ -4441,8 +4453,24 @@ export default function HomeScreen({
               contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 10 }}
             >
               {visibleCampusEvents.length > 0 ? (
-                <View style={{ gap: 10 }}>
-                  {visibleCampusEvents.map((event, index) => (
+                <View style={{ gap: 20 }}>
+                  {sportsEventDays.map((day) => (
+                  <View key={day.key}>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
+                        {day.label}
+                      </Text>
+                      {day.label === 'Today' || day.label === 'Tomorrow' ? (
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textTertiary }}>
+                          {formatEventDayLabel(day.events[0].date, effectiveTimeZone)}
+                        </Text>
+                      ) : null}
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textTertiary, marginLeft: 'auto' }}>
+                        {day.events.length} {day.events.length === 1 ? 'game' : 'games'}
+                      </Text>
+                    </View>
+                    <View style={{ gap: 10 }}>
+                  {day.events.map((event, index) => (
                     <TouchableOpacity
                       key={`${event.id}-sheet-${index}`}
                       onPress={() => openSportsEvent(event)}
@@ -4464,7 +4492,7 @@ export default function HomeScreen({
                             {event.title}
                           </Text>
                           <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
-                            {formatRelativeEventDayLabel(event.date, now, effectiveTimeZone)} · {formatSportsEventTime(event.date, event.timeLabel, effectiveTimeZone)}
+                            {formatSportsEventTime(event.date, event.timeLabel, effectiveTimeZone)}
                           </Text>
                         </View>
                         <InfoChip
@@ -4487,6 +4515,9 @@ export default function HomeScreen({
                         style={{ marginTop: 9, marginLeft: 48 }}
                       />
                     </TouchableOpacity>
+                  ))}
+                    </View>
+                  </View>
                   ))}
                 </View>
               ) : (

@@ -823,3 +823,6 @@ the fixes; run `fix_pnp_deadline_2026-10-06.sql`; deploy the hardened
 `social-notifier` (TODO.md §1, pending since July). git on this Mac currently
 needs `DEVELOPER_DIR=/Library/Developer/CommandLineTools` until
 `sudo xcodebuild -license` is accepted.
+
+### Session 103b (Sports sheet grouped by day) — 2026-10-07
+- `src/screens/HomeScreen.tsx` — the "Sports Events" sheet listed up to 12 games as one flat run, each repeating its date. Added `sportsEventDays` (games grouped by campus-zone date key, order preserved) and render a header per day ("Today · Tue, Oct 7", "Sat, Oct 11", with a game count); cards now show only the time.

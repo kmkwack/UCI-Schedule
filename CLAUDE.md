@@ -832,3 +832,4 @@ needs `DEVELOPER_DIR=/Library/Developer/CommandLineTools` until
 
 ### Session 103d (OpenStreetMap attribution) — 2026-10-07
 - `src/screens/SettingsScreen.tsx` — About screen now carries "Map data © OpenStreetMap contributors" (ODbL requirement; building coordinates in `campusLocations.ts` were rebuilt from OSM in Session 103). Ships in the next build — not in 80.
+- `src/screens/SettingsScreen.tsx` — About showed a hardcoded "Version 1.0.0"; now reads `expo-application` (`nativeApplicationVersion (nativeBuildVersion)`). `expo-application` added as a direct dependency (it was already linked transitively).

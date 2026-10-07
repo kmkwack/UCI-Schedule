@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, ScrollView, Modal, Switch, TextInput, Alert, Linking, ActivityIndicator, FlatList, Platform, Animated, PanResponder, Image, StyleSheet, Keyboard, useWindowDimensions } from 'react-native';
+import * as Application from 'expo-application';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
@@ -1104,7 +1105,11 @@ function AboutScreen({ onBack }: { onBack: () => void }) {
             resizeMode="contain"
           />
           <Text style={{ fontSize: 26, fontWeight: '800', color: colors.text }}>ClassMate</Text>
-          <Text style={{ fontSize: 14, color: colors.textTertiary, marginTop: 4 }}>Version 1.0.0</Text>
+          <Text style={{ fontSize: 14, color: colors.textTertiary, marginTop: 4 }}>
+            {Application.nativeApplicationVersion
+              ? `Version ${Application.nativeApplicationVersion}${Application.nativeBuildVersion ? ` (${Application.nativeBuildVersion})` : ''}`
+              : 'Version —'}
+          </Text>
           <Text style={{ fontSize: 12, color: colors.border, marginTop: 4 }}>Your Campus Life, Organized</Text>
         </View>
 

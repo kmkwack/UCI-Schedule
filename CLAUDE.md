@@ -829,3 +829,6 @@ needs `DEVELOPER_DIR=/Library/Developer/CommandLineTools` until
 
 ### Session 103c (Share card — units + schedule stats) — 2026-10-07
 - `src/screens/TimetableScreen.tsx` — share card showed "N classes" (counting discussion/lab sections separately); students talk in units. Header and in-card pill now show total units (`shareLoadLabel`; falls back to class count when unit data is missing, CUSTOM blocks excluded). Added stat chips under the header — days on campus, earliest start, longest gap (`shareStats`) — for the "share your rough schedule" Reddit post. Campus-location line dropped to make room.
+
+### Session 103d (OpenStreetMap attribution) — 2026-10-07
+- `src/screens/SettingsScreen.tsx` — About screen now carries "Map data © OpenStreetMap contributors" (ODbL requirement; building coordinates in `campusLocations.ts` were rebuilt from OSM in Session 103). Ships in the next build — not in 80.

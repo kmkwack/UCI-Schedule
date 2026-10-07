@@ -1126,6 +1126,10 @@ function AboutScreen({ onBack }: { onBack: () => void }) {
         <Text style={{ textAlign: 'center', color: colors.textTertiary, fontSize: 12, marginTop: 20, lineHeight: 18 }}>
           ClassMate is an independent student-built app. It is not affiliated with or endorsed by any university. Course and schedule data is provided by public APIs.
         </Text>
+        {/* Required by the ODbL: building coordinates in campusLocations.ts come from OSM. */}
+        <Text style={{ textAlign: 'center', color: colors.textTertiary, fontSize: 12, marginTop: 8, lineHeight: 18 }}>
+          Map data © OpenStreetMap contributors, available under the Open Database License.
+        </Text>
         <Text style={{ textAlign: 'center', color: colors.border, fontSize: 12, marginTop: 12 }}>© {new Date().getFullYear()} ClassMate. All rights reserved.</Text>
       </ScrollView>
       <LegalDocumentModal

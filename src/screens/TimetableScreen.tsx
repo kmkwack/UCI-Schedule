@@ -247,15 +247,9 @@ const SHARE_FORMATS: {
     icon: 'logo-instagram',
   },
   {
-    key: 'square',
-    label: 'Instagram Post',
-    description: 'Open Instagram with a square feed image.',
-    icon: 'logo-instagram',
-  },
-  {
     key: 'clean',
     label: 'More Sharing Options',
-    description: 'Use AirDrop, Messages, Files, or other apps.',
+    description: 'Same 9:16 image via AirDrop, Messages, Files, or other apps.',
     icon: 'share-outline',
   },
 ];
@@ -836,7 +830,7 @@ export default function TimetableScreen({
   const exportCardPadding = exportFormat === 'square' ? 13 : 16;
   const exportHeaderMargin = exportFormat === 'square' ? 10 : 14;
   const exportAvailableGridHeight = exportFormat === 'story'
-    ? 366
+    ? 452
     : exportFormat === 'square'
       ? 158
       : screenHeight * 0.5;
@@ -851,11 +845,11 @@ export default function TimetableScreen({
   const exportDayColumnWidth = (exportUsableGridWidth - exportTimeColumnWidth) / visibleDays.length;
   const exportHourHeight = Math.max(
     exportFormat === 'square' ? 18 : 22,
-    Math.min(exportFormat === 'square' ? 26 : 34, exportAvailableGridHeight / Math.max(totalHours, 1))
+    Math.min(exportFormat === 'square' ? 26 : exportFormat === 'story' ? 56 : 42, exportAvailableGridHeight / Math.max(totalHours, 1))
   );
   const exportTimetableHeight = exportHourHeight * totalHours;
   const exportCompactGrid = visibleDays.length >= 6 || totalHours >= 9;
-  const exportCodeFontSize = exportCompactGrid ? 10 : 11;
+  const exportCodeFontSize = exportCompactGrid ? 9.5 : 10.5;
   const exportTimeFontSize = exportCompactGrid ? 6 : 7;
 
   // Sync localOrder from props (skip while dragging), always sorted by order field
@@ -1092,8 +1086,10 @@ export default function TimetableScreen({
     return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
   }
 
-  async function createScheduleExportImage(format: ScheduleShareFormat = 'clean') {
-    setExportFormat(format);
+  // Every export is the 9:16 story canvas — saving, Instagram, and the system
+  // sheet all produce the same image, so the layout only has to be right once.
+  async function createScheduleExportImage(_format: ScheduleShareFormat = 'story') {
+    setExportFormat('story');
     await waitForExportLayout();
     await new Promise((resolve) => setTimeout(resolve, 120));
     if (!exportCaptureRef.current) {
@@ -1122,7 +1118,7 @@ export default function TimetableScreen({
         Alert.alert('Permission required', 'Please allow access to your photo library to save the schedule.');
         return;
       }
-      const uri = await createScheduleExportImage('clean');
+      const uri = await createScheduleExportImage('story');
       await MediaLibrary.saveToLibraryAsync(uri);
       triggerSuccessHaptic();
       Alert.alert('Saved!', 'Your schedule has been saved to your photo library.');
@@ -1143,7 +1139,7 @@ export default function TimetableScreen({
       await new Promise((resolve) => setTimeout(resolve, 250));
       const uri = await createScheduleExportImage(format);
 
-      if (format === 'story' || format === 'square') {
+      if (format === 'story') {
       await shareScheduleToInstagram(uri, format);
       triggerSuccessHaptic();
       return;
@@ -2582,6 +2578,8 @@ export default function TimetableScreen({
               flexShrink: 0,
             }}
           >
+            {/* The story header above already carries school, term and units. */}
+            {exportFormat !== 'story' && (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: colors.brand, letterSpacing: 0.6 }}>
@@ -2607,6 +2605,7 @@ export default function TimetableScreen({
                 </Text>
               </View>
             </View>
+            )}
 
             <View
               style={{
@@ -2723,9 +2722,13 @@ export default function TimetableScreen({
                         const codeSplit = course.code.lastIndexOf(' ');
                         const codeSubject = codeSplit > 0 ? course.code.slice(0, codeSplit) : course.code;
                         const codeNumber = codeSplit > 0 ? course.code.slice(codeSplit + 1) : '';
-                        const codeLines = showCode ? (codeNumber ? 2 : 1) : 0;
-                        const codeLineHeight = exportCodeFontSize + 2;
-                        const usable = Math.max(height - 3, 16) - 6;
+                        const codeLineHeight = exportCodeFontSize + 1.5;
+                        const usable = Math.max(height - 3, 16) - 5;
+                        // A 50-minute block on a long day can't hold two lines; then
+                        // the code goes on one line and shrinks to fit rather than
+                        // spilling out of the block.
+                        const stackCode = !!codeNumber && usable >= codeLineHeight * 2;
+                        const codeLines = showCode ? (stackCode ? 2 : 1) : 0;
                         const afterCode = usable - codeLines * codeLineHeight;
                         const timeLineHeight = exportTimeFontSize + 3;
                         // Room before time: "where" is what a friend looking at the card
@@ -2749,17 +2752,17 @@ export default function TimetableScreen({
                               borderWidth: 1,
                               borderColor: border,
                               paddingHorizontal: 3,
-                              paddingVertical: 3,
+                              paddingVertical: 2.5,
                               overflow: 'hidden',
                             }}
                           >
                               {showCode && (
                                 <>
-                                  <Text {...fitText} style={{ color: text, fontWeight: '900', fontSize: exportCodeFontSize, lineHeight: codeLineHeight }}>
-                                    {codeSubject}
+                                  <Text {...fitText} minimumFontScale={0.6} style={{ color: text, fontWeight: '800', fontSize: exportCodeFontSize, lineHeight: codeLineHeight, letterSpacing: -0.2 }}>
+                                    {stackCode ? codeSubject : course.code}
                                   </Text>
-                                  {codeNumber ? (
-                                    <Text {...fitText} style={{ color: text, fontWeight: '900', fontSize: exportCodeFontSize, lineHeight: codeLineHeight }}>
+                                  {stackCode ? (
+                                    <Text {...fitText} style={{ color: text, fontWeight: '800', fontSize: exportCodeFontSize, lineHeight: codeLineHeight, letterSpacing: -0.2 }}>
                                       {codeNumber}
                                     </Text>
                                   ) : null}

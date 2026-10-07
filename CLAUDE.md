@@ -826,3 +826,6 @@ needs `DEVELOPER_DIR=/Library/Developer/CommandLineTools` until
 
 ### Session 103b (Sports sheet grouped by day) — 2026-10-07
 - `src/screens/HomeScreen.tsx` — the "Sports Events" sheet listed up to 12 games as one flat run, each repeating its date. Added `sportsEventDays` (games grouped by campus-zone date key, order preserved) and render a header per day ("Today · Tue, Oct 7", "Sat, Oct 11", with a game count); cards now show only the time.
+
+### Session 103c (Share card — units + schedule stats) — 2026-10-07
+- `src/screens/TimetableScreen.tsx` — share card showed "N classes" (counting discussion/lab sections separately); students talk in units. Header and in-card pill now show total units (`shareLoadLabel`; falls back to class count when unit data is missing, CUSTOM blocks excluded). Added stat chips under the header — days on campus, earliest start, longest gap (`shareStats`) — for the "share your rough schedule" Reddit post. Campus-location line dropped to make room.

@@ -338,6 +338,14 @@ function getCourseEndHour(timeRange: string) {
 // apart on "TBA", which most of them read as Tuesday.
 const getDaysArray = parseCourseDays;
 
+// 8.5 → "8:30 AM", 13 → "1 PM".
+function formatClockHour(hour: number) {
+  const h = Math.floor(hour);
+  const m = Math.round((hour - h) * 60);
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
 function formatHourLabel(hour: number) {
   return formatHourLabel12(hour);
 }
@@ -598,6 +606,46 @@ export default function TimetableScreen({
     () => activeCourses.filter((course) => course.time === 'TBA' || course.days === 'TBA'),
     [activeCourses]
   );
+
+  // Headline numbers for the share card. Students talk about load in units, not
+  // sections (a lecture + discussion is "one class, 4 units"), and the other
+  // three are what makes a schedule brag- or complain-worthy.
+  const shareStats = useMemo(() => {
+    const units = activeCourses.reduce(
+      (sum, course) => sum + (course.department === 'CUSTOM' ? 0 : (course.units ?? 0)),
+      0
+    );
+    const byDay = new Map<string, [number, number][]>();
+    for (const course of scheduledCourses) {
+      if (course.department === 'CUSTOM') continue;
+      const start = getCourseStartHour(course.time);
+      const end = getCourseEndHour(course.time);
+      if (!(end > start)) continue;
+      for (const day of getDaysArray(course.days)) {
+        byDay.set(day, [...(byDay.get(day) ?? []), [start, end]]);
+      }
+    }
+    let earliest: number | null = null;
+    let longestGap = 0;
+    for (const blocks of byDay.values()) {
+      blocks.sort((a, b) => a[0] - b[0]);
+      earliest = earliest === null ? blocks[0][0] : Math.min(earliest, blocks[0][0]);
+      let reach = blocks[0][1];
+      for (const [start, end] of blocks.slice(1)) {
+        if (start > reach) longestGap = Math.max(longestGap, start - reach);
+        reach = Math.max(reach, end);
+      }
+    }
+    return { units, daysOnCampus: byDay.size, earliest, longestGap };
+  }, [activeCourses, scheduledCourses]);
+  const shareLoadLabel = shareStats.units > 0
+    ? `${shareStats.units} unit${shareStats.units === 1 ? '' : 's'}`
+    : `${activeCourses.length} class${activeCourses.length === 1 ? '' : 'es'}`;
+  const shareStatChips = [
+    shareStats.daysOnCampus > 0 ? `${shareStats.daysOnCampus} day${shareStats.daysOnCampus === 1 ? '' : 's'} on campus` : null,
+    shareStats.earliest !== null ? `Starts ${formatClockHour(shareStats.earliest)}` : null,
+    shareStats.longestGap >= 1 ? `Longest gap ${Math.round(shareStats.longestGap * 10) / 10}h` : null,
+  ].filter((chip): chip is string => chip !== null);
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const selectedCourseDiscordKey = selectedCourse && selectedCourse.department !== 'CUSTOM'
@@ -2498,11 +2546,27 @@ export default function TimetableScreen({
                   color: colors.brand,
                 }}
               >
-                {termLabel(selectedQuarter, school)} · {scheduledCourses.length} class{scheduledCourses.length === 1 ? '' : 'es'}
+                {termLabel(selectedQuarter, school)} · {shareLoadLabel}
               </Text>
-              <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>
-                {getSchoolConfig(school).location}
-              </Text>
+              {shareStatChips.length > 0 ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: exportFormat === 'square' ? 7 : 10 }}>
+                  {shareStatChips.map((chip) => (
+                    <View
+                      key={chip}
+                      style={{
+                        paddingHorizontal: 9,
+                        paddingVertical: 4,
+                        borderRadius: 999,
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#ffffff',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#dbe3f4',
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary }}>{chip}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </View>
           )}
 
@@ -2542,7 +2606,7 @@ export default function TimetableScreen({
                 }}
               >
                 <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand }}>
-                  {scheduledCourses.length} classes
+                  {shareLoadLabel}
                 </Text>
               </View>
             </View>

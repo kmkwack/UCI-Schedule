@@ -836,3 +836,4 @@ needs `DEVELOPER_DIR=/Library/Developer/CommandLineTools` until
 
 ### Session 103e (Share card — readable course codes) — 2026-10-07
 - `src/screens/TimetableScreen.tsx` — export blocks ellipsized to "ECON 1…" / "Econ Asy…" (a day column is ~47pt wide). Course code is now split onto two lines (subject / number) at 10–11pt black weight with `adjustsFontSizeToFit`; course titles are dropped from the card entirely (students refer to classes by code); time shows only when the block has room. The in-app timetable grid is unchanged.
+- Same session: share-card blocks now show the room (e.g. "SSL 228") under the code when the block has room; room takes priority over time.

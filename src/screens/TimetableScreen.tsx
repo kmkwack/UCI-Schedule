@@ -2728,7 +2728,11 @@ export default function TimetableScreen({
                         const usable = Math.max(height - 3, 16) - 6;
                         const afterCode = usable - codeLines * codeLineHeight;
                         const timeLineHeight = exportTimeFontSize + 3;
-                        const canShowTime = afterCode >= timeLineHeight;
+                        // Room before time: "where" is what a friend looking at the card
+                        // wants to know, and it's the thing the time grid can't show.
+                        const room = displayCourseLocation(course.location, school);
+                        const canShowRoom = !!room && afterCode >= timeLineHeight;
+                        const canShowTime = afterCode - (canShowRoom ? timeLineHeight : 0) >= timeLineHeight;
                         const fitText = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 } as const;
 
                         return (
@@ -2760,6 +2764,11 @@ export default function TimetableScreen({
                                     </Text>
                                   ) : null}
                                 </>
+                              )}
+                              {canShowRoom && (
+                                <Text {...fitText} style={{ color: text, fontWeight: '700', fontSize: exportTimeFontSize + 1, lineHeight: timeLineHeight, opacity: 0.8, marginTop: 1 }}>
+                                  {room}
+                                </Text>
                               )}
                               {showTime && canShowTime && (
                                 <Text {...fitText} style={{ color: text, fontSize: exportTimeFontSize, lineHeight: timeLineHeight, opacity: 0.68, marginTop: 'auto' }}>

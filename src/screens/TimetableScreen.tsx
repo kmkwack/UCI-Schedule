@@ -855,8 +855,7 @@ export default function TimetableScreen({
   );
   const exportTimetableHeight = exportHourHeight * totalHours;
   const exportCompactGrid = visibleDays.length >= 6 || totalHours >= 9;
-  const exportCodeFontSize = exportCompactGrid ? 8 : 9;
-  const exportMetaFontSize = exportCompactGrid ? 7 : 8;
+  const exportCodeFontSize = exportCompactGrid ? 10 : 11;
   const exportTimeFontSize = exportCompactGrid ? 6 : 7;
 
   // Sync localOrder from props (skip while dragging), always sorted by order field
@@ -2716,8 +2715,21 @@ export default function TimetableScreen({
                       return courseDays.map((day) => {
                         const dayIndex = visibleDays.indexOf(day);
                         if (dayIndex === -1) return null;
-                        const canShowSecondary = height >= 28;
-                        const canShowTime = height >= 42;
+                        // A day column is ~47pt wide inside the block, too narrow for
+                        // "ECON 100A" on one line — it ellipsized to "ECON 1…", which made
+                        // a shared card unreadable. The code is split into subject and
+                        // number on two lines (each always fits). Titles are left off the
+                        // card entirely — at this width they only ever showed as "Econ Asy…".
+                        const codeSplit = course.code.lastIndexOf(' ');
+                        const codeSubject = codeSplit > 0 ? course.code.slice(0, codeSplit) : course.code;
+                        const codeNumber = codeSplit > 0 ? course.code.slice(codeSplit + 1) : '';
+                        const codeLines = showCode ? (codeNumber ? 2 : 1) : 0;
+                        const codeLineHeight = exportCodeFontSize + 2;
+                        const usable = Math.max(height - 3, 16) - 6;
+                        const afterCode = usable - codeLines * codeLineHeight;
+                        const timeLineHeight = exportTimeFontSize + 3;
+                        const canShowTime = afterCode >= timeLineHeight;
+                        const fitText = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 } as const;
 
                         return (
                           <View
@@ -2732,35 +2744,25 @@ export default function TimetableScreen({
                               borderRadius: 7,
                               borderWidth: 1,
                               borderColor: border,
-                              paddingHorizontal: 4,
+                              paddingHorizontal: 3,
                               paddingVertical: 3,
                               overflow: 'hidden',
                             }}
                           >
                               {showCode && (
-                                <Text
-                                  style={{ color: text, fontWeight: '800', fontSize: exportCodeFontSize, lineHeight: exportCompactGrid ? 10 : 11 }}
-                                  numberOfLines={1}
-                                  ellipsizeMode="tail"
-                                >
-                                  {course.code}
-                                </Text>
-                              )}
-                              {showClassName && canShowSecondary && (
-                                <Text
-                                  style={{ color: text, fontWeight: '600', fontSize: exportMetaFontSize, lineHeight: exportCompactGrid ? 9 : 10, opacity: 0.88 }}
-                                  numberOfLines={1}
-                                  ellipsizeMode="tail"
-                                >
-                                  {course.title}
-                                </Text>
+                                <>
+                                  <Text {...fitText} style={{ color: text, fontWeight: '900', fontSize: exportCodeFontSize, lineHeight: codeLineHeight }}>
+                                    {codeSubject}
+                                  </Text>
+                                  {codeNumber ? (
+                                    <Text {...fitText} style={{ color: text, fontWeight: '900', fontSize: exportCodeFontSize, lineHeight: codeLineHeight }}>
+                                      {codeNumber}
+                                    </Text>
+                                  ) : null}
+                                </>
                               )}
                               {showTime && canShowTime && (
-                                <Text
-                                  style={{ color: text, fontSize: exportTimeFontSize, opacity: 0.68, marginTop: 1 }}
-                                  numberOfLines={1}
-                                  ellipsizeMode="tail"
-                                >
+                                <Text {...fitText} style={{ color: text, fontSize: exportTimeFontSize, lineHeight: timeLineHeight, opacity: 0.68, marginTop: 'auto' }}>
                                   {formatCourseTimeRange12(course.time, { compact: true })}
                                 </Text>
                               )}

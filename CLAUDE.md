@@ -833,3 +833,6 @@ needs `DEVELOPER_DIR=/Library/Developer/CommandLineTools` until
 ### Session 103d (OpenStreetMap attribution) — 2026-10-07
 - `src/screens/SettingsScreen.tsx` — About screen now carries "Map data © OpenStreetMap contributors" (ODbL requirement; building coordinates in `campusLocations.ts` were rebuilt from OSM in Session 103). Ships in the next build — not in 80.
 - `src/screens/SettingsScreen.tsx` — About showed a hardcoded "Version 1.0.0"; now reads `expo-application` (`nativeApplicationVersion (nativeBuildVersion)`). `expo-application` added as a direct dependency (it was already linked transitively).
+
+### Session 103e (Share card — readable course codes) — 2026-10-07
+- `src/screens/TimetableScreen.tsx` — export blocks ellipsized to "ECON 1…" / "Econ Asy…" (a day column is ~47pt wide). Course code is now split onto two lines (subject / number) at 10–11pt black weight with `adjustsFontSizeToFit`; course titles are dropped from the card entirely (students refer to classes by code); time shows only when the block has room. The in-app timetable grid is unchanged.

@@ -638,9 +638,7 @@ export default function TimetableScreen({
     }
     return { units, daysOnCampus: byDay.size, earliest, longestGap };
   }, [activeCourses, scheduledCourses]);
-  const shareLoadLabel = shareStats.units > 0
-    ? `${shareStats.units} unit${shareStats.units === 1 ? '' : 's'}`
-    : `${activeCourses.length} class${activeCourses.length === 1 ? '' : 'es'}`;
+  const shareLoadLabel = `${shareStats.units} unit${shareStats.units === 1 ? '' : 's'}`;
   const shareStatChips = [
     shareStats.daysOnCampus > 0 ? `${shareStats.daysOnCampus} day${shareStats.daysOnCampus === 1 ? '' : 's'} on campus` : null,
     shareStats.earliest !== null ? `Starts ${formatClockHour(shareStats.earliest)}` : null,

@@ -60,6 +60,18 @@ target 'ClassMate' do
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
 
+    # Newer Xcode refuses pod targets below iOS 15 (SDWebImage ships 9.0,
+    # RNSVG 12.4, AsyncStorage 13.4), failing the whole build. Raise them to the
+    # app's own floor; this never lowers a pod that already asks for more.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |bc|
+        current = bc.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
+        if current && Gem::Version.new(current) < Gem::Version.new('15.1')
+          bc.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+        end
+      end
+    end
+
     # Keep the widget extension's version in lockstep with the app.
     #
     # Apple rejects an upload whose extension version doesn't match the host

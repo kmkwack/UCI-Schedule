@@ -174,6 +174,16 @@ function getTimetableBlockColors(course: Course, themeInput: TimetableTheme | st
   };
 }
 
+// Grid chrome for a timetable theme. The Timetable screen and the share image
+// both read from here and from getTimetableBlockColors, so a new theme only
+// needs to be defined in these two functions and the saved image follows it.
+export function getTimetableGridColors(themeInput: TimetableTheme | string, isDark: boolean) {
+  void normalizeTimetableTheme(themeInput); // no theme overrides the grid yet
+  return isDark
+    ? { canvas: '#0a1628', frameBg: '#0f172a', frameBorder: '#243041', headerBg: '#0a1628', line: '#1e293b', label: '#64748b' }
+    : { canvas: '#eef0f4', frameBg: '#ffffff', frameBorder: '#d9dee8', headerBg: '#f5f5f7', line: '#e0e0e5', label: '#6b7280' };
+}
+
 async function openMaps(location: string, school: string, mappedLocation?: CampusMapLocation | null) {
   const appleUrl = mappedLocation ? appleMapsCoordinateUrl(mappedLocation, school) : appleMapsUrl(location, school);
   const fallbackUrl = mapSearchUrl(location, school);
@@ -785,8 +795,8 @@ export default function TimetableScreen({
 
   const totalHours = displayEndHour - displayStartHour;
 
-  // Story card data. Blocks use exactly the course's in-app block colors
-  // (fill, text, border) so the shared image matches the timetable screen.
+  // Story card data. Blocks use exactly the course's in-app block colors for the
+  // user's chosen theme (fill, text, border), so the saved image matches the app.
   const storyDays = useMemo(() => visibleDays.map((d) => DAY_LABEL[d] ?? d), [visibleDays]);
   const storyBlocks = useMemo<StoryBlock[]>(() => {
     const toHHMM = (t: string) => t.trim();
@@ -1239,11 +1249,13 @@ export default function TimetableScreen({
     else if (key === 'time')       setPendingShowTime((v) => !v);
   }
 
-  const gridFrameBg = isDark ? '#0f172a' : '#ffffff';
-  const gridFrameBorder = isDark ? '#243041' : '#d9dee8';
-  const gridHeaderBg = isDark ? '#0a1628' : '#f5f5f7';
-  const gridLine = isDark ? '#1e293b' : '#e0e0e5';
-  const gridLabel = isDark ? '#64748b' : '#6b7280';
+  const {
+    frameBg: gridFrameBg,
+    frameBorder: gridFrameBorder,
+    headerBg: gridHeaderBg,
+    line: gridLine,
+    label: gridLabel,
+  } = getTimetableGridColors(blockTheme, isDark);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -2513,7 +2525,16 @@ export default function TimetableScreen({
           startHour={storyHourRange.startHour}
           endHour={storyHourRange.endHour}
           blocks={storyBlocks}
-          dark={isDark}
+          palette={{
+            canvas: getTimetableGridColors(blockTheme, isDark).canvas,
+            lane: gridFrameBg,
+            line: gridLine,
+            hourLabel: gridLabel,
+            dayLabel: colors.textSecondary,
+            ink: colors.text,
+            muted: colors.textSecondary,
+            brand: colors.brand,
+          }}
         />
       </View>
     </View>

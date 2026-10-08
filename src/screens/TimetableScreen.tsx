@@ -610,7 +610,8 @@ export default function TimetableScreen({
   // "one class, 4 units"), so the share card leads with units.
   const shareUnits = useMemo(
     () => activeCourses.reduce(
-      (sum, course) => sum + (course.department === 'CUSTOM' ? 0 : (course.units ?? 0)),
+      // Custom blocks count when the user gave them units (e.g. a 4-unit club class).
+      (sum, course) => sum + (Number.isFinite(course.units) ? (course.units as number) : 0),
       0
     ),
     [activeCourses]

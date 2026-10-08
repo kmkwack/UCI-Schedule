@@ -332,12 +332,16 @@ function getCourseEndHour(timeRange: string) {
 // apart on "TBA", which most of them read as Tuesday.
 const getDaysArray = parseCourseDays;
 
-// 8.5 → "8:30 AM", 13 → "1 PM".
-function formatClockHour(hour: number) {
-  const h = Math.floor(hour);
-  const m = Math.round((hour - h) * 60);
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`;
+// "13:00 - 14:20" → "1:00–2:20". The grid's hour labels already say AM/PM;
+// dropping it is what lets the time fit a 47pt block at a readable size.
+function shortTimeRange(timeRange: string) {
+  const fmt = (t: string) => {
+    const [h, m] = t.trim().split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return t.trim();
+    return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')}`;
+  };
+  const [start, end] = timeRange.split(' - ');
+  return end ? `${fmt(start)}–${fmt(end)}` : fmt(start);
 }
 
 function formatHourLabel(hour: number) {
@@ -601,43 +605,16 @@ export default function TimetableScreen({
     [activeCourses]
   );
 
-  // Headline numbers for the share card. Students talk about load in units, not
-  // sections (a lecture + discussion is "one class, 4 units"), and the other
-  // three are what makes a schedule brag- or complain-worthy.
-  const shareStats = useMemo(() => {
-    const units = activeCourses.reduce(
+  // Students talk about load in units, not sections (a lecture + discussion is
+  // "one class, 4 units"), so the share card leads with units.
+  const shareUnits = useMemo(
+    () => activeCourses.reduce(
       (sum, course) => sum + (course.department === 'CUSTOM' ? 0 : (course.units ?? 0)),
       0
-    );
-    const byDay = new Map<string, [number, number][]>();
-    for (const course of scheduledCourses) {
-      if (course.department === 'CUSTOM') continue;
-      const start = getCourseStartHour(course.time);
-      const end = getCourseEndHour(course.time);
-      if (!(end > start)) continue;
-      for (const day of getDaysArray(course.days)) {
-        byDay.set(day, [...(byDay.get(day) ?? []), [start, end]]);
-      }
-    }
-    let earliest: number | null = null;
-    let longestGap = 0;
-    for (const blocks of byDay.values()) {
-      blocks.sort((a, b) => a[0] - b[0]);
-      earliest = earliest === null ? blocks[0][0] : Math.min(earliest, blocks[0][0]);
-      let reach = blocks[0][1];
-      for (const [start, end] of blocks.slice(1)) {
-        if (start > reach) longestGap = Math.max(longestGap, start - reach);
-        reach = Math.max(reach, end);
-      }
-    }
-    return { units, daysOnCampus: byDay.size, earliest, longestGap };
-  }, [activeCourses, scheduledCourses]);
-  const shareLoadLabel = `${shareStats.units} unit${shareStats.units === 1 ? '' : 's'}`;
-  const shareStatChips = [
-    shareStats.daysOnCampus > 0 ? `${shareStats.daysOnCampus} day${shareStats.daysOnCampus === 1 ? '' : 's'}/wk` : null,
-    shareStats.earliest !== null ? `From ${formatClockHour(shareStats.earliest)}` : null,
-    shareStats.longestGap >= 1 ? `${Math.round(shareStats.longestGap * 10) / 10}h gap` : null,
-  ].filter((chip): chip is string => chip !== null);
+    ),
+    [activeCourses]
+  );
+  const shareLoadLabel = `${shareUnits} unit${shareUnits === 1 ? '' : 's'}`;
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const selectedCourseDiscordKey = selectedCourse && selectedCourse.department !== 'CUSTOM'
@@ -852,7 +829,7 @@ export default function TimetableScreen({
   const exportTimetableHeight = exportHourHeight * totalHours;
   const exportCompactGrid = visibleDays.length >= 6 || totalHours >= 9;
   const exportCodeFontSize = exportCompactGrid ? 9.5 : 10.5;
-  const exportTimeFontSize = exportCompactGrid ? 6 : 7;
+  const exportTimeFontSize = exportCompactGrid ? 8 : 9;
 
   // Sync localOrder from props (skip while dragging), always sorted by order field
   useEffect(() => {
@@ -2543,25 +2520,9 @@ export default function TimetableScreen({
               >
                 {termLabel(selectedQuarter, school)} · {shareLoadLabel}
               </Text>
-              {shareStatChips.length > 0 ? (
-                <View style={{ flexDirection: 'row', gap: 6, marginTop: exportFormat === 'square' ? 7 : 10 }}>
-                  {shareStatChips.map((chip) => (
-                    <View
-                      key={chip}
-                      style={{
-                        paddingHorizontal: 9,
-                        paddingVertical: 4,
-                        borderRadius: 999,
-                        backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#ffffff',
-                        borderWidth: 1,
-                        borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#dbe3f4',
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary }}>{chip}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
+              <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>
+                {getSchoolConfig(school).location}
+              </Text>
             </View>
           )}
 
@@ -2777,7 +2738,7 @@ export default function TimetableScreen({
                               )}
                               {showTime && canShowTime && (
                                 <Text {...fitText} style={{ color: text, fontSize: exportTimeFontSize, lineHeight: timeLineHeight, opacity: 0.68, marginTop: 'auto' }}>
-                                  {formatCourseTimeRange12(course.time, { compact: true })}
+                                  {shortTimeRange(course.time)}
                                 </Text>
                               )}
                           </View>

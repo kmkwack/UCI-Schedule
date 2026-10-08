@@ -804,12 +804,12 @@ export default function TimetableScreen({
       ? exportSnapshotWidth
       : undefined;
   const exportOuterPadding = exportFormat === 'clean' ? 14 : exportFormat === 'story' ? 18 : 14;
-  const exportCardPadding = exportFormat === 'square' ? 13 : 16;
+  const exportCardPadding = exportFormat === 'story' ? 0 : exportFormat === 'square' ? 13 : 16;
   const exportHeaderMargin = exportFormat === 'square' ? 10 : 14;
   // 9:16 canvas (390×693) minus padding, header, footer, card chrome and the
   // day row. Overshooting this clips the footer off the bottom of the image.
   const exportAvailableGridHeight = exportFormat === 'story'
-    ? 420
+    ? 488
     : exportFormat === 'square'
       ? 158
       : screenHeight * 0.5;
@@ -818,13 +818,13 @@ export default function TimetableScreen({
     exportSnapshotWidth -
     exportOuterPadding * 2 -
     exportCardPadding * 2 -
-    4
+    (exportFormat === 'story' ? 2 : 4)
   );
   const exportTimeColumnWidth = Math.min(EXPORT_TIME_LABEL_WIDTH, exportUsableGridWidth * 0.12);
   const exportDayColumnWidth = (exportUsableGridWidth - exportTimeColumnWidth) / visibleDays.length;
   const exportHourHeight = Math.max(
     exportFormat === 'square' ? 18 : 22,
-    Math.min(exportFormat === 'square' ? 26 : exportFormat === 'story' ? 56 : 42, exportAvailableGridHeight / Math.max(totalHours, 1))
+    Math.min(exportFormat === 'square' ? 26 : exportFormat === 'story' ? 62 : 42, exportAvailableGridHeight / Math.max(totalHours, 1))
   );
   const exportTimetableHeight = exportHourHeight * totalHours;
   const exportCompactGrid = visibleDays.length >= 6 || totalHours >= 9;
@@ -2526,8 +2526,10 @@ export default function TimetableScreen({
             </View>
           )}
 
+          {/* On the story the grid stands alone; a card around a bordered grid
+              read as two nested frames and cost ~36pt of grid width. */}
           <View
-            style={{
+            style={exportFormat === 'story' ? { flexShrink: 0 } : {
               backgroundColor: gridFrameBg,
               borderRadius: 24,
               borderWidth: 1,
@@ -2699,7 +2701,12 @@ export default function TimetableScreen({
                         const room = displayCourseLocation(course.location, school);
                         const canShowRoom = !!room && afterCode >= timeLineHeight;
                         const canShowTime = afterCode - (canShowRoom ? timeLineHeight : 0) >= timeLineHeight;
-                        const fitText = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 } as const;
+                        // Sized by hand: adjustsFontSizeToFit mis-measures with a fixed
+                        // lineHeight and shrank short strings like "131A" to ~3pt.
+                        const innerWidth = exportDayColumnWidth - 3 - 6 - 2;
+                        const fitSize = (value: string, base: number, widthPerChar = 0.64) =>
+                          Math.max(base * 0.6, Math.min(base, innerWidth / Math.max(value.length * widthPerChar, 1)));
+                        const fitText = { numberOfLines: 1 } as const;
 
                         return (
                           <View
@@ -2721,23 +2728,23 @@ export default function TimetableScreen({
                           >
                               {showCode && (
                                 <>
-                                  <Text {...fitText} minimumFontScale={0.6} style={{ color: text, fontWeight: '800', fontSize: exportCodeFontSize, lineHeight: codeLineHeight, letterSpacing: -0.2 }}>
+                                  <Text {...fitText} style={{ color: text, fontWeight: '800', fontSize: fitSize(stackCode ? codeSubject : course.code, exportCodeFontSize), lineHeight: codeLineHeight, letterSpacing: -0.2 }}>
                                     {stackCode ? codeSubject : course.code}
                                   </Text>
                                   {stackCode ? (
-                                    <Text {...fitText} style={{ color: text, fontWeight: '800', fontSize: exportCodeFontSize, lineHeight: codeLineHeight, letterSpacing: -0.2 }}>
+                                    <Text {...fitText} style={{ color: text, fontWeight: '800', fontSize: fitSize(codeNumber, exportCodeFontSize), lineHeight: codeLineHeight, letterSpacing: -0.2 }}>
                                       {codeNumber}
                                     </Text>
                                   ) : null}
                                 </>
                               )}
                               {canShowRoom && (
-                                <Text {...fitText} style={{ color: text, fontWeight: '700', fontSize: exportTimeFontSize + 1, lineHeight: timeLineHeight, opacity: 0.8, marginTop: 1 }}>
+                                <Text {...fitText} style={{ color: text, fontWeight: '700', fontSize: fitSize(room ?? '', exportTimeFontSize + 1, 0.62), lineHeight: timeLineHeight, opacity: 0.8, marginTop: 1 }}>
                                   {room}
                                 </Text>
                               )}
                               {showTime && canShowTime && (
-                                <Text {...fitText} style={{ color: text, fontSize: exportTimeFontSize, lineHeight: timeLineHeight, opacity: 0.68, marginTop: 'auto' }}>
+                                <Text {...fitText} style={{ color: text, fontSize: fitSize(shortTimeRange(course.time), exportTimeFontSize, 0.56), lineHeight: timeLineHeight, opacity: 0.68, marginTop: 'auto' }}>
                                   {shortTimeRange(course.time)}
                                 </Text>
                               )}

@@ -1,3 +1,4 @@
+import ScheduleStoryCard, { getStoryHourRange, type StoryBlock } from '../components/ScheduleStoryCard';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, ScrollView, Modal, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -616,6 +617,7 @@ export default function TimetableScreen({
   );
   const shareLoadLabel = `${shareUnits} unit${shareUnits === 1 ? '' : 's'}`;
 
+
   const selectedQuarterKey = quarterKey(selectedQuarter);
   const selectedCourseDiscordKey = selectedCourse && selectedCourse.department !== 'CUSTOM'
     ? courseDiscordKey(selectedQuarterKey, selectedCourse.code)
@@ -781,6 +783,32 @@ export default function TimetableScreen({
   }, [scheduledCourses]);
 
   const totalHours = displayEndHour - displayStartHour;
+
+  // Story card data. Blocks use exactly the course's in-app block colors
+  // (fill, text, border) so the shared image matches the timetable screen.
+  const storyDays = useMemo(() => visibleDays.map((d) => DAY_LABEL[d] ?? d), [visibleDays]);
+  const storyBlocks = useMemo<StoryBlock[]>(() => {
+    const toHHMM = (t: string) => t.trim();
+    return scheduledCourses.flatMap((course) => {
+      const blockColors = getTimetableBlockColors(course, blockTheme, isDark);
+      const [start, end] = course.time.split(' - ').map(toHHMM);
+      if (!start || !end) return [];
+      return getDaysArray(course.days)
+        .filter((d) => visibleDays.includes(d))
+        .map((d) => ({
+          day: DAY_LABEL[d] ?? d,
+          start,
+          end,
+          code: course.code,
+          label: course.department === 'CUSTOM' ? (course.title || course.code) : undefined,
+          room: displayCourseLocation(course.location, school) ?? '',
+          color: blockColors.bg,
+          textColor: blockColors.text,
+          borderColor: blockColors.border,
+        }));
+    });
+  }, [scheduledCourses, visibleDays, school, blockTheme, isDark]);
+  const storyHourRange = useMemo(() => getStoryHourRange(storyBlocks), [storyBlocks]);
   const timetableHeight = 64 * totalHours;
   const hourHeight = timetableHeight / totalHours;
   const hourLabels = Array.from({ length: totalHours }, (_, i) => displayStartHour + i);
@@ -2467,358 +2495,25 @@ export default function TimetableScreen({
         onDismiss={() => setShowError(false)}
       />
 
+      {/* Off-screen capture target for every schedule export (9:16 story). */}
       <View
         pointerEvents="none"
         accessible={false}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: exportSnapshotWidth,
-          zIndex: -1,
-        }}
+        style={{ position: 'absolute', top: 0, left: 0, zIndex: -1 }}
       >
-        <View
+        <ScheduleStoryCard
           ref={exportCaptureRef}
-          collapsable={false}
-          style={{
-            width: exportSnapshotWidth,
-            ...(exportCanvasHeight ? { height: exportCanvasHeight } : null),
-            padding: exportOuterPadding,
-            backgroundColor: isDark ? '#0b1220' : '#eef3ff',
-            justifyContent: exportFormat === 'story' ? 'space-between' : 'flex-start',
-            overflow: 'hidden',
-          }}
-        >
-          {/* The school leads, not the app. People post a timetable to say where
-              they go — that identity is the reason the image gets shared at all.
-              This also replaces a duplicated CLASSMATE badge and term label that
-              both already appear on the card below, which is what freed the room
-              for it on the taller story canvas. */}
-          {exportFormat !== 'clean' && (
-            <View style={{ marginBottom: exportFormat === 'square' ? 9 : 14 }}>
-              <Text
-                style={{
-                  fontSize: exportFormat === 'square' ? 26 : 36,
-                  lineHeight: exportFormat === 'square' ? 30 : 41,
-                  fontWeight: '900',
-                  color: colors.text,
-                  letterSpacing: -0.5,
-                }}
-              >
-                {getSchoolConfig(school).name.toUpperCase()}
-              </Text>
-              <Text
-                style={{
-                  marginTop: exportFormat === 'square' ? 3 : 6,
-                  fontSize: exportFormat === 'square' ? 13 : 15,
-                  fontWeight: '800',
-                  color: colors.brand,
-                }}
-              >
-                {termLabel(selectedQuarter, school)} · {shareLoadLabel}
-              </Text>
-              <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>
-                {getSchoolConfig(school).location}
-              </Text>
-            </View>
-          )}
-
-          {/* On the story the grid stands alone; a card around a bordered grid
-              read as two nested frames and cost ~36pt of grid width. */}
-          <View
-            style={exportFormat === 'story' ? { flexShrink: 0 } : {
-              backgroundColor: gridFrameBg,
-              borderRadius: 24,
-              borderWidth: 1,
-              borderColor: gridFrameBorder,
-              padding: exportCardPadding,
-              shadowColor: isDark ? '#000' : '#cfd6e4',
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: isDark ? 0.22 : 0.16,
-              shadowRadius: 18,
-              elevation: 4,
-              flexShrink: 0,
-            }}
-          >
-            {/* The story header above already carries school, term and units. */}
-            {exportFormat !== 'story' && (
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-              <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.brand, letterSpacing: 0.6 }}>
-                  CLASSMATE
-                </Text>
-                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 4 }}>
-                  {pickerTermLabel(selectedQuarter)}
-                </Text>
-                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                  {activeTimetable?.name ?? 'My Schedule'}
-                </Text>
-              </View>
-              <View
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderRadius: 999,
-                  backgroundColor: colors.brandBg,
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand }}>
-                  {shareLoadLabel}
-                </Text>
-              </View>
-            </View>
-            )}
-
-            <View
-              style={{
-                backgroundColor: gridFrameBg,
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: gridFrameBorder,
-                overflow: 'hidden',
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  borderBottomWidth: 1,
-                  borderBottomColor: gridLine,
-                  backgroundColor: gridHeaderBg,
-                }}
-              >
-                <View style={{ width: exportTimeColumnWidth }} />
-                {visibleDays.map((day) => (
-                  <View
-                    key={`export-header-${day}`}
-                    style={{
-                      width: exportDayColumnWidth,
-                      alignItems: 'center',
-                      paddingVertical: exportCompactGrid ? 6 : 8,
-                      borderLeftWidth: 1,
-                      borderLeftColor: gridLine,
-                      backgroundColor: gridHeaderBg,
-                    }}
-                  >
-                    <Text style={{ fontSize: exportCompactGrid ? 10 : 11, fontWeight: '700', color: colors.textSecondary }}>
-                      {DAY_LABEL[day]}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-
-              <View style={{ backgroundColor: gridFrameBg, height: exportTimetableHeight }}>
-                <View style={{ flexDirection: 'row' }}>
-                  <View style={{ width: exportTimeColumnWidth, height: exportTimetableHeight }}>
-                    {hourLabels.map((hour, index) => (
-                      <View
-                        key={`export-hour-${hour}`}
-                        style={{
-                          position: 'absolute',
-                          top: index * exportHourHeight,
-                          height: exportHourHeight,
-                          left: 0,
-                          right: 0,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Text style={{ fontSize: exportCompactGrid ? 9 : 10, fontWeight: '700', color: gridLabel }}>
-                          {formatHourLabel(hour)}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  <View
-                    style={{
-                      width: exportDayColumnWidth * visibleDays.length,
-                      height: exportTimetableHeight,
-                      position: 'relative',
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', height: exportTimetableHeight }}>
-                      {visibleDays.map((day) => (
-                        <View
-                          key={`export-col-${day}`}
-                          style={{
-                            width: exportDayColumnWidth,
-                            height: exportTimetableHeight,
-                            backgroundColor: gridFrameBg,
-                            borderLeftWidth: 1,
-                            borderLeftColor: gridLine,
-                          }}
-                        />
-                      ))}
-                    </View>
-
-                    {hourBoundaries.map((hour, index) => (
-                      <View
-                        key={`export-boundary-${hour}`}
-                        style={{
-                          position: 'absolute',
-                          top: index * exportHourHeight,
-                          left: -exportTimeColumnWidth,
-                          right: 0,
-                          height: 1,
-                          backgroundColor: gridLine,
-                        }}
-                      />
-                    ))}
-
-                    {scheduledCourses.flatMap((course) => {
-                      const courseDays = getDaysArray(course.days);
-                      const startHour = getCourseStartHour(course.time);
-                      const endHour = getCourseEndHour(course.time);
-                      const top = (startHour - displayStartHour) * exportHourHeight;
-                      const height = (endHour - startHour) * exportHourHeight;
-                      const { bg, text, border } = getTimetableBlockColors(course, blockTheme, isDark);
-
-                      return courseDays.map((day) => {
-                        const dayIndex = visibleDays.indexOf(day);
-                        if (dayIndex === -1) return null;
-                        // A day column is ~47pt wide inside the block, too narrow for
-                        // "ECON 100A" on one line — it ellipsized to "ECON 1…", which made
-                        // a shared card unreadable. The code is split into subject and
-                        // number on two lines (each always fits). Titles are left off the
-                        // card entirely — at this width they only ever showed as "Econ Asy…".
-                        const codeSplit = course.code.lastIndexOf(' ');
-                        const codeSubject = codeSplit > 0 ? course.code.slice(0, codeSplit) : course.code;
-                        const codeNumber = codeSplit > 0 ? course.code.slice(codeSplit + 1) : '';
-                        const codeLineHeight = exportCodeFontSize + 1.5;
-                        const usable = Math.max(height - 3, 16) - 5;
-                        // A 50-minute block on a long day can't hold two lines; then
-                        // the code goes on one line and shrinks to fit rather than
-                        // spilling out of the block.
-                        const stackCode = !!codeNumber && usable >= codeLineHeight * 2;
-                        const codeLines = showCode ? (stackCode ? 2 : 1) : 0;
-                        const afterCode = usable - codeLines * codeLineHeight;
-                        const timeLineHeight = exportTimeFontSize + 3;
-                        // Room before time: "where" is what a friend looking at the card
-                        // wants to know, and it's the thing the time grid can't show.
-                        const room = displayCourseLocation(course.location, school);
-                        const canShowRoom = !!room && afterCode >= timeLineHeight;
-                        const canShowTime = afterCode - (canShowRoom ? timeLineHeight : 0) >= timeLineHeight;
-                        // Sized by hand: adjustsFontSizeToFit mis-measures with a fixed
-                        // lineHeight and shrank short strings like "131A" to ~3pt.
-                        const innerWidth = exportDayColumnWidth - 3 - 6 - 2;
-                        const fitSize = (value: string, base: number, widthPerChar = 0.64) =>
-                          Math.max(base * 0.6, Math.min(base, innerWidth / Math.max(value.length * widthPerChar, 1)));
-                        const fitText = { numberOfLines: 1 } as const;
-
-                        return (
-                          <View
-                            key={`export-${course.id}-${day}`}
-                            style={{
-                              position: 'absolute',
-                              top: top + 1.5,
-                              left: dayIndex * exportDayColumnWidth + 1.5,
-                              width: exportDayColumnWidth - 3,
-                              height: Math.max(height - 3, 16),
-                              backgroundColor: bg,
-                              borderRadius: 7,
-                              borderWidth: 1,
-                              borderColor: border,
-                              paddingHorizontal: 3,
-                              paddingVertical: 2.5,
-                              overflow: 'hidden',
-                            }}
-                          >
-                              {showCode && (
-                                <>
-                                  <Text {...fitText} style={{ color: text, fontWeight: '800', fontSize: fitSize(stackCode ? codeSubject : course.code, exportCodeFontSize), lineHeight: codeLineHeight, letterSpacing: -0.2 }}>
-                                    {stackCode ? codeSubject : course.code}
-                                  </Text>
-                                  {stackCode ? (
-                                    <Text {...fitText} style={{ color: text, fontWeight: '800', fontSize: fitSize(codeNumber, exportCodeFontSize), lineHeight: codeLineHeight, letterSpacing: -0.2 }}>
-                                      {codeNumber}
-                                    </Text>
-                                  ) : null}
-                                </>
-                              )}
-                              {canShowRoom && (
-                                <Text {...fitText} style={{ color: text, fontWeight: '700', fontSize: fitSize(room ?? '', exportTimeFontSize + 1, 0.62), lineHeight: timeLineHeight, opacity: 0.8, marginTop: 1 }}>
-                                  {room}
-                                </Text>
-                              )}
-                              {showTime && canShowTime && (
-                                <Text {...fitText} style={{ color: text, fontSize: fitSize(shortTimeRange(course.time), exportTimeFontSize, 0.56), lineHeight: timeLineHeight, opacity: 0.68, marginTop: 'auto' }}>
-                                  {shortTimeRange(course.time)}
-                                </Text>
-                              )}
-                          </View>
-                        );
-                      });
-                    })}
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            {tbaCourses.length > 0 && (
-              <View style={{ marginTop: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, marginBottom: 8 }}>
-                  TBA / Online
-                </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {tbaCourses.map((course) => {
-                    const { bg, text, border } = getTimetableBlockColors(course, blockTheme, isDark);
-                    const courseLocation = displayCourseLocation(course.location, school);
-                    return (
-                      <View
-                        key={`export-tba-${course.id}`}
-                        style={{
-                          backgroundColor: bg,
-                          borderRadius: 10,
-                          borderWidth: 1,
-                          borderColor: border,
-                          paddingHorizontal: 10,
-                          paddingVertical: 8,
-                          minWidth: 104,
-                          maxWidth: 180,
-                        }}
-                      >
-                          <Text style={{ color: text, fontWeight: '800', fontSize: 10 }} numberOfLines={1} ellipsizeMode="tail">
-                            {course.code}
-                          </Text>
-                          <Text style={{ color: text, fontSize: 8, opacity: 0.82, marginTop: 2 }} numberOfLines={1} ellipsizeMode="tail">
-                            {course.title}
-                          </Text>
-                        <Text style={{ color: text, fontSize: 8, opacity: 0.58, marginTop: 2, fontWeight: '600' }}>
-                          {courseLocation?.toLowerCase().includes('online') || courseLocation?.toLowerCase().includes('remote') ? 'Online' : 'TBA'}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-          </View>
-
-          {exportFormat !== 'clean' && (
-            <View
-              style={{
-                marginTop: exportFormat === 'square' ? 9 : 14,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>
-                Built with ClassMate
-              </Text>
-              {/* The domain, not a feature list: someone seeing this on a story has
-                  24 hours and no easy way to find the app otherwise — "ClassMate"
-                  is a common word and the store listing is "ClassMate(CM)". The
-                  site links straight to the App Store. */}
-              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand }}>
-                theseans.app
-              </Text>
-            </View>
-          )}
-        </View>
+          school={getSchoolConfig(school).name.toUpperCase()}
+          term={termLabel(selectedQuarter, school)}
+          unitsLabel={shareLoadLabel}
+          days={storyDays}
+          startHour={storyHourRange.startHour}
+          endHour={storyHourRange.endHour}
+          blocks={storyBlocks}
+          dark={isDark}
+        />
       </View>
     </View>
   );

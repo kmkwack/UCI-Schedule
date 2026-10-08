@@ -699,7 +699,8 @@ function buildCustomCourse(draft: CustomCourseDraft): Course {
   const endTime = endMinutes == null ? draft.endTime : formatMinutesAs24Hour(endMinutes);
   const time = `${startTime} - ${endTime}`;
   const days = draft.selectedDays.join('');
-  const shortCode = (trimmedShortLabel || trimmedName).toUpperCase();
+  // Kept as typed: "Tennis Club" is a name, not a course code to shout.
+  const shortCode = trimmedShortLabel || trimmedName;
 
   return {
     id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -718,7 +719,8 @@ function buildCustomCourse(draft: CustomCourseDraft): Course {
 
 function courseToCustomDraft(course: Course): CustomCourseDraft {
   const [startTime = '', endTime = ''] = course.time.split(' - ');
-  const shortLabel = course.code !== course.title.toUpperCase() ? course.code : '';
+  // Older blocks stored the name upper-cased as the code; treat that as "no short label" too.
+  const shortLabel = course.code !== course.title && course.code !== course.title.toUpperCase() ? course.code : '';
   return {
     name: course.title,
     shortLabel,

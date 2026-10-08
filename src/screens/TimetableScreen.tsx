@@ -634,9 +634,9 @@ export default function TimetableScreen({
   }, [activeCourses, scheduledCourses]);
   const shareLoadLabel = `${shareStats.units} unit${shareStats.units === 1 ? '' : 's'}`;
   const shareStatChips = [
-    shareStats.daysOnCampus > 0 ? `${shareStats.daysOnCampus} day${shareStats.daysOnCampus === 1 ? '' : 's'} on campus` : null,
-    shareStats.earliest !== null ? `Starts ${formatClockHour(shareStats.earliest)}` : null,
-    shareStats.longestGap >= 1 ? `Longest gap ${Math.round(shareStats.longestGap * 10) / 10}h` : null,
+    shareStats.daysOnCampus > 0 ? `${shareStats.daysOnCampus} day${shareStats.daysOnCampus === 1 ? '' : 's'}/wk` : null,
+    shareStats.earliest !== null ? `From ${formatClockHour(shareStats.earliest)}` : null,
+    shareStats.longestGap >= 1 ? `${Math.round(shareStats.longestGap * 10) / 10}h gap` : null,
   ].filter((chip): chip is string => chip !== null);
 
   const selectedQuarterKey = quarterKey(selectedQuarter);
@@ -829,8 +829,10 @@ export default function TimetableScreen({
   const exportOuterPadding = exportFormat === 'clean' ? 14 : exportFormat === 'story' ? 18 : 14;
   const exportCardPadding = exportFormat === 'square' ? 13 : 16;
   const exportHeaderMargin = exportFormat === 'square' ? 10 : 14;
+  // 9:16 canvas (390×693) minus padding, header, footer, card chrome and the
+  // day row. Overshooting this clips the footer off the bottom of the image.
   const exportAvailableGridHeight = exportFormat === 'story'
-    ? 452
+    ? 420
     : exportFormat === 'square'
       ? 158
       : screenHeight * 0.5;
@@ -2542,7 +2544,7 @@ export default function TimetableScreen({
                 {termLabel(selectedQuarter, school)} · {shareLoadLabel}
               </Text>
               {shareStatChips.length > 0 ? (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: exportFormat === 'square' ? 7 : 10 }}>
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: exportFormat === 'square' ? 7 : 10 }}>
                   {shareStatChips.map((chip) => (
                     <View
                       key={chip}

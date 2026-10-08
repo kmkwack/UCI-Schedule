@@ -837,3 +837,7 @@ needs `DEVELOPER_DIR=/Library/Developer/CommandLineTools` until
 ### Session 103e (Share card — readable course codes) — 2026-10-07
 - `src/screens/TimetableScreen.tsx` — export blocks ellipsized to "ECON 1…" / "Econ Asy…" (a day column is ~47pt wide). Course code is now split onto two lines (subject / number) at 10–11pt black weight with `adjustsFontSizeToFit`; course titles are dropped from the card entirely (students refer to classes by code); time shows only when the block has room. The in-app timetable grid is unchanged.
 - Same session: share-card blocks now show the room (e.g. "SSL 228") under the code when the block has room; room takes priority over time.
+
+### Session 103f (Share image — 9:16 story only) — 2026-10-07
+- `src/screens/TimetableScreen.tsx` — removed the "Instagram Post" (square) option; Save, Instagram Story and "More Sharing Options" all capture the 9:16 story canvas (`createScheduleExportImage` always sets `'story'`). The inner card header (CLASSMATE / term / plan name / units pill) is hidden on the story canvas since the outer header already shows school, term and units; the grid gets that space (`exportAvailableGridHeight` 366 → 452, hour cap 56 on story) so blocks have room for code, room and time.
+- Dev note: no watchman on this Mac and Metro's file watcher isn't picking up edits — restart Metro with `--clear` and relaunch the app to see changes.

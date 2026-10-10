@@ -9,7 +9,8 @@ export type AcademicEventCategory =
   | 'deadline'      // grade submission, other admin
   | 'holiday'       // no class days
   | 'finals'        // finals period
-  | 'graduation';   // commencement
+  | 'graduation'    // commencement
+  | 'observance';   // Halloween, Valentine's, DST… — not a day off, computed locally
 
 export type AcademicEvent = {
   id: string;
@@ -32,7 +33,56 @@ export const CATEGORY_CONFIG: Record<AcademicEventCategory, { ionIcon: string; a
   holiday:     { ionIcon: 'sunny-outline',             accent: '#4169E1' },
   finals:      { ionIcon: 'document-text-outline',     accent: '#4169E1' },
   graduation:  { ionIcon: 'school-outline',            accent: '#4169E1' },
+  observance:  { ionIcon: 'sparkles-outline',          accent: '#4169E1' },
 };
+
+// ─── Observances ──────────────────────────────────────────────────────────────
+// Days students plan around that no registrar lists, because classes still meet.
+// Computed from fixed rules so they never need yearly upkeep; merged into a
+// term's events only within that term's date range.
+
+function ymd(y: number, m: number, d: number) {
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+// nth (1-based) weekday (0=Sun) of a month.
+function nthWeekday(y: number, m: number, weekday: number, n: number) {
+  const first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+  return 1 + ((weekday - first + 7) % 7) + (n - 1) * 7;
+}
+
+// Lunar New Year has no closed-form rule; dates through 2030.
+const LUNAR_NEW_YEAR: Record<number, string> = {
+  2026: '2026-02-17', 2027: '2027-02-06', 2028: '2028-01-26', 2029: '2029-02-13', 2030: '2030-02-03',
+};
+
+export function observancesForYear(y: number): AcademicEvent[] {
+  const list: AcademicEvent[] = [
+    { id: `obs-${y}-valentines`, title: "Valentine's Day", date: ymd(y, 2, 14), category: 'observance' },
+    { id: `obs-${y}-stpatricks`, title: "St. Patrick's Day", date: ymd(y, 3, 17), category: 'observance' },
+    { id: `obs-${y}-dst-start`, title: 'Daylight Saving Starts', subtitle: 'Clocks move forward 1 hour', date: ymd(y, 3, nthWeekday(y, 3, 0, 2)), category: 'observance' },
+    { id: `obs-${y}-mothers`, title: "Mother's Day", date: ymd(y, 5, nthWeekday(y, 5, 0, 2)), category: 'observance' },
+    { id: `obs-${y}-fathers`, title: "Father's Day", date: ymd(y, 6, nthWeekday(y, 6, 0, 3)), category: 'observance' },
+    { id: `obs-${y}-halloween`, title: 'Halloween', date: ymd(y, 10, 31), category: 'observance' },
+    { id: `obs-${y}-dst-end`, title: 'Daylight Saving Ends', subtitle: 'Clocks move back 1 hour', date: ymd(y, 11, nthWeekday(y, 11, 0, 1)), category: 'observance' },
+  ];
+  if (LUNAR_NEW_YEAR[y]) {
+    list.push({ id: `obs-${y}-lunar-new-year`, title: 'Lunar New Year', date: LUNAR_NEW_YEAR[y], category: 'observance' });
+  }
+  return list;
+}
+
+function withObservances(events: AcademicEvent[]): AcademicEvent[] {
+  if (events.length === 0) return events;
+  const start = events.reduce((min, e) => (e.date < min ? e.date : min), events[0].date);
+  const end = events.reduce((max, e) => ((e.endDate ?? e.date) > max ? (e.endDate ?? e.date) : max), events[0].date);
+  const titles = new Set(events.map((e) => e.title.toLowerCase()));
+  const years = new Set([Number(start.slice(0, 4)), Number(end.slice(0, 4))]);
+  const extra = [...years]
+    .flatMap(observancesForYear)
+    .filter((o) => o.date >= start && o.date <= end && !titles.has(o.title.toLowerCase()));
+  return [...events, ...extra].sort((a, b) => a.date.localeCompare(b.date));
+}
 
 // ─── Local fallback data ──────────────────────────────────────────────────────
 // Used when Supabase is unreachable. Keep in sync with supabase/academic_calendar.sql.
@@ -161,7 +211,7 @@ export async function fetchAcademicEvents(school: string, quarterKey: string): P
       const entry: CacheEntry = JSON.parse(raw);
       if (Date.now() - entry.fetchedAt < CACHE_TTL_MS) {
         rememberTermEvents(school, quarterKey, entry.events);
-        return entry.events;
+        return withObservances(entry.events);
       }
     }
   } catch (error) {
@@ -183,16 +233,18 @@ export async function fetchAcademicEvents(school: string, quarterKey: string): P
       const entry: CacheEntry = { fetchedAt: Date.now(), events };
       void AsyncStorage.setItem(key, JSON.stringify(entry));
       rememberTermEvents(school, quarterKey, events);
-      return events;
+      return withObservances(events);
     }
   } catch (error) {
     console.warn('Failed to load academic calendar; falling back to built-in dates:', error);
   }
 
   // 3. Local fallback
-  return (LOCAL_FALLBACK[school]?.[quarterKey] ?? [])
-    .slice()
-    .sort((a, b) => a.date.localeCompare(b.date));
+  return withObservances(
+    (LOCAL_FALLBACK[school]?.[quarterKey] ?? [])
+      .slice()
+      .sort((a, b) => a.date.localeCompare(b.date)),
+  );
 }
 
 // ─── Term boundaries (for "is this term still in session?") ───────────────────

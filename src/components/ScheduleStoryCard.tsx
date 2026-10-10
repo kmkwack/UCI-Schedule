@@ -71,8 +71,8 @@ const CHAR_W = { dept: 0.7, num: 0.64, room: 0.64, time: 0.62 };
 // adjacent pair of lines shows the same ~5pt gap and no margins are needed.
 // (All block text is caps + digits, so cap height is what the eye measures.)
 const SCALES = {
-  regular: { padT: 4, padL: 5, padR: 3, radius: 8, dept: 9, deptLh: 11, num: 16, numLh: 16, meta: 9, metaLh: 11 },
-  compact: { padT: 3, padL: 4, padR: 2, radius: 6, dept: 8, deptLh: 10, num: 13, numLh: 14, meta: 8, metaLh: 10 },
+  regular: { padT: 4, padL: 5, padR: 3, radius: 8, dept: 9, deptLh: 11, num: 13, numLh: 14, meta: 9, metaLh: 11 },
+  compact: { padT: 3, padL: 4, padR: 2, radius: 6, dept: 8, deptLh: 10, num: 11, numLh: 12, meta: 8, metaLh: 10 },
 };
 
 export function toMinutes(value: string | number): number {
@@ -94,11 +94,10 @@ export function getStoryHourRange(blocks: Pick<StoryBlock, 'start' | 'end'>[]): 
   return { startHour, endHour };
 }
 
-// "12:00" → "12", "9:30" → "9:30".
+// Always h:mm ("11:00–12:20"); its size shrinks (to 7pt) rather than clip.
 function formatClock(minutes: number): string {
   const h = Math.floor(minutes / 60) % 12 || 12;
-  const m = minutes % 60;
-  return m === 0 ? `${h}` : `${h}:${String(m).padStart(2, '0')}`;
+  return `${h}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
 function splitCode(code: string): { dept: string; num: string } {
@@ -147,17 +146,16 @@ const ScheduleStoryCard = forwardRef<View, ScheduleStoryCardProps>(function Sche
   // One size per text role for the whole image.
   const laneW = (CARD_W - PAD_X * 2 - GUTTER - LANE_GAP * (days.length - 1)) / Math.max(days.length, 1);
   const innerW = laneW - BLOCK_INSET * 2 - scale.padL - scale.padR - 2; // 2 = 1pt border each side
-  const fitRole = (values: string[], base: number, perChar: number) => {
+  const fitRole = (values: string[], base: number, perChar: number, min = MIN_TEXT) => {
     const longest = Math.max(1, ...values.map((v) => v.length));
-    return Math.max(MIN_TEXT, Math.min(base, Math.floor((innerW / (longest * perChar)) * 2) / 2));
+    return Math.max(min, Math.min(base, Math.floor((innerW / (longest * perChar)) * 2) / 2));
   };
   const codes = laid.filter((b) => !b.label).map((b) => splitCode(b.code));
   const deptSize = fitRole(codes.map((c) => c.dept), scale.dept, CHAR_W.dept);
   const numSize = fitRole(codes.map((c) => c.num), scale.num, CHAR_W.num);
-  const metaSize = Math.min(
-    fitRole(laid.map((b) => b.room), scale.meta, CHAR_W.room),
-    fitRole(laid.map((b) => b.time), scale.meta, CHAR_W.time),
-  );
+  const roomSize = fitRole(laid.map((b) => b.room), scale.meta, CHAR_W.room);
+  // Time may go to 7pt: a smaller full "11:00–12:20" beats a clipped one.
+  const timeSize = fitRole(laid.map((b) => b.time), scale.meta, CHAR_W.time, 7);
   // A custom label takes exactly the two-line code's height.
   const labelLh = (scale.deptLh + scale.numLh) / 2;
   const labelSize = Math.min(scale.dept + 3, labelLh);
@@ -202,7 +200,9 @@ const ScheduleStoryCard = forwardRef<View, ScheduleStoryCardProps>(function Sche
                 .filter((b) => b.day === day)
                 .map((b, j) => {
                   const ink = b.textColor;
-                  const meta = [b.room, b.time].filter((v) => !!v);
+                  // Short (≤50-min) classes show code + room only; time on them
+                  // read as clutter. Longer blocks add the time.
+                  const meta = [b.room, b.e - b.s > 50 ? b.time : ''].filter((v) => !!v);
                   const shown = meta.slice(0, metaLinesFor(b.height, meta.length));
                   const { dept, num } = splitCode(b.code);
                   return (
@@ -256,7 +256,7 @@ const ScheduleStoryCard = forwardRef<View, ScheduleStoryCardProps>(function Sche
                           numberOfLines={1}
                           style={[
                             k === 0 && b.room ? styles.room : styles.time,
-                            { color: ink, fontSize: metaSize, lineHeight: scale.metaLh },
+                            { color: ink, fontSize: k === 0 && b.room ? roomSize : timeSize, lineHeight: scale.metaLh },
                           ]}
                         >
                           {line}

@@ -2,7 +2,7 @@ import ScheduleStoryCard, { getStoryHourRange, type StoryBlock } from '../compon
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, ScrollView, Modal, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown, blockColorKey, colorForCourse, vividColorForCourse, parseCourseDays } from '../data/courses';
+import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, anteaterColorForCourse, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown, blockColorKey, colorForCourse, vividColorForCourse, parseCourseDays } from '../data/courses';
 import { buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
 import { getCampusMapLocation, isUnmappableLocation, type CampusMapLocation } from '../data/campusLocations';
 import { useTheme } from '../context/ThemeContext';
@@ -151,6 +151,11 @@ function getTimetableBlockColors(course: Course, themeInput: TimetableTheme | st
     return { bg: '#1f2937', text: '#e5e7eb', border: '#374151' };
   }
 
+  if (theme === 'anteater' && !course.customColor) {
+    // School colors read well on navy as-is; keep them solid.
+    return anteaterColorForCourse(blockColorKey(course));
+  }
+
   if (theme === 'colorful') {
     return {
       bg: mixTimetableHex(accent, '#0f172a', 0.24),
@@ -178,7 +183,12 @@ function getTimetableBlockColors(course: Course, themeInput: TimetableTheme | st
 // both read from here and from getTimetableBlockColors, so a new theme only
 // needs to be defined in these two functions and the saved image follows it.
 export function getTimetableGridColors(themeInput: TimetableTheme | string, isDark: boolean) {
-  void normalizeTimetableTheme(themeInput); // no theme overrides the grid yet
+  if (normalizeTimetableTheme(themeInput) === 'anteater') {
+    // UCI blue-tinted chrome; the share card's canvas becomes UCI Blue's tint.
+    return isDark
+      ? { canvas: '#0b2340', frameBg: '#0f2a4a', frameBorder: '#1B3D6D', headerBg: '#0b2340', line: '#1d3a5e', label: '#8fb3cc' }
+      : { canvas: '#dceaf5', frameBg: '#ffffff', frameBorder: '#b9d2e6', headerBg: '#eef5fb', line: '#e1ebf3', label: '#1B3D6D' };
+  }
   return isDark
     ? { canvas: '#0a1628', frameBg: '#0f172a', frameBorder: '#243041', headerBg: '#0a1628', line: '#1e293b', label: '#64748b' }
     : { canvas: '#eef0f4', frameBg: '#ffffff', frameBorder: '#d9dee8', headerBg: '#f5f5f7', line: '#e0e0e5', label: '#6b7280' };
@@ -1074,6 +1084,8 @@ export default function TimetableScreen({
     { key: 'minimal', label: 'Minimal' },
     { key: 'outline', label: 'Outline' },
     { key: 'colorful', label: 'Colorful' },
+    // School theme — UC Irvine only.
+    ...(school === 'UC Irvine' ? [{ key: 'anteater' as TimetableTheme, label: 'Anteater' }] : []),
   ];
 
   const DISPLAY_OPTIONS: { key: string; label: string }[] = [
@@ -1527,7 +1539,7 @@ export default function TimetableScreen({
                 <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Block Style
                 </Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {THEMES.map((t) => {
                     const isSelected = pendingTheme === t.key;
                     return (
@@ -1535,7 +1547,8 @@ export default function TimetableScreen({
                         key={t.key}
                         onPress={() => setPendingTheme(t.key)}
                         style={{
-                          flex: 1,
+                          flexGrow: 1,
+                          flexBasis: THEMES.length > 5 ? '30%' : 0,
                           paddingVertical: 8,
                           borderRadius: 10,
                           alignItems: 'center',

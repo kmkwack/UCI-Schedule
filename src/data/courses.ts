@@ -6,7 +6,7 @@ export type Timetable = {
   order: number;      // display order within the quarter (0-based)
 };
 
-export type TimetableTheme = 'pastel' | 'minimal' | 'colorful' | 'soft' | 'outline';
+export type TimetableTheme = 'pastel' | 'minimal' | 'colorful' | 'soft' | 'outline' | 'anteater';
 
 export type TimetableSettings = {
   theme: TimetableTheme;
@@ -340,14 +340,14 @@ function relativeLuminance(hex: string) {
 }
 
 export function normalizeTimetableTheme(theme: TimetableTheme | string | null | undefined): TimetableTheme {
-  if (theme === 'minimal' || theme === 'colorful' || theme === 'soft' || theme === 'outline') return theme;
+  if (theme === 'minimal' || theme === 'colorful' || theme === 'soft' || theme === 'outline' || theme === 'anteater') return theme;
   return 'pastel';
 }
 
 function customBlockColors(color: string, themeInput: TimetableTheme | string) {
   const theme = normalizeTimetableTheme(themeInput);
 
-  if (theme === 'colorful') {
+  if (theme === 'colorful' || theme === 'anteater') {
     return {
       bg: color,
       text: relativeLuminance(color) > 0.55 ? '#111827' : '#ffffff',
@@ -407,6 +407,21 @@ export function blockColorKey(course: Course): string {
   return type ? `${course.code}-${type}` : course.code;
 }
 
+// UC Irvine school colors (brand.uci.edu): Blue, Dark Blue, Light Blue, Gold,
+// and a warm gold accent. Colors only — no marks or mascot artwork until
+// UCI Trademarks & Licensing approves their use.
+const ANTEATER_COLORS = ['#0064A4', '#1B3D6D', '#FFD200', '#6AA2B8', '#ECB03E'];
+
+/** School-color block for the UCI "Anteater" theme. Gold blocks get navy text. */
+export function anteaterColorForCourse(courseKey: string): { bg: string; text: string; border: string } {
+  const color = ANTEATER_COLORS[Math.abs(hashStr(courseKey)) % ANTEATER_COLORS.length];
+  return {
+    bg: color,
+    text: relativeLuminance(color) > 0.5 ? '#1B3D6D' : '#ffffff',
+    border: mixHex(color, '#000000', 0.14),
+  };
+}
+
 /** Returns block bg/text/border for a given course and block style. */
 export function getBlockColors(course: Course, themeInput: TimetableTheme | string): { bg: string; text: string; border: string } {
   const theme = normalizeTimetableTheme(themeInput);
@@ -416,6 +431,8 @@ export function getBlockColors(course: Course, themeInput: TimetableTheme | stri
   }
 
   switch (theme) {
+    case 'anteater':
+      return anteaterColorForCourse(blockColorKey(course));
     case 'minimal':
       return { bg: '#f5f6f8', text: '#4b5563', border: '#d1d5db' };
     case 'colorful': {

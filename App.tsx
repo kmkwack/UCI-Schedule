@@ -31,7 +31,7 @@ import ClassMateIntroScreen from './src/components/ClassMateIntroScreen';
 import FeatureOnboardingScreen from './src/components/FeatureOnboardingScreen';
 import NotificationPermissionScreen from './src/components/NotificationPermissionScreen';
 import { FullScreenLoader } from './src/components/ScheduleLoader';
-import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, parseQuarterKey, quarterKey, parseCourseDays } from './src/data/courses';
+import { Course, Quarter, Timetable, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatTimeOfDay12, parseQuarterKey, quarterKey, parseCourseDays, normalizeTimetableTheme } from './src/data/courses';
 import { clearWidgetSchedule, syncWidgetSchedule } from './src/lib/widgetSync';
 import { DEFAULT_UNIVERSITY, buildTermCandidates, getAcademicTermForDate, getSchoolConfig, resolveCurrentTerm, schoolFeatureEnabled, termLabel, termOrderValue, universityForName, type University } from './src/data/schools';
 import { isTermInSession, primeTermBoundaries } from './src/data/academicCalendar';
@@ -218,9 +218,9 @@ function normalizeThemePreference(value: unknown): ThemePreference | null {
 function normalizeTimetableSettings(value: unknown): TimetableSettings | null {
   if (!value || typeof value !== 'object') return null;
   const candidate = value as Partial<TimetableSettings>;
-  const theme = candidate.theme === 'minimal' || candidate.theme === 'colorful' || candidate.theme === 'soft' || candidate.theme === 'outline'
-    ? candidate.theme
-    : 'pastel';
+  // One whitelist (courses.ts) — a local copy here silently reset new themes
+  // like 'anteater' to pastel on Apply.
+  const theme = normalizeTimetableTheme(candidate.theme);
   return {
     theme,
     showCode: typeof candidate.showCode === 'boolean' ? candidate.showCode : DEFAULT_TIMETABLE_SETTINGS.showCode,

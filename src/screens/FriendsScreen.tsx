@@ -26,6 +26,7 @@ import {
   formatCourseTimeRange12,
   formatHourLabel12,
   getBlockColors,
+  buildColorSlots,
   quarterKey,
 } from '../data/courses';
 import {
@@ -312,6 +313,7 @@ export default function FriendsScreen({
   const uniqueQuarterCourses: Course[] = Array.from(new Map(friendQuarterCourses.map(c => [c.id, c])).values());
   const activeCourses: Course[] = uniqueQuarterCourses.filter(c => isValidTime(c.time) && c.days !== 'TBA');
   const tbaCourses: Course[] = uniqueQuarterCourses.filter(c => !isValidTime(c.time) || c.days === 'TBA');
+  const colorSlots = buildColorSlots(uniqueQuarterCourses);
 
   const filteredFriends = useMemo(
     () =>
@@ -1845,7 +1847,7 @@ export default function FriendsScreen({
                           const eh = endHour(course.time);
                           const top = (sh - displayStart) * hourPx;
                           const height = (eh - sh) * hourPx;
-                          const { bg, text, border } = getBlockColors(course, timetableTheme);
+                          const { bg, text, border } = getBlockColors(course, timetableTheme, colorSlots);
                           return parseDays(course.days).map((day) => {
                             const col = visibleDays.indexOf(day);
                             if (col === -1) return null;
@@ -1885,7 +1887,7 @@ export default function FriendsScreen({
               <View style={{ paddingHorizontal: 12, marginTop: 4, marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {tbaCourses.map((course) => {
-                    const { bg, text, border } = getBlockColors(course, timetableTheme);
+                    const { bg, text, border } = getBlockColors(course, timetableTheme, colorSlots);
                     return (
                       <View key={course.id} style={{
                         backgroundColor: bg, borderRadius: 8, borderWidth: 1, borderColor: border,

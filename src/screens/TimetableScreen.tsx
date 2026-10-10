@@ -1,9 +1,10 @@
 import ScheduleStoryCard, { getStoryHourRange, type StoryBlock } from '../components/ScheduleStoryCard';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, ScrollView, Modal, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, Keyboard, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, TextInput, UIManager, View, Text, TouchableOpacity, ScrollView, Modal, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, anteaterColorForCourse, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown, blockColorKey, colorForCourse, vividColorForCourse, parseCourseDays } from '../data/courses';
+import { Course, Quarter, Timetable, TimetableTheme, TimetableSettings, anteaterColorForCourse, buildColorSlots, quarterKey, formatCourseTimeRange12, formatHourLabel12, getBlockColors, normalizeTimetableTheme, professorDisplayName, professorIsKnown, blockColorKey, colorForCourse, vividColorForCourse, parseCourseDays } from '../data/courses';
 import { buildTermCandidates, getSchoolConfig, schoolCampusLabel, termLabel, termOrderValue } from '../data/schools';
+import { ANTEATER_ART, ANTEATER_MARK_ASPECT } from '../data/anteaterArt';
 import { getCampusMapLocation, isUnmappableLocation, type CampusMapLocation } from '../data/campusLocations';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -140,9 +141,14 @@ function alphaTimetableHex(color: string, alpha: number) {
   return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
 }
 
-function getTimetableBlockColors(course: Course, themeInput: TimetableTheme | string, isDark: boolean) {
+function getTimetableBlockColors(
+  course: Course,
+  themeInput: TimetableTheme | string,
+  isDark: boolean,
+  slots?: Map<string, number>,
+) {
   const theme = normalizeTimetableTheme(themeInput);
-  if (!isDark) return getBlockColors(course, theme);
+  if (!isDark) return getBlockColors(course, theme, slots);
 
   const accent = course.customColor
     ?? (theme === 'colorful' ? vividColorForCourse(blockColorKey(course)) : colorForCourse(blockColorKey(course)));
@@ -152,8 +158,8 @@ function getTimetableBlockColors(course: Course, themeInput: TimetableTheme | st
   }
 
   if (theme === 'anteater' && !course.customColor) {
-    // School colors read well on navy as-is; keep them solid.
-    return anteaterColorForCourse(blockColorKey(course));
+    const key = blockColorKey(course);
+    return anteaterColorForCourse(key, slots?.get(key), true);
   }
 
   if (theme === 'colorful') {
@@ -182,12 +188,34 @@ function getTimetableBlockColors(course: Course, themeInput: TimetableTheme | st
 // Grid chrome for a timetable theme. The Timetable screen and the share image
 // both read from here and from getTimetableBlockColors, so a new theme only
 // needs to be defined in these two functions and the saved image follows it.
-export function getTimetableGridColors(themeInput: TimetableTheme | string, isDark: boolean) {
+export type TimetableGridColors = {
+  canvas: string; // share card ground
+  frameBg: string;
+  frameBorder: string;
+  headerBg: string;
+  line: string;
+  label: string; // hour labels on the grid
+  // Optional overrides; when absent the screen falls back to ThemeContext colors.
+  dayLabel?: string; // day names in the grid header and share-card lanes
+  canvasTitle?: string; // term on the share card canvas
+  canvasAccent?: string; // school name on the share card canvas
+  canvasLabel?: string; // hour labels on the share card canvas
+};
+
+export function getTimetableGridColors(themeInput: TimetableTheme | string, isDark: boolean): TimetableGridColors {
   if (normalizeTimetableTheme(themeInput) === 'anteater') {
-    // UCI blue-tinted chrome; the share card's canvas becomes UCI Blue's tint.
+    // UCI Blue & Gold (brand.uci.edu). Light: the share card sits on a UCI Blue
+    // field with the school in Gold; the grid keeps a white frame with a blue-
+    // tinted header and Dark Blue labels. Dark: deep navy instead of slate.
     return isDark
-      ? { canvas: '#0b2340', frameBg: '#0f2a4a', frameBorder: '#1B3D6D', headerBg: '#0b2340', line: '#1d3a5e', label: '#8fb3cc' }
-      : { canvas: '#dceaf5', frameBg: '#ffffff', frameBorder: '#b9d2e6', headerBg: '#eef5fb', line: '#e1ebf3', label: '#1B3D6D' };
+      ? {
+          canvas: '#081426', frameBg: '#0B1A2E', frameBorder: '#1B3D6D', headerBg: '#081426', line: '#16294A', label: '#8FA9CC',
+          dayLabel: '#D6E2F2', canvasTitle: '#ffffff', canvasAccent: '#FECC07', canvasLabel: '#8FA9CC',
+        }
+      : {
+          canvas: '#255799', frameBg: '#ffffff', frameBorder: '#C5D3E6', headerBg: '#EDF2F9', line: '#E4EAF2', label: '#1B3D6D',
+          dayLabel: '#1B3D6D', canvasTitle: '#ffffff', canvasAccent: '#FECC07', canvasLabel: '#BFD0E8',
+        };
   }
   return isDark
     ? { canvas: '#0a1628', frameBg: '#0f172a', frameBorder: '#243041', headerBg: '#0a1628', line: '#1e293b', label: '#64748b' }
@@ -626,6 +654,22 @@ export default function TimetableScreen({
     [activeCourses]
   );
 
+  // Palette slot per course, in the order courses were added, so classes in
+  // one timetable don't share a color (used by slot-aware themes like Anteater).
+  const colorSlots = useMemo(() => buildColorSlots(activeCourses), [activeCourses]);
+
+  // Licensed artwork slots for the Anteater theme (src/data/anteaterArt.ts).
+  // All empty until UCI approves the marks, so these render nothing today.
+  const anteaterArt = blockTheme === 'anteater' ? ANTEATER_ART : null;
+  const storyHeaderArt = anteaterArt?.header
+    ? <Image source={anteaterArt.header} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+    : undefined;
+  const storyLaneArt = anteaterArt && anteaterArt.laneMarks.length > 0
+    ? anteaterArt.laneMarks.map((source, i) => (
+        <Image key={i} source={source} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+      ))
+    : undefined;
+
   // Students talk about load in units, not sections (a lecture + discussion is
   // "one class, 4 units"), so the share card leads with units.
   const shareUnits = useMemo(
@@ -811,7 +855,7 @@ export default function TimetableScreen({
   const storyBlocks = useMemo<StoryBlock[]>(() => {
     const toHHMM = (t: string) => t.trim();
     return scheduledCourses.flatMap((course) => {
-      const blockColors = getTimetableBlockColors(course, blockTheme, isDark);
+      const blockColors = getTimetableBlockColors(course, blockTheme, isDark, colorSlots);
       const [start, end] = course.time.split(' - ').map(toHHMM);
       if (!start || !end) return [];
       return getDaysArray(course.days)
@@ -828,7 +872,7 @@ export default function TimetableScreen({
           borderColor: blockColors.border,
         }));
     });
-  }, [scheduledCourses, visibleDays, school, blockTheme, isDark]);
+  }, [scheduledCourses, visibleDays, school, blockTheme, isDark, colorSlots]);
   const storyHourRange = useMemo(() => getStoryHourRange(storyBlocks), [storyBlocks]);
   const timetableHeight = 64 * totalHours;
   const hourHeight = timetableHeight / totalHours;
@@ -1261,13 +1305,15 @@ export default function TimetableScreen({
     else if (key === 'time')       setPendingShowTime((v) => !v);
   }
 
+  const gridColors = getTimetableGridColors(blockTheme, isDark);
   const {
     frameBg: gridFrameBg,
     frameBorder: gridFrameBorder,
     headerBg: gridHeaderBg,
     line: gridLine,
     label: gridLabel,
-  } = getTimetableGridColors(blockTheme, isDark);
+  } = gridColors;
+  const gridDayLabel = gridColors.dayLabel ?? colors.textSecondary;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -2309,7 +2355,7 @@ export default function TimetableScreen({
                       backgroundColor: gridHeaderBg,
                     }}
                   >
-                    <Text style={{ fontSize: compactGrid ? 11 : 12, fontWeight: '700', color: colors.textSecondary }}>
+                    <Text style={{ fontSize: compactGrid ? 11 : 12, fontWeight: '700', color: gridDayLabel }}>
                       {DAY_LABEL[day]}
                     </Text>
                   </View>
@@ -2376,13 +2422,37 @@ export default function TimetableScreen({
                         />
                       ))}
 
+                      {anteaterArt?.gridBackground ? (() => {
+                        // Large, faint mark behind the class blocks (they render after it),
+                        // pulled left so the snout runs out over the hour-label column.
+                        const artW = (timeColumnWidth + dayColumnWidth * visibleDays.length) * 0.92;
+                        const artH = artW / ANTEATER_MARK_ASPECT;
+                        return (
+                          <View
+                            pointerEvents="none"
+                            accessible={false}
+                            importantForAccessibility="no-hide-descendants"
+                            style={{
+                              position: 'absolute',
+                              left: -timeColumnWidth + 4,
+                              top: (timetableHeight - artH) / 2,
+                              width: artW,
+                              height: artH,
+                              opacity: isDark ? 0.12 : 0.1,
+                            }}
+                          >
+                            <Image source={anteaterArt.gridBackground} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
+                          </View>
+                        );
+                      })() : null}
+
                       {scheduledCourses.flatMap((course) => {
                         const courseDays = getDaysArray(course.days);
                         const startHour = getCourseStartHour(course.time);
                         const endHour = getCourseEndHour(course.time);
                         const top = (startHour - displayStartHour) * hourHeight;
                         const height = (endHour - startHour) * hourHeight;
-                        const { bg, text, border } = getTimetableBlockColors(course, blockTheme, isDark);
+                        const { bg, text, border } = getTimetableBlockColors(course, blockTheme, isDark, colorSlots);
                         const courseLocation = displayCourseLocation(course.location, school);
 
                         return courseDays.map((day) => {
@@ -2474,7 +2544,7 @@ export default function TimetableScreen({
           }}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {tbaCourses.map((course) => {
-                const { bg, text, border } = getTimetableBlockColors(course, blockTheme, isDark);
+                const { bg, text, border } = getTimetableBlockColors(course, blockTheme, isDark, colorSlots);
                 const courseLocation = displayCourseLocation(course.location, school);
                 return (
                   <TouchableOpacity
@@ -2538,15 +2608,18 @@ export default function TimetableScreen({
           startHour={storyHourRange.startHour}
           endHour={storyHourRange.endHour}
           blocks={storyBlocks}
+          headerArt={storyHeaderArt}
+          laneArt={storyLaneArt}
           palette={{
-            canvas: getTimetableGridColors(blockTheme, isDark).canvas,
+            canvas: gridColors.canvas,
             lane: gridFrameBg,
             line: gridLine,
-            hourLabel: gridLabel,
-            dayLabel: colors.textSecondary,
+            hourLabel: gridColors.canvasLabel ?? gridLabel,
+            dayLabel: gridDayLabel,
+            title: gridColors.canvasTitle ?? colors.text,
             ink: colors.text,
             muted: colors.textSecondary,
-            brand: colors.brand,
+            brand: gridColors.canvasAccent ?? colors.brand,
           }}
         />
       </View>

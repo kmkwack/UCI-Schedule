@@ -4,7 +4,7 @@ import { ActionSheetIOS, ActivityIndicator, Alert, Animated, Keyboard, Linking, 
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
-import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, blockColorKey, formatCourseTimeRange12, getBlockColors, quarterKey, parseCourseDays } from '../data/courses';
+import { Course, Quarter, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, blockColorKey, buildColorSlots, formatCourseTimeRange12, getBlockColors, quarterKey, parseCourseDays } from '../data/courses';
 import { addUserAcademicEvent, CATEGORY_CONFIG, daysUntilEvent, dedupeAcademicEvents, deleteUserAcademicEvent, fetchAcademicEvents, fetchUserAcademicEvents, localDateKey, type AcademicEvent } from '../data/academicCalendar';
 import { buildSectionMatchKey, getSharedClassMatch, normalizeCourseCode, type SharedClassMatch } from '../data/sharedClasses';
 import { getSportsVenueForEvent, type SportsVenue } from '../data/campusLocations';
@@ -1781,6 +1781,9 @@ export default function HomeScreen({
     if (scrollToTopTrigger > 0) scrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [scrollToTopTrigger]);
 
+  // Same palette slots as the Timetable screen, so a class keeps its color here.
+  const colorSlots = useMemo(() => buildColorSlots(activeCourses), [activeCourses]);
+
   const homeScheduleSignature = useMemo(
     () => activeCourses
       .map((course) => `${buildSectionMatchKey(course)}:${normalizeCourseCode(course)}`)
@@ -2902,7 +2905,7 @@ export default function HomeScreen({
         ? dateFromHour(now, latestSummaryEndHour, effectiveTimeZone)
         : now;
     const accent = course
-      ? getBlockColors(course, timetableSettings.theme).border
+      ? getBlockColors(course, timetableSettings.theme, colorSlots).border
       : item.type === 'completedSummary'
         ? colors.textTertiary
         : colors.brand;
@@ -3053,7 +3056,7 @@ export default function HomeScreen({
                 const rowIsCurrent = rowStartDate.getTime() <= now.getTime() && rowEndDate.getTime() >= now.getTime();
                 const summaryCourseAccent = rowIsPast
                   ? colors.border
-                  : getBlockColors(summaryCourse, timetableSettings.theme).border;
+                  : getBlockColors(summaryCourse, timetableSettings.theme, colorSlots).border;
                 const rowPrimaryColor = rowIsPast ? colors.textTertiary : colors.text;
                 const rowSecondaryColor = rowIsPast ? colors.textTertiary : colors.textSecondary;
                 return (

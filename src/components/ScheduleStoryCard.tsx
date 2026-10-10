@@ -37,7 +37,18 @@ export type ScheduleStoryCardProps = {
   endHour: number;
   blocks: StoryBlock[];
   palette: StoryPalette;
+  // LICENSED ARTWORK SLOTS (see src/data/anteaterArt.ts). Unused until UCI
+  // Trademarks & Licensing approves specific marks; while empty nothing is
+  // rendered and no space is reserved, so the layout is unchanged.
+  // headerArt: right of the school/term, in a 56×40pt box.
+  headerArt?: React.ReactNode;
+  // laneArt: one small mark on the floor of each day lane whose bottom is free
+  // for ≥ LANE_ART_MIN_TAIL, cycling through the list; never over a block.
+  laneArt?: React.ReactNode[];
 };
+
+const LANE_ART_MIN_TAIL = 40; // pt of free lane floor needed for a lane mark
+const LANE_ART_ASPECT = 323 / 176; // width / height of the Peter marks
 
 // Card chrome, supplied by the Timetable screen from the active theme
 // (getTimetableGridColors + ThemeContext), never hardcoded here.
@@ -47,7 +58,8 @@ export type StoryPalette = {
   line: string; // hour rules
   hourLabel: string;
   dayLabel: string;
-  ink: string; // term, units number
+  ink: string; // units number (on the lane-colored chip); also the term unless `title` is set
+  title?: string; // term, when the canvas needs a different ink than the chip (e.g. on UCI Blue)
   muted: string; // units word
   brand: string; // school name
 };
@@ -107,7 +119,7 @@ function splitCode(code: string): { dept: string; num: string } {
 }
 
 const ScheduleStoryCard = forwardRef<View, ScheduleStoryCardProps>(function ScheduleStoryCard(
-  { school, term, unitsLabel, days, startHour, endHour, blocks, palette },
+  { school, term, unitsLabel, days, startHour, endHour, blocks, palette, headerArt, laneArt },
   ref,
 ) {
   const t = palette;
@@ -165,12 +177,32 @@ const ScheduleStoryCard = forwardRef<View, ScheduleStoryCardProps>(function Sche
 
   const unitsMatch = unitsLabel.match(/^(\S+)\s+(.+)$/);
 
+  // Lane marks: free floor = from the day's last class (+10 min of breathing
+  // room) to the end of the grid. Lanes with too little room are skipped, so a
+  // mark can never sit on a class block.
+  const laneMarkW = Math.min(50, laneW - 10);
+  const laneMarkH = laneMarkW / LANE_ART_ASPECT;
+  const laneMarks = new Map<string, React.ReactNode>();
+  if (laneArt && laneArt.length > 0) {
+    let next = 0;
+    for (const day of days) {
+      const lastEnd = Math.max(rangeStart, ...laid.filter((b) => b.day === day).map((b) => b.e));
+      const freeFloor = (rangeEnd - lastEnd - 10) * ppm;
+      if (freeFloor < Math.max(LANE_ART_MIN_TAIL, laneMarkH + 8)) continue;
+      laneMarks.set(day, laneArt[next % laneArt.length]);
+      next += 1;
+    }
+  }
+
   return (
     <View ref={ref} collapsable={false} style={[styles.card, { backgroundColor: t.canvas }]}>
       <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text allowFontScaling={false} numberOfLines={1} style={[styles.school, { color: t.brand }]}>{school}</Text>
-          <Text allowFontScaling={false} numberOfLines={1} style={[styles.term, { color: t.ink }]}>{term}</Text>
+        <View style={styles.headerLead}>
+          <View style={styles.headerText}>
+            <Text allowFontScaling={false} numberOfLines={1} style={[styles.school, { color: t.brand }]}>{school}</Text>
+            <Text allowFontScaling={false} numberOfLines={1} style={[styles.term, { color: t.title ?? t.ink }]}>{term}</Text>
+          </View>
+          {headerArt ? <View style={styles.headerArt}>{headerArt}</View> : null}
         </View>
         <View style={[styles.units, { backgroundColor: t.lane }]}>
           <Text allowFontScaling={false} style={[styles.unitsNum, { color: t.ink }]}>
@@ -196,6 +228,16 @@ const ScheduleStoryCard = forwardRef<View, ScheduleStoryCardProps>(function Sche
               {hours.map((h, j) => (
                 <View key={h} style={[styles.hourLine, { top: hourY(j), backgroundColor: t.line }]} />
               ))}
+              {laneMarks.has(day) ? (
+                <View
+                  style={[
+                    styles.laneArt,
+                    { width: laneMarkW, height: laneMarkH, top: LANE_H - 8 - 4 - laneMarkH, left: (laneW - laneMarkW) / 2 },
+                  ]}
+                >
+                  {laneMarks.get(day)}
+                </View>
+              ) : null}
               {laid
                 .filter((b) => b.day === day)
                 .map((b, j) => {
@@ -291,7 +333,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
-  headerText: { flexShrink: 1, minWidth: 0, marginRight: 12 },
+  headerLead: { flex: 1, minWidth: 0, marginRight: 12, flexDirection: 'row', alignItems: 'flex-end' },
+  headerText: { flexShrink: 1, minWidth: 0 },
+  headerArt: { width: 56, height: 40, marginLeft: 10, marginBottom: 2 },
   school: { fontSize: 11, lineHeight: 14, fontWeight: '800', letterSpacing: 1.2 },
   term: { fontSize: 30, lineHeight: 34, fontWeight: '800', letterSpacing: -0.6 },
   units: {
@@ -323,6 +367,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  laneArt: { position: 'absolute' },
   hourLine: { position: 'absolute', left: 0, right: 0, height: 1 },
   block: { position: 'absolute', left: BLOCK_INSET, right: BLOCK_INSET, overflow: 'hidden' },
   // Matches the in-app block: code 800, room 600 @ .75, time 600 @ .6.

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
-import { Course, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatHourLabel12, getBlockColors, professorDisplayName, parseCourseDays } from '../data/courses';
+import { Course, TimetableSettings, DEFAULT_TIMETABLE_SETTINGS, formatCourseTimeRange12, formatHourLabel12, getBlockColors, buildColorSlots, professorDisplayName, parseCourseDays } from '../data/courses';
 import { useTheme } from '../context/ThemeContext';
 
 type Props = {
@@ -68,6 +68,8 @@ export default function PreviewTimetable({
     () => allVisibleCourses.filter((course) => course.time !== 'TBA' && course.days !== 'TBA'),
     [allVisibleCourses]
   );
+  // The previewed course takes the next free slot, as it would once added.
+  const colorSlots = useMemo(() => buildColorSlots(allVisibleCourses), [allVisibleCourses]);
 
   const visibleDays = useMemo(() => {
     const usedDays = new Set<string>();
@@ -285,37 +287,37 @@ export default function PreviewTimetable({
                           left: dayIndex * dayColumnWidth + 2,
                           width: dayColumnWidth - 4,
                           height,
-                          backgroundColor: getBlockColors(course, theme).bg,
+                          backgroundColor: getBlockColors(course, theme, colorSlots).bg,
                           borderRadius: 8,
                           borderWidth: 1,
-                          borderColor: getBlockColors(course, theme).border,
+                          borderColor: getBlockColors(course, theme, colorSlots).border,
                           paddingHorizontal: 5,
                           paddingTop: 4,
                           overflow: 'hidden',
                         }}
                       >
                           {showCode && (
-                            <Text style={{ color: getBlockColors(course, theme).text, fontSize: 9, fontWeight: '800', lineHeight: 12 }} numberOfLines={1} ellipsizeMode="tail">
+                            <Text style={{ color: getBlockColors(course, theme, colorSlots).text, fontSize: 9, fontWeight: '800', lineHeight: 12 }} numberOfLines={1} ellipsizeMode="tail">
                               {course.code}
                             </Text>
                           )}
                           {showClassName && (
-                            <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, fontWeight: '500', opacity: 0.85 }} numberOfLines={1} ellipsizeMode="tail">
+                            <Text style={{ color: getBlockColors(course, theme, colorSlots).text, fontSize: 8, fontWeight: '500', opacity: 0.85 }} numberOfLines={1} ellipsizeMode="tail">
                               {course.title}
                             </Text>
                           )}
                           {showRoomNumber && course.location ? (
-                            <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, opacity: 0.7 }} numberOfLines={1} ellipsizeMode="tail">
+                            <Text style={{ color: getBlockColors(course, theme, colorSlots).text, fontSize: 8, opacity: 0.7 }} numberOfLines={1} ellipsizeMode="tail">
                               {course.location}
                             </Text>
                           ) : null}
                           {showInstructor ? (
-                            <Text style={{ color: getBlockColors(course, theme).text, fontSize: 8, opacity: 0.7 }} numberOfLines={1} ellipsizeMode="tail">
+                            <Text style={{ color: getBlockColors(course, theme, colorSlots).text, fontSize: 8, opacity: 0.7 }} numberOfLines={1} ellipsizeMode="tail">
                               {professorDisplayName(course.professor).split(',')[0]}
                             </Text>
                           ) : null}
                           {showTime && (
-                            <Text style={{ color: getBlockColors(course, theme).text, fontSize: 7, opacity: 0.6 }} numberOfLines={1} ellipsizeMode="tail">
+                            <Text style={{ color: getBlockColors(course, theme, colorSlots).text, fontSize: 7, opacity: 0.6 }} numberOfLines={1} ellipsizeMode="tail">
                               {formatCourseTimeRange12(course.time, { compact: true })}
                             </Text>
                           )}

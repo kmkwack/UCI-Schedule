@@ -407,23 +407,67 @@ export function blockColorKey(course: Course): string {
   return type ? `${course.code}-${type}` : course.code;
 }
 
-// UC Irvine school colors (brand.uci.edu): Blue, Dark Blue, Light Blue, Gold,
-// and a warm gold accent. Colors only — no marks or mascot artwork until
-// UCI Trademarks & Licensing approves their use.
-const ANTEATER_COLORS = ['#0064A4', '#1B3D6D', '#FFD200', '#6AA2B8', '#ECB03E'];
+// UC Irvine "Anteater" theme — official palette from brand.uci.edu/identity/colors.php:
+// UCI Blue #255799 and UCI Gold #FECC07 lead (primary), then the secondaries
+// (Dark Blue #1B3D6D, Light Blue #6AA2B8, Orange #F78D2D, Teal Blue, Turquoise
+// #00B0CA, Light Gray #C6BEB5). Teal Blue #0083B3 is darkened to #00739E so white
+// text clears 4.5:1, as the guide allows for web contrast. Every pair below is
+// ≥ 4.5:1. Colors only — no marks or mascot artwork until UCI Trademarks &
+// Licensing approves their use.
+//
+// Order matters: courses take slots in the order they were added (see
+// buildColorSlots), so the first classes get the primary Blue and Gold — the
+// brand's "UCI Blue dominant, Gold as complement" hierarchy.
+const ANTEATER_NAVY = '#002244'; // Darkest Blue — ink on light fills
+const ANTEATER_GOLD = '#FECC07';
+const ANTEATER_LIGHT: [string, string][] = [
+  ['#255799', '#ffffff'],       // UCI Blue
+  [ANTEATER_GOLD, ANTEATER_NAVY], // UCI Gold
+  ['#1B3D6D', ANTEATER_GOLD],   // Dark Blue, gold type
+  ['#6AA2B8', ANTEATER_NAVY],   // Light Blue
+  ['#F78D2D', ANTEATER_NAVY],   // Orange
+  ['#00739E', '#ffffff'],       // Teal Blue (darkened)
+  ['#00B0CA', ANTEATER_NAVY],   // Turquoise
+  ['#C6BEB5', ANTEATER_NAVY],   // Light Gray
+];
+// Dark mode: the two deep blues are lifted so they separate from the navy grid.
+const ANTEATER_DARK: [string, string][] = ANTEATER_LIGHT.map(([bg, text], i) =>
+  i === 0 ? ['#3468AE', '#ffffff'] : i === 2 ? ['#24497F', ANTEATER_GOLD] : [bg, text]);
 
-/** School-color block for the UCI "Anteater" theme. Gold blocks get navy text. */
-export function anteaterColorForCourse(courseKey: string): { bg: string; text: string; border: string } {
-  const color = ANTEATER_COLORS[Math.abs(hashStr(courseKey)) % ANTEATER_COLORS.length];
+/**
+ * Assigns each course color key a palette slot in the order the courses appear,
+ * so no two courses in one timetable share a color until the palette runs out
+ * (hashing 6 keys into 8 colors collides ~92% of the time). Adding a course
+ * never recolors existing ones. Courses with their own customColor are skipped.
+ */
+export function buildColorSlots(courses: Course[]): Map<string, number> {
+  const slots = new Map<string, number>();
+  for (const course of courses) {
+    if (course.customColor) continue;
+    const key = blockColorKey(course);
+    if (!slots.has(key)) slots.set(key, slots.size);
+  }
+  return slots;
+}
+
+/** School-color block for the UCI "Anteater" theme. Falls back to a hash when no slot is known. */
+export function anteaterColorForCourse(courseKey: string, slot?: number, isDark = false): { bg: string; text: string; border: string } {
+  const palette = isDark ? ANTEATER_DARK : ANTEATER_LIGHT;
+  const index = (slot ?? Math.abs(hashStr(courseKey))) % palette.length;
+  const [bg, text] = palette[index];
   return {
-    bg: color,
-    text: relativeLuminance(color) > 0.5 ? '#1B3D6D' : '#ffffff',
-    border: mixHex(color, '#000000', 0.14),
+    bg,
+    text,
+    border: isDark ? mixHex(bg, '#ffffff', 0.18) : mixHex(bg, '#000000', 0.12),
   };
 }
 
 /** Returns block bg/text/border for a given course and block style. */
-export function getBlockColors(course: Course, themeInput: TimetableTheme | string): { bg: string; text: string; border: string } {
+export function getBlockColors(
+  course: Course,
+  themeInput: TimetableTheme | string,
+  slots?: Map<string, number>,
+): { bg: string; text: string; border: string } {
   const theme = normalizeTimetableTheme(themeInput);
 
   if (course.customColor) {
@@ -431,8 +475,10 @@ export function getBlockColors(course: Course, themeInput: TimetableTheme | stri
   }
 
   switch (theme) {
-    case 'anteater':
-      return anteaterColorForCourse(blockColorKey(course));
+    case 'anteater': {
+      const key = blockColorKey(course);
+      return anteaterColorForCourse(key, slots?.get(key));
+    }
     case 'minimal':
       return { bg: '#f5f6f8', text: '#4b5563', border: '#d1d5db' };
     case 'colorful': {
